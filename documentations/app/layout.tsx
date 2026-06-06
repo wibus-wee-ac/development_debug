@@ -1,8 +1,8 @@
 import './global.css'
 
-import { GeistSans } from 'geist/font/sans'
-import { GeistMono } from 'geist/font/mono'
 import { RootProvider } from 'fumadocs-ui/provider/next'
+import { GeistMono } from 'geist/font/mono'
+import { GeistSans } from 'geist/font/sans'
 import type { Metadata } from 'next'
 
 import { appName } from '@/lib/shared'

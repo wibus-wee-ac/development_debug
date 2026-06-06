@@ -1,4 +1,5 @@
-import { type Lang, t } from '../i18n'
+import type { Lang } from '../i18n'
+import { t } from '../i18n'
 
 interface ComponentsProps {
   lang: Lang
@@ -52,13 +53,15 @@ export default function Components({ lang }: ComponentsProps) {
         gridTemplateColumns: 'repeat(auto-fill, minmax(300px, 1fr))',
         gap: 2,
         marginBottom: 40,
-      }}>
+      }}
+      >
         {COMPONENTS.map(({ name, path, desc }) => (
           <div key={name} style={{
             padding: '12px 14px',
             background: 'var(--color-neutral-2)',
             borderRadius: 8,
-          }}>
+          }}
+          >
             <div style={{ display: 'flex', alignItems: 'baseline', gap: 8, marginBottom: 4 }}>
               <span style={{ fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 500, color: 'var(--color-neutral-9)' }}>{name}</span>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--color-neutral-5)' }}>{path}</span>
@@ -77,7 +80,8 @@ export default function Components({ lang }: ComponentsProps) {
             gap: 16,
             padding: '10px 0',
             borderBottom: '1px solid var(--color-border)',
-          }}>
+          }}
+          >
             <p style={{ margin: 0, flex: 1, fontFamily: 'var(--font-sans)', fontSize: 13, color: 'var(--color-neutral-7)' }}>{question}</p>
             <code style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-accent)', background: 'var(--color-neutral-2)', padding: '2px 6px', borderRadius: 4 }}>{answer}</code>
             <p style={{ margin: 0, width: 220, fontFamily: 'var(--font-sans)', fontSize: 12, color: 'var(--color-neutral-5)' }}>{detail}</p>

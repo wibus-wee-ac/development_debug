@@ -1,25 +1,25 @@
-import { useRef } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { CheckCircle2, Minus, X } from 'lucide-react'
+import { useRef } from 'react'
 
 gsap.registerPlugin(useGSAP, ScrollTrigger)
 
 const TOOLS = ['Cursor', 'Claude Code', 'Devin', 'Cradle']
 const ROWS = [
-  { label: 'Multi-agent orchestration',     vals: [false, false, false, true] },
-  { label: 'Parallel agents, same codebase',vals: [false, false, 'partial', true] },
-  { label: 'Session Await / Resume',         vals: [false, false, 'partial', true] },
-  { label: 'Local-first, data on device',    vals: [false, false, false, true] },
-  { label: 'Works with any AI tool',         vals: [false, false, false, true] },
-  { label: 'Live agent observability',       vals: [false, 'partial', false, true] },
-  { label: 'Plugin / extension system',      vals: ['partial', false, false, true] },
+  { label: 'Multi-agent orchestration', vals: [false, false, false, true] },
+  { label: 'Parallel agents, same codebase', vals: [false, false, 'partial', true] },
+  { label: 'Session Await / Resume', vals: [false, false, 'partial', true] },
+  { label: 'Local-first, data on device', vals: [false, false, false, true] },
+  { label: 'Works with any AI tool', vals: [false, false, false, true] },
+  { label: 'Live agent observability', vals: [false, 'partial', false, true] },
+  { label: 'Plugin / extension system', vals: ['partial', false, false, true] },
 ]
 
 function CellIcon({ val }: { val: boolean | string }) {
-  if (val === true)   return <CheckCircle2 style={{ width: 14, height: 14, color: 'var(--color-accent-scope)' }} />
-  if (val === 'partial') return <Minus style={{ width: 14, height: 14, color: 'var(--color-accent-legacy)' }} />
+  if (val === true) { return <CheckCircle2 style={{ width: 14, height: 14, color: 'var(--color-accent-scope)' }} /> }
+  if (val === 'partial') { return <Minus style={{ width: 14, height: 14, color: 'var(--color-accent-legacy)' }} /> }
   return <X style={{ width: 12, height: 12, color: 'var(--color-neutral-5)' }} />
 }
 
@@ -29,15 +29,21 @@ export function ComparisonSection() {
   useGSAP(
     () => {
       gsap.from('.comp-header', {
-        y: 20, opacity: 0, duration: 0.7, ease: 'power3.out',
+        y: 20,
+opacity: 0,
+duration: 0.7,
+ease: 'power3.out',
         scrollTrigger: { trigger: '.comp-header', start: 'top 82%' },
       })
       gsap.from('.comp-table', {
-        y: 28, opacity: 0, duration: 0.7, ease: 'power3.out',
+        y: 28,
+opacity: 0,
+duration: 0.7,
+ease: 'power3.out',
         scrollTrigger: { trigger: '.comp-table', start: 'top 80%' },
       })
     },
-    { scope: sectionRef }
+    { scope: sectionRef },
   )
 
   return (

@@ -1,4 +1,5 @@
-import { type Lang, t } from '../i18n'
+import type { Lang } from '../i18n'
+import { t } from '../i18n'
 
 interface ManifestoProps {
   lang: Lang
@@ -30,7 +31,8 @@ export default function Manifesto({ lang }: ManifestoProps) {
         display: 'grid',
         gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))',
         gap: 2,
-      }}>
+      }}
+      >
         {INVARIANTS.map((inv, i) => (
           <div key={i} style={{
             display: 'flex',
@@ -38,7 +40,8 @@ export default function Manifesto({ lang }: ManifestoProps) {
             padding: '14px 16px',
             background: 'var(--color-neutral-2)',
             borderRadius: 10,
-          }}>
+          }}
+          >
             <span style={{
               width: 24,
               height: 24,
@@ -52,7 +55,8 @@ export default function Manifesto({ lang }: ManifestoProps) {
               fontSize: 11,
               fontWeight: 600,
               color: 'var(--color-neutral-6)',
-            }}>
+            }}
+            >
               {String(i + 1).padStart(2, '0')}
             </span>
             <div>
@@ -63,14 +67,20 @@ export default function Manifesto({ lang }: ManifestoProps) {
                 fontWeight: 500,
                 color: 'var(--color-neutral-9)',
                 lineHeight: 1.4,
-              }}>{inv.title}</p>
+              }}
+              >
+{inv.title}
+              </p>
               <p style={{
                 margin: 0,
                 fontFamily: 'var(--font-sans)',
                 fontSize: 12,
                 color: 'var(--color-neutral-6)',
                 lineHeight: 1.5,
-              }}>{inv.desc}</p>
+              }}
+              >
+{inv.desc}
+              </p>
             </div>
           </div>
         ))}

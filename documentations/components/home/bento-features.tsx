@@ -2,19 +2,19 @@
 
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
-
-gsap.registerPlugin(ScrollTrigger)
 import {
   Bot,
   Brain,
   GitBranch,
   MessageSquare,
   Plug,
+  Terminal,
   Workflow,
   Zap,
-  Terminal,
 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
+
+gsap.registerPlugin(ScrollTrigger)
 
 const features = [
   {
@@ -115,7 +115,7 @@ export function BentoFeatures() {
   const headingRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!sectionRef.current) return
+    if (!sectionRef.current) { return }
 
     const ctx = gsap.context(() => {
       if (headingRef.current) {

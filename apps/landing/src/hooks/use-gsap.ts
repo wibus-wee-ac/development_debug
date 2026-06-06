@@ -1,7 +1,7 @@
-import gsap from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import { Observer } from 'gsap/Observer'
 import { useGSAP } from '@gsap/react'
+import gsap from 'gsap'
+import { Observer } from 'gsap/Observer'
+import { ScrollTrigger } from 'gsap/ScrollTrigger'
 
 // Register all plugins once
 gsap.registerPlugin(ScrollTrigger, Observer, useGSAP)
@@ -14,4 +14,4 @@ gsap.defaults({
 // Match media helper for responsive animations
 export const mm = gsap.matchMedia()
 
-export { gsap, ScrollTrigger, Observer, useGSAP }
+export { gsap, Observer, ScrollTrigger, useGSAP }

@@ -1,8 +1,8 @@
-import { useRef } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import { PlugZap, Layers, Workflow } from 'lucide-react'
+import { Layers, PlugZap, Workflow } from 'lucide-react'
+import { useRef } from 'react'
 
 gsap.registerPlugin(useGSAP, ScrollTrigger)
 
@@ -36,15 +36,22 @@ export function HowItWorksSection() {
   useGSAP(
     () => {
       gsap.from('.how-header', {
-        y: 20, opacity: 0, duration: 0.7, ease: 'power3.out',
+        y: 20,
+opacity: 0,
+duration: 0.7,
+ease: 'power3.out',
         scrollTrigger: { trigger: '.how-header', start: 'top 82%' },
       })
       gsap.from('.how-step', {
-        y: 24, opacity: 0, duration: 0.6, stagger: 0.12, ease: 'power3.out',
+        y: 24,
+opacity: 0,
+duration: 0.6,
+stagger: 0.12,
+ease: 'power3.out',
         scrollTrigger: { trigger: '.how-steps', start: 'top 78%' },
       })
     },
-    { scope: sectionRef }
+    { scope: sectionRef },
   )
 
   return (

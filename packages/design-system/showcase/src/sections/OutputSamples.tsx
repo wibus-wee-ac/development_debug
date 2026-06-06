@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
-import { type Lang, t } from '../i18n'
+
+import type { Lang } from '../i18n'
+import { t } from '../i18n'
 
 interface OutputSamplesProps {
   lang: Lang
@@ -34,10 +36,10 @@ function DemoCardView({ card }: { card: DemoCard }) {
   const [scale, setScale] = useState(0.35)
 
   useEffect(() => {
-    if (!frameRef.current) return
+    if (!frameRef.current) { return }
     const observer = new ResizeObserver(([entry]) => {
       const w = entry.contentRect.width
-      if (w > 0) setScale(w / PAGE_WIDTH)
+      if (w > 0) { setScale(w / PAGE_WIDTH) }
     })
     observer.observe(frameRef.current)
     return () => observer.disconnect()

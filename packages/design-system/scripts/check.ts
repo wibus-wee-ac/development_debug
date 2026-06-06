@@ -21,8 +21,8 @@ const HEX_RE = /#[\da-f]{3,8}\b/i
  * design systems that override --color-neutral-N with their own tokens.
  * If your project does NOT ban these, remove or adjust this pattern.
  */
-const BANNED_NEUTRAL_CLASS =
-  /\b(?:text|bg|border|ring|fill|stroke|from|to|via)-neutral-(?:50|100|200|300|400|500|600|700|800|900|950)\b/g
+const BANNED_NEUTRAL_CLASS
+  = /\b(?:text|bg|border|ring|fill|stroke|from|to|via)-neutral-(?:50|100|200|300|400|500|600|700|800|900|950)\b/g
 
 /**
  * Pure #fff / #000 sentinels are universally allowed in inline styles as they
@@ -40,7 +40,8 @@ export function extractTokens(css: string): Map<string, string> {
     const hex = value.match(HEX_RE)
     if (hex) {
       result.set(name, hex[0].toLowerCase())
-    } else {
+    }
+ else {
       result.set(name, value)
     }
   }
@@ -52,16 +53,16 @@ export function extractCheatsheetHex(md: string): Map<string, string> {
   const result = new Map<string, string>()
   for (const line of md.split('\n')) {
     const trimmed = line.trim()
-    if (!trimmed.startsWith('|')) continue
+    if (!trimmed.startsWith('|')) { continue }
     let varName: string | undefined
     let hexValue: string | undefined
-    for (const cell of trimmed.split('|').map((c) => c.trim())) {
+    for (const cell of trimmed.split('|').map(c => c.trim())) {
       const varMatch = cell.match(/`(--[\da-z-]+)`/)
-      if (varMatch) varName = varMatch[1]
+      if (varMatch) { varName = varMatch[1] }
       const hexMatch = cell.match(/`(#[\da-f]{3,8})`/i)
-      if (hexMatch) hexValue = hexMatch[1].toLowerCase()
+      if (hexMatch) { hexValue = hexMatch[1].toLowerCase() }
     }
-    if (varName && hexValue) result.set(varName, hexValue)
+    if (varName && hexValue) { result.set(varName, hexValue) }
   }
   return result
 }
@@ -106,8 +107,8 @@ export function lintTemplate(html: string, filename: string): string[] {
 export function runChecks(input: {
   tokensCss: string
   cheatsheetMd: string
-  templates: { filename: string; html: string }[]
-}): { ok: boolean; issues: string[] } {
+  templates: { filename: string, html: string }[]
+}): { ok: boolean, issues: string[] } {
   const issues: string[] = []
   const tokens = extractTokens(input.tokensCss)
   const cheatsheetHexes = extractCheatsheetHex(input.cheatsheetMd)
@@ -136,22 +137,24 @@ export function runChecks(input: {
 
 async function readTemplates(
   dir: string,
-): Promise<{ filename: string; html: string }[]> {
-  const result: { filename: string; html: string }[] = []
+): Promise<{ filename: string, html: string }[]> {
+  const result: { filename: string, html: string }[] = []
   try {
     const entries = await readdir(dir, { withFileTypes: true })
     for (const e of entries) {
       const full = join(dir, e.name)
       if (e.isDirectory()) {
         result.push(...(await readTemplates(full)))
-      } else if (e.name.endsWith('.html')) {
+      }
+ else if (e.name.endsWith('.html')) {
         result.push({
           filename: relative(process.cwd(), full),
           html: await readFile(full, 'utf8'),
         })
       }
     }
-  } catch {
+  }
+ catch {
     // templates/ directory is optional
   }
   return result
@@ -168,7 +171,7 @@ async function main() {
 
   if (!result.ok) {
     console.error('Check failed:')
-    for (const issue of result.issues) console.error(`  - ${issue}`)
+    for (const issue of result.issues) { console.error(`  - ${issue}`) }
     process.exit(1)
   }
   const tokenCount = extractTokens(tokensCss).size

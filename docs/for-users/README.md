@@ -8,6 +8,7 @@ This documentation set is written for two audiences:
 ## Document Map
 
 - [Quick Start](./quick-start.md): Install, first-run setup, and first successful session.
+- [Private Release Tester Guide](./private-release-tester-guide.md): Private invite install path, first-launch checklist, update scope, diagnostics, feedback, and uninstall boundaries.
 - [End User Guide](./end-user-guide.md): Daily workflows across workspaces, chat, TUI, Kanban, usage, and settings.
 - [Integrations Guide](./integrations-guide.md): Integration architecture, IPC bridge model, event model, and safety boundaries.
 - [CLI Reference](./cli-reference.md): Full `cradle` CLI command reference with practical examples.

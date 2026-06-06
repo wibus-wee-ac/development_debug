@@ -2,8 +2,6 @@
 
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
-
-gsap.registerPlugin(ScrollTrigger)
 import {
   Bug,
   FileCode,
@@ -11,6 +9,8 @@ import {
   Layers,
 } from 'lucide-react'
 import { useEffect, useRef } from 'react'
+
+gsap.registerPlugin(ScrollTrigger)
 
 const scenarios = [
   {
@@ -67,7 +67,7 @@ export function UserScenarios() {
   const headingRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!sectionRef.current) return
+    if (!sectionRef.current) { return }
 
     const ctx = gsap.context(() => {
       if (headingRef.current) {

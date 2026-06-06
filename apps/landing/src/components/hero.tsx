@@ -4,12 +4,12 @@
  * Sequence: Icon appears dead-center → moves up to final position →
  * headline, subline, CTAs fade in staggered.
  */
-import { useRef } from 'react'
-import { motion } from 'motion/react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { Download } from 'lucide-react'
+import { motion } from 'motion/react'
+import { useRef } from 'react'
 
 gsap.registerPlugin(useGSAP, ScrollTrigger)
 
@@ -23,7 +23,7 @@ export function Hero() {
     // Calculate how far icon needs to move from center to final position
     const section = sectionRef.current
     const icon = iconRef.current
-    if (!section || !icon) return
+    if (!section || !icon) { return }
 
     const sectionH = section.offsetHeight
     const iconH = icon.offsetHeight
@@ -42,13 +42,17 @@ export function Hero() {
 
     // Phase 1: Icon appears at center
     tl.to('.hero-icon', {
-      scale: 1, opacity: 1, filter: 'blur(0px)',
-      duration: 0.8, ease: 'expo.out',
+      scale: 1,
+opacity: 1,
+filter: 'blur(0px)',
+      duration: 0.8,
+ease: 'expo.out',
     })
     // Phase 2: Icon moves up to final position
     .to('.hero-icon', {
       y: 0,
-      duration: 1, ease: 'power3.inOut',
+      duration: 1,
+ease: 'power3.inOut',
     }, '+=0.3')
     // Phase 3: Content reveals
     .to('.hero-title', { opacity: 1, y: 0, duration: 0.8 }, '-=0.3')
@@ -130,7 +134,7 @@ export function Hero() {
             }}
           />
         </div>
-      </div>
+        </div>
       </div>
 
       {/* Headline */}
@@ -172,11 +176,15 @@ export function Hero() {
           whileHover={{ scale: 1.04 }}
           whileTap={{ scale: 0.97 }}
           style={{
-            display: 'inline-flex', alignItems: 'center', gap: 8,
-            padding: '12px 28px', borderRadius: 9,
+            display: 'inline-flex',
+alignItems: 'center',
+gap: 8,
+            padding: '12px 28px',
+borderRadius: 9,
             background: 'var(--color-neutral-9)',
             color: 'var(--color-neutral-1)',
-            fontWeight: 600, fontSize: 14,
+            fontWeight: 600,
+fontSize: 14,
             textDecoration: 'none',
             boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.15)',
           }}

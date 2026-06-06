@@ -1,4 +1,5 @@
-import { type Lang, t } from '../i18n'
+import type { Lang } from '../i18n'
+import { t } from '../i18n'
 
 interface HeroProps {
   lang: Lang
@@ -30,7 +31,8 @@ export default function Hero({ lang }: HeroProps) {
           fontWeight: 600,
           color: 'var(--color-accent)',
           letterSpacing: '0.06em',
-        }}>
+        }}
+        >
           {t('heroEyebrow', lang)}
         </p>
 
@@ -42,8 +44,11 @@ export default function Hero({ lang }: HeroProps) {
           lineHeight: 1.2,
           letterSpacing: '-0.02em',
           color: 'var(--color-neutral-10)',
-        }}>
-          Precise. Surface-textured.<br />Spring-everywhere.
+        }}
+        >
+          Precise. Surface-textured.
+<br />
+Spring-everywhere.
         </h1>
 
         <p style={{
@@ -53,7 +58,8 @@ export default function Hero({ lang }: HeroProps) {
           fontSize: 14,
           lineHeight: 1.6,
           color: 'var(--color-neutral-6)',
-        }}>
+        }}
+        >
           {t('heroTagline', lang)}
         </p>
 
@@ -72,7 +78,10 @@ export default function Hero({ lang }: HeroProps) {
               fontSize: 12,
               fontWeight: 500,
               color: 'var(--color-neutral-7)',
-            }}>{pill}</span>
+            }}
+            >
+{pill}
+            </span>
           ))}
         </div>
 
@@ -84,7 +93,8 @@ export default function Hero({ lang }: HeroProps) {
           gap: 24,
           flexWrap: 'wrap',
           paddingBottom: 48,
-        }}>
+        }}
+        >
           {/* Accent swatch */}
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 6 }}>
             <div style={{
@@ -93,7 +103,8 @@ export default function Hero({ lang }: HeroProps) {
               borderRadius: 8,
               background: '#3b82f6',
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.2)',
-            }} />
+            }}
+            />
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--color-neutral-6)' }}>
               {t('heroTokenAccent', lang)}
             </span>
@@ -109,11 +120,14 @@ export default function Hero({ lang }: HeroProps) {
                   borderRadius: 4,
                   background: hex,
                   border: '1px solid var(--color-border)',
-                }} />
+                }}
+                />
               ))}
             </div>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--color-neutral-6)' }}>
-              {t('heroTokenNeutral', lang)} 1–10
+              {t('heroTokenNeutral', lang)}
+{' '}
+1–10
             </span>
           </div>
 
@@ -128,7 +142,10 @@ export default function Hero({ lang }: HeroProps) {
               </span>
             </div>
             <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--color-neutral-6)' }}>
-              {t('heroTokenSans', lang)} / {t('heroTokenMono', lang)}
+              {t('heroTokenSans', lang)}
+{' '}
+/
+{t('heroTokenMono', lang)}
             </span>
           </div>
         </div>

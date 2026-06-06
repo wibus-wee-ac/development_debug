@@ -1,25 +1,25 @@
 /**
  * Stats — animated count-up numbers on scroll
  */
-import { useEffect, useRef, useState } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { useEffect, useRef, useState } from 'react'
 
 gsap.registerPlugin(useGSAP, ScrollTrigger)
 
 const STATS = [
-  { value: 4,   suffix: 'x',  label: 'parallel agents per workspace' },
-  { value: 0,   suffix: 'ms', label: 'data leaves your machine' },
-  { value: 100, suffix: '%',  label: 'open source, MIT licensed' },
-  { value: 1,   suffix: ' layer', label: 'above all your existing tools' },
+  { value: 4, suffix: 'x', label: 'parallel agents per workspace' },
+  { value: 0, suffix: 'ms', label: 'data leaves your machine' },
+  { value: 100, suffix: '%', label: 'open source, MIT licensed' },
+  { value: 1, suffix: ' layer', label: 'above all your existing tools' },
 ]
 
-function CountUp({ target, suffix, triggered }: { target: number; suffix: string; triggered: boolean }) {
+function CountUp({ target, suffix, triggered }: { target: number, suffix: string, triggered: boolean }) {
   const [display, setDisplay] = useState(0)
 
   useEffect(() => {
-    if (!triggered) return
+    if (!triggered) { return }
     let start = 0
     const duration = 1200
     const step = 1000 / 60
@@ -29,7 +29,8 @@ function CountUp({ target, suffix, triggered }: { target: number; suffix: string
       if (start >= target) {
         setDisplay(target)
         clearInterval(id)
-      } else {
+      }
+ else {
         setDisplay(Math.floor(start))
       }
     }, step)
@@ -38,7 +39,8 @@ function CountUp({ target, suffix, triggered }: { target: number; suffix: string
 
   return (
     <span>
-      {display}{suffix}
+      {display}
+{suffix}
     </span>
   )
 }
@@ -55,11 +57,15 @@ export function StatsSection() {
         onEnter: () => setTriggered(true),
       })
       gsap.from('.stat-item', {
-        y: 20, opacity: 0, duration: 0.6, stagger: 0.08, ease: 'power3.out',
+        y: 20,
+opacity: 0,
+duration: 0.6,
+stagger: 0.08,
+ease: 'power3.out',
         scrollTrigger: { trigger: '.stats-row', start: 'top 82%' },
       })
     },
-    { scope: sectionRef }
+    { scope: sectionRef },
   )
 
   return (

@@ -11,7 +11,8 @@ export function Footer() {
       alignItems: 'center',
       justifyContent: 'center',
       gap: 16,
-    }}>
+    }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
         <img src="/icon-64.webp" alt="" width={16} height={16} style={{ borderRadius: 4 }} />
         <span style={{ fontSize: 12, color: 'var(--color-neutral-5)' }}>

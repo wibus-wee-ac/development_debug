@@ -38,7 +38,7 @@ export function Hero() {
   const terminalBodyRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!sectionRef.current) return
+    if (!sectionRef.current) { return }
 
     const ctx = gsap.context(() => {
       // Heading word-by-word reveal
@@ -208,7 +208,8 @@ export function Hero() {
                   <div key={i} className="t-line opacity-0">
                     {line.type === 'prompt' && (
                       <span>
-                        <span className="text-emerald-400">❯</span>{' '}
+                        <span className="text-emerald-400">❯</span>
+{' '}
                         <span className="text-white/90">{line.text}</span>
                       </span>
                     )}
@@ -225,7 +226,8 @@ export function Hero() {
                 ))}
                 {/* Cursor */}
                 <div className="t-line opacity-0">
-                  <span className="text-emerald-400">❯</span>{' '}
+                  <span className="text-emerald-400">❯</span>
+{' '}
                   <span className="inline-block h-[14px] w-[7px] animate-pulse bg-white/70" />
                 </div>
               </div>

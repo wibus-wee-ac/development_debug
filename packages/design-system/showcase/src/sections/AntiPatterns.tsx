@@ -1,4 +1,5 @@
-import { type Lang, t } from '../i18n'
+import type { Lang } from '../i18n'
+import { t } from '../i18n'
 
 interface AntiPatternsProps {
   lang: Lang
@@ -52,12 +53,14 @@ export default function AntiPatterns({ lang }: AntiPatternsProps) {
             border: '1px solid var(--color-border)',
             borderRadius: 10,
             overflow: 'hidden',
-          }}>
+          }}
+          >
             <div style={{
               padding: '10px 16px',
               background: 'var(--color-neutral-2)',
               borderBottom: '1px solid var(--color-border)',
-            }}>
+            }}
+            >
               <p style={{ margin: 0, fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 500, color: 'var(--color-neutral-9)' }}>{title}</p>
             </div>
 
@@ -67,7 +70,8 @@ export default function AntiPatterns({ lang }: AntiPatternsProps) {
                 padding: '14px 16px',
                 borderRight: '1px solid var(--color-border)',
                 background: 'rgba(239,68,68,0.03)',
-              }}>
+              }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                   <span style={{
                     display: 'inline-flex',
@@ -79,7 +83,10 @@ export default function AntiPatterns({ lang }: AntiPatternsProps) {
                     fontSize: 11,
                     fontWeight: 500,
                     color: '#ef4444',
-                  }}>{t('antiDontLabel', lang)}</span>
+                  }}
+                  >
+{t('antiDontLabel', lang)}
+                  </span>
                 </div>
                 <code style={{
                   display: 'block',
@@ -88,14 +95,18 @@ export default function AntiPatterns({ lang }: AntiPatternsProps) {
                   lineHeight: 1.6,
                   color: 'var(--color-neutral-7)',
                   wordBreak: 'break-all',
-                }}>{wrong}</code>
+                }}
+                >
+{wrong}
+                </code>
               </div>
 
               {/* Right */}
               <div style={{
                 padding: '14px 16px',
                 background: 'rgba(16,185,129,0.03)',
-              }}>
+              }}
+              >
                 <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 8 }}>
                   <span style={{
                     display: 'inline-flex',
@@ -107,7 +118,10 @@ export default function AntiPatterns({ lang }: AntiPatternsProps) {
                     fontSize: 11,
                     fontWeight: 500,
                     color: '#10b981',
-                  }}>{t('antiDoLabel', lang)}</span>
+                  }}
+                  >
+{t('antiDoLabel', lang)}
+                  </span>
                 </div>
                 <code style={{
                   display: 'block',
@@ -116,7 +130,10 @@ export default function AntiPatterns({ lang }: AntiPatternsProps) {
                   lineHeight: 1.6,
                   color: 'var(--color-neutral-7)',
                   wordBreak: 'break-all',
-                }}>{right}</code>
+                }}
+                >
+{right}
+                </code>
               </div>
             </div>
 
@@ -124,7 +141,8 @@ export default function AntiPatterns({ lang }: AntiPatternsProps) {
               padding: '8px 16px',
               background: 'var(--color-neutral-2)',
               borderTop: '1px solid var(--color-border)',
-            }}>
+            }}
+            >
               <p style={{ margin: 0, fontFamily: 'var(--font-sans)', fontSize: 12, color: 'var(--color-neutral-6)', lineHeight: 1.5 }}>{why}</p>
             </div>
           </div>

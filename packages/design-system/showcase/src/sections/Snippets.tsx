@@ -1,4 +1,5 @@
-import { type Lang, t } from '../i18n'
+import type { Lang } from '../i18n'
+import { t } from '../i18n'
 
 interface SnippetsProps {
   lang: Lang
@@ -23,7 +24,11 @@ export default function Snippets({ lang }: SnippetsProps) {
         <div className="snippet-frame__body">
           <div style={{ padding: '48px 0 32px', textAlign: 'center' }}>
             <p style={{ margin: '0 0 16px', fontFamily: 'var(--font-mono)', fontSize: 11, fontWeight: 600, color: 'var(--color-accent)', letterSpacing: '0.06em' }}>Cradle Design System · v0.1</p>
-            <h1 style={{ margin: '0 0 16px', fontFamily: 'var(--font-sans)', fontSize: 30, fontWeight: 600, lineHeight: 1.2, letterSpacing: '-0.02em', color: 'var(--color-neutral-10)' }}>Precise. Surface-textured.<br />Spring-everywhere.</h1>
+            <h1 style={{ margin: '0 0 16px', fontFamily: 'var(--font-sans)', fontSize: 30, fontWeight: 600, lineHeight: 1.2, letterSpacing: '-0.02em', color: 'var(--color-neutral-10)' }}>
+Precise. Surface-textured.
+<br />
+Spring-everywhere.
+            </h1>
             <p style={{ margin: '0 auto 32px', maxWidth: 480, fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 400, lineHeight: 1.6, color: 'var(--color-neutral-6)' }}>A modern, physics-native desktop AI environment. Between Linear and Vercel: precise, high-contrast, unsentimental.</p>
             <div style={{ display: 'flex', justifyContent: 'center', gap: 8 }}>
               <div style={{ display: 'inline-flex', alignItems: 'center', height: 32, padding: '0 16px', background: 'var(--color-neutral-9)', color: 'var(--color-neutral-1)', borderRadius: 8, fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 500 }}>Get started</div>
@@ -49,7 +54,8 @@ export default function Snippets({ lang }: SnippetsProps) {
               padding: '8px 14px',
               background: 'var(--color-neutral-9)',
               borderBottom: '1px solid rgba(255,255,255,0.06)',
-            }}>
+            }}
+            >
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'rgba(255,255,255,0.4)' }}>tokens.css</span>
               <span style={{ fontFamily: 'var(--font-mono)', fontSize: 10, color: 'rgba(255,255,255,0.3)' }}>Copy</span>
             </div>
@@ -62,13 +68,16 @@ export default function Snippets({ lang }: SnippetsProps) {
               lineHeight: 1.7,
               color: 'var(--color-neutral-1)',
               overflowX: 'auto',
-            }}>
-              <code>{`@theme {
+            }}
+            >
+              <code>
+{`@theme {
   --color-neutral-1: #ffffff;
   --color-neutral-9: #262626;
   --color-accent:    #3b82f6;
   --font-sans: 'Geist Variable', sans-serif;
-}`}</code>
+}`}
+              </code>
             </pre>
           </div>
         </div>
@@ -96,7 +105,10 @@ export default function Snippets({ lang }: SnippetsProps) {
                 fontFamily: 'var(--font-sans)',
                 fontSize: 13,
                 color: 'var(--color-neutral-5)',
-              }}>Enter your name</div>
+              }}
+              >
+Enter your name
+              </div>
             </div>
             <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
               <div style={{ height: 32, padding: '0 14px', background: 'transparent', border: '1px solid var(--color-border)', borderRadius: 8, display: 'flex', alignItems: 'center', fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 500, color: 'var(--color-neutral-7)' }}>Cancel</div>
@@ -226,7 +238,7 @@ export default function Snippets({ lang }: SnippetsProps) {
               { icon: 'AI', title: 'Agent workspace session', desc: 'Summarized 3 documents, answered 12 queries', time: '2m ago' },
               { icon: 'WS', title: 'Design system review', desc: 'Token audit completed, 4 anti-patterns found', time: '14m ago' },
               { icon: 'SY', title: 'System health check', desc: 'All services nominal, 99.8% uptime', time: '1h ago' },
-            ].map((item) => (
+            ].map(item => (
               <li key={item.icon} style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 12px', background: 'var(--color-neutral-2)', borderRadius: 10, border: '1px solid var(--color-border)' }}>
                 <div style={{ width: 32, height: 32, borderRadius: 8, background: 'var(--color-neutral-3)', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-neutral-6)' }}>{item.icon}</div>
                 <div style={{ flex: 1, minWidth: 0 }}>

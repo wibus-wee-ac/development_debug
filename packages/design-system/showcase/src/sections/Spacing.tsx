@@ -1,4 +1,5 @@
-import { type Lang, t } from '../i18n'
+import type { Lang } from '../i18n'
+import { t } from '../i18n'
 
 interface SpacingProps {
   lang: Lang
@@ -64,9 +65,19 @@ export default function Spacing({ lang }: SpacingProps) {
               opacity: 0.4,
               borderRadius: 2,
               flexShrink: 0,
-            }} />
-            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-neutral-5)', width: 40, flexShrink: 0 }}>{px}px</span>
-            <span style={{ fontFamily: 'var(--font-sans)', fontSize: 12, color: 'var(--color-neutral-6)' }}>{tailwind} · {use}</span>
+            }}
+            />
+            <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-neutral-5)', width: 40, flexShrink: 0 }}>
+{px}
+px
+            </span>
+            <span style={{ fontFamily: 'var(--font-sans)', fontSize: 12, color: 'var(--color-neutral-6)' }}>
+{tailwind}
+{' '}
+·
+{' '}
+{use}
+            </span>
           </div>
         ))}
       </div>
@@ -82,7 +93,8 @@ export default function Spacing({ lang }: SpacingProps) {
               background: 'var(--color-neutral-3)',
               border: '1px solid var(--color-border)',
               borderRadius: Math.min(px, 24),
-            }} />
+            }}
+            />
             <div style={{ textAlign: 'center' }}>
               <p style={{ margin: 0, fontFamily: 'var(--font-sans)', fontSize: 12, fontWeight: 500, color: 'var(--color-neutral-7)' }}>{name}</p>
               <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--color-neutral-5)' }}>{px === 9999 ? '9999px' : `${px}px`}</p>
@@ -109,8 +121,10 @@ export default function Spacing({ lang }: SpacingProps) {
               fontFamily: 'var(--font-mono)',
               fontSize: 11,
               color: 'var(--color-neutral-6)',
-            }}>
-              shadow-{name}
+            }}
+            >
+              shadow-
+{name}
             </div>
             <p style={{ margin: 0, fontFamily: 'var(--font-sans)', fontSize: 11, color: 'var(--color-neutral-6)' }}>{use}</p>
           </div>

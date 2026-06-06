@@ -16,11 +16,11 @@ const URL_PARAM = 'theme'
 const CHANGE_EVENT = 'design-theme-change'
 
 function readTheme(): Theme {
-  if (typeof window === 'undefined') return 'light'
+  if (typeof window === 'undefined') { return 'light' }
   const fromUrl = new URL(window.location.href).searchParams.get(URL_PARAM)
-  if (fromUrl === 'light' || fromUrl === 'dark') return fromUrl
+  if (fromUrl === 'light' || fromUrl === 'dark') { return fromUrl }
   const stored = window.localStorage.getItem(STORAGE_KEY)
-  if (stored === 'dark' || stored === 'light') return stored as Theme
+  if (stored === 'dark' || stored === 'light') { return stored as Theme }
   return window.matchMedia('(prefers-color-scheme: dark)').matches
     ? 'dark'
     : 'light'

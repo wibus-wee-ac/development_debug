@@ -147,7 +147,7 @@ Current settings sections:
 - Providers: Runtime profiles and connectivity.
 - Agents: Agent identities and behavior binding.
 - Skills: Global skill inventory and import/export lifecycle.
-- Desktop：基于 Velopack 的 desktop update 检查、下载和 restart-to-apply flow。
+- Desktop: Electron Builder generic update feed check, download, and restart-to-apply flow when `CRADLE_DESKTOP_UPDATE_URL` is configured for a packaged build.
 - Support：manual diagnostics export、feedback template copy、issue link、Cradle data directory reveal 和 uninstall data-retention notes。
 
 ### 8.1 Support and Feedback

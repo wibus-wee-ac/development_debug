@@ -1,4 +1,5 @@
-import { type Lang, t } from '../i18n'
+import type { Lang } from '../i18n'
+import { t } from '../i18n'
 
 interface BackgroundProps {
   lang: Lang
@@ -39,14 +40,16 @@ export default function Background({ lang }: BackgroundProps) {
             background: 'var(--color-neutral-2)',
             borderRadius: 10,
             overflow: 'hidden',
-          }}>
+          }}
+          >
             <div style={{
               padding: '16px',
               borderRight: '1px solid var(--color-border)',
               display: 'flex',
               flexDirection: 'column',
               gap: 4,
-            }}>
+            }}
+            >
               <p style={{ margin: 0, fontFamily: 'var(--font-sans)', fontSize: 14, fontWeight: 600, color: 'var(--color-neutral-9)' }}>{source}</p>
               <p style={{ margin: 0, fontFamily: 'var(--font-sans)', fontSize: 11, color: 'var(--color-neutral-6)' }}>{aspect}</p>
             </div>
@@ -62,7 +65,8 @@ export default function Background({ lang }: BackgroundProps) {
         background: 'var(--color-neutral-2)',
         borderRadius: 10,
         border: '1px solid var(--color-border)',
-      }}>
+      }}
+      >
         <p style={{ margin: '0 0 8px', fontFamily: 'var(--font-sans)', fontSize: 13, fontWeight: 500, color: 'var(--color-neutral-9)' }}>
           What makes Cradle distinct
         </p>

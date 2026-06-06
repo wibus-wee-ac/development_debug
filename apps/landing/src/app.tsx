@@ -1,7 +1,7 @@
-import { Nav } from './components/nav'
-import { Hero } from './components/hero'
-import { Footer } from './components/footer'
 import { CanvasBg } from './components/canvas-bg'
+import { Footer } from './components/footer'
+import { Hero } from './components/hero'
+import { Nav } from './components/nav'
 
 export function App() {
   return (

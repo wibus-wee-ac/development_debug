@@ -8,7 +8,8 @@ export default function Footer() {
       justifyContent: 'space-between',
       flexWrap: 'wrap',
       gap: 16,
-    }}>
+    }}
+    >
       <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
         <a
           href="https://github.com/wibus-wee/Cradle"
@@ -30,7 +31,9 @@ export default function Footer() {
       </div>
 
       <span style={{ fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-neutral-5)' }}>
-        Cradle Design System · {new Date().getFullYear()}
+        Cradle Design System ·
+{' '}
+{new Date().getFullYear()}
       </span>
     </footer>
   )

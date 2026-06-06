@@ -1,4 +1,5 @@
-import { type Lang, t } from '../i18n'
+import type { Lang } from '../i18n'
+import { t } from '../i18n'
 
 interface ColorProps {
   lang: Lang
@@ -50,8 +51,17 @@ export default function Color({ lang }: ColorProps) {
           <div key={n} className="swatch">
             <div className="swatch__chip" style={{ background: hex }} />
             <div className="swatch__info">
-              <p className="swatch__name">neutral-{n}</p>
-              <p className="swatch__role">{tier} · {use}</p>
+              <p className="swatch__name">
+neutral-
+{n}
+              </p>
+              <p className="swatch__role">
+{tier}
+{' '}
+·
+{' '}
+{use}
+              </p>
               <span className="swatch__hex">{hex}</span>
             </div>
           </div>

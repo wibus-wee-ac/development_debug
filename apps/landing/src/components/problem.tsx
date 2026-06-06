@@ -1,11 +1,11 @@
 /**
  * Problem section — 4 pain point cards with cursor spotlight effect
  */
-import { useRef, useState, useCallback } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import { MessageSquare, Terminal, Layers, Eye } from 'lucide-react'
+import { Eye, Layers, MessageSquare, Terminal } from 'lucide-react'
+import { useCallback, useRef, useState } from 'react'
 
 gsap.registerPlugin(useGSAP, ScrollTrigger)
 
@@ -29,7 +29,7 @@ const PAIN_POINTS = [
     accent: 'var(--color-accent-session)',
     accentRgb: '139,92,246',
     title: 'Manual coordination',
-    desc: "Wait for CI? Check it yourself. PR merged? Go back and tell the agent. You're doing the agent's job.",
+    desc: 'Wait for CI? Check it yourself. PR merged? Go back and tell the agent. You\'re doing the agent\'s job.',
   },
   {
     Icon: Terminal,
@@ -42,11 +42,11 @@ const PAIN_POINTS = [
 
 function PainCard({ Icon, accent, accentRgb, title, desc }: typeof PAIN_POINTS[0]) {
   const cardRef = useRef<HTMLDivElement>(null)
-  const [spot, setSpot] = useState<{ x: number; y: number } | null>(null)
+  const [spot, setSpot] = useState<{ x: number, y: number } | null>(null)
 
   const onMouseMove = useCallback((e: React.MouseEvent<HTMLDivElement>) => {
     const rect = cardRef.current?.getBoundingClientRect()
-    if (!rect) return
+    if (!rect) { return }
     setSpot({ x: e.clientX - rect.left, y: e.clientY - rect.top })
   }, [])
 
@@ -83,11 +83,17 @@ function PainCard({ Icon, accent, accentRgb, title, desc }: typeof PAIN_POINTS[0
       )}
       <div style={{ position: 'relative' }}>
         <div style={{
-          width: 32, height: 32, borderRadius: 8,
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          marginBottom: 16, background: 'var(--color-neutral-4)',
+          width: 32,
+height: 32,
+borderRadius: 8,
+          display: 'flex',
+alignItems: 'center',
+justifyContent: 'center',
+          marginBottom: 16,
+background: 'var(--color-neutral-4)',
           boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
-        }}>
+        }}
+        >
           <Icon style={{ width: 15, height: 15, color: accent }} />
         </div>
         <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--color-neutral-8)', marginBottom: 8 }}>
@@ -107,11 +113,18 @@ export function ProblemSection() {
   useGSAP(
     () => {
       gsap.from('.prob-header', {
-        y: 24, opacity: 0, duration: 0.7, ease: 'power3.out',
+        y: 24,
+opacity: 0,
+duration: 0.7,
+ease: 'power3.out',
         scrollTrigger: { trigger: '.prob-header', start: 'top 82%' },
       })
       gsap.from('.pain-card', {
-        y: 24, opacity: 0, duration: 0.6, stagger: 0.1, ease: 'power3.out',
+        y: 24,
+opacity: 0,
+duration: 0.6,
+stagger: 0.1,
+ease: 'power3.out',
         scrollTrigger: { trigger: '.pain-grid', start: 'top 78%' },
       })
     },
@@ -127,13 +140,24 @@ export function ProblemSection() {
       <div style={{ maxWidth: 880, margin: '0 auto' }}>
         <div className="prob-header" style={{ textAlign: 'center', marginBottom: 56 }}>
           <p style={{
-            fontFamily: 'var(--font-mono)', fontSize: 11,
-            letterSpacing: '0.06em', color: 'var(--color-neutral-5)', marginBottom: 16,
-          }}>The problem</p>
+            fontFamily: 'var(--font-mono)',
+fontSize: 11,
+            letterSpacing: '0.06em',
+color: 'var(--color-neutral-5)',
+marginBottom: 16,
+          }}
+          >
+The problem
+          </p>
           <h2 style={{
-            fontSize: 'clamp(1.6rem, 3.5vw, 2.4rem)', fontWeight: 600,
-            lineHeight: 1.15, letterSpacing: '-0.025em', color: 'var(--color-neutral-9)', marginBottom: 16,
-          }}>
+            fontSize: 'clamp(1.6rem, 3.5vw, 2.4rem)',
+fontWeight: 600,
+            lineHeight: 1.15,
+letterSpacing: '-0.025em',
+color: 'var(--color-neutral-9)',
+marginBottom: 16,
+          }}
+          >
             Your AI tools are brilliant.
             <br />
             <span style={{ color: 'var(--color-neutral-5)' }}>Managing them is a mess.</span>
@@ -146,7 +170,8 @@ export function ProblemSection() {
           display: 'grid',
           gridTemplateColumns: 'repeat(auto-fit, minmax(280px, 1fr))',
           gap: 12,
-        }}>
+        }}
+        >
           {PAIN_POINTS.map(p => (
             <PainCard key={p.title} {...p} />
           ))}

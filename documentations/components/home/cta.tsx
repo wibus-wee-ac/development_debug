@@ -2,17 +2,17 @@
 
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
-
-gsap.registerPlugin(ScrollTrigger)
 import { ArrowRight, BookOpen } from 'lucide-react'
 import Link from 'next/link'
 import { useEffect, useRef } from 'react'
+
+gsap.registerPlugin(ScrollTrigger)
 
 export function CTA() {
   const sectionRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
-    if (!sectionRef.current) return
+    if (!sectionRef.current) { return }
 
     const ctx = gsap.context(() => {
       const children = sectionRef.current!.querySelectorAll('.cta-child')

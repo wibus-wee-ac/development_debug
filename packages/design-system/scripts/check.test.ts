@@ -6,7 +6,6 @@
  */
 
 import assert from 'node:assert/strict'
-import { test } from 'node:test'
 
 import {
   extractCheatsheetHex,
@@ -15,7 +14,7 @@ import {
   runChecks,
 } from './check.ts'
 
-test('extractTokens parses --color-* from @theme block', () => {
+it('extractTokens parses --color-* from @theme block', () => {
   const css = `
     @theme {
       --color-neutral-1: #f9f8f5;
@@ -29,7 +28,7 @@ test('extractTokens parses --color-* from @theme block', () => {
   assert.equal(tokens.get('--color-accent'), '#c56473')
 })
 
-test('extractCheatsheetHex parses hex values from markdown table cells', () => {
+it('extractCheatsheetHex parses hex values from markdown table cells', () => {
   const md = `
     | Var | Hex | Use |
     |---|---|---|
@@ -41,63 +40,63 @@ test('extractCheatsheetHex parses hex values from markdown table cells', () => {
   assert.equal(hexes.get('--color-accent'), '#c56473')
 })
 
-test('extractCheatsheetHex is case-insensitive for hex input', () => {
+it('extractCheatsheetHex is case-insensitive for hex input', () => {
   const md = `| \`--color-accent\` | \`#C56473\` | CTA |`
   const hexes = extractCheatsheetHex(md)
   assert.equal(hexes.get('--color-accent'), '#c56473')
 })
 
-test('lintTemplate flags banned text-neutral-50 class', () => {
+it('lintTemplate flags banned text-neutral-50 class', () => {
   const html = `<p class="text-neutral-500">Body copy</p>`
   const issues = lintTemplate(html, 'snippet.html')
   assert.equal(issues.length, 1)
   assert.match(issues[0], /text-neutral-500/)
 })
 
-test('lintTemplate flags banned bg-neutral-100 class', () => {
+it('lintTemplate flags banned bg-neutral-100 class', () => {
   const html = `<div class="bg-neutral-100">Card</div>`
   const issues = lintTemplate(html, 'snippet.html')
-  assert.ok(issues.some((i) => i.includes('bg-neutral-100')))
+  assert.ok(issues.some(i => i.includes('bg-neutral-100')))
 })
 
-test('lintTemplate flags raw hex inside inline style attribute', () => {
+it('lintTemplate flags raw hex inside inline style attribute', () => {
   const html = `<div style="color: #ff0000">!</div>`
   const issues = lintTemplate(html, 'snippet.html')
-  assert.ok(issues.some((i) => i.includes('#ff0000')))
+  assert.ok(issues.some(i => i.includes('#ff0000')))
 })
 
-test('lintTemplate flags hardcoded font-family in inline style', () => {
+it('lintTemplate flags hardcoded font-family in inline style', () => {
   const html = `<p style="font-family: Georgia, serif">text</p>`
   const issues = lintTemplate(html, 'snippet.html')
-  assert.ok(issues.some((i) => i.includes('font-family')))
+  assert.ok(issues.some(i => i.includes('font-family')))
 })
 
-test('lintTemplate accepts var(--color-...) references', () => {
+it('lintTemplate accepts var(--color-...) references', () => {
   const html = `<div style="color: var(--color-neutral-9)">ok</div>`
   const issues = lintTemplate(html, 'snippet.html')
   assert.equal(issues.length, 0)
 })
 
-test('lintTemplate accepts white/black sentinels in inline style', () => {
+it('lintTemplate accepts white/black sentinels in inline style', () => {
   const html = `<button style="background: var(--color-accent); color: #ffffff;">ok</button>`
   const issues = lintTemplate(html, 'snippet.html')
   assert.equal(issues.length, 0)
 })
 
-test('lintTemplate accepts var(--font-...) for font-family', () => {
+it('lintTemplate accepts var(--font-...) for font-family', () => {
   const html = `<p style="font-family: var(--font-serif)">ok</p>`
   const issues = lintTemplate(html, 'snippet.html')
   assert.equal(issues.length, 0)
 })
 
-test('lintTemplate ignores hex inside <style> blocks (token declarations are allowed)', () => {
+it('lintTemplate ignores hex inside <style> blocks (token declarations are allowed)', () => {
   const html = `<style>:root { --color-neutral-1: #f9f8f5; }</style><p>ok</p>`
   const issues = lintTemplate(html, 'scaffold.html')
   // style blocks use attr scanning so the :root declaration is safe
   assert.equal(issues.length, 0)
 })
 
-test('runChecks returns ok on consistent tokens + cheatsheet + no templates', () => {
+it('runChecks returns ok on consistent tokens + cheatsheet + no templates', () => {
   const result = runChecks({
     tokensCss: `@theme { --color-neutral-9: #24231f; }`,
     cheatsheetMd: `| \`--color-neutral-9\` | \`#24231f\` | Body |`,
@@ -107,7 +106,7 @@ test('runChecks returns ok on consistent tokens + cheatsheet + no templates', ()
   assert.equal(result.issues.length, 0)
 })
 
-test('runChecks reports drift when cheatsheet hex disagrees with tokens', () => {
+it('runChecks reports drift when cheatsheet hex disagrees with tokens', () => {
   const result = runChecks({
     tokensCss: `@theme { --color-neutral-9: #24231f; }`,
     cheatsheetMd: `| \`--color-neutral-9\` | \`#000000\` | Body |`,
@@ -117,7 +116,7 @@ test('runChecks reports drift when cheatsheet hex disagrees with tokens', () => 
   assert.ok(result.issues[0].includes('--color-neutral-9'))
 })
 
-test('runChecks reports missing token referenced in cheatsheet', () => {
+it('runChecks reports missing token referenced in cheatsheet', () => {
   const result = runChecks({
     tokensCss: `@theme { --color-accent: #c56473; }`,
     cheatsheetMd: `| \`--color-neutral-9\` | \`#24231f\` | Body |`,
@@ -127,7 +126,7 @@ test('runChecks reports missing token referenced in cheatsheet', () => {
   assert.ok(result.issues[0].includes('--color-neutral-9'))
 })
 
-test('runChecks collects template lint errors alongside token drift', () => {
+it('runChecks collects template lint errors alongside token drift', () => {
   const result = runChecks({
     tokensCss: `@theme { --color-neutral-9: #24231f; }`,
     cheatsheetMd: `| \`--color-neutral-9\` | \`#24231f\` | Body |`,
@@ -136,5 +135,5 @@ test('runChecks collects template lint errors alongside token drift', () => {
     ],
   })
   assert.equal(result.ok, false)
-  assert.ok(result.issues.some((i) => i.includes('text-neutral-500')))
+  assert.ok(result.issues.some(i => i.includes('text-neutral-500')))
 })

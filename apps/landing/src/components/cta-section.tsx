@@ -1,8 +1,8 @@
-import { useRef } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { ArrowRight, Download } from 'lucide-react'
+import { useRef } from 'react'
 
 gsap.registerPlugin(useGSAP, ScrollTrigger)
 
@@ -12,11 +12,14 @@ export function CTASection() {
   useGSAP(
     () => {
       gsap.from('.cta-inner', {
-        y: 28, opacity: 0, duration: 0.8, ease: 'power3.out',
+        y: 28,
+opacity: 0,
+duration: 0.8,
+ease: 'power3.out',
         scrollTrigger: { trigger: '.cta-inner', start: 'top 82%' },
       })
     },
-    { scope: sectionRef }
+    { scope: sectionRef },
   )
 
   return (
@@ -112,11 +115,11 @@ export function CTASection() {
               boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
               transition: 'color 0.15s, background 0.15s',
             }}
-            onMouseEnter={e => {
+            onMouseEnter={(e) => {
               e.currentTarget.style.color = 'var(--color-neutral-9)'
               e.currentTarget.style.background = 'var(--color-neutral-3)'
             }}
-            onMouseLeave={e => {
+            onMouseLeave={(e) => {
               e.currentTarget.style.color = 'var(--color-neutral-7)'
               e.currentTarget.style.background = 'var(--color-fill)'
             }}

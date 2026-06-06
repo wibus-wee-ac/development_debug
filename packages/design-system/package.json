@@ -1,20 +1,20 @@
 {
   "name": "@cradle/design-system",
+  "type": "module",
   "version": "0.1.0",
   "description": "Cradle visual language — tokens, AI-readable contract, and HTML mockup templates.",
-  "type": "module",
   "exports": {
     "./tokens.css": "./src/tokens.css",
     "./skill": "./SKILL.md",
     "./cheatsheet": "./CHEATSHEET.md"
   },
   "files": [
-    "src",
-    "references",
-    "templates",
-    "SKILL.md",
     "CHEATSHEET.md",
-    "README.md"
+    "README.md",
+    "SKILL.md",
+    "references",
+    "src",
+    "templates"
   ],
   "scripts": {
     "check": "tsx scripts/check.ts",

@@ -2,9 +2,9 @@
 
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
+import { useEffect, useRef } from 'react'
 
 gsap.registerPlugin(ScrollTrigger)
-import { useEffect, useRef } from 'react'
 
 export function ProductShowcase() {
   const sectionRef = useRef<HTMLElement>(null)
@@ -12,7 +12,7 @@ export function ProductShowcase() {
   const mockupRef = useRef<HTMLDivElement>(null)
 
   useEffect(() => {
-    if (!sectionRef.current) return
+    if (!sectionRef.current) { return }
 
     const ctx = gsap.context(() => {
       if (headingRef.current) {
@@ -103,7 +103,7 @@ export function ProductShowcase() {
                   { label: 'Automation', active: false, count: '' },
                   { label: 'Chronicle', active: false, count: '' },
                   { label: 'Files', active: false, count: '' },
-                ].map((item) => (
+                ].map(item => (
                   <div
                     key={item.label}
                     className={`flex items-center justify-between rounded-md px-2.5 py-1.5 text-xs ${
@@ -123,7 +123,7 @@ export function ProductShowcase() {
 
                 <div className="my-3 h-px bg-fd-border/30" />
 
-                {['Providers', 'Settings'].map((label) => (
+                {['Providers', 'Settings'].map(label => (
                   <div
                     key={label}
                     className="rounded-md px-2.5 py-1.5 text-xs text-fd-muted-foreground"
@@ -165,7 +165,8 @@ export function ProductShowcase() {
                       </div>
 
                       <p className="text-sm leading-6 text-fd-foreground">
-                        I found the current session-based auth in{' '}
+                        I found the current session-based auth in
+{' '}
                         <code className="rounded bg-fd-muted px-1 py-0.5 font-mono text-xs">
                           src/auth/
                         </code>

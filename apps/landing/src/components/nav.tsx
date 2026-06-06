@@ -3,10 +3,10 @@
  *
  * Logo + product name, right side: GitHub + Download CTA.
  */
-import { useEffect, useRef, useState } from 'react'
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
 import { Download } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
 
 gsap.registerPlugin(useGSAP)
 
@@ -29,7 +29,9 @@ export function Nav() {
       ref={navRef}
       style={{
         position: 'fixed',
-        top: 0, left: 0, right: 0,
+        top: 0,
+left: 0,
+right: 0,
         zIndex: 50,
         height: 68,
         display: 'flex',

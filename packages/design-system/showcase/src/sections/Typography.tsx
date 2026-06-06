@@ -1,4 +1,5 @@
-import { type Lang, t } from '../i18n'
+import type { Lang } from '../i18n'
+import { t } from '../i18n'
 
 interface TypographyProps {
   lang: Lang
@@ -35,7 +36,8 @@ export default function Typography({ lang }: TypographyProps) {
           background: 'var(--color-neutral-2)',
           borderRadius: 10,
           border: '1px solid var(--color-border)',
-        }}>
+        }}
+        >
           <p style={{ margin: '0 0 4px', fontFamily: 'var(--font-sans)', fontSize: 24, fontWeight: 600, color: 'var(--color-neutral-9)', letterSpacing: '-0.01em' }}>
             Geist Variable
           </p>
@@ -52,12 +54,19 @@ export default function Typography({ lang }: TypographyProps) {
           background: 'var(--color-neutral-2)',
           borderRadius: 10,
           border: '1px solid var(--color-border)',
-        }}>
+        }}
+        >
           <p style={{ margin: '0 0 4px', fontFamily: 'var(--font-mono)', fontSize: 24, fontWeight: 600, color: 'var(--color-neutral-9)' }}>
             Geist Mono
           </p>
           <p style={{ margin: '0 0 4px', fontFamily: 'var(--font-mono)', fontSize: 14, fontWeight: 400, color: 'var(--color-neutral-6)' }}>
-            const config = {'{'} stiffness: 600, damping: 40 {'}'}
+            const config =
+{' '}
+{'{'}
+{' '}
+stiffness: 600, damping: 40
+{' '}
+{'}'}
           </p>
           <p style={{ margin: 0, fontFamily: 'var(--font-mono)', fontSize: 11, color: 'var(--color-neutral-5)' }}>
             var(--font-mono) · for code and labels
@@ -75,11 +84,18 @@ export default function Typography({ lang }: TypographyProps) {
             gap: 24,
             padding: '12px 0',
             borderBottom: '1px solid var(--color-border)',
-          }}>
+          }}
+          >
             <div style={{ width: 120, flexShrink: 0 }}>
               <p style={{ margin: 0, fontFamily: 'var(--font-sans)', fontSize: 11, color: 'var(--color-neutral-6)', fontWeight: 500 }}>{role}</p>
               <p style={{ margin: '2px 0 0', fontFamily: 'var(--font-mono)', fontSize: 10, color: 'var(--color-neutral-5)' }}>
-                {size} / {weight} / {lineH}
+                {size}
+{' '}
+/
+{weight}
+{' '}
+/
+{lineH}
               </p>
             </div>
             <p style={{
@@ -90,7 +106,8 @@ export default function Typography({ lang }: TypographyProps) {
               fontWeight: Number(weight),
               lineHeight: lineH,
               color: 'var(--color-neutral-9)',
-            }}>
+            }}
+            >
               {sample}
             </p>
           </div>

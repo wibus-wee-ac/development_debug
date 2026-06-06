@@ -1,4 +1,5 @@
-import { type Lang, t } from '../i18n'
+import type { Lang } from '../i18n'
+import { t } from '../i18n'
 
 interface DecisionProps {
   lang: Lang
@@ -38,12 +39,14 @@ export default function Decision({ lang }: DecisionProps) {
             display: 'grid',
             gridTemplateColumns: '240px 1fr',
             borderBottom: i < DECISIONS.length - 1 ? '1px solid var(--color-border)' : undefined,
-          }}>
+          }}
+          >
             <div style={{
               padding: '10px 16px',
               background: 'var(--color-neutral-2)',
               borderRight: '1px solid var(--color-border)',
-            }}>
+            }}
+            >
               <p style={{ margin: 0, fontFamily: 'var(--font-sans)', fontSize: 12, fontWeight: 500, color: 'var(--color-neutral-7)' }}>{need}</p>
             </div>
             <div style={{ padding: '10px 16px' }}>
