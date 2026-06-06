@@ -1,6 +1,10 @@
+import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
+import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
+import { postSessionsByIdRead } from '~/api-gen/sdk.gen'
 import { onChatRunSettled } from '~/features/chat/sse-chat-transport'
+import { isSessionsQueryKey, updateSessionReadState } from '~/features/workspace/use-session'
 import {
   BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL,
   handleBrowserPanelTabShortcut,
@@ -31,6 +35,7 @@ function deriveVisibleChatSessionId(args: {
 }
 
 export function useGlobalEventListeners() {
+  const queryClient = useQueryClient()
   const toggleBottomPanel = useLayoutStore(s => s.toggleBottomPanel)
   const toggleAside = useLayoutStore(s => s.toggleAside)
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
@@ -118,11 +123,34 @@ export function useGlobalEventListeners() {
 
   useEffect(() => {
     useSessionActivityStore.getState().setVisibleSession(visibleSessionId)
-  }, [visibleSessionId])
+    if (!visibleSessionId) {
+      return
+    }
+
+    void postSessionsByIdRead({ path: { id: visibleSessionId } })
+      .then(({ data }) => {
+        if (data) {
+          updateSessionReadState(queryClient, data)
+        }
+      })
+      .catch(() => {})
+  }, [queryClient, visibleSessionId])
 
   useEffect(() => {
     return onChatRunSettled(({ chatSessionId }) => {
-      useSessionActivityStore.getState().recordActivity(chatSessionId)
+      if (useSessionActivityStore.getState().visibleSessionId === chatSessionId) {
+        void postSessionsByIdRead({ path: { id: chatSessionId } })
+          .then(({ data }) => {
+            if (data) {
+              updateSessionReadState(queryClient, data)
+            }
+          })
+          .catch(() => {})
+        return
+      }
+
+      void queryClient.invalidateQueries({ queryKey: getSessionsByIdQueryKey({ path: { id: chatSessionId } }) })
+      void queryClient.invalidateQueries({ predicate: query => isSessionsQueryKey(query.queryKey) })
     })
-  }, [])
+  }, [queryClient])
 }

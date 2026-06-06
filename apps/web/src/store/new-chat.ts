@@ -30,7 +30,7 @@ export const useNewChatStore = create<NewChatState>()(
       lastCliTuiAgentId: null,
       lastAgentProfileId: null,
       lastModelByProfile: {},
-      lastThinkingEffort: null,
+      lastThinkingEffort: 'high',
       setLastRuntimeKind: (kind) => {
         set((state) => {
           if (state.lastRuntimeKind === kind) {

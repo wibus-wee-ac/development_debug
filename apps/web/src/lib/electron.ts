@@ -53,6 +53,10 @@ export const tearoffSessionId = window.cradle?.env?.sessionId ?? null
  */
 export const platform = window.cradle?.env?.platform ?? 'darwin'
 
+type ChatThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh'
+type ChatRuntimeAccessMode = 'approval-required' | 'full-access'
+type ChatRuntimeInteractionMode = 'default' | 'plan'
+
 // ── Desktop Chat Stream Bridge ────────────────────────────────────────────────
 
 export interface DesktopChatStartResponseRequest {
@@ -63,8 +67,11 @@ export interface DesktopChatStartResponseRequest {
     messages?: unknown[]
     providerTargetId?: string
     modelId?: string
-    thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
-    permissionMode?: 'bypassPermissions' | 'plan'
+    thinkingEffort?: ChatThinkingEffort
+    runtimeSettings?: {
+      accessMode?: ChatRuntimeAccessMode
+      interactionMode?: ChatRuntimeInteractionMode
+    }
   }
 }
 
@@ -159,6 +166,10 @@ interface NativeServiceMethods {
     databasePath: string
     serverLogPath: string
   }>
+  getDesktopCliStatus: () => Promise<DesktopCliStatus>
+  installDesktopCliCommand: () => Promise<DesktopCliStatus>
+  removeDesktopCliCommand: () => Promise<DesktopCliStatus>
+  setDesktopPreferences: (preferences: DesktopPreferences) => Promise<DesktopPreferences>
   scanExternalWorkImportFiles: (options?: {
     limitPerSource?: number
   }) => Promise<{
@@ -171,6 +182,20 @@ interface NativeServiceMethods {
     }>
     warnings: string[]
   }>
+}
+
+export interface DesktopCliStatus {
+  supported: boolean
+  installed: boolean
+  linked: boolean
+  requiresRepair: boolean
+  commandPath: string
+  sourcePath: string | null
+  errorMessage: string | null
+}
+
+export interface DesktopPreferences {
+  requireDoubleCommandQToQuit: boolean
 }
 
 interface WindowServiceMethods {
@@ -288,6 +313,7 @@ export interface MacCaptureResponse {
       appName: string | null
       bundleId: string | null
       appIconDataUrl?: string | null
+      axTree?: string | null
       processId: number
       title: string | null
       bounds: {
@@ -476,6 +502,20 @@ export function subscribeDesktopUpdateStatus(
 ): () => void {
   return window.cradle?.desktopUpdate.onStatusChanged((status) => {
     handler(status as DesktopUpdateStatus)
+  }) ?? (() => {})
+}
+
+export function subscribeDesktopQuitGuardArmed(
+  handler: (event: { expiresAt: number }) => void,
+): () => void {
+  return window.cradle?.ipc.on('desktop:quit-guard-armed', (payload) => {
+    if (
+      typeof payload === 'object'
+      && payload !== null
+      && typeof (payload as { expiresAt?: unknown }).expiresAt === 'number'
+    ) {
+      handler(payload as { expiresAt: number })
+    }
   }) ?? (() => {})
 }
 

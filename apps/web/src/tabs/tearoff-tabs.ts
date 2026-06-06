@@ -1,7 +1,7 @@
 import type { TabStoreState } from '@cradle/tabs-next'
 import type { StoreApi, UseBoundStore } from 'zustand'
 
-import { subscribeTearoffSessionClosed } from '~/lib/electron'
+import { isElectron, isTearoffWindow, nativeIpc, subscribeTearoffSessionClosed } from '~/lib/electron'
 
 export interface DetachedTearoffTab {
   sessionId: string
@@ -72,6 +72,38 @@ export function reserveTearoffSession(sessionId: string): boolean {
 
 export function releaseTearoffSession(sessionId: string): void {
   activeTearoffSessions.delete(sessionId)
+}
+
+export async function openTearoffSessionWindow(
+  store: CradleTabStore,
+  sessionId: string,
+  options: {
+    screenX?: number
+    screenY?: number
+    detachTab?: boolean
+  } = {},
+): Promise<boolean> {
+  if (!isElectron || !nativeIpc) {
+    return false
+  }
+
+  const screenX = options.screenX ?? window.screenX + Math.round(window.outerWidth / 2)
+  const screenY = options.screenY ?? window.screenY + Math.round(window.outerHeight / 2)
+  if (!reserveTearoffSession(sessionId)) {
+    return true
+  }
+
+  try {
+    await nativeIpc.window.tearOffSession(sessionId, screenX, screenY)
+    if (options.detachTab && !isTearoffWindow) {
+      detachTearoffSessionTab(store, sessionId)
+    }
+    return true
+  }
+  catch {
+    releaseTearoffSession(sessionId)
+    return false
+  }
 }
 
 export function restoreTearoffSessionTab(store: CradleTabStore, sessionId: string): string {

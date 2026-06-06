@@ -12,10 +12,10 @@ import { useDesktopTrayActionBridge } from '~/features/desktop-tray/use-desktop-
 import { useOnboardingStore } from '~/features/onboarding/onboarding-store'
 import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'
+import { useUnreadSessionIds } from '~/features/workspace/use-session'
 import { SettingsContent } from '~/features/settings/settings-content'
 import { isWorkspaceFileShortcutScopeEvent } from '~/features/workspace/workspace-file-shortcuts'
 import { cn } from '~/lib/cn'
-import { useSessionActivityStore } from '~/store/session-activity'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { CHAT_TAB_FALLBACK_LABEL, isGeneratedChatLabel } from '~/tabs/chat.tab'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
@@ -51,6 +51,28 @@ function syncDesktopAppBadgeUnreadCount(count: number): void {
 export function App() {
   'use no memo'
 
+  return (
+    <AppEnvironmentProviders>
+      <AppStartupGate />
+    </AppEnvironmentProviders>
+  )
+}
+
+function AppStartupGate() {
+  'use no memo'
+
+  const onboardingCompleted = useOnboardingStore(s => s.completed)
+
+  useThemeClass()
+
+  if (!onboardingCompleted) {
+    return (
+      <Suspense fallback={<div className="h-screen w-screen bg-background" />}>
+        <OnboardingPage />
+      </Suspense>
+    )
+  }
+
   return <MainAppRuntime />
 }
 
@@ -60,8 +82,6 @@ function MainAppRuntime() {
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const settingsSection = useSettingsOverlayStore(s => s.settingsSection)
   const closeSettings = useSettingsOverlayStore(s => s.closeSettings)
-  const onboardingCompleted = useOnboardingStore(s => s.completed)
-  const showDevOnboarding = !onboardingCompleted
 
   const activeSlotId = useCradleTabStore((s) => {
     const activeTab = s.tabs.find(tab => tab.id === s.activeTabId)
@@ -84,24 +104,13 @@ function MainAppRuntime() {
   const openGlobalSearch = useCallback(() => {
     useGlobalSearchStore.getState().openSearch()
   }, [])
-
-  useThemeClass()
+  const unreadSessionIds = useUnreadSessionIds()
 
   useDesktopTrayActionBridge({ onOpenGlobalSearch: openGlobalSearch })
 
   useEffect(() => {
-    let previousUnreadCount = useSessionActivityStore.getState().unread.size
-    syncDesktopAppBadgeUnreadCount(previousUnreadCount)
-
-    return useSessionActivityStore.subscribe((state) => {
-      const unreadCount = state.unread.size
-      if (unreadCount === previousUnreadCount) {
-        return
-      }
-      previousUnreadCount = unreadCount
-      syncDesktopAppBadgeUnreadCount(unreadCount)
-    })
-  }, [])
+    syncDesktopAppBadgeUnreadCount(unreadSessionIds.size)
+  }, [unreadSessionIds.size])
 
   useEffect(() => {
     queueMicrotask(preloadCradleTabRoutes)
@@ -152,58 +161,49 @@ function MainAppRuntime() {
   }, [])
 
   return (
-    <AppEnvironmentProviders>
-      <LayoutSlotsProvider activeSlotId={activeSlotId} validSlotIds={validSlotIds}>
-        <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
-          <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
-            <AppSidebar />
-            <AppLayout>
-              <div className="relative h-full w-full overflow-hidden">
-                <div
-                  className={cn(
-                    'h-full w-full overflow-hidden',
-                    isSettingsVisible && 'invisible pointer-events-none',
-                  )}
-                  aria-hidden={isSettingsVisible ? 'true' : undefined}
-                >
-                  <TabRenderer
-                    fallback={null}
-                    className="h-full flex overflow-hidden w-full"
-                  />
-                </div>
-                {isSettingsVisible && (
-                  <div
-                    className="absolute inset-0 min-w-0 overflow-hidden bg-background z-10"
-                    data-testid="settings-tab-overlay"
-                    onKeyDownCapture={(event) => {
-                      if (
-                        event.key === 'Escape'
-                        && event.metaKey
-                        && !event.ctrlKey
-                        && !event.altKey
-                      ) {
-                        event.preventDefault()
-                        closeSettings()
-                      }
-                    }}
-                  >
-                    <SettingsContent section={settingsSection} />
-                  </div>
+    <LayoutSlotsProvider activeSlotId={activeSlotId} validSlotIds={validSlotIds}>
+      <TabsProvider store={useCradleTabStore} registry={cradleRegistry}>
+        <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
+          <AppSidebar />
+          <AppLayout>
+            <div className="relative h-full w-full overflow-hidden">
+              <div
+                className={cn(
+                  'h-full w-full overflow-hidden',
+                  isSettingsVisible && 'invisible pointer-events-none',
                 )}
-                <GlobalCommandPaletteHost />
+                aria-hidden={isSettingsVisible ? 'true' : undefined}
+              >
+                <TabRenderer
+                  fallback={null}
+                  className="h-full flex overflow-hidden w-full"
+                />
               </div>
-            </AppLayout>
-          </div>
-        </TabsProvider>
-      </LayoutSlotsProvider>
-
-      {/* Dev-only onboarding overlay resets on every Vite reload. */}
-      {showDevOnboarding && (
-        <Suspense fallback={null}>
-          <OnboardingPage />
-        </Suspense>
-      )}
-    </AppEnvironmentProviders>
+              {isSettingsVisible && (
+                <div
+                  className="absolute inset-0 min-w-0 overflow-hidden bg-background z-10"
+                  data-testid="settings-tab-overlay"
+                  onKeyDownCapture={(event) => {
+                    if (
+                      event.key === 'Escape'
+                      && event.metaKey
+                      && !event.ctrlKey
+                      && !event.altKey
+                    ) {
+                      event.preventDefault()
+                      closeSettings()
+                    }
+                  }}
+                >
+                  <SettingsContent section={settingsSection} />
+                </div>
+              )}
+              <GlobalCommandPaletteHost />
+            </div>
+          </AppLayout>
+        </div>
+      </TabsProvider>
+    </LayoutSlotsProvider>
   )
 }
 

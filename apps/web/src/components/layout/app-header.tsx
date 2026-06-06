@@ -7,10 +7,10 @@ import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { ResourcesPopover } from '~/features/devtool/resources/resources-popover'
+import { useUnreadSessionIds } from '~/features/workspace/use-session'
 import { cn } from '~/lib/cn'
 import { isTearoffWindow, nativeIpc, platform, subscribePointerOutsideWindow } from '~/lib/electron'
 import { useLayoutStore } from '~/store/layout'
-import { useSessionActivityStore } from '~/store/session-activity'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
 import { detachTearoffSessionTab, releaseTearoffSession, reserveTearoffSession } from '~/tabs/tearoff-tabs'
@@ -44,7 +44,7 @@ export function AppHeader({
   const toggleSidebar = useLayoutStore(s => s.toggleSidebar)
   const toggleBrowserPanel = useLayoutStore(s => s.toggleBrowserPanel)
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
-  const unreadSessionIds = useSessionActivityStore(s => s.unread)
+  const unreadSessionIds = useUnreadSessionIds()
   // Settings is open on a specific tab; we're "in settings" view when that tab is active
   const isSettingsActive = useCradleTabStore(s => settingsTabId !== null && s.activeTabId === settingsTabId)
   const isDrillIn = isSettingsActive

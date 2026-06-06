@@ -3,6 +3,7 @@ import { act, cleanup, render } from '@testing-library/react'
 import { createElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
+import type { BrowserAnnotationRecord } from './browser-panel'
 import {
   DEFAULT_BROWSER_PANEL_OWNER_ID,
   handleBrowserPanelTabShortcut,
@@ -21,8 +22,32 @@ function commandKeyEvent(key: string): KeyboardEvent {
   return event
 }
 
+function annotationInput(
+  overrides: Partial<Omit<BrowserAnnotationRecord, 'id' | 'createdAt' | 'updatedAt' | 'status'>> = {},
+): Omit<BrowserAnnotationRecord, 'id' | 'createdAt' | 'updatedAt' | 'status'> {
+  return {
+    ownerId: DEFAULT_BROWSER_PANEL_OWNER_ID,
+    tabId: overrides.tabId ?? 'browser-tab-1',
+    title: overrides.title ?? 'Example',
+    url: overrides.url ?? 'https://example.com',
+    body: overrides.body ?? 'Initial note',
+    anchor: overrides.anchor ?? { kind: 'point', x: 12, y: 24 },
+    designChange: overrides.designChange ?? null,
+    attachedImages: overrides.attachedImages ?? [],
+    screenshot: overrides.screenshot ?? {
+      type: 'file',
+      filename: 'browser.png',
+      mediaType: 'image/png',
+      url: 'data:image/png;base64,AAAA',
+    },
+    elements: overrides.elements ?? [],
+    surfaceSize: overrides.surfaceSize ?? { width: 800, height: 600 },
+  }
+}
+
 describe('browser panel shortcuts', () => {
   beforeEach(() => {
+    vi.useRealTimers()
     cleanup()
     useBrowserPanelStore.setState({
       activeOwnerId: DEFAULT_BROWSER_PANEL_OWNER_ID,
@@ -31,6 +56,10 @@ describe('browser panel shortcuts', () => {
       activeTabId: null,
       requestedTab: null,
       scrollToFilePath: null,
+      recentHistoryByOwnerId: {},
+      annotationInteractionModeByOwnerId: {},
+      annotationTrayCollapsedByOwnerId: {},
+      annotationCoachmarkDismissedByOwnerId: {},
     })
   })
 
@@ -119,7 +148,7 @@ describe('browser panel shortcuts', () => {
     })
   })
 
-  it('preserves session source metadata when fulfilling a requested browser tab', () => {
+  it('preserves session source metadata for requested browser tabs', () => {
     useBrowserPanelStore.getState().requestTab('https://example.com', {
       sessionId: 'session-a',
       sessionTitle: 'Session A',
@@ -133,12 +162,17 @@ describe('browser panel shortcuts', () => {
 
     useBrowserPanelStore.getState().fulfillRequestedTab(requestedTab!.id)
 
-    expect(useBrowserPanelStore.getState().tabs.at(-1)).toMatchObject({
+    expect(useBrowserPanelStore.getState().requestedTab).toBeNull()
+
+    const tabId = useBrowserPanelStore.getState().createTab(requestedTab!.url, {
+      sessionId: requestedTab!.sessionId,
+      sessionTitle: requestedTab!.sessionTitle,
+    })
+    expect(useBrowserPanelStore.getState().tabs.find(tab => tab.id === tabId)).toMatchObject({
       kind: 'browser',
       sessionId: 'session-a',
       sessionTitle: 'Session A',
     })
-    expect(useBrowserPanelStore.getState().requestedTab).toBeNull()
   })
 
   it('keeps browser panel tabs scoped to their owning app tab', () => {
@@ -263,5 +297,129 @@ describe('browser panel shortcuts', () => {
 
     unsubscribe()
     expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('reuses an inactive matching diff tab instead of creating a duplicate', () => {
+    const diffTabId = useBrowserPanelStore.getState().openWorkspaceDiffTab({
+      workspaceId: 'workspace-1',
+      title: 'All Changes',
+    })
+    useBrowserPanelStore.getState().createTab('https://example.com')
+
+    const reopenedTabId = useBrowserPanelStore.getState().openWorkspaceDiffTab({
+      workspaceId: 'workspace-1',
+      title: 'All Changes',
+    })
+
+    expect(reopenedTabId).toBe(diffTabId)
+    expect(useBrowserPanelStore.getState().activeTabId).toBe(diffTabId)
+    expect(
+      useBrowserPanelStore.getState().tabs.filter(tab => tab.kind === 'workspace-diff'),
+    ).toHaveLength(1)
+  })
+
+  it('updates an existing annotation by id while preserving creation time', () => {
+    vi.useFakeTimers()
+    vi.setSystemTime(1_000)
+
+    const annotationId = useBrowserPanelStore.getState().saveAnnotation(annotationInput({
+      body: 'Initial note',
+    }))
+
+    vi.setSystemTime(2_000)
+    useBrowserPanelStore.getState().saveAnnotation({
+      ...annotationInput({
+        body: 'Updated note',
+        anchor: { kind: 'region', x: 10, y: 20, width: 100, height: 120 },
+      }),
+      id: annotationId,
+      status: 'sent',
+    })
+
+    expect(useBrowserPanelStore.getState().owners[DEFAULT_BROWSER_PANEL_OWNER_ID]?.annotations).toEqual([
+      expect.objectContaining({
+        id: annotationId,
+        body: 'Updated note',
+        anchor: { kind: 'region', x: 10, y: 20, width: 100, height: 120 },
+        createdAt: 1_000,
+        updatedAt: 2_000,
+        status: 'sent',
+      }),
+    ])
+  })
+
+  it('removes annotations for a closed browser tab', () => {
+    const tabId = useBrowserPanelStore.getState().createTab('https://example.com')
+    const retainedTabId = useBrowserPanelStore.getState().createTab('https://openai.com')
+
+    useBrowserPanelStore.getState().saveAnnotation(annotationInput({ tabId, body: 'Closed tab note' }))
+    useBrowserPanelStore.getState().saveAnnotation(annotationInput({ tabId: retainedTabId, body: 'Retained tab note' }))
+
+    useBrowserPanelStore.getState().closeTab(tabId)
+
+    expect(useBrowserPanelStore.getState().owners[DEFAULT_BROWSER_PANEL_OWNER_ID]?.annotations).toEqual([
+      expect.objectContaining({
+        tabId: retainedTabId,
+        body: 'Retained tab note',
+      }),
+    ])
+  })
+
+  it('clears annotations for the selected browser tab only', () => {
+    const tabId = useBrowserPanelStore.getState().createTab('https://example.com')
+    const retainedTabId = useBrowserPanelStore.getState().createTab('https://openai.com')
+
+    useBrowserPanelStore.getState().saveAnnotation(annotationInput({ tabId, body: 'Current tab note' }))
+    useBrowserPanelStore.getState().saveAnnotation(annotationInput({ tabId: retainedTabId, body: 'Other tab note' }))
+
+    useBrowserPanelStore.getState().clearAnnotations({ tabId })
+
+    expect(useBrowserPanelStore.getState().owners[DEFAULT_BROWSER_PANEL_OWNER_ID]?.annotations).toEqual([
+      expect.objectContaining({
+        tabId: retainedTabId,
+        body: 'Other tab note',
+      }),
+    ])
+  })
+
+  it('keeps annotation interaction and coachmark state scoped by owner', () => {
+    useBrowserPanelStore.getState().setAnnotationInteractionMode('comment', 'app-tab-a')
+    useBrowserPanelStore.getState().dismissAnnotationCoachmark('app-tab-a')
+
+    expect(useBrowserPanelStore.getState().annotationInteractionModeByOwnerId).toMatchObject({
+      'app-tab-a': 'comment',
+    })
+    expect(useBrowserPanelStore.getState().annotationCoachmarkDismissedByOwnerId).toMatchObject({
+      'app-tab-a': true,
+    })
+    expect(useBrowserPanelStore.getState().annotationInteractionModeByOwnerId['app-tab-b']).toBeUndefined()
+    expect(useBrowserPanelStore.getState().annotationCoachmarkDismissedByOwnerId['app-tab-b']).toBeUndefined()
+  })
+
+  it('persists only lightweight annotation UI preferences', () => {
+    useBrowserPanelStore.getState().saveAnnotation(annotationInput({
+      body: 'Screenshot note',
+      attachedImages: [{
+        type: 'file',
+        filename: 'attached.png',
+        mediaType: 'image/png',
+        url: 'data:image/png;base64,BBBB',
+      }],
+    }))
+    useBrowserPanelStore.getState().setAnnotationTrayCollapsed(true, 'app-tab-a')
+    useBrowserPanelStore.getState().dismissAnnotationCoachmark('app-tab-a')
+
+    const partialize = useBrowserPanelStore.persist.getOptions().partialize
+    expect(partialize).toBeTypeOf('function')
+    if (!partialize) {
+      throw new TypeError('Expected browser panel store persistence to define partialize')
+    }
+    const persisted = partialize(useBrowserPanelStore.getState()) as Record<string, unknown>
+
+    expect(persisted).toEqual({
+      recentHistoryByOwnerId: {},
+      annotationTrayCollapsedByOwnerId: { 'app-tab-a': true },
+      annotationCoachmarkDismissedByOwnerId: { 'app-tab-a': true },
+    })
   })
 })

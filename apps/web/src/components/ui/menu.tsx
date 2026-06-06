@@ -106,7 +106,7 @@ export function MenuItem({
   );
 }
 
-function MenuCheckboxItem({
+export function MenuCheckboxItem({
   className,
   children,
   checked,
@@ -163,13 +163,13 @@ function MenuCheckboxItem({
   );
 }
 
-function MenuRadioGroup(
+export function MenuRadioGroup(
   props: MenuPrimitive.RadioGroup.Props,
 ): React.ReactElement {
   return <MenuPrimitive.RadioGroup data-slot="menu-radio-group" {...props} />;
 }
 
-function MenuRadioItem({
+export function MenuRadioItem({
   className,
   children,
   ...props

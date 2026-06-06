@@ -11,7 +11,6 @@ import { RuntimeSessionPanel } from '~/features/chat/runtime-session-panel'
 import { useSessionAwaitSummary } from '~/features/chat/use-session-await'
 import { ChangesPanel, GitPanel } from '~/features/git'
 import { IssueAsidePanel } from '~/features/kanban/issue-aside-panel'
-import { PackCodebaseDialog } from '~/features/pack-codebase/pack-codebase-dialog'
 import { AwaitPanel } from '~/features/session-await/await-panel'
 import { FileTree } from '~/features/workspace/file-tree'
 import { cn } from '~/lib/cn'
@@ -106,7 +105,6 @@ interface RightAsidePanelContentProps {
   issueEmptyLabel: string
   runtimeKind: RuntimeKind | null
   providerTargetId: string | null
-  onPackRequested: (paths: string[]) => void
 }
 
 function RightAsidePanelContent({
@@ -117,7 +115,6 @@ function RightAsidePanelContent({
   issueEmptyLabel,
   runtimeKind,
   providerTargetId,
-  onPackRequested,
 }: RightAsidePanelContentProps) {
   if (tabId === 'files') {
     return (
@@ -128,7 +125,6 @@ function RightAsidePanelContent({
         <FileTree
           workspaceId={workspaceId}
           workspacePath={workspacePath}
-          onPackRequested={workspaceId ? onPackRequested : undefined}
         />
       </div>
     )
@@ -151,7 +147,6 @@ function RightAsidePanelContent({
         <ChangesPanel
           workspaceId={workspaceId}
           workspacePath={workspacePath}
-          onPackRequested={workspaceId ? onPackRequested : undefined}
         />
       </div>
     )
@@ -218,8 +213,6 @@ export function RightAside({
   const activeTab = useLayoutStore(s => s.asideActiveTab)
   const setActiveTab = useLayoutStore(s => s.setAsideActiveTab)
   const [panelDirection, setPanelDirection] = useState(1)
-  const [packOpen, setPackOpen] = useState(false)
-  const [packInitialPaths, setPackInitialPaths] = useState<string[]>([])
 
   // Derive workspaceId from session
   const { data: sessionMeta } = useQuery({
@@ -244,17 +237,11 @@ export function RightAside({
     enabled: !!workspaceId && (!explicitWorkspaceName || !explicitWorkspacePath),
     staleTime: 60_000,
   })
-  const workspaceName = explicitWorkspaceName ?? workspace?.name ?? null
   const workspacePath = explicitWorkspacePath ?? workspace?.path ?? null
 
   // Badge: pending awaits for Feed tab
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
   const hasPendingAwaits = awaitSummary?.awaiting ?? false
-
-  const handlePackRequested = useCallback((paths: string[]) => {
-    setPackInitialPaths(paths)
-    setPackOpen(true)
-  }, [])
 
   const activateTab = useCallback((tabId: string) => {
     if (tabId === activeTab) {
@@ -388,21 +375,10 @@ export function RightAside({
               issueEmptyLabel={t('rightAside.issue.empty')}
               runtimeKind={sessionMeta?.runtimeKind ?? null}
               providerTargetId={sessionMeta?.providerTargetId ?? null}
-              onPackRequested={handlePackRequested}
             />
           </m.div>
         </AnimatePresence>
       </div>
-
-      {workspaceId && workspaceName && (
-        <PackCodebaseDialog
-          workspaceId={workspaceId}
-          workspaceName={workspaceName}
-          initialPaths={packInitialPaths}
-          open={packOpen}
-          onOpenChange={setPackOpen}
-        />
-      )}
     </div>
   )
 }

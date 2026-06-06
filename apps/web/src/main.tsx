@@ -1,5 +1,6 @@
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import * as React from 'react'
+import * as ReactJSXDevRuntime from 'react/jsx-dev-runtime'
 import * as ReactJSXRuntime from 'react/jsx-runtime'
 import * as ReactDOM from 'react-dom'
 import * as ReactDOMClient from 'react-dom/client'
@@ -23,6 +24,7 @@ sharedModuleRegistry[Symbol.for('cradle:modules')] = {
   'react': React,
   'react-dom': ReactDOM,
   'react-dom/client': ReactDOMClient,
+  'react/jsx-dev-runtime': ReactJSXDevRuntime,
   'react/jsx-runtime': ReactJSXRuntime,
 }
 

@@ -5,11 +5,26 @@ import * as z from 'zod';
 export const zPutPreferencesChatBody = z.object({
     modelId: z.string().nullable(),
     configSelections: z.record(z.string(), z.unknown()),
-    continuationBehavior: z.enum(['queue', 'steer']).optional()
+    continuationBehavior: z.enum(['queue', 'steer']).optional(),
+    titleGeneration: z.object({
+        providerTargetId: z.string().nullable(),
+        modelId: z.string().nullable(),
+        thinkingEffort: z.enum([
+            'minimal',
+            'low',
+            'medium',
+            'high',
+            'xhigh'
+        ])
+    }).optional()
 });
 
 export const zPutPreferencesCodexBody = z.object({
     useCradleUserAgent: z.boolean().default(true)
+});
+
+export const zPutPreferencesDesktopBody = z.object({
+    requireDoubleCommandQToQuit: z.boolean().default(true)
 });
 
 export const zPutPreferencesJarvisBody = z.object({
@@ -488,8 +503,7 @@ export const zPostAgentsBody = z.object({
         'low',
         'medium',
         'high',
-        'xhigh',
-        'auto'
+        'xhigh'
     ]).optional(),
     runtimeKind: z.string().min(1).optional(),
     configJson: z.string().optional()
@@ -514,8 +528,7 @@ export const zPatchAgentsByIdBody = z.object({
         'low',
         'medium',
         'high',
-        'xhigh',
-        'auto'
+        'xhigh'
     ]).optional(),
     runtimeKind: z.string().min(1).optional(),
     configJson: z.string().optional(),
@@ -756,6 +769,14 @@ export const zPostSessionsByIdArchiveBody = z.object({
 });
 
 export const zPostSessionsByIdArchivePath = z.object({
+    id: z.string().min(1)
+});
+
+export const zPostSessionsByIdReadPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zPostSessionsByIdUnreadPath = z.object({
     id: z.string().min(1)
 });
 
@@ -1263,7 +1284,7 @@ export const zDeleteWorkflowRulesByWorkspaceIdPath = z.object({
 });
 
 export const zDeleteWorkflowRulesByWorkspaceIdQuery = z.object({
-    agentProfileId: z.string().optional()
+    agentId: z.string().optional()
 });
 
 export const zGetWorkflowRulesByWorkspaceIdPath = z.object({
@@ -1271,11 +1292,11 @@ export const zGetWorkflowRulesByWorkspaceIdPath = z.object({
 });
 
 export const zGetWorkflowRulesByWorkspaceIdQuery = z.object({
-    agentProfileId: z.string().optional()
+    agentId: z.string().optional()
 });
 
 export const zPutWorkflowRulesByWorkspaceIdBody = z.object({
-    agentProfileId: z.string().nullish(),
+    agentId: z.string().nullish(),
     content: z.string()
 });
 
@@ -1341,23 +1362,6 @@ export const zGetWorkspacesByIdGitMergeBasePath = z.object({
 
 export const zGetWorkspacesByIdGitMergeBaseQuery = z.object({
     baseBranch: z.string().min(1)
-});
-
-export const zPostWorkspacesByIdPackBody = z.object({
-    style: z.enum([
-        'xml',
-        'markdown',
-        'plain'
-    ]),
-    compress: z.boolean(),
-    include: z.string().min(1).optional(),
-    ignore: z.string().min(1).optional(),
-    removeComments: z.boolean().optional(),
-    removeEmptyLines: z.boolean().optional()
-});
-
-export const zPostWorkspacesByIdPackPath = z.object({
-    id: z.string().min(1)
 });
 
 export const zGetAcpRegistryByAgentIdDistributionTypesPath = z.object({
@@ -1440,7 +1444,10 @@ export const zPostChatSessionsBySessionIdResponseBody = z.object({
         'high',
         'xhigh'
     ]).optional(),
-    permissionMode: z.enum(['bypassPermissions', 'plan']).optional()
+    runtimeSettings: z.object({
+        accessMode: z.enum(['approval-required', 'full-access']).optional(),
+        interactionMode: z.enum(['default', 'plan']).optional()
+    }).optional()
 });
 
 export const zPostChatSessionsBySessionIdResponsePath = z.object({
@@ -1461,6 +1468,10 @@ export const zPostChatSessionsBySessionIdSideChatBody = z.object({
 });
 
 export const zPostChatSessionsBySessionIdSideChatPath = z.object({
+    sessionId: z.string().min(1)
+});
+
+export const zPostChatSessionsBySessionIdPromoteSidePath = z.object({
     sessionId: z.string().min(1)
 });
 
@@ -1505,7 +1516,10 @@ export const zPostChatSessionsBySessionIdQueueBody = z.object({
         'high',
         'xhigh'
     ]).optional(),
-    permissionMode: z.enum(['bypassPermissions', 'plan']).optional()
+    runtimeSettings: z.object({
+        accessMode: z.enum(['approval-required', 'full-access']).optional(),
+        interactionMode: z.enum(['default', 'plan']).optional()
+    }).optional()
 });
 
 export const zPostChatSessionsBySessionIdQueuePath = z.object({
@@ -1607,6 +1621,11 @@ export const zGetChatSessionsBySessionIdMessagesPath = z.object({
     sessionId: z.string().min(1)
 });
 
+export const zGetChatRunsCompletedQuery = z.object({
+    since: z.number().gte(0).optional(),
+    limit: z.number().gte(1).lte(200).optional()
+});
+
 export const zGetChatRunsByRunIdTracePath = z.object({
     runId: z.string().min(1)
 });
@@ -1627,11 +1646,16 @@ export const zPostChatSessionsBySessionIdCancelPath = z.object({
     sessionId: z.string().min(1)
 });
 
-export const zPostChatSessionsBySessionIdPermissionModeBody = z.object({
-    mode: z.enum(['bypassPermissions', 'plan'])
+export const zGetChatSessionsBySessionIdRuntimeSettingsPath = z.object({
+    sessionId: z.string().min(1)
 });
 
-export const zPostChatSessionsBySessionIdPermissionModePath = z.object({
+export const zPatchChatSessionsBySessionIdRuntimeSettingsBody = z.object({
+    accessMode: z.enum(['approval-required', 'full-access']).optional(),
+    interactionMode: z.enum(['default', 'plan']).optional()
+});
+
+export const zPatchChatSessionsBySessionIdRuntimeSettingsPath = z.object({
     sessionId: z.string().min(1)
 });
 

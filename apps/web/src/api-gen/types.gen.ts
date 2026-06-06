@@ -55,6 +55,11 @@ export type GetPreferencesChatResponses = {
             [key: string]: unknown;
         };
         continuationBehavior: 'queue' | 'steer';
+        titleGeneration: {
+            providerTargetId: string | null;
+            modelId: string | null;
+            thinkingEffort: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+        };
     };
 };
 
@@ -67,6 +72,11 @@ export type PutPreferencesChatData = {
             [key: string]: unknown;
         };
         continuationBehavior?: 'queue' | 'steer';
+        titleGeneration?: {
+            providerTargetId: string | null;
+            modelId: string | null;
+            thinkingEffort: 'minimal' | 'low' | 'medium' | 'high' | 'xhigh';
+        };
     };
     path?: never;
     query?: never;
@@ -121,6 +131,44 @@ export type PutPreferencesCodexResponses = {
 };
 
 export type PutPreferencesCodexResponse = PutPreferencesCodexResponses[keyof PutPreferencesCodexResponses];
+
+export type GetPreferencesDesktopData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/preferences/desktop';
+};
+
+export type GetPreferencesDesktopResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        requireDoubleCommandQToQuit: boolean;
+    };
+};
+
+export type GetPreferencesDesktopResponse = GetPreferencesDesktopResponses[keyof GetPreferencesDesktopResponses];
+
+export type PutPreferencesDesktopData = {
+    body: {
+        requireDoubleCommandQToQuit: boolean;
+    };
+    path?: never;
+    query?: never;
+    url: '/preferences/desktop';
+};
+
+export type PutPreferencesDesktopResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type PutPreferencesDesktopResponse = PutPreferencesDesktopResponses[keyof PutPreferencesDesktopResponses];
 
 export type GetPreferencesJarvisData = {
     body?: never;
@@ -872,6 +920,24 @@ export type GetUsageCostSummaryResponses = {
         totalTokens: number;
         byModel: Array<{
             modelId: string;
+            costUsd: number;
+            promptTokens: number;
+            completionTokens: number;
+            totalTokens: number;
+            count: number;
+        }>;
+        byAgent: Array<{
+            agentId: string;
+            agentName: string;
+            costUsd: number;
+            promptTokens: number;
+            completionTokens: number;
+            totalTokens: number;
+            count: number;
+        }>;
+        byProviderTarget: Array<{
+            providerTargetId: string;
+            providerTargetName: string | null;
             costUsd: number;
             promptTokens: number;
             completionTokens: number;
@@ -2198,7 +2264,7 @@ export type GetAgentsResponses = {
         avatarSeed: string;
         providerTargetId: string | null;
         modelId: string | null;
-        thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'auto';
+        thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh';
         runtimeKind: string;
         configJson: string;
         enabled: boolean;
@@ -2217,7 +2283,7 @@ export type PostAgentsData = {
         avatarSeed: string;
         providerTargetId?: string | null;
         modelId?: string | null;
-        thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'auto';
+        thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         runtimeKind?: string;
         configJson?: string;
     };
@@ -2239,7 +2305,7 @@ export type PostAgentsResponses = {
         avatarSeed: string;
         providerTargetId: string | null;
         modelId: string | null;
-        thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'auto';
+        thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh';
         runtimeKind: string;
         configJson: string;
         enabled: boolean;
@@ -2292,7 +2358,7 @@ export type GetAgentsByIdResponses = {
         avatarSeed: string;
         providerTargetId: string | null;
         modelId: string | null;
-        thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'auto';
+        thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh';
         runtimeKind: string;
         configJson: string;
         enabled: boolean;
@@ -2311,7 +2377,7 @@ export type PatchAgentsByIdData = {
         avatarSeed?: string;
         providerTargetId?: string | null;
         modelId?: string | null;
-        thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh' | 'auto';
+        thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         runtimeKind?: string;
         configJson?: string;
         enabled?: boolean;
@@ -2336,7 +2402,7 @@ export type PatchAgentsByIdResponses = {
         avatarSeed: string;
         providerTargetId: string | null;
         modelId: string | null;
-        thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh' | 'auto';
+        thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh';
         runtimeKind: string;
         configJson: string;
         enabled: boolean;
@@ -2365,7 +2431,7 @@ export type PostAgentsImportLocalConfigResponses = {
         preview: {
             candidates: Array<{
                 id: string;
-                app: 'claude' | 'codex' | 'gemini' | 'pi';
+                app: 'claude' | 'codex' | 'gemini' | 'pi' | 'kimi';
                 runtimeKind: 'claude-agent' | 'codex' | 'cli-tui';
                 sourceKind: 'cc-switch' | 'local-config';
                 sourceLabel: string;
@@ -2376,6 +2442,9 @@ export type PostAgentsImportLocalConfigResponses = {
                 name: string;
                 modelId: string | null;
                 endpoint: string | null;
+                executable: string | null;
+                iconSlug: string | null;
+                avatarUrl: string | null;
                 importable: boolean;
                 alreadyConfigured: boolean;
                 reason: string | null;
@@ -2411,7 +2480,7 @@ export type PostAgentsImportLocalConfigResponses = {
         existing: number;
         skipped: number;
         agents: Array<{
-            app: 'claude' | 'codex' | 'gemini' | 'pi';
+            app: 'claude' | 'codex' | 'gemini' | 'pi' | 'kimi';
             candidateId: string;
             sourceKind: 'cc-switch' | 'local-config';
             externalRecordId: string;
@@ -2458,7 +2527,7 @@ export type PostAgentsImportLocalConfigPreviewResponses = {
     200: {
         candidates: Array<{
             id: string;
-            app: 'claude' | 'codex' | 'gemini' | 'pi';
+            app: 'claude' | 'codex' | 'gemini' | 'pi' | 'kimi';
             runtimeKind: 'claude-agent' | 'codex' | 'cli-tui';
             sourceKind: 'cc-switch' | 'local-config';
             sourceLabel: string;
@@ -2469,6 +2538,9 @@ export type PostAgentsImportLocalConfigPreviewResponses = {
             name: string;
             modelId: string | null;
             endpoint: string | null;
+            executable: string | null;
+            iconSlug: string | null;
+            avatarUrl: string | null;
             importable: boolean;
             alreadyConfigured: boolean;
             reason: string | null;
@@ -3333,9 +3405,12 @@ export type GetSessionsResponses = {
         status: 'idle' | 'streaming' | 'error';
         pinned: number;
         archivedAt: number | null;
+        lastReadAt: number | null;
         createdAt: number;
         updatedAt: number;
         latestUserMessageAt: number | null;
+        latestAssistantMessageAt: number | null;
+        unread: boolean;
     }>;
 };
 
@@ -3373,9 +3448,12 @@ export type PostSessionsResponses = {
         status: 'idle' | 'streaming' | 'error';
         pinned: number;
         archivedAt: number | null;
+        lastReadAt: number | null;
         createdAt: number;
         updatedAt: number;
         latestUserMessageAt: number | null;
+        latestAssistantMessageAt: number | null;
+        unread: boolean;
     };
 };
 
@@ -3428,9 +3506,12 @@ export type GetSessionsByIdResponses = {
         status: 'idle' | 'streaming' | 'error';
         pinned: number;
         archivedAt: number | null;
+        lastReadAt: number | null;
         createdAt: number;
         updatedAt: number;
         latestUserMessageAt: number | null;
+        latestAssistantMessageAt: number | null;
+        unread: boolean;
     };
 };
 
@@ -3468,9 +3549,12 @@ export type PatchSessionsByIdResponses = {
         status: 'idle' | 'streaming' | 'error';
         pinned: number;
         archivedAt: number | null;
+        lastReadAt: number | null;
         createdAt: number;
         updatedAt: number;
         latestUserMessageAt: number | null;
+        latestAssistantMessageAt: number | null;
+        unread: boolean;
     };
 };
 
@@ -3505,13 +3589,92 @@ export type PostSessionsByIdArchiveResponses = {
         status: 'idle' | 'streaming' | 'error';
         pinned: number;
         archivedAt: number | null;
+        lastReadAt: number | null;
         createdAt: number;
         updatedAt: number;
         latestUserMessageAt: number | null;
+        latestAssistantMessageAt: number | null;
+        unread: boolean;
     };
 };
 
 export type PostSessionsByIdArchiveResponse = PostSessionsByIdArchiveResponses[keyof PostSessionsByIdArchiveResponses];
+
+export type PostSessionsByIdReadData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/sessions/{id}/read';
+};
+
+export type PostSessionsByIdReadResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        parentSessionId: string | null;
+        sideContextSource: string | null;
+        workspaceId: string | null;
+        title: string | null;
+        providerTargetId: string | null;
+        agentId: string | null;
+        modelId: string | null;
+        linkedIssueId: string | null;
+        runtimeKind: string;
+        status: 'idle' | 'streaming' | 'error';
+        pinned: number;
+        archivedAt: number | null;
+        lastReadAt: number | null;
+        createdAt: number;
+        updatedAt: number;
+        latestUserMessageAt: number | null;
+        latestAssistantMessageAt: number | null;
+        unread: boolean;
+    };
+};
+
+export type PostSessionsByIdReadResponse = PostSessionsByIdReadResponses[keyof PostSessionsByIdReadResponses];
+
+export type PostSessionsByIdUnreadData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/sessions/{id}/unread';
+};
+
+export type PostSessionsByIdUnreadResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        parentSessionId: string | null;
+        sideContextSource: string | null;
+        workspaceId: string | null;
+        title: string | null;
+        providerTargetId: string | null;
+        agentId: string | null;
+        modelId: string | null;
+        linkedIssueId: string | null;
+        runtimeKind: string;
+        status: 'idle' | 'streaming' | 'error';
+        pinned: number;
+        archivedAt: number | null;
+        lastReadAt: number | null;
+        createdAt: number;
+        updatedAt: number;
+        latestUserMessageAt: number | null;
+        latestAssistantMessageAt: number | null;
+        unread: boolean;
+    };
+};
+
+export type PostSessionsByIdUnreadResponse = PostSessionsByIdUnreadResponses[keyof PostSessionsByIdUnreadResponses];
 
 export type GetSessionsByIdMessagesData = {
     body?: never;
@@ -5484,7 +5647,7 @@ export type GetWorkflowRulesByWorkspaceIdListResponses = {
      */
     200: Array<{
         type: 'global' | 'agent';
-        agentProfileId: string | null;
+        agentId: string | null;
         content: string;
     }>;
 };
@@ -5497,7 +5660,7 @@ export type DeleteWorkflowRulesByWorkspaceIdData = {
         workspaceId: string;
     };
     query?: {
-        agentProfileId?: string;
+        agentId?: string;
     };
     url: '/workflow-rules/{workspaceId}';
 };
@@ -5519,7 +5682,7 @@ export type GetWorkflowRulesByWorkspaceIdData = {
         workspaceId: string;
     };
     query?: {
-        agentProfileId?: string;
+        agentId?: string;
     };
     url: '/workflow-rules/{workspaceId}';
 };
@@ -5530,7 +5693,7 @@ export type GetWorkflowRulesByWorkspaceIdResponses = {
      */
     200: {
         global: string | null;
-        profileSpecific: string | null;
+        agentSpecific: string | null;
     };
 };
 
@@ -5538,7 +5701,7 @@ export type GetWorkflowRulesByWorkspaceIdResponse = GetWorkflowRulesByWorkspaceI
 
 export type PutWorkflowRulesByWorkspaceIdData = {
     body: {
-        agentProfileId?: string | null;
+        agentId?: string | null;
         content: string;
     };
     path: {
@@ -5773,35 +5936,6 @@ export type GetWorkspacesByIdGitMergeBaseResponses = {
 };
 
 export type GetWorkspacesByIdGitMergeBaseResponse = GetWorkspacesByIdGitMergeBaseResponses[keyof GetWorkspacesByIdGitMergeBaseResponses];
-
-export type PostWorkspacesByIdPackData = {
-    body: {
-        style: 'xml' | 'markdown' | 'plain';
-        compress: boolean;
-        include?: string;
-        ignore?: string;
-        removeComments?: boolean;
-        removeEmptyLines?: boolean;
-    };
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/workspaces/{id}/pack';
-};
-
-export type PostWorkspacesByIdPackResponses = {
-    /**
-     * Response for status 200
-     */
-    200: {
-        content: string;
-        totalFiles: number;
-        totalTokens: number;
-    };
-};
-
-export type PostWorkspacesByIdPackResponse = PostWorkspacesByIdPackResponses[keyof PostWorkspacesByIdPackResponses];
 
 export type GetAcpRegistryData = {
     body?: never;
@@ -6062,7 +6196,10 @@ export type PostChatSessionsBySessionIdResponseData = {
         providerTargetId?: string;
         modelId?: string;
         thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
-        permissionMode?: 'bypassPermissions' | 'plan';
+        runtimeSettings?: {
+            accessMode?: 'approval-required' | 'full-access';
+            interactionMode?: 'default' | 'plan';
+        };
     };
     path: {
         sessionId: string;
@@ -6157,6 +6294,30 @@ export type PostChatSessionsBySessionIdSideChatResponses = {
 };
 
 export type PostChatSessionsBySessionIdSideChatResponse = PostChatSessionsBySessionIdSideChatResponses[keyof PostChatSessionsBySessionIdSideChatResponses];
+
+export type PostChatSessionsBySessionIdPromoteSideData = {
+    body?: never;
+    path: {
+        sessionId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/promote-side';
+};
+
+export type PostChatSessionsBySessionIdPromoteSideResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        sessionId: string;
+        sourceSessionId: string;
+        runtimeKind: string;
+        providerTargetId: string | null;
+        title: string;
+    };
+};
+
+export type PostChatSessionsBySessionIdPromoteSideResponse = PostChatSessionsBySessionIdPromoteSideResponses[keyof PostChatSessionsBySessionIdPromoteSideResponses];
 
 export type GetChatSessionsBySessionIdStreamData = {
     body?: never;
@@ -6269,8 +6430,11 @@ export type GetChatSessionsBySessionIdQueueResponses = {
             }>;
             providerTargetId: string | null;
             modelId: string | null;
-            thinkingEffort: string | unknown;
-            permissionMode: string | unknown;
+            thinkingEffort: string | null;
+            runtimeSettings: {
+                accessMode: 'approval-required' | 'full-access';
+                interactionMode: 'default' | 'plan';
+            };
             position: number;
             sourceRunId: string | null;
             startedRunId: string | null;
@@ -6306,7 +6470,10 @@ export type PostChatSessionsBySessionIdQueueData = {
         providerTargetId?: string;
         modelId?: string;
         thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
-        permissionMode?: 'bypassPermissions' | 'plan';
+        runtimeSettings?: {
+            accessMode?: 'approval-required' | 'full-access';
+            interactionMode?: 'default' | 'plan';
+        };
     };
     path: {
         sessionId: string;
@@ -6343,8 +6510,11 @@ export type PostChatSessionsBySessionIdQueueResponses = {
         }>;
         providerTargetId: string | null;
         modelId: string | null;
-        thinkingEffort: string | unknown;
-        permissionMode: string | unknown;
+        thinkingEffort: string | null;
+        runtimeSettings: {
+            accessMode: 'approval-required' | 'full-access';
+            interactionMode: 'default' | 'plan';
+        };
         position: number;
         sourceRunId: string | null;
         startedRunId: string | null;
@@ -6396,8 +6566,11 @@ export type PostChatSessionsBySessionIdQueueReorderResponses = {
             }>;
             providerTargetId: string | null;
             modelId: string | null;
-            thinkingEffort: string | unknown;
-            permissionMode: string | unknown;
+            thinkingEffort: string | null;
+            runtimeSettings: {
+                accessMode: 'approval-required' | 'full-access';
+                interactionMode: 'default' | 'plan';
+            };
             position: number;
             sourceRunId: string | null;
             startedRunId: string | null;
@@ -6448,8 +6621,11 @@ export type DeleteChatSessionsBySessionIdQueueByQueueItemIdResponses = {
         }>;
         providerTargetId: string | null;
         modelId: string | null;
-        thinkingEffort: string | unknown;
-        permissionMode: string | unknown;
+        thinkingEffort: string | null;
+        runtimeSettings: {
+            accessMode: 'approval-required' | 'full-access';
+            interactionMode: 'default' | 'plan';
+        };
         position: number;
         sourceRunId: string | null;
         startedRunId: string | null;
@@ -7014,7 +7190,10 @@ export type GetChatSessionsBySessionIdRuntimeStatusResponses = {
         providerTargetId: string | null;
         providerSessionId: string | null;
         modelId: string | null;
-        permissionMode: string | unknown;
+        runtimeSettings: {
+            accessMode: 'approval-required' | 'full-access';
+            interactionMode: 'default' | 'plan';
+        };
         pendingQueueItemId: string | null;
         hasActiveGoal: boolean;
         activeRun: {
@@ -7026,7 +7205,10 @@ export type GetChatSessionsBySessionIdRuntimeStatusResponses = {
             modelId: string | null;
             providerSessionId: string | null;
             queueItemId: string | null;
-            permissionMode: string | unknown;
+            runtimeSettings: {
+                accessMode: string;
+                interactionMode: string;
+            };
         } | null;
         latestRun: {
             runId: string;
@@ -7037,7 +7219,10 @@ export type GetChatSessionsBySessionIdRuntimeStatusResponses = {
             modelId: string | null;
             providerSessionId: string | null;
             queueItemId: string | null;
-            permissionMode: string | unknown;
+            runtimeSettings: {
+                accessMode: string;
+                interactionMode: string;
+            };
         } | null;
         queue: {
             pending: number;
@@ -7181,6 +7366,34 @@ export type GetChatSessionsBySessionIdMessagesResponses = {
 };
 
 export type GetChatSessionsBySessionIdMessagesResponse = GetChatSessionsBySessionIdMessagesResponses[keyof GetChatSessionsBySessionIdMessagesResponses];
+
+export type GetChatRunsCompletedData = {
+    body?: never;
+    path?: never;
+    query?: {
+        since?: number;
+        limit?: number;
+    };
+    url: '/chat/runs/completed';
+};
+
+export type GetChatRunsCompletedResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        runs: Array<{
+            runId: string;
+            sessionId: string;
+            sessionTitle: string;
+            messageId: string | null;
+            startedAt: number;
+            finishedAt: number;
+        }>;
+    };
+};
+
+export type GetChatRunsCompletedResponse = GetChatRunsCompletedResponses[keyof GetChatRunsCompletedResponses];
 
 export type GetChatRunsByRunIdTraceData = {
     body?: never;
@@ -7408,27 +7621,58 @@ export type PostChatSessionsBySessionIdCancelResponses = {
 
 export type PostChatSessionsBySessionIdCancelResponse = PostChatSessionsBySessionIdCancelResponses[keyof PostChatSessionsBySessionIdCancelResponses];
 
-export type PostChatSessionsBySessionIdPermissionModeData = {
+export type GetChatSessionsBySessionIdRuntimeSettingsData = {
+    body?: never;
+    path: {
+        sessionId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/runtime-settings';
+};
+
+export type GetChatSessionsBySessionIdRuntimeSettingsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        sessionId: string;
+        runtimeSettings: {
+            accessMode: 'approval-required' | 'full-access';
+            interactionMode: 'default' | 'plan';
+        };
+        applied: boolean;
+    };
+};
+
+export type GetChatSessionsBySessionIdRuntimeSettingsResponse = GetChatSessionsBySessionIdRuntimeSettingsResponses[keyof GetChatSessionsBySessionIdRuntimeSettingsResponses];
+
+export type PatchChatSessionsBySessionIdRuntimeSettingsData = {
     body: {
-        mode: 'bypassPermissions' | 'plan';
+        accessMode?: 'approval-required' | 'full-access';
+        interactionMode?: 'default' | 'plan';
     };
     path: {
         sessionId: string;
     };
     query?: never;
-    url: '/chat/sessions/{sessionId}/permission-mode';
+    url: '/chat/sessions/{sessionId}/runtime-settings';
 };
 
-export type PostChatSessionsBySessionIdPermissionModeResponses = {
+export type PatchChatSessionsBySessionIdRuntimeSettingsResponses = {
     /**
      * Response for status 200
      */
     200: {
-        ok: boolean;
+        sessionId: string;
+        runtimeSettings: {
+            accessMode: 'approval-required' | 'full-access';
+            interactionMode: 'default' | 'plan';
+        };
+        applied: boolean;
     };
 };
 
-export type PostChatSessionsBySessionIdPermissionModeResponse = PostChatSessionsBySessionIdPermissionModeResponses[keyof PostChatSessionsBySessionIdPermissionModeResponses];
+export type PatchChatSessionsBySessionIdRuntimeSettingsResponse = PatchChatSessionsBySessionIdRuntimeSettingsResponses[keyof PatchChatSessionsBySessionIdRuntimeSettingsResponses];
 
 export type GetChronicleConfigData = {
     body?: never;

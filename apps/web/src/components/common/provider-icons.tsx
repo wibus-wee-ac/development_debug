@@ -52,7 +52,7 @@ function CustomIcon({ className, ...props }: IconProps) {
   )
 }
 
-const HIJARVIS_ICON_URL = 'https://github.com/wibus-wee/HiJarvis/raw/main/.github/jarvis.png'
+const HIJARVIS_ICON_URL = '/icons/hijarvis.png'
 
 function HiJarvisIcon({ className }: IconProps) {
   return <img src={HIJARVIS_ICON_URL} alt="" className={cn('size-4 object-contain', className)} />
@@ -67,6 +67,27 @@ export const PROVIDER_ICONS: Record<string, (props: IconProps) => React.JSX.Elem
   'openai': OpenAIIcon,
   'custom': CustomIcon,
   'universal': CustomIcon,
+}
+
+function renderPresetIcon(presetId: string | null | undefined, className?: string) {
+  switch (presetId) {
+    case 'anthropic':
+    case 'claude-agent':
+      return <ClaudeIcon className={className} />
+    case 'claude-cli':
+      return <ClaudeCodeIcon className={className} />
+    case 'codex':
+      return <CodexIcon className={className} />
+    case 'hijarvis':
+      return <HiJarvisIcon className={className} />
+    case 'openai':
+      return <OpenAIIcon className={className} />
+    case 'custom':
+    case 'universal':
+      return <CustomIcon className={className} />
+    default:
+      return null
+  }
 }
 
 export const RUNTIME_ICON_KEYS: Record<BuiltinRuntimeKind, keyof typeof PROVIDER_ICONS> = {
@@ -85,22 +106,34 @@ export function getRuntimeIconKey(runtimeKind: RuntimeKind): keyof typeof PROVID
 // ── Unified provider icon component ──
 
 /**
- * Renders the provider icon — custom PNG if iconSlug is set, otherwise the preset SVG.
+ * Renders the provider icon with URL sources first, reserved preset slugs next,
+ * and Lobe icon slugs as the provider-specific fallback.
  */
 export function ProviderIcon({
   iconSlug,
+  iconUrl,
   presetId,
   className,
 }: {
   iconSlug?: string | null
+  iconUrl?: string | null
   presetId: string | null
   className?: string
 }) {
+  if (iconUrl) {
+    return <img src={iconUrl} alt="" className={cn('object-contain', className)} />
+  }
   if (iconSlug) {
+    if (iconSlug.startsWith('url:')) {
+      return <img src={decodeURIComponent(iconSlug.slice(4))} alt="" className={cn('object-contain', className)} />
+    }
+    const presetIcon = presetId ? renderPresetIcon(iconSlug, className) : null
+    if (presetIcon) {
+      return presetIcon
+    }
     return <LobeIconImage slug={iconSlug} className={className} />
   }
-  const Icon = PROVIDER_ICONS[presetId ?? ''] ?? PROVIDER_ICONS.custom!
-  return <Icon className={className} />
+  return renderPresetIcon(presetId, className) ?? <CustomIcon className={className} />
 }
 
 function LobeIconImage({ slug, className }: { slug: string, className?: string }) {

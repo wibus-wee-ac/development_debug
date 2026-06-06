@@ -376,25 +376,6 @@ interface _AcpSessionState {
   error?: string
 }
 
-// ── Pack codebase types ─────────────────────────────────────────────────────
-
-type PackStyle = 'xml' | 'markdown' | 'plain'
-
-interface _PackCodebaseOptions {
-  style: PackStyle
-  compress: boolean
-  include?: string
-  ignore?: string
-  removeComments?: boolean
-  removeEmptyLines?: boolean
-}
-
-interface _PackCodebaseResult {
-  content: string
-  totalFiles: number
-  totalTokens: number
-}
-
 // ── Usage types ─────────────────────────────────────────────────────────────
 
 interface _DailyUsage {
