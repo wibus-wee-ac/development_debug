@@ -1,9 +1,11 @@
 import type { SDKControlGetContextUsageResponse } from '@anthropic-ai/claude-agent-sdk'
 
 import type {
+  RuntimeCompactUiSlotState,
   RuntimeContextUsage,
   RuntimeContextUsageItem,
   RuntimeContextUsageSection,
+  RuntimeTokenUsageBreakdown,
 } from '../../chat-runtime/runtime-provider-types'
 import { CLAUDE_AGENT_RUNTIME_KIND } from './metadata'
 
@@ -143,6 +145,46 @@ export function projectClaudeAgentContextUsage(input: {
     messageBreakdown: messageBreakdown ? { ...messageBreakdown } : null,
     apiUsage: input.response.apiUsage ? { ...input.response.apiUsage } : null,
     raw: input.response,
+    updatedAt: input.updatedAt,
+  }
+}
+
+export function projectClaudeAgentCompactState(input: {
+  threadId: string
+  turnId: string | null
+  usage: RuntimeContextUsage
+  updatedAt: number
+}): RuntimeCompactUiSlotState {
+  const totalTokens = readTokenCount(input.usage.totalTokens)
+  const modelContextWindow = input.usage.maxTokens
+  const usagePercent = readCompactUsagePercent({
+    percentage: input.usage.percentage,
+    totalTokens,
+    modelContextWindow,
+  })
+  const status = readCompactStatus({ usagePercent })
+
+  return {
+    kind: 'compact',
+    slotId: 'claude-agent:compact',
+    threadId: input.threadId,
+    turnId: input.turnId,
+    status,
+    isCompactRelevant: status !== 'idle',
+    total: {
+      totalTokens,
+      inputTokens: totalTokens,
+      cachedInputTokens: readApiUsageTokenCount(input.usage.apiUsage, 'cache_read_input_tokens'),
+      outputTokens: readApiUsageTokenCount(input.usage.apiUsage, 'output_tokens'),
+      reasoningOutputTokens: 0,
+    },
+    last: createEmptyTokenUsageBreakdown(),
+    modelContextWindow,
+    autoCompactTokenLimit: null,
+    usagePercent,
+    autoCompactPercent: null,
+    lastCompactedAt: null,
+    compactionItemId: null,
     updatedAt: input.updatedAt,
   }
 }
@@ -330,6 +372,47 @@ function readNullableTokenCount(value: number | null | undefined): number | null
 
 function readNullableNumber(value: number | null | undefined): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function readCompactUsagePercent(input: {
+  percentage: number | null
+  totalTokens: number
+  modelContextWindow: number | null
+}): number | null {
+  if (input.percentage !== null) {
+    return Math.min(100, Math.max(0, input.percentage))
+  }
+  if (!input.modelContextWindow || input.totalTokens <= 0) {
+    return null
+  }
+  return Math.min(100, Math.max(0, (input.totalTokens / input.modelContextWindow) * 100))
+}
+
+function readCompactStatus(input: { usagePercent: number | null }): RuntimeCompactUiSlotState['status'] {
+  if (input.usagePercent !== null && input.usagePercent >= 100) {
+    return 'overLimit'
+  }
+  if (input.usagePercent !== null && input.usagePercent >= 70) {
+    return 'nearLimit'
+  }
+  return 'idle'
+}
+
+function readApiUsageTokenCount(value: Record<string, unknown> | null, key: string): number {
+  const tokenCount = value?.[key]
+  return typeof tokenCount === 'number' && Number.isFinite(tokenCount) && tokenCount > 0
+    ? Math.round(tokenCount)
+    : 0
+}
+
+function createEmptyTokenUsageBreakdown(): RuntimeTokenUsageBreakdown {
+  return {
+    totalTokens: 0,
+    inputTokens: 0,
+    cachedInputTokens: 0,
+    outputTokens: 0,
+    reasoningOutputTokens: 0,
+  }
 }
 
 function readColor(value: string | null | undefined): string | null {

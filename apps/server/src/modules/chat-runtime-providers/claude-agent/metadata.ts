@@ -30,10 +30,22 @@ export const CLAUDE_AGENT_RUNTIME_CAPABILITIES = {
   supportsSteerTurn: true,
   supportsShellExecution: false,
   supportsRuntimeSettings: true,
-  supportsUiSlotStates: false,
+  supportsUiSlotStates: true,
   supportsDynamicCapabilities: false,
   sessionModelSwitch: 'restart-session',
 } satisfies ChatRuntimeCapabilities
+
+const CLAUDE_AGENT_COMPACT_SLOT: RuntimeUiSlot = {
+  id: 'claude-agent:compact',
+  name: 'compact',
+  label: 'Compact',
+  description: 'Compact this conversation context.',
+  argumentHint: '',
+  aliases: ['summarize'],
+  iconKey: 'compact',
+  commandText: '/compact ',
+  surfaces: ['runtimePanel'],
+}
 
 const CLAUDE_AGENT_QUICK_QUESTION_SLOT: RuntimeUiSlot = {
   id: 'claude-agent:quick-question',
@@ -51,7 +63,7 @@ export function projectClaudeAgentPresentation(slashCommands: SlashCommand[]): R
   return {
     runtimeKind: CLAUDE_AGENT_RUNTIME_KIND,
     slashCommands: slashCommands.map(toRuntimeSlashCommand),
-    uiSlots: [CLAUDE_AGENT_QUICK_QUESTION_SLOT],
+    uiSlots: [CLAUDE_AGENT_COMPACT_SLOT, CLAUDE_AGENT_QUICK_QUESTION_SLOT],
     skills: [],
   }
 }

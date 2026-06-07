@@ -20,10 +20,11 @@ Claude SDK `ExitPlanMode` remains available in SDK plan mode as the provider-own
 
 - `provider.ts`: Claude Agent `ChatRuntime` implementation; starts or resumes SDK sessions, resolves agent-scoped runtime cwd, projects SDK session titles to Chat Runtime, forwards MCP servers, streams turns, and handles live steering, cancellation, context usage reads, session title generation, and Cradle runtime settings updates through SDK permission mode projection.
 - `provider.test.ts`: Regression tests for Claude Agent SDK options, title projection, MCP forwarding, history projection, streaming, steering, attachments, model switching, and tool chunk mapping.
-- `metadata.ts`: Claude Agent runtime kind, catalog metadata, static capabilities, and slash-command presentation projection.
+- `metadata.ts`: Claude Agent runtime kind, catalog metadata, static capabilities, slash-command presentation projection, and static runtime UI slots.
 - `types.ts`: Claude Agent provider-private content and session-info types shared by package modules.
 - `runtime-context.ts`: Resolves per-session Claude Agent cwd, agent home, project workspace path, SDK additional directories, and the Cradle-owned SDK config root.
 - `input-projector.ts`: Projects Cradle message input, history, selected Skills, provider config, and environment into Claude Agent SDK content and query options.
+- `context-usage-projector.ts`: Projects Claude Agent SDK context usage control responses into Chat Runtime context usage details and compact UI slot state.
 - `async-input-stream.ts`: Claude Agent SDK async user-message input stream built on shared provider queue infrastructure.
 - `state-projector.ts`: Projects Claude Agent provider snapshot state such as pending resumed-session model switches.
 - `event-to-chunk-mapper.ts`: Maps Claude Agent SDK messages into AI SDK `UIMessageChunk` events.

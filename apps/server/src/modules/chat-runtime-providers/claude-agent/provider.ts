@@ -11,12 +11,15 @@ import type {
   GenerateSessionTitleInput,
   GetCapabilitiesInput,
   GetContextUsageInput,
+  GetUiSlotStatesInput,
   ProviderContext,
   QuickQuestionInput,
   ResumeChatSessionInput,
+  RuntimeCompactUiSlotState,
   RuntimeContextUsage,
   RuntimePresentationCapabilities,
   RuntimeSession,
+  RuntimeUiSlotState,
   StartChatSessionInput,
   SteerTurnInput,
   StreamTurnInput,
@@ -29,7 +32,7 @@ import { readTrustedClaudeAgentConfig } from '../../provider-contracts/provider-
 import { createBoundedTextCollector } from '../bounded-text-collector'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import { ClaudeAgentInputStream, emptyClaudeAgentInput } from './async-input-stream'
-import { projectClaudeAgentContextUsage } from './context-usage-projector'
+import { projectClaudeAgentCompactState, projectClaudeAgentContextUsage } from './context-usage-projector'
 import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from './event-to-chunk-mapper'
 import {
   buildClaudeAgentTurnContent,
@@ -62,6 +65,8 @@ type ActiveClaudeQuery = {
   inputStream: ClaudeAgentInputStream
 }
 
+type ContextUsageRuntimeInput = Pick<GetContextUsageInput, 'runtimeSession'>
+
 export function createClaudeAgentProvider(ctx: ProviderContext): ChatRuntime {
   return new ClaudeAgentProvider(ctx)
 }
@@ -72,6 +77,8 @@ export class ClaudeAgentProvider implements ChatRuntime {
   readonly capabilities = CLAUDE_AGENT_RUNTIME_CAPABILITIES
 
   private readonly activeQueries = new Map<string, ActiveClaudeQuery>()
+  private readonly compactStates = new Map<string, RuntimeCompactUiSlotState>()
+  private readonly lastContextUsageBySession = new Map<string, RuntimeContextUsage>()
   private _lastUsage: TokenUsage | null = null
   private _totalUsage: TokenUsage | null = null
 
@@ -150,6 +157,11 @@ export class ClaudeAgentProvider implements ChatRuntime {
     finally {
       activeQuery.close()
     }
+  }
+
+  async getUiSlotStates(input: GetUiSlotStatesInput): Promise<RuntimeUiSlotState[]> {
+    const compactState = await this.readCompactState(input)
+    return compactState ? [compactState] : []
   }
 
   async* quickQuestion(input: QuickQuestionInput): AsyncGenerator<UIMessageChunk, void, void> {
@@ -372,6 +384,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
         }
 
         if (message.type === 'result') {
+          await this.refreshCompactState(input).catch(() => undefined)
           inputStream.close()
         }
       }
@@ -424,18 +437,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
   }
 
   async getContextUsage(input: GetContextUsageInput): Promise<RuntimeContextUsage | null> {
-    const sessionId = input.runtimeSession.chatSessionId
-    const entry = this.activeQueries.get(sessionId)
-    if (!entry) {
-      return null
-    }
-
-    const response = await entry.query.getContextUsage()
-    return projectClaudeAgentContextUsage({
-      providerSessionId: input.runtimeSession.providerSessionId,
-      response,
-      updatedAt: Math.floor(Date.now() / 1000),
-    })
+    return await this.readContextUsage(input)
   }
 
   async cancelTurn(input: CancelTurnInput): Promise<void> {
@@ -448,6 +450,45 @@ export class ClaudeAgentProvider implements ChatRuntime {
     entry.query.close()
     entry.inputStream.close()
     this.releaseQuery(sessionId, entry)
+  }
+
+  private async readCompactState(input: GetUiSlotStatesInput): Promise<RuntimeCompactUiSlotState | null> {
+    return await this.refreshCompactState(input)
+      ?? this.compactStates.get(input.runtimeSession.chatSessionId)
+      ?? null
+  }
+
+  private async readContextUsage(input: ContextUsageRuntimeInput): Promise<RuntimeContextUsage | null> {
+    const sessionId = input.runtimeSession.chatSessionId
+    const entry = this.activeQueries.get(sessionId)
+    if (!entry) {
+      return this.lastContextUsageBySession.get(sessionId) ?? null
+    }
+
+    const updatedAt = Math.floor(Date.now() / 1000)
+    const response = await entry.query.getContextUsage()
+    const usage = projectClaudeAgentContextUsage({
+      providerSessionId: input.runtimeSession.providerSessionId,
+      response,
+      updatedAt,
+    })
+    this.lastContextUsageBySession.set(sessionId, usage)
+    return usage
+  }
+
+  private async refreshCompactState(input: ContextUsageRuntimeInput): Promise<RuntimeCompactUiSlotState | null> {
+    const usage = await this.readContextUsage(input)
+    if (!usage) {
+      return null
+    }
+    const compactState = projectClaudeAgentCompactState({
+      threadId: input.runtimeSession.chatSessionId,
+      turnId: null,
+      usage,
+      updatedAt: usage.updatedAt,
+    })
+    this.compactStates.set(input.runtimeSession.chatSessionId, compactState)
+    return compactState
   }
 
   private async updateActiveQueryPermissionMode(

@@ -561,10 +561,21 @@ describe('claudeAgentProvider MCP integration', () => {
     })).resolves.toEqual({
       runtimeKind: 'claude-agent',
       slashCommands: [
-        { name: 'compact', description: 'Compact the conversation', argumentHint: '' },
+        { name: 'compact', description: 'Compact the conversation', argumentHint: '', aliases: undefined },
         { name: 'review', description: 'Review a target file', argumentHint: '<file>', aliases: ['code-review'] },
       ],
       uiSlots: [
+        {
+          id: 'claude-agent:compact',
+          name: 'compact',
+          label: 'Compact',
+          description: 'Compact this conversation context.',
+          argumentHint: '',
+          aliases: ['summarize'],
+          iconKey: 'compact',
+          commandText: '/compact ',
+          surfaces: ['runtimePanel'],
+        },
         {
           id: 'claude-agent:quick-question',
           name: 'btw',
@@ -1296,6 +1307,27 @@ describe('claudeAgentProvider MCP integration', () => {
       percentage: 0.1835,
     }))
 
+    const slotStates = await provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+    })
+
+    expect(activeQuery.getContextUsage).toHaveBeenCalledTimes(2)
+    expect(slotStates).toEqual([
+      expect.objectContaining({
+        kind: 'compact',
+        slotId: 'claude-agent:compact',
+        threadId: 'chat-session-1',
+        total: expect.objectContaining({
+          totalTokens: 367,
+          inputTokens: 367,
+        }),
+        modelContextWindow: 200_000,
+        usagePercent: 0.1835,
+      }),
+    ])
+
     const sections = new Map(usage!.sections.map(section => [section.kind, section]))
     expect(sections.get('system-prompt')).toEqual(expect.objectContaining({
       label: 'System prompt',
@@ -1342,6 +1374,61 @@ describe('claudeAgentProvider MCP integration', () => {
       profile: createProfile(),
       workspacePath: '/tmp/cradle-workspace',
     })).resolves.toBeNull()
+  })
+
+  it('keeps context usage and compact slot state available after a fast Claude Agent stream ends', async () => {
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+
+    const activeQuery = createAsyncQuery([
+      {
+        type: 'result',
+        session_id: 'claude-session-fast',
+        usage: { input_tokens: 30, output_tokens: 12 },
+      },
+    ])
+
+    sdkMocks.query.mockReturnValue(activeQuery)
+
+    const runtimeSession = createResumedRuntimeSession({
+      providerSessionId: 'claude-session-fast',
+    })
+
+    for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-fast-context',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Fast answer'),
+      workspaceId: 'workspace-1',
+    })) {
+      // Drain stream.
+    }
+
+    expect(activeQuery.getContextUsage).toHaveBeenCalledOnce()
+    await expect(provider.getContextUsage({
+      runtimeSession,
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+    })).resolves.toEqual(expect.objectContaining({
+      runtimeKind: 'claude-agent',
+      providerSessionId: 'claude-session-fast',
+      totalTokens: 367,
+      source: 'claude-agent-sdk.getContextUsage',
+    }))
+    await expect(provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+    })).resolves.toEqual([
+      expect.objectContaining({
+        kind: 'compact',
+        slotId: 'claude-agent:compact',
+        modelContextWindow: 200_000,
+        total: expect.objectContaining({ totalTokens: 367 }),
+      }),
+    ])
+    expect(activeQuery.getContextUsage).toHaveBeenCalledOnce()
   })
 
   it('accumulates usage across multiple streaming messages', async () => {
