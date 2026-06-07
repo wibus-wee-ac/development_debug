@@ -344,7 +344,6 @@ export class CodexProvider implements ChatRuntime {
         ephemeral: true,
         threadSource: 'user',
         excludeTurns: true,
-        persistExtendedHistory: false,
       }
       const response = await client.request('thread/fork', forkParams) as ThreadResponse
       const threadId = response.thread?.id
@@ -440,7 +439,6 @@ export class CodexProvider implements ChatRuntime {
         model: effectiveModel ?? null,
         ephemeral: true,
         threadSource: 'user',
-        persistExtendedHistory: false,
       }) as ThreadResponse
 
       const threadId = threadResponse.thread?.id
@@ -2027,7 +2025,6 @@ async function generateCodexThreadTitle(
       config: titleConfig,
       ephemeral: true,
       threadSource: 'user',
-      persistExtendedHistory: false,
     }) as ThreadResponse
     titleThreadId = threadResponse.thread?.id ?? null
     if (!titleThreadId) {

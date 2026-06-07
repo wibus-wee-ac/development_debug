@@ -107,6 +107,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     argumentHint: '',
     iconKey: 'plan',
     commandText: '/plan ',
+    surfaces: ['composerState', 'runtimePanel'],
     anyNotifications: ['turn/plan/updated', 'item/plan/delta'],
   },
   {

@@ -626,6 +626,7 @@ describe('codexProvider app-server integration', () => {
       skills: [],
       uiSlots: expect.arrayContaining([
         expect.objectContaining({ id: 'codex:goal', name: 'goal', iconKey: 'goal', surfaces: ['slashCommand', 'composerState', 'runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:plan', name: 'plan', iconKey: 'plan', surfaces: ['composerState', 'runtimePanel'] }),
         expect.objectContaining({ id: 'codex:mcp', name: 'mcp', iconKey: 'mcp', surfaces: ['runtimePanel'] }),
         expect.objectContaining({ id: 'codex:review', name: 'review', iconKey: 'code-review', surfaces: ['slashCommand'] }),
         expect.objectContaining({ id: 'codex:quick-question', name: 'btw', iconKey: 'quick-question', surfaces: ['slashCommand', 'composerState'] }),
@@ -714,6 +715,7 @@ describe('codexProvider app-server integration', () => {
       skills: [],
       uiSlots: expect.arrayContaining([
         expect.objectContaining({ id: 'codex:goal', name: 'goal', iconKey: 'goal', surfaces: ['slashCommand', 'composerState', 'runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:plan', name: 'plan', iconKey: 'plan', surfaces: ['composerState', 'runtimePanel'] }),
         expect.objectContaining({ id: 'codex:compact', name: 'compact', iconKey: 'compact', surfaces: ['slashCommand', 'runtimePanel'] }),
         expect.objectContaining({ id: 'codex:review', name: 'review', iconKey: 'code-review', surfaces: ['slashCommand'] }),
         expect.objectContaining({ id: 'codex:quick-question', name: 'btw', iconKey: 'quick-question', surfaces: ['slashCommand', 'composerState'] }),
@@ -797,7 +799,6 @@ describe('codexProvider app-server integration', () => {
         ephemeral: true,
         threadSource: 'user',
         excludeTurns: true,
-        persistExtendedHistory: false,
       }),
     })
     expect(client.requests[1]).toEqual({
@@ -2626,7 +2627,6 @@ describe('codexProvider app-server integration', () => {
         sandbox: 'read-only',
         ephemeral: true,
         threadSource: 'user',
-        persistExtendedHistory: false,
         config: expect.objectContaining({
           approval_policy: 'never',
           disable_response_storage: true,

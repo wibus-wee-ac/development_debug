@@ -38,6 +38,7 @@ export interface CodexAppServerClientOptions {
 }
 
 const CODEX_NATIVE_CLIENT_INFO_FALLBACK_VERSION = '0.0.0'
+const CODEX_APP_SERVER_PATH_ENV = 'CRADLE_CODEX_APP_SERVER_PATH'
 const codexNativeClientVersionByPath = new Map<string, Promise<string>>()
 
 export function buildCradleCodexAppServerEnv(input: {
@@ -77,6 +78,7 @@ export class CodexAppServerClient {
   constructor(options: CodexAppServerClientOptions = {}) {
     this.serverRequestHandler = options.serverRequestHandler
     this.exposeServerRequestsAsNotifications = options.exposeServerRequestsAsNotifications ?? true
+    const env = { ...process.env, ...options.env }
     const args = ['app-server', '--listen', 'stdio://']
     if (options.config) {
       for (const override of serializeConfigOverrides(options.config)) {
@@ -84,9 +86,8 @@ export class CodexAppServerClient {
       }
     }
 
-    const env = { ...process.env, ...options.env }
     this.clientInfoVersion = readCradleCodexClientVersion(env)
-    this.codexPath = options.codexPath ?? 'codex'
+    this.codexPath = options.codexPath ?? resolveCodexAppServerPath(env)
     this.userAgentMode = options.userAgentMode ?? 'cradle'
     env.CODEX_HOME = prepareCodexAppServerHome()
     if (options.apiKey) {
@@ -312,6 +313,10 @@ function isPendingInteractiveServerRequest(method: string): boolean {
 
 export function readCradleCodexClientVersion(env: Record<string, string | undefined> = process.env): string {
   return env.CRADLE_VERSION?.trim() || env.npm_package_version?.trim() || '0.0.1'
+}
+
+export function resolveCodexAppServerPath(env: Record<string, string | undefined> = process.env): string {
+  return env[CODEX_APP_SERVER_PATH_ENV]?.trim() || 'codex'
 }
 
 export function readCodexNativeClientVersion(codexPath = 'codex'): Promise<string> {

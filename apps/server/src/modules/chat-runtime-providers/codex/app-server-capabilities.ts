@@ -25,8 +25,8 @@ export interface CodexAppServerCapabilityManifest {
 }
 
 const CODEX_APP_SERVER_PROTOCOL = 'codex-app-server'
-const CODEX_APP_SERVER_GENERATOR_VERSION = 'codex-cli 0.135.0'
-const CODEX_APP_SERVER_GENERATED_DATE = '2026-05-31'
+const CODEX_APP_SERVER_GENERATOR_VERSION = 'codex-cli 0.137.0'
+const CODEX_APP_SERVER_GENERATED_DATE = '2026-06-07'
 
 export const CODEX_APP_SERVER_CLIENT_METHODS = [
   { method: 'initialize', paramsType: 'InitializeParams', category: 'initialize', operation: 'initialize', interaction: 'request' },
@@ -59,6 +59,7 @@ export const CODEX_APP_SERVER_CLIENT_METHODS = [
   { method: 'thread/turns/items/list', paramsType: 'ThreadTurnsItemsListParams', category: 'thread', operation: 'turns/items/list', interaction: 'request' },
   { method: 'thread/inject_items', paramsType: 'ThreadInjectItemsParams', category: 'thread', operation: 'inject_items', interaction: 'request' },
   { method: 'skills/list', paramsType: 'SkillsListParams', category: 'skills', operation: 'list', interaction: 'request' },
+  { method: 'skills/extraRoots/set', paramsType: 'SkillsExtraRootsSetParams', category: 'skills', operation: 'extraRoots/set', interaction: 'request' },
   { method: 'hooks/list', paramsType: 'HooksListParams', category: 'hooks', operation: 'list', interaction: 'request' },
   { method: 'marketplace/add', paramsType: 'MarketplaceAddParams', category: 'marketplace', operation: 'add', interaction: 'request' },
   { method: 'marketplace/remove', paramsType: 'MarketplaceRemoveParams', category: 'marketplace', operation: 'remove', interaction: 'request' },
@@ -102,6 +103,9 @@ export const CODEX_APP_SERVER_CLIENT_METHODS = [
   { method: 'remoteControl/enable', paramsType: null, category: 'remote-control', operation: 'enable', interaction: 'request' },
   { method: 'remoteControl/disable', paramsType: null, category: 'remote-control', operation: 'disable', interaction: 'request' },
   { method: 'remoteControl/status/read', paramsType: null, category: 'remote-control', operation: 'status/read', interaction: 'request' },
+  { method: 'remoteControl/pairing/start', paramsType: 'RemoteControlPairingStartParams', category: 'remote-control', operation: 'pairing/start', interaction: 'request' },
+  { method: 'remoteControl/client/list', paramsType: 'RemoteControlClientsListParams', category: 'remote-control', operation: 'client/list', interaction: 'request' },
+  { method: 'remoteControl/client/revoke', paramsType: 'RemoteControlClientsRevokeParams', category: 'remote-control', operation: 'client/revoke', interaction: 'request' },
   { method: 'collaborationMode/list', paramsType: 'CollaborationModeListParams', category: 'collaboration-mode', operation: 'list', interaction: 'request' },
   { method: 'mock/experimentalMethod', paramsType: 'MockExperimentalMethodParams', category: 'mock', operation: 'experimentalMethod', interaction: 'request' },
   { method: 'environment/add', paramsType: 'EnvironmentAddParams', category: 'environment', operation: 'add', interaction: 'request' },

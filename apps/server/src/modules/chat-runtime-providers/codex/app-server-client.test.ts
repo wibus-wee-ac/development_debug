@@ -8,6 +8,7 @@ import {
   buildCradleCodexAppServerEnv,
   CodexAppServerClient,
   readCradleCodexClientVersion,
+  resolveCodexAppServerPath,
   resolveCodexAppServerHome,
 } from './app-server-client'
 
@@ -100,6 +101,18 @@ describe('readCradleCodexClientVersion', () => {
   })
 })
 
+describe('resolveCodexAppServerPath', () => {
+  it('uses the desktop-provided bundled Codex runtime path', () => {
+    expect(resolveCodexAppServerPath({
+      CRADLE_CODEX_APP_SERVER_PATH: '/Applications/Cradle.app/Contents/Resources/codex',
+    })).toBe('/Applications/Cradle.app/Contents/Resources/codex')
+  })
+
+  it('falls back to the Codex command for non-desktop runtimes', () => {
+    expect(resolveCodexAppServerPath({})).toBe('codex')
+  })
+})
+
 describe('codexAppServerClient', () => {
   it('passes Cradle context environment into the app-server process', () => {
     spawnMock.mockReturnValueOnce({
@@ -127,6 +140,24 @@ describe('codexAppServerClient', () => {
           CRADLE_WORKSPACE_ID: 'workspace-1',
         }),
       }),
+    )
+    client.close()
+  })
+
+  it('uses the desktop-provided bundled Codex runtime when no explicit path is set', () => {
+    const child = createAppServerProcess()
+    spawnMock.mockReturnValueOnce(child)
+
+    const client = new CodexAppServerClient({
+      env: {
+        CRADLE_CODEX_APP_SERVER_PATH: '/Applications/Cradle.app/Contents/Resources/codex',
+      },
+    })
+
+    expect(spawnMock).toHaveBeenCalledWith(
+      '/Applications/Cradle.app/Contents/Resources/codex',
+      ['app-server', '--listen', 'stdio://'],
+      expect.any(Object),
     )
     client.close()
   })
