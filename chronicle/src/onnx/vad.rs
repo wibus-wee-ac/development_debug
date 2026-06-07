@@ -152,7 +152,7 @@ impl SileroVad {
         #[cfg(feature = "sherpa-asr")]
         {
             self.detector.accept_waveform(samples);
-            return Ok(if self.detector.detected() { 1.0 } else { 0.0 });
+            Ok(if self.detector.detected() { 1.0 } else { 0.0 })
         }
 
         #[cfg(not(feature = "sherpa-asr"))]
@@ -244,7 +244,7 @@ impl SileroVad {
                 }
                 self.detector.pop();
             }
-            return Ok(segments);
+            Ok(segments)
         }
 
         #[cfg(not(feature = "sherpa-asr"))]

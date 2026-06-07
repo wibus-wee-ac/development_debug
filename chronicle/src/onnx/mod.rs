@@ -24,13 +24,12 @@ static ORT_INIT: Once = Once::new();
 /// Initialize ONNX Runtime environment (idempotent).
 pub fn init_runtime() {
     ORT_INIT.call_once(|| {
-        if let Some(dylib_path) = find_onnxruntime_dylib() {
-            if ort::init_from(dylib_path)
+        if let Some(dylib_path) = find_onnxruntime_dylib()
+            && ort::init_from(dylib_path)
                 .map(|builder| builder.commit())
                 .is_ok()
-            {
-                return;
-            }
+        {
+            return;
         }
         ort::init().commit();
     });
@@ -71,10 +70,10 @@ fn onnx_graph_optimization_level() -> GraphOptimizationLevel {
 }
 
 fn find_onnxruntime_dylib() -> Option<PathBuf> {
-    if let Some(path) = std::env::var_os("ORT_DYLIB_PATH").map(PathBuf::from) {
-        if path.is_file() {
-            return Some(path);
-        }
+    if let Some(path) = std::env::var_os("ORT_DYLIB_PATH").map(PathBuf::from)
+        && path.is_file()
+    {
+        return Some(path);
     }
 
     let mut roots = Vec::new();
@@ -104,10 +103,10 @@ fn find_onnxruntime_dylib_in_tree(root: &Path, depth: usize) -> Option<PathBuf> 
         if path.is_file() && is_onnxruntime_dylib(&path) {
             return Some(path);
         }
-        if path.is_dir() {
-            if let Some(found) = find_onnxruntime_dylib_in_tree(&path, depth - 1) {
-                return Some(found);
-            }
+        if path.is_dir()
+            && let Some(found) = find_onnxruntime_dylib_in_tree(&path, depth - 1)
+        {
+            return Some(found);
         }
     }
     None

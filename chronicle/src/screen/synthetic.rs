@@ -29,7 +29,7 @@ impl SyntheticCaptureSource {
     ) -> Self {
         let seeds = [
             "Cradle Chronicle smoke frame: user is reviewing a Rust passive memory pipeline.",
-            "Cradle Chronicle smoke frame: artifacts, OCR text, and summary memory are being validated.",
+            "Cradle Chronicle smoke frame: artifacts, OCR text, and evidence outbox are being validated.",
             "Cradle Chronicle smoke frame: future capture providers can reuse the same storage contract.",
         ];
         let frames = (0..capture_limit)

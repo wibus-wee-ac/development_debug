@@ -114,12 +114,12 @@ impl SpeakerEmbeddingExtractor {
             })?;
             normalize_l2(&mut vector)?;
             self.dimensions = vector.len();
-            return Ok(SpeakerEmbedding {
+            Ok(SpeakerEmbedding {
                 model_id: MODEL_ID,
                 model_version: MODEL_VERSION,
                 dimensions: vector.len(),
                 vector,
-            });
+            })
         }
 
         #[cfg(not(feature = "sherpa-asr"))]

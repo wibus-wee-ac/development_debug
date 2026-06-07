@@ -17,6 +17,7 @@ use crate::time::Timestamp;
 mod screen_capture_kit_audio;
 
 const DEFAULT_AUDIO_SAMPLE_LIMIT: usize = 960_000;
+const MIXED_AUDIO_SAMPLE_RATE: u32 = 16_000;
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct AudioDiagnosticsReport {
@@ -81,28 +82,75 @@ fn capture_system_audio_samples_with_cpal(
 }
 
 pub fn capture_mixed_audio_samples(duration_ms: u64) -> ChronicleResult<MicrophoneCaptureReport> {
-    let microphone = capture_microphone_samples(duration_ms)?;
-    let system = capture_system_audio_samples(duration_ms)?;
-    let max_len = microphone.samples.len().max(system.samples.len());
-    let mut samples = Vec::with_capacity(max_len);
-    for index in 0..max_len {
-        let microphone_sample = microphone.samples.get(index).copied().unwrap_or(0.0);
-        let system_sample = system.samples.get(index).copied().unwrap_or(0.0);
-        samples.push(((microphone_sample + system_sample) * 0.5).clamp(-1.0, 1.0));
-    }
+    let microphone_handle = thread::spawn(move || capture_microphone_samples(duration_ms));
+    let system_handle = thread::spawn(move || capture_system_audio_samples(duration_ms));
+    let microphone = join_capture_thread(microphone_handle, "microphone")?;
+    let system = join_capture_thread(system_handle, "system audio")?;
+    let samples = mix_mono_sources(
+        &microphone.samples,
+        microphone.sample_rate,
+        &system.samples,
+        system.sample_rate,
+        MIXED_AUDIO_SAMPLE_RATE,
+    );
 
     Ok(MicrophoneCaptureReport {
         device_name: format!("{} + {}", microphone.device_name, system.device_name),
-        sample_rate: microphone.sample_rate,
+        sample_rate: MIXED_AUDIO_SAMPLE_RATE,
         channels: 1,
         source_sample_format: format!(
-            "mixed:{}+{}",
-            microphone.source_sample_format, system.source_sample_format
+            "mixed:resampled-{}:{}+{}",
+            MIXED_AUDIO_SAMPLE_RATE, microphone.source_sample_format, system.source_sample_format
         ),
         duration_ms: microphone.duration_ms.max(system.duration_ms),
         samples,
         dropped_samples: microphone.dropped_samples + system.dropped_samples,
     })
+}
+
+fn join_capture_thread(
+    handle: thread::JoinHandle<ChronicleResult<MicrophoneCaptureReport>>,
+    label: &str,
+) -> ChronicleResult<MicrophoneCaptureReport> {
+    handle
+        .join()
+        .map_err(|_| ChronicleError::Process(format!("{label} capture thread panicked")))?
+}
+
+fn mix_mono_sources(
+    microphone: &[f32],
+    microphone_sample_rate: u32,
+    system: &[f32],
+    system_sample_rate: u32,
+    target_sample_rate: u32,
+) -> Vec<f32> {
+    let microphone = resample_linear(microphone, microphone_sample_rate, target_sample_rate);
+    let system = resample_linear(system, system_sample_rate, target_sample_rate);
+    let max_len = microphone.len().max(system.len());
+    let mut samples = Vec::with_capacity(max_len);
+    for index in 0..max_len {
+        let microphone_sample = microphone.get(index).copied().unwrap_or(0.0);
+        let system_sample = system.get(index).copied().unwrap_or(0.0);
+        samples.push(((microphone_sample + system_sample) * 0.5).clamp(-1.0, 1.0));
+    }
+    samples
+}
+
+fn resample_linear(samples: &[f32], source_rate: u32, target_rate: u32) -> Vec<f32> {
+    if samples.is_empty() || source_rate == target_rate || source_rate == 0 || target_rate == 0 {
+        return samples.to_vec();
+    }
+    let ratio = source_rate as f64 / target_rate as f64;
+    let output_len = ((samples.len() as f64) / ratio).round().max(1.0) as usize;
+    let mut output = Vec::with_capacity(output_len);
+    for index in 0..output_len {
+        let source_position = index as f64 * ratio;
+        let left = source_position.floor() as usize;
+        let right = (left + 1).min(samples.len() - 1);
+        let fraction = (source_position - left as f64) as f32;
+        output.push(samples[left] * (1.0 - fraction) + samples[right] * fraction);
+    }
+    output
 }
 
 pub fn record_microphone_diagnostics(
@@ -467,7 +515,9 @@ mod tests {
     use std::sync::{Arc, Mutex};
 
     use crate::audio::activity::BoundedPcmBuffer;
-    use crate::audio::capture::{push_f32_samples, push_signed_samples, push_unsigned_samples};
+    use crate::audio::capture::{
+        mix_mono_sources, push_f32_samples, push_signed_samples, push_unsigned_samples,
+    };
 
     #[test]
     fn downmixes_interleaved_float_samples() {
@@ -491,5 +541,12 @@ mod tests {
         assert!(unsigned.samples()[0] <= -0.99);
         assert!(unsigned.samples()[1].abs() < 0.01);
         assert!(unsigned.samples()[2] >= 0.99);
+    }
+
+    #[test]
+    fn mixed_audio_resamples_before_combining() {
+        let mixed = mix_mono_sources(&[1.0, 1.0, 1.0, 1.0], 4, &[0.0, 0.0], 2, 2);
+
+        assert_eq!(mixed, vec![0.5, 0.5]);
     }
 }

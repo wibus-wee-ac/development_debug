@@ -1,4 +1,4 @@
-//! UTC timestamp helpers for artifact and memory names.
+//! UTC timestamp helpers for artifact and evidence names.
 
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 

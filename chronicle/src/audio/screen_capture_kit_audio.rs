@@ -55,10 +55,10 @@ define_class!(
             if output_type != SCStreamOutputType::Audio {
                 return;
             }
-            if let Some(samples) = read_mono_samples(sample_buffer) {
-                if let Ok(mut buffer) = self.ivars().buffer.lock() {
-                    buffer.push(&samples);
-                }
+            if let Some(samples) = read_mono_samples(sample_buffer)
+                && let Ok(mut buffer) = self.ivars().buffer.lock()
+            {
+                buffer.push(&samples);
             }
         }
     }
@@ -139,9 +139,7 @@ pub fn capture_system_audio_samples(duration_ms: u64) -> ChronicleResult<Microph
     let stop_result = stop_capture(&stream);
     let remove_result =
         unsafe { stream.removeStreamOutput_type_error(output_protocol, SCStreamOutputType::Audio) };
-    if let Err(error) = stop_result {
-        return Err(error);
-    }
+    stop_result?;
     if let Err(error) = remove_result {
         return Err(ChronicleError::Process(format!(
             "failed to detach ScreenCaptureKit audio output: {}",
@@ -369,9 +367,9 @@ fn append_audio_buffer_to_mono(
 
     if non_interleaved {
         let frames = samples_in_buffer.min(mono.len());
-        for frame_index in 0..frames {
+        for (frame_index, sample) in mono.iter_mut().enumerate().take(frames) {
             let sample_offset = frame_index * sample_bytes;
-            mono[frame_index] += read_normalized_sample(
+            *sample += read_normalized_sample(
                 &bytes[sample_offset..sample_offset + sample_bytes],
                 bits_per_channel,
                 is_float,
@@ -383,7 +381,7 @@ fn append_audio_buffer_to_mono(
 
     let channels = buffer_channels.max(total_channels).max(1);
     let frames = (samples_in_buffer / channels).min(mono.len());
-    for frame_index in 0..frames {
+    for (frame_index, sample) in mono.iter_mut().enumerate().take(frames) {
         let mut sum = 0.0_f32;
         for channel_index in 0..channels {
             let sample_index = frame_index * channels + channel_index;
@@ -395,7 +393,7 @@ fn append_audio_buffer_to_mono(
                 is_signed,
             );
         }
-        mono[frame_index] += (sum / channels as f32).clamp(-1.0, 1.0);
+        *sample += (sum / channels as f32).clamp(-1.0, 1.0);
     }
     let _ = buffer_index;
 }

@@ -33,10 +33,6 @@ impl ArtifactStore {
             .join(self.segment_started_at.filesystem())
     }
 
-    pub fn memories_dir(&self) -> PathBuf {
-        self.storage_root.join("memories")
-    }
-
     pub fn persist_frame(
         &self,
         frame: &CapturedFrame,
@@ -73,9 +69,14 @@ impl ArtifactStore {
         fs::write(&latest_ocr_path, &ocr_body)
             .map_err(|source| ChronicleError::io_at(&latest_ocr_path, source))?;
 
-        let snapshot_path = segment_dir.join("snapshot.json");
-        fs::write(&snapshot_path, snapshot_json(frame, ocr, &frame_name))
+        let snapshot_name = format!("snapshot-{:05}.json", frame.frame_index);
+        let snapshot_path = segment_dir.join(&snapshot_name);
+        let snapshot_body = snapshot_json(frame, ocr, &frame_name);
+        fs::write(&snapshot_path, &snapshot_body)
             .map_err(|source| ChronicleError::io_at(&snapshot_path, source))?;
+        let latest_snapshot_path = segment_dir.join("snapshot.json");
+        fs::write(&latest_snapshot_path, &snapshot_body)
+            .map_err(|source| ChronicleError::io_at(&latest_snapshot_path, source))?;
 
         let accessibility_name = format!("accessibility-{:05}.json", frame.frame_index);
         let accessibility_path = segment_dir.join(&accessibility_name);
@@ -259,10 +260,12 @@ mod tests {
         assert!(persisted.accessibility_path.exists());
         assert!(persisted.segment_dir.join("capture.json").exists());
         assert!(persisted.segment_dir.join("ocr.json").exists());
+        assert!(persisted.segment_dir.join("snapshot.json").exists());
         assert!(persisted.segment_dir.join("accessibility.json").exists());
         assert!(persisted.frame_path.ends_with("frame-00042.jpg"));
         assert!(persisted.capture_path.ends_with("capture-00042.json"));
         assert!(persisted.ocr_path.ends_with("ocr-00042.json"));
+        assert!(persisted.snapshot_path.ends_with("snapshot-00042.json"));
         let capture = fs::read_to_string(persisted.capture_path).expect("capture should read");
         assert!(capture.contains("\"display_id\": 5"));
         assert!(capture.contains("\"frame_index\": 42"));

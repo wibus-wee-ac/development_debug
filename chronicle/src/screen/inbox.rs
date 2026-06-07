@@ -1,6 +1,7 @@
 //! Inbox-backed capture source for Cradle desktop integration.
 
 use std::fs;
+use std::path::Component;
 use std::path::{Path, PathBuf};
 
 use crate::error::{ChronicleError, ChronicleResult};
@@ -64,8 +65,10 @@ fn read_manifest(manifest_path: &Path) -> ChronicleResult<CapturedFrame> {
     let display_id = parse_u32(&manifest, "display_id")?;
     let frame_index = parse_u64(&manifest, "frame_index")?;
     let captured_at = Timestamp::from_seconds(parse_u64(&manifest, "captured_at_epoch")?);
-    let image_path = base_dir.join(parse_string(&manifest, "image_path")?);
-    let text_path = base_dir.join(parse_string(&manifest, "text_path")?);
+    let image_path =
+        resolve_manifest_relative_path(base_dir, &parse_string(&manifest, "image_path")?)?;
+    let text_path =
+        resolve_manifest_relative_path(base_dir, &parse_string(&manifest, "text_path")?)?;
     let title = parse_string(&manifest, "title").unwrap_or_else(|_| "Cradle Capture".to_string());
     let bundle_id =
         parse_string(&manifest, "bundle_id").unwrap_or_else(|_| "app.cradle.desktop".to_string());
@@ -74,19 +77,9 @@ fn read_manifest(manifest_path: &Path) -> ChronicleResult<CapturedFrame> {
         .filter(|value| !value.is_empty());
     let is_private = parse_bool(&manifest, "is_private").unwrap_or(false);
 
-    let bytes =
-        fs::read(&image_path).map_err(|source| ChronicleError::io_at(&image_path, source))?;
-    // Guard against pathologically large files (100 MB cap)
-    const MAX_IMAGE_BYTES: usize = 100 * 1024 * 1024;
-    if bytes.len() > MAX_IMAGE_BYTES {
-        return Err(ChronicleError::Process(format!(
-            "inbox image exceeds {} MB limit: {}",
-            MAX_IMAGE_BYTES / (1024 * 1024),
-            image_path.display()
-        )));
-    }
-    let observed_text = fs::read_to_string(&text_path)
-        .map_err(|source| ChronicleError::io_at(&text_path, source))?;
+    let bytes = read_bounded_file(&image_path, MAX_IMAGE_BYTES, "image")?;
+    let observed_text = String::from_utf8(read_bounded_file(&text_path, MAX_TEXT_BYTES, "text")?)
+        .map_err(ChronicleError::Utf8)?;
     let frame_extension = image_path
         .extension()
         .and_then(|value| value.to_str())
@@ -115,6 +108,39 @@ fn read_manifest(manifest_path: &Path) -> ChronicleResult<CapturedFrame> {
         ),
         windows,
     })
+}
+
+const MAX_IMAGE_BYTES: usize = 100 * 1024 * 1024;
+const MAX_TEXT_BYTES: usize = 2 * 1024 * 1024;
+
+fn resolve_manifest_relative_path(base_dir: &Path, value: &str) -> ChronicleResult<PathBuf> {
+    let relative = PathBuf::from(value);
+    if value.trim().is_empty()
+        || relative.is_absolute()
+        || relative.components().any(|component| {
+            matches!(
+                component,
+                Component::ParentDir | Component::RootDir | Component::Prefix(_)
+            )
+        })
+    {
+        return Err(ChronicleError::InvalidArgument(format!(
+            "manifest path must stay inside inbox: {value}"
+        )));
+    }
+    Ok(base_dir.join(relative))
+}
+
+fn read_bounded_file(path: &Path, max_bytes: usize, label: &str) -> ChronicleResult<Vec<u8>> {
+    let metadata = fs::metadata(path).map_err(|source| ChronicleError::io_at(path, source))?;
+    if metadata.len() > max_bytes as u64 {
+        return Err(ChronicleError::Process(format!(
+            "inbox {label} exceeds {} MB limit: {}",
+            max_bytes / (1024 * 1024),
+            path.display()
+        )));
+    }
+    fs::read(path).map_err(|source| ChronicleError::io_at(path, source))
 }
 
 fn mark_processed(manifest_path: &Path) -> ChronicleResult<()> {
@@ -245,6 +271,35 @@ mod tests {
         assert_eq!(frame.frame_extension, "png");
         assert_eq!(frame.observed_text, "visible text");
         assert!(root.join("processed/frame.capture").exists());
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn rejects_manifest_paths_outside_inbox() {
+        let root = std::env::temp_dir().join(format!(
+            "cradle-chronicle-inbox-traversal-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        fs::create_dir_all(&root).expect("inbox should create");
+        fs::write(root.join("frame.txt"), "visible text").expect("text should write");
+        fs::write(
+            root.join("frame.capture"),
+            concat!(
+                "display_id=1\n",
+                "frame_index=7\n",
+                "captured_at_epoch=1779127000\n",
+                "image_path=../secret.png\n",
+                "text_path=frame.txt\n"
+            ),
+        )
+        .expect("manifest should write");
+
+        let mut source = InboxCaptureSource::new(&root).expect("source should create");
+        let error = source.next_frame().expect_err("path traversal should fail");
+
+        assert!(error.to_string().contains("inside inbox"));
 
         let _ = fs::remove_dir_all(&root);
     }

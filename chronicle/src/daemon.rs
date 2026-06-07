@@ -1,6 +1,5 @@
 //! Daemon mode for Cradle Chronicle.
 
-use std::env;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -13,25 +12,18 @@ use crate::audio::{
     TranscriptionRuntime, capture_microphone_samples, capture_mixed_audio_samples,
     capture_system_audio_samples, write_audio_segment_artifact,
 };
-use crate::capabilities::{LocalSummaryCapability, NoopIntegrationSink};
 use crate::config::{AudioCaptureSource, CaptureProvider, ChronicleConfig};
-use crate::core::ChronicleCore;
-use crate::cron::{CronScheduler, CronTickResult, TaskKind, default_jobs};
-use crate::dream::{DreamConfig, DreamEngine, DreamMode};
 use crate::error::{ChronicleError, ChronicleResult};
 use crate::meeting::detect_meeting;
-use crate::memory_pipeline::recursive::RecursiveSummarizer;
-use crate::memory_pipeline::summarizer::LocalSummaryWriter;
 use crate::ocr::ObservedTextExtractor;
-use crate::pipeline::Pipeline;
 use crate::recorder::artifacts::{ArtifactStore, PersistedFrame};
 use crate::recorder::fingerprint::FrameFingerprint;
+use crate::recorder::manager::RecorderState;
 use crate::recorder::sampler::AdaptiveSampler;
 use crate::screen::BrowserWindowObservation;
 use crate::screen::inbox::InboxCaptureSource;
 use crate::screen::privacy_filter::{PrivacyFilter, PrivacyFilterRules};
-use crate::slack::SlackScanner;
-use crate::store::{ChronicleMemoryManifest, ChronicleStore, ChronicleStoreEvent};
+use crate::store::{ChronicleDeliveryStatus, ChronicleOutbox, ChronicleOutboxEvent};
 use crate::time::Timestamp;
 
 #[cfg(target_os = "macos")]
@@ -42,16 +34,6 @@ use crate::screen::macos::{
 use crate::RecorderManager;
 
 static SHUTDOWN_REQUESTED: AtomicBool = AtomicBool::new(false);
-
-type LocalChronicleCore = ChronicleCore<LocalSummaryCapability, NoopIntegrationSink>;
-
-fn local_core(storage_root: &Path) -> LocalChronicleCore {
-    ChronicleCore::new(
-        ChronicleStore::new(storage_root),
-        LocalSummaryCapability,
-        NoopIntegrationSink,
-    )
-}
 
 /// Run Chronicle in daemon mode.
 pub fn run(config: ChronicleConfig) -> ChronicleResult<String> {
@@ -80,15 +62,16 @@ pub fn run(config: ChronicleConfig) -> ChronicleResult<String> {
     );
 
     if config.run_once {
-        let core = local_core(&config.storage_root);
-        let report = capture_once(&config, 1)?;
-        process_transcripts(&config.inbox_root, &core);
-        let onnx_runtime = crate::onnx::OnnxRuntime::new();
+        let outbox = ChronicleOutbox::new(&config.storage_root);
+        let mut recorder_state = RecorderState::default();
+        let report = capture_once(&config, 1, &mut recorder_state)?;
+        process_transcripts(&config.inbox_root, &outbox);
+        let onnx_runtime = crate::onnx::OnnxRuntime::new_local_only();
         let local_transcription = LocalTranscriptionPipeline::new(&onnx_runtime);
         if config.audio_capture {
-            process_audio_segment(&config, &core, &local_transcription);
+            process_audio_segment(&config, &outbox, &local_transcription);
         }
-        record_snapshots(&core, &report.persisted_frames);
+        record_snapshots(&outbox, &report.persisted_frames);
         drop(lock);
         cleanup_pid_file(&config.storage_root);
         return Ok(format!(
@@ -111,81 +94,53 @@ pub fn run(config: ChronicleConfig) -> ChronicleResult<String> {
 }
 
 fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
-    let core = local_core(&config.storage_root);
+    let outbox = ChronicleOutbox::new(&config.storage_root);
     let mut sampler = AdaptiveSampler::new(
         config.poll_interval_ms,
         config.min_interval_ms,
         config.max_interval_ms,
     );
+    let mut recorder_state = RecorderState::default();
     let mut frame_index: u64 = 1;
-    let mut all_persisted: Vec<PersistedFrame> = Vec::new();
-    let mut last_summary_time = Instant::now();
-    let summary_interval = Duration::from_secs(600); // 10 minutes
     let mut last_audio_segment_time: Option<Instant> = None;
     let mut is_idle = false;
     #[cfg(target_os = "macos")]
     let mut ax_observer = start_ax_observer(config);
 
-    // Pipeline, Cron, and Slack integration
-    let mut pipeline = Pipeline::from_env();
-
-    let cron_state_path = config.storage_root.join("cron-state.json");
-    let mut cron = CronScheduler::new(&cron_state_path);
-    if let Err(e) = cron.load_state() {
-        eprintln!("cradle chronicle cron load state error: {e}");
-    }
-    if cron.jobs().is_empty()
-        && let Ok(now) = Timestamp::now()
-    {
-        for job in default_jobs(now) {
-            cron.add_job(job);
-        }
-    }
-
-    let mut slack_scanner: Option<SlackScanner> = if env::var("SLACK_BOT_TOKEN").is_ok() {
-        match SlackScanner::from_env() {
-            Ok(scanner) => {
-                eprintln!("cradle chronicle slack scanner initialized");
-                Some(scanner)
-            }
-            Err(e) => {
-                eprintln!("cradle chronicle slack scanner init error: {e}");
-                None
-            }
-        }
-    } else {
-        None
-    };
-
-    let mut last_cron_check = Instant::now();
-    let cron_interval = Duration::from_secs(30);
-    let mut last_slack_poll = Instant::now();
-    let slack_interval = Duration::from_secs(60);
+    let mut last_cleanup_check = Instant::now();
+    let cleanup_interval = Duration::from_secs(60 * 60);
 
     // Meeting detection state
     let mut is_in_meeting = false;
 
-    // ONNX Runtime — local model inference (VAD, ASR, Embedding, PII)
-    // Models are loaded lazily on first use via OnnxRuntime.
-    let onnx_runtime = crate::onnx::OnnxRuntime::new();
-    eprintln!("cradle chronicle onnx runtime initialized (models load on demand)");
+    // ONNX Runtime — local model inference (VAD, ASR, speaker embedding).
+    // Models are loaded lazily from the local model root; daemon capture never
+    // blocks on Server-side model installation.
+    let onnx_runtime = crate::onnx::OnnxRuntime::new_local_only();
+    eprintln!("cradle chronicle onnx runtime initialized (local models load on demand)");
 
     // Audio transcription pipeline: local ONNX (Silero VAD + SenseVoice ASR)
     let local_transcription = crate::audio::asr::LocalTranscriptionPipeline::new(&onnx_runtime);
     eprintln!("cradle chronicle audio transcription pipeline ready (local ONNX)");
 
     while !SHUTDOWN_REQUESTED.load(Ordering::Relaxed) {
-        process_transcripts(&config.inbox_root, &core);
+        process_transcripts(&config.inbox_root, &outbox);
         process_audio_segment_if_due(
             config,
-            &core,
+            &outbox,
             &local_transcription,
             &mut last_audio_segment_time,
         );
         #[cfg(target_os = "macos")]
         refresh_ax_observer(config, &mut ax_observer);
         #[cfg(target_os = "macos")]
-        process_ax_observer_events(config, &core, &ax_observer, &mut frame_index);
+        process_ax_observer_events(
+            config,
+            &outbox,
+            &ax_observer,
+            &mut frame_index,
+            &mut recorder_state,
+        );
 
         // Check system idle
         let idle_seconds = system_idle_seconds();
@@ -205,48 +160,36 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
         }
 
         // Capture
-        match capture_once(config, frame_index) {
+        match capture_once(config, frame_index, &mut recorder_state) {
             Ok(report) => {
                 frame_index += 1;
+                let latest_fingerprint = report.latest_fingerprint;
                 if !report.persisted_frames.is_empty() {
-                    record_snapshots(&core, &report.persisted_frames);
+                    record_snapshots(&outbox, &report.persisted_frames);
 
                     // Meeting detection from the latest captured frame
                     if let Some(latest_frame) = report.persisted_frames.last() {
                         check_meeting_state(latest_frame, &mut is_in_meeting);
                     }
 
-                    // Feed adaptive sampler with fingerprint from captured frame
-                    let fp = FrameFingerprint::from_parts(
-                        &format!("frame-{frame_index}").into_bytes(),
-                        &format!("persisted-{}", report.persisted_frames.len()),
-                    );
-                    sampler.observe(fp);
-                    all_persisted.extend(report.persisted_frames);
-
-                    // Cap pending frames to prevent unbounded growth
-                    const MAX_PENDING_FRAMES: usize = 500;
-                    if all_persisted.len() > MAX_PENDING_FRAMES {
-                        eprintln!(
-                            "cradle chronicle: pending frames exceeded cap, forcing early summarization"
-                        );
-                        if let Err(e) = run_summary(config, &core, &all_persisted) {
-                            eprintln!("cradle chronicle forced summary error: {e}");
-                        }
-                        process_pipeline(&mut pipeline, &all_persisted);
-                        all_persisted.clear();
-                        last_summary_time = Instant::now();
+                    // Feed adaptive sampler with the actual latest frame fingerprint.
+                    if let Some(fingerprint) = latest_fingerprint {
+                        sampler.observe(fingerprint);
                     }
 
                     eprintln!(
                         "cradle chronicle daemon processed batch: observed={} persisted={}",
                         report.observed_frames,
-                        all_persisted.len()
+                        report.persisted_frames.len()
                     );
                 } else {
-                    // No new content — signal duplicate to sampler
-                    let fp = FrameFingerprint::from_parts(b"dup", "dup");
-                    sampler.observe(fp);
+                    if let Some(fingerprint) = latest_fingerprint {
+                        sampler.observe(fingerprint);
+                    } else {
+                        // No visible content reached OCR; signal stable inactivity.
+                        let fp = FrameFingerprint::from_parts(b"no-frame", "no-frame");
+                        sampler.observe(fp);
+                    }
                 }
             }
             Err(e) => {
@@ -254,50 +197,21 @@ fn daemon_loop(config: &ChronicleConfig) -> ChronicleResult<String> {
             }
         }
 
-        // Periodic summarization
-        if last_summary_time.elapsed() >= summary_interval && !all_persisted.is_empty() {
-            if let Err(e) = run_summary(config, &core, &all_persisted) {
-                eprintln!("cradle chronicle summary error: {e}");
+        if last_cleanup_check.elapsed() >= cleanup_interval {
+            if let Ok(now) = Timestamp::now() {
+                match cleanup_runtime_storage(&config.storage_root, now) {
+                    Ok(report) => eprintln!(
+                        "cradle chronicle cleanup removed_files={} removed_dirs={} kept_files={}",
+                        report.removed_files, report.removed_dirs, report.kept_files
+                    ),
+                    Err(error) => eprintln!("cradle chronicle cleanup error: {error}"),
+                }
             }
-            process_pipeline(&mut pipeline, &all_persisted);
-            all_persisted.clear();
-            last_summary_time = Instant::now();
-        }
-
-        // Cron check
-        if last_cron_check.elapsed() >= cron_interval {
-            process_cron_jobs(
-                &mut cron,
-                &mut pipeline,
-                &all_persisted,
-                &config.storage_root,
-            );
-            last_cron_check = Instant::now();
-        }
-
-        // Slack poll
-        if last_slack_poll.elapsed() >= slack_interval {
-            if let Some(ref mut scanner) = slack_scanner {
-                poll_slack(scanner, &core);
-            }
-            last_slack_poll = Instant::now();
+            last_cleanup_check = Instant::now();
         }
 
         let interval = Duration::from_millis(sampler.current_interval_ms());
         thread::sleep(interval);
-    }
-
-    // Final summary before exit
-    if !all_persisted.is_empty() {
-        if run_summary(config, &core, &all_persisted).is_err() {
-            eprintln!("cradle chronicle final summary error");
-        }
-        process_pipeline(&mut pipeline, &all_persisted);
-    }
-
-    // Save cron state before exit
-    if let Err(e) = cron.save_state() {
-        eprintln!("cradle chronicle cron save state error on exit: {e}");
     }
 
     Ok("cradle chronicle daemon stopped".to_string())
@@ -349,22 +263,24 @@ fn refresh_ax_observer(config: &ChronicleConfig, observer: &mut Option<AxObserve
 #[cfg(target_os = "macos")]
 fn process_ax_observer_events(
     config: &ChronicleConfig,
-    core: &LocalChronicleCore,
+    outbox: &ChronicleOutbox,
     observer: &Option<AxObserverRuntime>,
     frame_index: &mut u64,
+    recorder_state: &mut RecorderState,
 ) {
     let Some(observer) = observer else {
         return;
     };
     for event in observer.drain(4) {
         let captured_at = Timestamp::now().unwrap_or_else(|_| Timestamp::from_seconds(0));
-        record_accessibility_event(core, &event, captured_at);
+        record_accessibility_event(outbox, &event, captured_at);
         let accessibility = read_ax_observer_accessibility_capture(&event);
-        match capture_macos_with_accessibility(config, *frame_index, accessibility) {
+        match capture_macos_with_accessibility(config, *frame_index, accessibility, recorder_state)
+        {
             Ok(report) => {
                 *frame_index += 1;
                 if !report.persisted_frames.is_empty() {
-                    record_snapshots(core, &report.persisted_frames);
+                    record_snapshots(outbox, &report.persisted_frames);
                     eprintln!(
                         "cradle chronicle AXObserver event captured: notification={} pid={} frames={} dropped_total={}",
                         event.notification,
@@ -386,14 +302,14 @@ fn process_ax_observer_events(
 
 #[cfg(target_os = "macos")]
 fn record_accessibility_event(
-    core: &LocalChronicleCore,
+    outbox: &ChronicleOutbox,
     event: &crate::screen::macos::AxObserverNotification,
     captured_at: Timestamp,
 ) {
     let source_id = accessibility_event_source_id(event, captured_at);
-    record_store_event(
-        core,
-        ChronicleStoreEvent {
+    record_outbox_event(
+        outbox,
+        ChronicleOutboxEvent {
             id: source_id.clone(),
             kind: "accessibility-event".to_string(),
             created_at: captured_at.filesystem(),
@@ -453,30 +369,39 @@ fn sanitize_source_id_part(value: &str) -> String {
 fn capture_once(
     config: &ChronicleConfig,
     frame_index: u64,
+    recorder_state: &mut RecorderState,
 ) -> ChronicleResult<crate::RecorderReport> {
     match config.provider {
-        CaptureProvider::Macos => capture_macos(config, frame_index),
-        CaptureProvider::Inbox => capture_inbox(config),
+        CaptureProvider::Macos => capture_macos(config, frame_index, recorder_state),
+        CaptureProvider::Inbox => capture_inbox(config, recorder_state),
     }
 }
 
-fn capture_inbox(config: &ChronicleConfig) -> ChronicleResult<crate::RecorderReport> {
+fn capture_inbox(
+    config: &ChronicleConfig,
+    recorder_state: &mut RecorderState,
+) -> ChronicleResult<crate::RecorderReport> {
     let segment_started_at = Timestamp::now()?;
     let store = ArtifactStore::new(&config.storage_root, segment_started_at);
     let source = InboxCaptureSource::new(&config.inbox_root)?;
-    let mut manager = RecorderManager::with_privacy_filter(
+    let state = std::mem::take(recorder_state);
+    let mut manager = RecorderManager::with_privacy_filter_and_state(
         source,
         ObservedTextExtractor,
         store,
         privacy_filter_from_config(config),
+        state,
     );
-    manager.run_until_exhausted()
+    let report = manager.run_until_exhausted();
+    *recorder_state = manager.into_state();
+    report
 }
 
 #[cfg(target_os = "macos")]
 fn capture_macos(
     config: &ChronicleConfig,
     frame_index: u64,
+    recorder_state: &mut RecorderState,
 ) -> ChronicleResult<crate::RecorderReport> {
     let segment_started_at = Timestamp::now()?;
     let store = ArtifactStore::new(&config.storage_root, segment_started_at);
@@ -489,9 +414,17 @@ fn capture_macos(
         )?,
         None => MacosCaptureSource::capture_all_with_privacy_filter(frame_index, &privacy_filter)?,
     };
-    let mut manager =
-        RecorderManager::with_privacy_filter(source, ObservedTextExtractor, store, privacy_filter);
-    manager.run_until_exhausted()
+    let state = std::mem::take(recorder_state);
+    let mut manager = RecorderManager::with_privacy_filter_and_state(
+        source,
+        ObservedTextExtractor,
+        store,
+        privacy_filter,
+        state,
+    );
+    let report = manager.run_until_exhausted();
+    *recorder_state = manager.into_state();
+    report
 }
 
 #[cfg(target_os = "macos")]
@@ -499,6 +432,7 @@ fn capture_macos_with_accessibility(
     config: &ChronicleConfig,
     frame_index: u64,
     accessibility: crate::screen::AccessibilityCapture,
+    recorder_state: &mut RecorderState,
 ) -> ChronicleResult<crate::RecorderReport> {
     let segment_started_at = Timestamp::now()?;
     let store = ArtifactStore::new(&config.storage_root, segment_started_at);
@@ -516,9 +450,17 @@ fn capture_macos_with_accessibility(
             &privacy_filter,
         )?,
     };
-    let mut manager =
-        RecorderManager::with_privacy_filter(source, ObservedTextExtractor, store, privacy_filter);
-    manager.run_until_exhausted()
+    let state = std::mem::take(recorder_state);
+    let mut manager = RecorderManager::with_privacy_filter_and_state(
+        source,
+        ObservedTextExtractor,
+        store,
+        privacy_filter,
+        state,
+    );
+    let report = manager.run_until_exhausted();
+    *recorder_state = manager.into_state();
+    report
 }
 
 fn privacy_filter_from_config(config: &ChronicleConfig) -> PrivacyFilter {
@@ -533,42 +475,18 @@ fn privacy_filter_from_config(config: &ChronicleConfig) -> PrivacyFilter {
 fn capture_macos(
     _config: &ChronicleConfig,
     _frame_index: u64,
+    _recorder_state: &mut RecorderState,
 ) -> ChronicleResult<crate::RecorderReport> {
     Err(ChronicleError::InvalidArgument(
         "macOS capture provider is only available on macOS".to_string(),
     ))
 }
 
-fn run_summary(
-    config: &ChronicleConfig,
-    core: &LocalChronicleCore,
-    persisted: &[PersistedFrame],
-) -> ChronicleResult<()> {
-    let segment_started_at = Timestamp::now()?;
-    let store = ArtifactStore::new(&config.storage_root, segment_started_at);
-    let memories_dir = store.memories_dir();
-    let summarizer = RecursiveSummarizer::new(LocalSummaryWriter, memories_dir);
-    let summary = summarizer
-        .write_ten_minute_summary("Cradle Chronicle daemon capture", persisted.to_vec())?;
-    eprintln!(
-        "cradle chronicle local memory written: {}",
-        summary.output_path.display()
-    );
-    record_memory_manifest(
-        core,
-        "10min",
-        segment_started_at,
-        &summary.output_path,
-        persisted,
-    );
-    Ok(())
-}
-
-fn record_snapshots(core: &LocalChronicleCore, persisted: &[PersistedFrame]) {
+fn record_snapshots(outbox: &ChronicleOutbox, persisted: &[PersistedFrame]) {
     for frame in persisted {
-        record_store_event(
-            core,
-            ChronicleStoreEvent {
+        record_outbox_event(
+            outbox,
+            ChronicleOutboxEvent {
                 id: snapshot_source_id(frame),
                 kind: "snapshot".to_string(),
                 created_at: frame.captured_at.filesystem(),
@@ -590,32 +508,21 @@ fn record_snapshots(core: &LocalChronicleCore, persisted: &[PersistedFrame]) {
     }
 }
 
-fn record_memory_manifest(
-    core: &LocalChronicleCore,
-    window: &str,
-    created_at: Timestamp,
-    output_path: &Path,
-    source_frames: &[PersistedFrame],
-) {
-    let manifest = ChronicleMemoryManifest {
-        id: format!("memory:{}", output_path.display()),
-        window: window.to_string(),
-        created_at: created_at.filesystem(),
-        memory_path: output_path.to_path_buf(),
-        source_paths: source_frames
-            .iter()
-            .flat_map(|frame| [frame.snapshot_path.clone(), frame.frame_path.clone()])
-            .collect(),
-        summary_kind: "local".to_string(),
-    };
-    if let Err(error) = core.record_memory(manifest) {
-        eprintln!("cradle chronicle memory manifest write failed: {error}");
-    }
-}
-
-fn record_store_event(core: &LocalChronicleCore, event: ChronicleStoreEvent) {
-    if let Err(error) = core.append_event(event) {
-        eprintln!("cradle chronicle local event write failed: {error}");
+fn record_outbox_event(outbox: &ChronicleOutbox, event: ChronicleOutboxEvent) -> bool {
+    match outbox.append_and_try_deliver(&event) {
+        Ok(ChronicleDeliveryStatus::Delivered) => true,
+        Ok(ChronicleDeliveryStatus::Skipped) => true,
+        Ok(ChronicleDeliveryStatus::Failed(message)) => {
+            eprintln!(
+                "cradle chronicle outbox delivery deferred: kind={} id={} error={}",
+                event.kind, event.id, message
+            );
+            true
+        }
+        Err(error) => {
+            eprintln!("cradle chronicle outbox write failed: {error}");
+            false
+        }
     }
 }
 
@@ -666,148 +573,7 @@ fn check_meeting_state(frame: &PersistedFrame, is_in_meeting: &mut bool) {
     }
 }
 
-fn process_pipeline(pipeline: &mut Pipeline, frames: &[PersistedFrame]) {
-    match pipeline.process_frames(frames) {
-        Ok(report) => {
-            eprintln!(
-                "cradle chronicle pipeline completed: segments={} kept={} chunks={} deduped={}",
-                report.segments_produced,
-                report.segments_kept,
-                report.chunks_produced,
-                report.chunks_deduplicated
-            );
-        }
-        Err(error) => {
-            eprintln!("cradle chronicle pipeline error: {error}");
-        }
-    }
-}
-
-fn process_cron_jobs(
-    cron: &mut CronScheduler,
-    pipeline: &mut Pipeline,
-    frames: &[PersistedFrame],
-    storage_root: &Path,
-) {
-    let now = match Timestamp::now() {
-        Ok(t) => t,
-        Err(_) => return,
-    };
-    let due_jobs = cron.tick(now);
-    for result in due_jobs {
-        if let CronTickResult::Due(job_id) = result {
-            let task_kind = cron.get_job(&job_id).map(|j| j.task_kind);
-            match task_kind {
-                Some(TaskKind::Summarize) => {
-                    eprintln!("cradle chronicle cron: summarize triggered");
-                    cron.mark_completed(&job_id, now, "ok");
-                }
-                Some(TaskKind::Crystallize) => {
-                    process_pipeline(pipeline, frames);
-                    cron.mark_completed(&job_id, now, "ok");
-                }
-                Some(TaskKind::DreamArchive) => {
-                    eprintln!("cradle chronicle cron: dream-archive triggered");
-                    let mut engine = DreamEngine::new(DreamConfig::default());
-                    let chunks = pipeline.drain_chunks();
-                    engine.load_chunks(chunks);
-                    let report = engine.run(DreamMode::Archive, now);
-                    pipeline.replace_chunks(engine.take_chunks());
-                    eprintln!(
-                        "cradle chronicle dream-archive: archived={}",
-                        report.archived_count
-                    );
-                    cron.mark_completed(&job_id, now, "ok");
-                }
-                Some(TaskKind::DreamMerge) => {
-                    eprintln!("cradle chronicle cron: dream-merge triggered");
-                    let mut engine = DreamEngine::new(DreamConfig::default());
-                    let chunks = pipeline.drain_chunks();
-                    engine.load_chunks(chunks);
-                    let report = engine.run(DreamMode::Merge, now);
-                    pipeline.replace_chunks(engine.take_chunks());
-                    eprintln!(
-                        "cradle chronicle dream-merge: merged={}",
-                        report.merged_count
-                    );
-                    cron.mark_completed(&job_id, now, "ok");
-                }
-                Some(TaskKind::DreamPrune) => {
-                    eprintln!("cradle chronicle cron: dream-prune triggered");
-                    let mut engine = DreamEngine::new(DreamConfig::default());
-                    let chunks = pipeline.drain_chunks();
-                    engine.load_chunks(chunks);
-                    let report = engine.run(DreamMode::Prune, now);
-                    pipeline.replace_chunks(engine.take_chunks());
-                    eprintln!(
-                        "cradle chronicle dream-prune: pruned={}",
-                        report.pruned_count
-                    );
-                    cron.mark_completed(&job_id, now, "ok");
-                }
-                Some(TaskKind::HealthCheck) => {
-                    eprintln!("cradle chronicle cron: health check ok");
-                    cron.mark_completed(&job_id, now, "ok");
-                }
-                Some(TaskKind::Cleanup) => match cleanup_runtime_storage(storage_root, now) {
-                    Ok(report) => {
-                        eprintln!(
-                            "cradle chronicle cron: cleanup removed_files={} removed_dirs={} kept_files={}",
-                            report.removed_files, report.removed_dirs, report.kept_files
-                        );
-                        cron.mark_completed(&job_id, now, "ok");
-                    }
-                    Err(error) => {
-                        eprintln!("cradle chronicle cron cleanup error: {error}");
-                        cron.mark_completed(&job_id, now, "error");
-                    }
-                },
-                None => {}
-            }
-        }
-    }
-    if let Err(e) = cron.save_state() {
-        eprintln!("cradle chronicle cron save state error: {e}");
-    }
-}
-
-fn poll_slack(scanner: &mut SlackScanner, core: &LocalChronicleCore) {
-    match scanner.poll_all() {
-        Ok(messages) if !messages.is_empty() => {
-            eprintln!(
-                "cradle chronicle slack polled: {} new messages",
-                messages.len()
-            );
-            for msg in &messages {
-                let report_body = serde_json::json!({
-                    "sourceId": format!("slack:{}:{}", msg.channel_id, msg.timestamp),
-                    "platform": "slack",
-                    "channelId": msg.channel_id,
-                    "userId": msg.user_id,
-                    "text": msg.text,
-                    "timestamp": msg.timestamp,
-                });
-                record_store_event(
-                    core,
-                    ChronicleStoreEvent {
-                        id: format!("slack:{}:{}", msg.channel_id, msg.timestamp),
-                        kind: "message".to_string(),
-                        created_at: Timestamp::now()
-                            .map(|ts| ts.filesystem())
-                            .unwrap_or_else(|_| "1970-01-01T00-00-00Z".to_string()),
-                        payload: report_body,
-                    },
-                );
-            }
-        }
-        Ok(_) => {}
-        Err(error) => {
-            eprintln!("cradle chronicle slack poll error: {error}");
-        }
-    }
-}
-
-fn process_transcripts(inbox_root: &Path, core: &LocalChronicleCore) {
+fn process_transcripts(inbox_root: &Path, outbox: &ChronicleOutbox) {
     let transcript_root = inbox_root.join("audio-transcripts");
     if !transcript_root.exists() {
         return;
@@ -834,19 +600,44 @@ fn process_transcripts(inbox_root: &Path, core: &LocalChronicleCore) {
         match fs::read_to_string(manifest_path) {
             Ok(body) => {
                 let created_at = Timestamp::now().unwrap_or_else(|_| Timestamp::from_seconds(0));
-                record_store_event(
-                    core,
-                    ChronicleStoreEvent {
-                        id: format!("transcript:{}", manifest_path.display()),
+                let payload: serde_json::Value = match serde_json::from_str(&body) {
+                    Ok(value) => value,
+                    Err(error) => {
+                        eprintln!(
+                            "cradle chronicle transcript inbox invalid JSON for {}: {error}",
+                            manifest_path.display()
+                        );
+                        continue;
+                    }
+                };
+                let Some(source_id) = payload.get("sourceId").and_then(serde_json::Value::as_str)
+                else {
+                    eprintln!(
+                        "cradle chronicle transcript inbox missing sourceId: {}",
+                        manifest_path.display()
+                    );
+                    continue;
+                };
+                if !payload
+                    .get("segments")
+                    .is_some_and(serde_json::Value::is_array)
+                {
+                    eprintln!(
+                        "cradle chronicle transcript inbox missing segments array: {}",
+                        manifest_path.display()
+                    );
+                    continue;
+                }
+                let recorded = record_outbox_event(
+                    outbox,
+                    ChronicleOutboxEvent {
+                        id: source_id.to_string(),
                         kind: "audio-transcript".to_string(),
                         created_at: created_at.filesystem(),
-                        payload: serde_json::json!({
-                            "manifestPath": artifact_path_text(manifest_path),
-                            "bodyBytes": body.len()
-                        }),
+                        payload,
                     },
                 );
-                if mark_transcript_processed(manifest_path).is_ok() {
+                if recorded && mark_transcript_processed(manifest_path).is_ok() {
                     reported += 1;
                 }
             }
@@ -888,7 +679,7 @@ fn mark_transcript_processed(manifest_path: &Path) -> ChronicleResult<()> {
 
 fn process_audio_segment_if_due(
     config: &ChronicleConfig,
-    core: &LocalChronicleCore,
+    outbox: &ChronicleOutbox,
     local_transcription: &LocalTranscriptionPipeline<'_>,
     last_audio_segment_time: &mut Option<Instant>,
 ) {
@@ -899,7 +690,7 @@ fn process_audio_segment_if_due(
     if !audio_segment_due(*last_audio_segment_time, interval) {
         return;
     }
-    process_audio_segment(config, core, local_transcription);
+    process_audio_segment(config, outbox, local_transcription);
     *last_audio_segment_time = Some(Instant::now());
 }
 
@@ -909,7 +700,7 @@ fn audio_segment_due(last_audio_segment_time: Option<Instant>, interval: Duratio
 
 fn process_audio_segment(
     config: &ChronicleConfig,
-    core: &LocalChronicleCore,
+    outbox: &ChronicleOutbox,
     local_transcription: &LocalTranscriptionPipeline<'_>,
 ) {
     match write_audio_segment(config) {
@@ -924,8 +715,8 @@ fn process_audio_segment(
                 report.wav_path.display(),
                 report.metadata_path.display()
             );
-            record_audio_raw_segment(core, &report);
-            process_audio_transcription(core, &report, local_transcription);
+            record_audio_raw_segment(outbox, &report);
+            process_audio_transcription(outbox, &report, local_transcription);
         }
         Err(error) => {
             eprintln!("cradle chronicle audio segment error: {error}");
@@ -933,11 +724,11 @@ fn process_audio_segment(
     }
 }
 
-fn record_audio_raw_segment(core: &LocalChronicleCore, report: &AudioSegmentArtifactReport) {
+fn record_audio_raw_segment(outbox: &ChronicleOutbox, report: &AudioSegmentArtifactReport) {
     let source_id = audio_segment_source_id(report.source, &report.metadata_path);
-    record_store_event(
-        core,
-        ChronicleStoreEvent {
+    record_outbox_event(
+        outbox,
+        ChronicleOutboxEvent {
             id: source_id,
             kind: "audio-raw-segment".to_string(),
             created_at: report.recorded_at.clone(),
@@ -967,13 +758,13 @@ fn record_audio_raw_segment(core: &LocalChronicleCore, report: &AudioSegmentArti
 }
 
 fn process_audio_transcription(
-    core: &LocalChronicleCore,
+    outbox: &ChronicleOutbox,
     report: &AudioSegmentArtifactReport,
     local_transcription: &LocalTranscriptionPipeline<'_>,
 ) {
     let source_id = audio_segment_source_id(report.source, &report.metadata_path);
     if !report.active {
-        record_audio_processing_result(core, &source_id, "ignored", None, Vec::new(), None, None);
+        record_audio_processing_result(outbox, &source_id, "ignored", None, Vec::new(), None, None);
         return;
     }
 
@@ -984,7 +775,7 @@ fn process_audio_transcription(
     ) {
         Ok(output) if output.result.text.trim().is_empty() => {
             record_audio_processing_result(
-                core,
+                outbox,
                 &source_id,
                 "ignored",
                 None,
@@ -1001,10 +792,10 @@ fn process_audio_transcription(
                 &output.result,
                 output.runtime,
             );
-            let speaker_profile_ids = record_speaker_profiles(core, &output.result);
-            record_store_event(
-                core,
-                ChronicleStoreEvent {
+            let speaker_profile_ids = record_speaker_profiles(outbox, &output.result);
+            record_outbox_event(
+                outbox,
+                ChronicleOutboxEvent {
                     id: transcript_source_id.clone(),
                     kind: "audio-transcript".to_string(),
                     created_at: report.recorded_at.clone(),
@@ -1012,7 +803,7 @@ fn process_audio_transcription(
                 },
             );
             record_audio_processing_result(
-                core,
+                outbox,
                 &source_id,
                 "processed",
                 Some(transcript_source_id),
@@ -1023,7 +814,7 @@ fn process_audio_transcription(
         }
         Err(error) => {
             record_audio_processing_result(
-                core,
+                outbox,
                 &source_id,
                 "error",
                 None,
@@ -1096,7 +887,7 @@ fn build_audio_transcript_event_payload(
 }
 
 fn record_audio_processing_result(
-    core: &LocalChronicleCore,
+    outbox: &ChronicleOutbox,
     source_id: &str,
     status: &str,
     transcript_source_id: Option<String>,
@@ -1107,9 +898,9 @@ fn record_audio_processing_result(
     let runtime_name = runtime
         .map(TranscriptionRuntime::as_str)
         .unwrap_or("sensevoice-onnx");
-    record_store_event(
-        core,
-        ChronicleStoreEvent {
+    record_outbox_event(
+        outbox,
+        ChronicleOutboxEvent {
             id: format!("raw-processing:{source_id}"),
             kind: "audio-raw-processing-result".to_string(),
             created_at: Timestamp::now()
@@ -1130,7 +921,7 @@ fn record_audio_processing_result(
     );
 }
 
-fn record_speaker_profiles(core: &LocalChronicleCore, result: &TranscriptionResult) -> Vec<String> {
+fn record_speaker_profiles(outbox: &ChronicleOutbox, result: &TranscriptionResult) -> Vec<String> {
     let mut profile_ids = Vec::new();
     for profile in &result.speaker_profiles {
         let payload = serde_json::json!({
@@ -1144,9 +935,9 @@ fn record_speaker_profiles(core: &LocalChronicleCore, result: &TranscriptionResu
                 "source": "audio-transcription"
             }
         });
-        record_store_event(
-            core,
-            ChronicleStoreEvent {
+        record_outbox_event(
+            outbox,
+            ChronicleOutboxEvent {
                 id: format!("speaker-profile:{}", profile.display_name),
                 kind: "speaker-profile".to_string(),
                 created_at: Timestamp::now()

@@ -1,10 +1,10 @@
-//! Binary smoke validation for Cradle Chronicle.
+//! Binary smoke validation for Cradle Chronicle evidence runtime.
 
 use std::fs;
 use std::process::Command;
 
 #[test]
-fn binary_smoke_writes_artifacts_and_memory() {
+fn binary_smoke_writes_artifacts_and_outbox() {
     let binary = env!("CARGO_BIN_EXE_cradle-chronicle");
     let root = std::env::temp_dir().join(format!(
         "cradle-chronicle-binary-smoke-{}",
@@ -36,7 +36,6 @@ fn binary_smoke_writes_artifacts_and_memory() {
 
     let display_root = root.join("1");
     assert!(display_root.exists());
-    assert!(root.join("memories").exists());
 
     let segment = fs::read_dir(&display_root)
         .expect("display dir should read")
@@ -51,22 +50,11 @@ fn binary_smoke_writes_artifacts_and_memory() {
     assert!(segment.join("capture.json").exists());
     assert!(segment.join("snapshot.json").exists());
 
-    let memory_count = fs::read_dir(root.join("memories"))
-        .expect("memories should read")
-        .count();
-    assert_eq!(memory_count, 1);
-
-    let events = fs::read_to_string(root.join("events.ndjson")).expect("events should exist");
+    let events =
+        fs::read_to_string(root.join("outbox/events.ndjson")).expect("events should exist");
+    assert!(events.contains("\"kind\":\"snapshot\""));
     assert!(events.contains("\"kind\":\"smoke-capture\""));
-
-    let manifest = fs::read_to_string(root.join("memory-manifest.json"))
-        .expect("memory manifest should exist");
-    let memories: serde_json::Value =
-        serde_json::from_str(&manifest).expect("memory manifest should parse");
-    assert_eq!(
-        memories.as_array().expect("manifest should be array").len(),
-        1
-    );
+    assert!(!root.join("memory-manifest.json").exists());
 
     let _ = fs::remove_dir_all(&root);
 }

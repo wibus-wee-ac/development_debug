@@ -1,7 +1,11 @@
 //! Automatic Speech Recognition integration for Chronicle.
 
+use std::io::Read;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Output, Stdio};
+use std::thread;
+use std::thread::JoinHandle;
+use std::time::{Duration, Instant};
 
 use serde::{Deserialize, Serialize};
 
@@ -137,21 +141,7 @@ impl WhisperCliAsr {
             )));
         }
 
-        let output = Command::new(&self.binary_path)
-            .arg("-m")
-            .arg(&self.model_path)
-            .arg("-f")
-            .arg(wav_path)
-            .arg("-nt")
-            .arg("-np")
-            .args(&self.extra_args)
-            .output()
-            .map_err(|error| {
-                ChronicleError::Process(format!(
-                    "failed to start whisper fallback {}: {error}",
-                    self.binary_path.display()
-                ))
-            })?;
+        let output = self.run_whisper_command(wav_path)?;
 
         if !output.status.success() {
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
@@ -181,6 +171,109 @@ impl WhisperCliAsr {
             }],
             speaker_profiles: Vec::new(),
         })
+    }
+
+    fn run_whisper_command(&self, wav_path: &Path) -> ChronicleResult<Output> {
+        let mut child = Command::new(&self.binary_path)
+            .arg("-m")
+            .arg(&self.model_path)
+            .arg("-f")
+            .arg(wav_path)
+            .arg("-nt")
+            .arg("-np")
+            .args(&self.extra_args)
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|error| {
+                ChronicleError::Process(format!(
+                    "failed to start whisper fallback {}: {error}",
+                    self.binary_path.display()
+                ))
+            })?;
+        let stdout = child
+            .stdout
+            .take()
+            .map(|stdout| spawn_pipe_reader(stdout, "stdout"));
+        let stderr = child
+            .stderr
+            .take()
+            .map(|stderr| spawn_pipe_reader(stderr, "stderr"));
+        let timeout = whisper_timeout();
+        let started_at = Instant::now();
+        loop {
+            if let Some(status) = child.try_wait().map_err(|error| {
+                ChronicleError::Process(format!("failed to poll whisper fallback: {error}"))
+            })? {
+                return collect_child_output(status, stdout, stderr);
+            }
+            if started_at.elapsed() >= timeout {
+                let _ = child.kill();
+                let status = child.wait().map_err(|error| {
+                    ChronicleError::Process(format!(
+                        "failed to wait for timed out whisper fallback: {error}"
+                    ))
+                })?;
+                let output = collect_child_output(status, stdout, stderr)?;
+                let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
+                return Err(ChronicleError::Process(format!(
+                    "whisper fallback timed out after {} ms{}",
+                    timeout.as_millis(),
+                    if stderr.is_empty() {
+                        String::new()
+                    } else {
+                        format!("; stderr: {stderr}")
+                    }
+                )));
+            }
+            thread::sleep(Duration::from_millis(50));
+        }
+    }
+}
+
+fn whisper_timeout() -> Duration {
+    let millis = std::env::var("CRADLE_CHRONICLE_WHISPER_TIMEOUT_MS")
+        .ok()
+        .and_then(|value| value.parse::<u64>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(30_000);
+    Duration::from_millis(millis)
+}
+
+fn spawn_pipe_reader<R>(mut reader: R, label: &'static str) -> JoinHandle<ChronicleResult<Vec<u8>>>
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).map_err(|error| {
+            ChronicleError::Process(format!("failed to read whisper {label}: {error}"))
+        })?;
+        Ok(bytes)
+    })
+}
+
+fn collect_child_output(
+    status: std::process::ExitStatus,
+    stdout: Option<JoinHandle<ChronicleResult<Vec<u8>>>>,
+    stderr: Option<JoinHandle<ChronicleResult<Vec<u8>>>>,
+) -> ChronicleResult<Output> {
+    Ok(Output {
+        status,
+        stdout: join_pipe_reader(stdout, "stdout")?,
+        stderr: join_pipe_reader(stderr, "stderr")?,
+    })
+}
+
+fn join_pipe_reader(
+    handle: Option<JoinHandle<ChronicleResult<Vec<u8>>>>,
+    label: &str,
+) -> ChronicleResult<Vec<u8>> {
+    match handle {
+        Some(handle) => handle
+            .join()
+            .map_err(|_| ChronicleError::Process(format!("whisper {label} reader panicked")))?,
+        None => Ok(Vec::new()),
     }
 }
 

@@ -1,22 +1,19 @@
 //! CLI entry point for Cradle Chronicle.
 
-use std::io::Read;
-use std::process::{Command, ExitCode, Stdio};
+use std::io::{Read, Write};
+use std::process::{Command, ExitCode, Output, Stdio};
 use std::thread;
+use std::thread::JoinHandle;
 use std::time::{Duration, Instant};
 
 use cradle_chronicle::audio::record_microphone_diagnostics;
-use cradle_chronicle::capabilities::{LocalSummaryCapability, NoopIntegrationSink};
 use cradle_chronicle::config::{ChronicleConfig, usage};
-use cradle_chronicle::core::ChronicleCore;
 use cradle_chronicle::daemon;
-use cradle_chronicle::memory_pipeline::recursive::RecursiveSummarizer;
-use cradle_chronicle::memory_pipeline::summarizer::LocalSummaryWriter;
 use cradle_chronicle::ocr::ObservedTextExtractor;
-use cradle_chronicle::recorder::artifacts::ArtifactStore;
+use cradle_chronicle::recorder::artifacts::{ArtifactStore, PersistedFrame};
 use cradle_chronicle::screen::privacy_filter::{PrivacyFilter, PrivacyFilterRules};
 use cradle_chronicle::screen::synthetic::SyntheticCaptureSource;
-use cradle_chronicle::store::{ChronicleMemoryManifest, ChronicleStore, ChronicleStoreEvent};
+use cradle_chronicle::store::{ChronicleDeliveryStatus, ChronicleOutbox, ChronicleOutboxEvent};
 use cradle_chronicle::time::Timestamp;
 use cradle_chronicle::{ChronicleError, RecorderManager};
 
@@ -145,11 +142,16 @@ fn local_diagnostic_timeout() -> Duration {
     Duration::from_millis(millis)
 }
 
+fn local_diagnostic_max_stdin_bytes() -> usize {
+    std::env::var("CRADLE_CHRONICLE_LOCAL_DIAGNOSTIC_MAX_STDIN_BYTES")
+        .ok()
+        .and_then(|value| value.parse::<usize>().ok())
+        .filter(|value| *value > 0)
+        .unwrap_or(16 * 1024 * 1024)
+}
+
 fn run_bounded_stdin_local_model_diagnostic(internal_flag: &str) -> Result<String, ChronicleError> {
-    let mut input = Vec::new();
-    std::io::stdin().read_to_end(&mut input).map_err(|error| {
-        ChronicleError::Process(format!("failed to read diagnostic input: {error}"))
-    })?;
+    let input = read_bounded_diagnostic_stdin()?;
 
     let executable = std::env::current_exe().map_err(|error| {
         ChronicleError::Process(format!("failed to resolve current executable: {error}"))
@@ -167,12 +169,33 @@ fn run_bounded_stdin_local_model_diagnostic(internal_flag: &str) -> Result<Strin
     let mut stdin = child.stdin.take().ok_or_else(|| {
         ChronicleError::Process("failed to open local model diagnostic stdin".to_string())
     })?;
-    thread::spawn(move || {
-        use std::io::Write;
+    let stdin_writer = thread::spawn(move || {
         let _ = stdin.write_all(&input);
     });
 
-    wait_for_bounded_child(child, timeout)
+    let result = wait_for_bounded_child(child, timeout);
+    let _ = stdin_writer.join();
+    result
+}
+
+fn read_bounded_diagnostic_stdin() -> Result<Vec<u8>, ChronicleError> {
+    let max_bytes = local_diagnostic_max_stdin_bytes();
+    let stdin = std::io::stdin();
+    let mut input = Vec::new();
+    stdin
+        .lock()
+        .take(max_bytes as u64 + 1)
+        .read_to_end(&mut input)
+        .map_err(|error| {
+            ChronicleError::Process(format!("failed to read diagnostic input: {error}"))
+        })?;
+    if input.len() > max_bytes {
+        return Err(ChronicleError::InvalidArgument(format!(
+            "diagnostic input exceeds {} bytes",
+            max_bytes
+        )));
+    }
+    Ok(input)
 }
 
 fn run_bounded_local_model_diagnostic(
@@ -200,29 +223,30 @@ fn wait_for_bounded_child(
     mut child: std::process::Child,
     timeout: Duration,
 ) -> Result<String, ChronicleError> {
+    let stdout = child
+        .stdout
+        .take()
+        .map(|stdout| spawn_pipe_reader(stdout, "stdout"));
+    let stderr = child
+        .stderr
+        .take()
+        .map(|stderr| spawn_pipe_reader(stderr, "stderr"));
     let started_at = Instant::now();
     loop {
-        if child
-            .try_wait()
-            .map_err(|error| {
-                ChronicleError::Process(format!("failed to poll local model diagnostic: {error}"))
-            })?
-            .is_some()
-        {
-            let output = child.wait_with_output().map_err(|error| {
-                ChronicleError::Process(format!(
-                    "failed to read local model diagnostic output: {error}"
-                ))
-            })?;
+        if let Some(status) = child.try_wait().map_err(|error| {
+            ChronicleError::Process(format!("failed to poll local model diagnostic: {error}"))
+        })? {
+            let output = collect_child_output(status, stdout, stderr)?;
             return child_output_to_result(output);
         }
         if started_at.elapsed() >= timeout {
             let _ = child.kill();
-            let output = child.wait_with_output().map_err(|error| {
+            let status = child.wait().map_err(|error| {
                 ChronicleError::Process(format!(
-                    "failed to read timed out local model diagnostic output: {error}"
+                    "failed to wait for timed out local model diagnostic: {error}"
                 ))
             })?;
+            let output = collect_child_output(status, stdout, stderr)?;
             let stderr = String::from_utf8_lossy(&output.stderr).trim().to_string();
             return Err(ChronicleError::Process(format!(
                 "local model diagnostic timed out after {} ms{}",
@@ -235,6 +259,50 @@ fn wait_for_bounded_child(
             )));
         }
         thread::sleep(Duration::from_millis(100));
+    }
+}
+
+fn spawn_pipe_reader<R>(
+    mut reader: R,
+    label: &'static str,
+) -> JoinHandle<Result<Vec<u8>, ChronicleError>>
+where
+    R: Read + Send + 'static,
+{
+    thread::spawn(move || {
+        let mut bytes = Vec::new();
+        reader.read_to_end(&mut bytes).map_err(|error| {
+            ChronicleError::Process(format!(
+                "failed to read local model diagnostic {label}: {error}"
+            ))
+        })?;
+        Ok(bytes)
+    })
+}
+
+fn collect_child_output(
+    status: std::process::ExitStatus,
+    stdout: Option<JoinHandle<Result<Vec<u8>, ChronicleError>>>,
+    stderr: Option<JoinHandle<Result<Vec<u8>, ChronicleError>>>,
+) -> Result<Output, ChronicleError> {
+    let stdout = join_pipe_reader(stdout, "stdout")?;
+    let stderr = join_pipe_reader(stderr, "stderr")?;
+    Ok(Output {
+        status,
+        stdout,
+        stderr,
+    })
+}
+
+fn join_pipe_reader(
+    handle: Option<JoinHandle<Result<Vec<u8>, ChronicleError>>>,
+    label: &str,
+) -> Result<Vec<u8>, ChronicleError> {
+    match handle {
+        Some(handle) => handle.join().map_err(|_| {
+            ChronicleError::Process(format!("local model diagnostic {label} reader panicked"))
+        })?,
+        None => Ok(Vec::new()),
     }
 }
 
@@ -534,13 +602,8 @@ fn run_audio_diagnostics(config: ChronicleConfig) -> Result<String, ChronicleErr
 
 fn run_smoke(config: ChronicleConfig) -> Result<String, ChronicleError> {
     let segment_started_at = Timestamp::now()?;
-    let core = ChronicleCore::new(
-        ChronicleStore::new(&config.storage_root),
-        LocalSummaryCapability,
-        NoopIntegrationSink,
-    );
+    let outbox = ChronicleOutbox::new(&config.storage_root);
     let store = ArtifactStore::new(&config.storage_root, segment_started_at);
-    let memories_dir = store.memories_dir();
     let source = SyntheticCaptureSource::cradle_smoke_from(
         config.display_id.unwrap_or(1),
         config.capture_limit,
@@ -558,15 +621,21 @@ fn run_smoke(config: ChronicleConfig) -> Result<String, ChronicleError> {
     );
     let report = manager.run_until_exhausted()?;
 
-    let summarizer = RecursiveSummarizer::new(LocalSummaryWriter, memories_dir);
-    let summary = summarizer
-        .write_ten_minute_summary("Cradle Chronicle smoke", report.persisted_frames.clone())?;
+    let mut delivered = 0usize;
+    for frame in &report.persisted_frames {
+        if matches!(
+            outbox.append_and_try_deliver(&snapshot_outbox_event(frame))?,
+            ChronicleDeliveryStatus::Delivered
+        ) {
+            delivered += 1;
+        }
+    }
     let source_paths = report
         .persisted_frames
         .iter()
         .flat_map(|frame| [frame.snapshot_path.clone(), frame.frame_path.clone()])
         .collect::<Vec<_>>();
-    core.append_event(ChronicleStoreEvent {
+    let _ = outbox.append_and_try_deliver(&ChronicleOutboxEvent {
         id: format!("smoke-capture-{}", segment_started_at.compact()),
         kind: "smoke-capture".to_string(),
         created_at: segment_started_at.filesystem(),
@@ -574,24 +643,47 @@ fn run_smoke(config: ChronicleConfig) -> Result<String, ChronicleError> {
             "observed": report.observed_frames,
             "persisted": report.persisted_frames.len(),
             "duplicates": report.duplicate_frames,
-            "privacyFiltered": report.privacy_filtered_frames
+            "privacyFiltered": report.privacy_filtered_frames,
+            "sourcePaths": source_paths.iter().map(|path| path.display().to_string()).collect::<Vec<_>>()
         }),
-    })?;
-    core.record_memory(ChronicleMemoryManifest {
-        id: format!("memory:{}", summary.output_path.display()),
-        window: "10min".to_string(),
-        created_at: segment_started_at.filesystem(),
-        memory_path: summary.output_path.clone(),
-        source_paths,
-        summary_kind: "local".to_string(),
     })?;
 
     Ok(format!(
-        "cradle chronicle smoke completed: observed={} persisted={} duplicates={} privacy_filtered={} memory={}",
+        "cradle chronicle smoke completed: observed={} persisted={} delivered={} duplicates={} privacy_filtered={} outbox={}",
         report.observed_frames,
         report.persisted_frames.len(),
+        delivered,
         report.duplicate_frames,
         report.privacy_filtered_frames,
-        summary.output_path.display()
+        outbox.events_path().display()
     ))
+}
+
+fn snapshot_outbox_event(frame: &PersistedFrame) -> ChronicleOutboxEvent {
+    ChronicleOutboxEvent {
+        id: snapshot_source_id(frame),
+        kind: "snapshot".to_string(),
+        created_at: frame.captured_at.filesystem(),
+        payload: serde_json::json!({
+            "sourceId": snapshot_source_id(frame),
+            "displayId": frame.display_id,
+            "frameIndex": frame.frame_index,
+            "capturedAt": frame.captured_at.filesystem(),
+            "segmentDir": frame.segment_dir.display().to_string(),
+            "framePath": frame.frame_path.display().to_string(),
+            "capturePath": frame.capture_path.display().to_string(),
+            "ocrPath": frame.ocr_path.display().to_string(),
+            "snapshotPath": frame.snapshot_path.display().to_string(),
+            "ocrText": frame.normalized_text
+        }),
+    }
+}
+
+fn snapshot_source_id(frame: &PersistedFrame) -> String {
+    format!(
+        "snapshot:{}:{}:{}",
+        frame.display_id,
+        frame.frame_index,
+        frame.captured_at.compact()
+    )
 }

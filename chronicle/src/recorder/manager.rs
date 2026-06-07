@@ -14,7 +14,7 @@ pub struct RecorderManager<S, O> {
     extractor: O,
     privacy_filter: PrivacyFilter,
     artifact_store: ArtifactStore,
-    previous_fingerprints: HashMap<u32, FrameFingerprint>,
+    state: RecorderState,
 }
 
 impl<S, O> RecorderManager<S, O>
@@ -32,12 +32,28 @@ where
         artifact_store: ArtifactStore,
         privacy_filter: PrivacyFilter,
     ) -> Self {
+        Self::with_privacy_filter_and_state(
+            source,
+            extractor,
+            artifact_store,
+            privacy_filter,
+            RecorderState::default(),
+        )
+    }
+
+    pub fn with_privacy_filter_and_state(
+        source: S,
+        extractor: O,
+        artifact_store: ArtifactStore,
+        privacy_filter: PrivacyFilter,
+        state: RecorderState,
+    ) -> Self {
         Self {
             source,
             extractor,
             privacy_filter,
             artifact_store,
-            previous_fingerprints: HashMap::new(),
+            state,
         }
     }
 
@@ -54,7 +70,9 @@ where
 
             let ocr = self.extractor.extract_text(&frame)?;
             let fingerprint = FrameFingerprint::from_parts(&frame.bytes, &ocr.normalized_text);
+            report.latest_fingerprint = Some(fingerprint);
             if self
+                .state
                 .previous_fingerprints
                 .get(&frame.display_id)
                 .is_some_and(|previous| fingerprint.is_duplicate_of(*previous))
@@ -63,7 +81,8 @@ where
                 continue;
             }
 
-            self.previous_fingerprints
+            self.state
+                .previous_fingerprints
                 .insert(frame.display_id, fingerprint);
             let persisted = self.artifact_store.persist_frame(&frame, &ocr)?;
             report.persisted_frames.push(persisted);
@@ -71,6 +90,15 @@ where
 
         Ok(report)
     }
+
+    pub fn into_state(self) -> RecorderState {
+        self.state
+    }
+}
+
+#[derive(Debug, Default, Clone)]
+pub struct RecorderState {
+    previous_fingerprints: HashMap<u32, FrameFingerprint>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Eq)]
@@ -79,6 +107,7 @@ pub struct RecorderReport {
     pub privacy_filtered_frames: usize,
     pub duplicate_frames: usize,
     pub persisted_frames: Vec<PersistedFrame>,
+    pub latest_fingerprint: Option<FrameFingerprint>,
 }
 
 #[cfg(test)]
@@ -181,6 +210,52 @@ mod tests {
                 .iter()
                 .any(|frame| frame.display_id == 30)
         );
+
+        let _ = fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    fn carries_dedup_state_between_manager_instances() {
+        let root = std::env::temp_dir().join(format!(
+            "cradle-chronicle-manager-state-test-{}",
+            std::process::id()
+        ));
+        let _ = fs::remove_dir_all(&root);
+        let first_source = SyntheticCaptureSource::from_frames(vec![frame(
+            1,
+            "same",
+            BrowserWindowObservation::new(1, "Cradle", "app.cradle"),
+        )]);
+        let first_store = ArtifactStore::new(&root, Timestamp::from_seconds(1_779_125_791));
+        let mut first_manager =
+            RecorderManager::new(first_source, ObservedTextExtractor, first_store);
+        let first_report = first_manager
+            .run_until_exhausted()
+            .expect("first run should succeed");
+        let state = first_manager.into_state();
+
+        assert_eq!(first_report.persisted_frames.len(), 1);
+
+        let second_source = SyntheticCaptureSource::from_frames(vec![frame(
+            2,
+            "same",
+            BrowserWindowObservation::new(1, "Cradle", "app.cradle"),
+        )]);
+        let second_store = ArtifactStore::new(&root, Timestamp::from_seconds(1_779_125_792));
+        let mut second_manager = RecorderManager::with_privacy_filter_and_state(
+            second_source,
+            ObservedTextExtractor,
+            second_store,
+            PrivacyFilter::default(),
+            state,
+        );
+        let second_report = second_manager
+            .run_until_exhausted()
+            .expect("second run should succeed");
+
+        assert_eq!(second_report.observed_frames, 1);
+        assert_eq!(second_report.duplicate_frames, 1);
+        assert!(second_report.persisted_frames.is_empty());
 
         let _ = fs::remove_dir_all(&root);
     }

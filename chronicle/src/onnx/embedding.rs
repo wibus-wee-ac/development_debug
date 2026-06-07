@@ -193,12 +193,12 @@ mod tests {
     #[test]
     fn test_mean_pool_logic() {
         // Simulate 3 tokens, dim=4, mask=[1,1,0]
-        let hidden = vec![
+        let hidden = [
             vec![1.0, 2.0, 3.0, 4.0],
             vec![5.0, 6.0, 7.0, 8.0],
             vec![99.0, 99.0, 99.0, 99.0], // padding, should be ignored
         ];
-        let mask = vec![1i64, 1, 0];
+        let mask = [1i64, 1, 0];
         let dim = 4;
 
         let mut pooled = vec![0.0f32; dim];
