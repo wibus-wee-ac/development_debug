@@ -1,5 +1,5 @@
 import type { BrowserWindow } from 'electron'
-import { ipcMain, Menu, nativeImage, Tray } from 'electron'
+import { app, ipcMain, Menu, nativeImage, Tray } from 'electron'
 
 export type TrayActionId
   = | 'open-app'
@@ -169,8 +169,7 @@ export class TrayManager {
     this.tray.setPressedImage(createTrayImage(180))
     this.tray.setToolTip('Cradle')
     this.tray.setIgnoreDoubleClickEvents(true)
-    this.updateTrayPresentation(null)
-    this.tray.setContextMenu(this.buildTrayMenu(null))
+    this.updateNativeMenus(null)
     this.tray.on('click', () => {
       void this.openNativeMenu()
     })
@@ -191,10 +190,7 @@ export class TrayManager {
     }
 
     const snapshot = await this.readTrayData()
-    this.updateTrayPresentation(snapshot)
-    this.updatePlatformNotification(snapshot)
-    const menu = this.buildTrayMenu(snapshot)
-    this.tray.setContextMenu(menu)
+    const menu = this.updateNativeMenus(snapshot)
     this.tray.popUpContextMenu(menu, this.readPopupPosition())
   }
 
@@ -275,7 +271,7 @@ export class TrayManager {
       return
     }
     const snapshot = await this.readTrayData()
-    this.updateTrayPresentation(snapshot)
+    this.updateNativeMenus(snapshot)
   }
 
   private async readTrayData(): Promise<TrayData | null> {
@@ -366,6 +362,18 @@ export class TrayManager {
         },
       },
     ])
+  }
+
+  private updateNativeMenus(snapshot: TrayData | null): Electron.Menu {
+    this.updateTrayPresentation(snapshot)
+    this.updatePlatformNotification(snapshot)
+
+    const menu = this.buildTrayMenu(snapshot)
+    this.tray?.setContextMenu(menu)
+    if (process.platform === 'darwin') {
+      app.dock?.setMenu(menu)
+    }
+    return menu
   }
 
   private buildActionMenuItem(

@@ -61,6 +61,11 @@ let canProcessPluginInstallLinks = false
 const pendingPluginInstallUrls: string[] = []
 const browserManager = new DesktopBrowserManager()
 
+interface DesktopRuntimePreferences {
+  requireDoubleCommandQToQuit: boolean
+  appshotHotkeyEnabled: boolean
+}
+
 async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
   const mainWindowStatePath = join(app.getPath('userData'), MAIN_WINDOW_STATE_FILE)
   const storedBounds = readStoredWindowBounds(mainWindowStatePath)
@@ -352,16 +357,39 @@ function registerProcessShutdownHandlers(): void {
   process.once('SIGTERM', handleSignal)
 }
 
+async function applyAppshotHotkeyPreference(enabled: boolean): Promise<void> {
+  if (process.platform !== 'darwin' || !macBridgeManager) {
+    return
+  }
+
+  const inputConfiguration = await macBridgeManager
+    .configureInput({ trigger: 'bothCommand', enabled })
+    .catch((error) => {
+      console.warn('[mac-bridge] both-command hotkey unavailable:', error)
+      return null
+    })
+
+  if (inputConfiguration) {
+    console.debug('[mac-bridge] both-command hotkey configured:', inputConfiguration)
+  }
+}
+
 async function syncDesktopPreferencesFromServer(serverUrl: string): Promise<void> {
   try {
     const response = await fetch(new URL('/preferences/desktop', serverUrl))
     if (!response.ok) {
+      await applyAppshotHotkeyPreference(true)
       return
     }
-    quitGuard.updatePreferences(await response.json())
+    const preferences = await response.json() as DesktopRuntimePreferences
+    quitGuard.updatePreferences({
+      requireDoubleCommandQToQuit: preferences.requireDoubleCommandQToQuit,
+    })
+    await applyAppshotHotkeyPreference(preferences.appshotHotkeyEnabled)
   }
   catch (error) {
     console.warn('[preferences] failed to read desktop preferences:', error)
+    await applyAppshotHotkeyPreference(true)
   }
 }
 
@@ -437,15 +465,6 @@ export async function startDesktopApp(): Promise<void> {
   app.whenReady().then(async () => {
     if (process.platform === 'darwin') {
       await macBridgeManager?.start()
-      const inputConfiguration = await macBridgeManager
-        ?.configureInput({ trigger: 'bothCommand', enabled: true })
-        .catch((error) => {
-          console.warn('[mac-bridge] both-command hotkey unavailable:', error)
-          return null
-        })
-      if (inputConfiguration) {
-        console.debug('[mac-bridge] both-command hotkey configured:', inputConfiguration)
-      }
     }
 
     await activateDesktopPlugins()

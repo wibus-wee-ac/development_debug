@@ -43,7 +43,7 @@ import {
   readScreenPointAppshotDestinationFrame,
 } from './native-appshot-target'
 import { launchPathInEditor } from './native-editor-launcher'
-import type { DesktopPreferences, QuitGuard } from './quit-guard'
+import type { QuitGuard } from './quit-guard'
 import type { DesktopUpdateManager, DesktopUpdateStatus } from './update-manager'
 import type { WindowManager } from './window-manager'
 
@@ -61,6 +61,11 @@ const DEFAULT_PRIVACY_SENSITIVE_TITLE_PATTERNS = [
   'recovery key',
   'one-time code',
 ]
+
+export interface DesktopPreferences {
+  requireDoubleCommandQToQuit: boolean
+  appshotHotkeyEnabled: boolean
+}
 
 const MAX_CODEX_APP_CAPTURE_BYTES = 25 * 1024 * 1024
 const MAX_EXTERNAL_WORK_IMPORT_BYTES = 8 * 1024 * 1024
@@ -260,7 +265,17 @@ class NativeService extends IpcService {
     if (!guard) {
       throw new Error('Quit guard is not initialized')
     }
-    return guard.updatePreferences(preferences)
+    guard.updatePreferences({
+      requireDoubleCommandQToQuit: preferences.requireDoubleCommandQToQuit,
+    })
+    const manager = getMacBridgeManager()
+    if (manager && process.platform === 'darwin') {
+      await manager.configureInput({
+        trigger: 'bothCommand',
+        enabled: preferences.appshotHotkeyEnabled,
+      })
+    }
+    return preferences
   }
 
   @IpcMethod()

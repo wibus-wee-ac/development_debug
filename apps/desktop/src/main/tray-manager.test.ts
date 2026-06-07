@@ -179,6 +179,9 @@ const electronMocks = vi.hoisted(() => {
 
   return {
     app: {
+      dock: {
+        setMenu: vi.fn(),
+      },
       quit: vi.fn(),
     },
     BrowserWindow: FakeBrowserWindow,
@@ -245,6 +248,7 @@ describe('trayManager', () => {
     electronMocks.BrowserWindow.instances.length = 0
     electronMocks.Tray.instances.length = 0
     electronMocks.ipcHandlers.clear()
+    electronMocks.app.dock.setMenu.mockClear()
     electronMocks.app.quit.mockClear()
     electronMocks.ipcMain.handle.mockClear()
     electronMocks.ipcMain.removeHandler.mockClear()
@@ -393,6 +397,67 @@ describe('trayManager', () => {
 
     manager.destroy()
     expect(electronMocks.Tray.instances[0]?.contextMenuClosed).toBe(true)
+  })
+
+  it('keeps the tray context menu refreshed in the background', async () => {
+    const { TrayManager } = await import('./tray-manager')
+    const manager = new TrayManager({
+      serverUrl: 'http://127.0.0.1:21423',
+      getMainWindow: () => null,
+      createMainWindow: vi.fn(),
+      requestQuit: vi.fn(),
+    })
+
+    manager.initialize()
+
+    await vi.waitFor(() => {
+      const contextMenu = electronMocks.Tray.instances[0]?.contextMenu as { template?: Array<Record<string, unknown>> }
+      expect(contextMenu?.template).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          label: 'Cradle - 1 issue',
+          sublabel: '1 running | 2 recent | 3 awaits',
+        }),
+      ]))
+    })
+
+    const contextMenu = electronMocks.Tray.instances[0]?.contextMenu as { template?: Array<Record<string, unknown>> }
+    expect(findMenuItem(contextMenu.template ?? [], 'Active run')).toBeTruthy()
+    expect(findMenuItem(contextMenu.template ?? [], 'Awaits (3)')).toBeTruthy()
+    expect(electronMocks.Tray.instances[0]?.popupMenu).toBeNull()
+
+    manager.destroy()
+  })
+
+  it('syncs the native menu to the macOS Dock right-click menu', async () => {
+    const originalPlatform = process.platform
+    Object.defineProperty(process, 'platform', { value: 'darwin', configurable: true })
+    try {
+      const { TrayManager } = await import('./tray-manager')
+      const manager = new TrayManager({
+        serverUrl: 'http://127.0.0.1:21423',
+        getMainWindow: () => null,
+        createMainWindow: vi.fn(),
+        requestQuit: vi.fn(),
+      })
+
+      manager.initialize()
+
+      await vi.waitFor(() => {
+        expect(electronMocks.app.dock.setMenu).toHaveBeenLastCalledWith(expect.objectContaining({
+          template: expect.arrayContaining([
+            expect.objectContaining({
+              label: 'Cradle - 1 issue',
+              sublabel: '1 running | 2 recent | 3 awaits',
+            }),
+          ]),
+        }))
+      })
+
+      manager.destroy()
+    }
+    finally {
+      Object.defineProperty(process, 'platform', { value: originalPlatform, configurable: true })
+    }
   })
 
   it('opens a degraded native menu when tray data is unavailable', async () => {

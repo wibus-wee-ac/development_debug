@@ -10,28 +10,28 @@ interface BrowserPanelPromptAttachment {
   url: string
 }
 
-type BrowserPanelAttachmentInput =
-  | string
-  | Blob
-  | {
-      dataURL?: string
-      dataUrl?: string
-      filename?: string
-      mediaType?: string
-      mimeType?: string
-      name?: string
-      type?: string
-      url?: string
-    }
+type BrowserPanelAttachmentInput
+  = | string
+    | Blob
+    | {
+        dataURL?: string
+        dataUrl?: string
+        filename?: string
+        mediaType?: string
+        mimeType?: string
+        name?: string
+        type?: string
+        url?: string
+      }
 
-type BrowserPanelSendPromptInput =
-  | string
-  | {
-      attachments?: BrowserPanelAttachmentInput[]
-      files?: BrowserPanelAttachmentInput[]
-      prompt?: string
-      text?: string
-    }
+type BrowserPanelSendPromptInput
+  = | string
+    | {
+        attachments?: BrowserPanelAttachmentInput[]
+        files?: BrowserPanelAttachmentInput[]
+        prompt?: string
+        text?: string
+      }
 
 interface BrowserPanelSendPromptPayload {
   text: string
@@ -98,10 +98,10 @@ interface BrowserAnnotationElement {
   nearbyText?: string
 }
 
-type BrowserAnnotationAnchor =
-  | { kind: 'point', x: number, y: number }
-  | { kind: 'region', x: number, y: number, width: number, height: number }
-  | { kind: 'element', element: BrowserAnnotationElement }
+type BrowserAnnotationAnchor
+  = | { kind: 'point', x: number, y: number }
+    | { kind: 'region', x: number, y: number, width: number, height: number }
+    | { kind: 'element', element: BrowserAnnotationElement }
 
 interface BrowserAnnotationDesignChange {
   comment?: string
@@ -151,6 +151,8 @@ interface BrowserAnnotationRuntimeEvent {
     height: number
   }
 }
+
+type BrowserAnnotationRuntimeStage = 'selecting' | 'editing'
 
 function isObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null
@@ -298,7 +300,10 @@ class BrowserAnnotationRuntime {
   private attachedImages: BrowserPanelPromptAttachment[] = []
   private dragStart: { x: number, y: number, altKey: boolean, shiftKey: boolean } | null = null
   private selectionFrames: HTMLDivElement[] = []
+  private stopTimer: ReturnType<typeof setTimeout> | null = null
+  private shakeTimer: ReturnType<typeof setTimeout> | null = null
   private active = false
+  private stage: BrowserAnnotationRuntimeStage = 'selecting'
 
   constructor() {
     window.addEventListener('keydown', this.onKeyDown, true)
@@ -327,6 +332,7 @@ class BrowserAnnotationRuntime {
       return
     }
     this.active = true
+    this.stage = 'selecting'
     this.mount()
     this.emit({ type: 'ready', surfaceSize: this.surfaceSize(), elements: this.scanElements() })
   }
@@ -335,7 +341,35 @@ class BrowserAnnotationRuntime {
     if (!this.active && !this.root) {
       return
     }
+    if (eventType === 'cancel' && this.root && !this.root.hasAttribute('data-cradle-browser-comment-exiting')) {
+      this.active = false
+      this.root.setAttribute('data-cradle-browser-comment-exiting', 'true')
+      if (this.stopTimer !== null) {
+        clearTimeout(this.stopTimer)
+      }
+      this.stopTimer = setTimeout(() => {
+        this.stopTimer = null
+        this.finishStop(eventType)
+      }, 150)
+      return
+    }
+    this.finishStop(eventType)
+  }
+
+  private finishStop(eventType: 'cancel' | 'closed'): void {
+    if (!this.active && !this.root) {
+      return
+    }
+    if (this.stopTimer !== null) {
+      clearTimeout(this.stopTimer)
+      this.stopTimer = null
+    }
+    if (this.shakeTimer !== null) {
+      clearTimeout(this.shakeTimer)
+      this.shakeTimer = null
+    }
     this.active = false
+    this.stage = 'selecting'
     this.clearDesign()
     this.root?.remove()
     this.root = null
@@ -380,14 +414,29 @@ class BrowserAnnotationRuntime {
         background: transparent;
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-highlight],
-      #cradle-browser-comment-root [data-cradle-browser-comment-region] {
+      #cradle-browser-comment-root [data-cradle-browser-comment-region],
+      #cradle-browser-comment-root [data-cradle-browser-comment-selection-frame] {
         position: absolute;
         box-sizing: border-box;
-        border: 2px solid rgba(125, 188, 255, 0.72);
-        border-radius: 2px;
-        background: rgba(31, 41, 55, 0.24);
-        box-shadow: 0 0 0 1px rgba(6, 18, 30, 0.36), inset 0 0 0 1px rgba(255, 255, 255, 0.08);
+        border: 2px solid #0088ff;
+        border-radius: 4px;
         pointer-events: none;
+      }
+      #cradle-browser-comment-root [data-cradle-browser-comment-highlight] {
+        background: rgba(0, 136, 255, 0.10);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.68), 0 2px 10px rgba(0, 0, 0, 0.16);
+        transition:
+          left 140ms cubic-bezier(0.22, 1, 0.36, 1),
+          top 140ms cubic-bezier(0.22, 1, 0.36, 1),
+          width 140ms cubic-bezier(0.22, 1, 0.36, 1),
+          height 140ms cubic-bezier(0.22, 1, 0.36, 1),
+          opacity 120ms cubic-bezier(0.22, 1, 0.36, 1);
+        will-change: left, top, width, height, opacity;
+      }
+      #cradle-browser-comment-root [data-cradle-browser-comment-region] {
+        background: rgba(0, 136, 255, 0.10);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.68), 0 2px 10px rgba(0, 0, 0, 0.16);
+        animation: cradle-browser-comment-frame-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-highlight-label],
       #cradle-browser-comment-root [data-cradle-browser-comment-selection-label] {
@@ -399,12 +448,17 @@ class BrowserAnnotationRuntime {
         align-items: center;
         gap: 5px;
         padding: 0 7px;
-        border-radius: 0;
-        color: #9bd1ff;
-        background: rgba(30, 55, 80, 0.94);
-        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 8px 18px rgba(0, 0, 0, 0.2);
+        border-radius: 12px;
+        color: rgba(255, 255, 255, 0.86);
+        background: #1a1a1a;
+        box-shadow: 0 4px 20px rgba(0, 0, 0, 0.30), 0 0 0 1px rgba(255, 255, 255, 0.08);
         font: 500 11px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         pointer-events: none;
+        transition:
+          left 140ms cubic-bezier(0.22, 1, 0.36, 1),
+          top 140ms cubic-bezier(0.22, 1, 0.36, 1),
+          opacity 120ms cubic-bezier(0.22, 1, 0.36, 1);
+        will-change: left, top, opacity;
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-highlight-label] span,
       #cradle-browser-comment-root [data-cradle-browser-comment-selection-label] span {
@@ -414,26 +468,86 @@ class BrowserAnnotationRuntime {
         text-overflow: ellipsis;
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-selection-frame] {
-        position: absolute;
-        box-sizing: border-box;
-        border: 2px solid rgba(125, 188, 255, 0.72);
-        border-radius: 2px;
-        background: rgba(31, 41, 55, 0.18);
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.08);
-        pointer-events: none;
+        background: rgba(0, 136, 255, 0.10);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.68), 0 2px 10px rgba(0, 0, 0, 0.16);
+        animation: cradle-browser-comment-frame-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
+        transition:
+          left 160ms cubic-bezier(0.22, 1, 0.36, 1),
+          top 160ms cubic-bezier(0.22, 1, 0.36, 1),
+          width 160ms cubic-bezier(0.22, 1, 0.36, 1),
+          height 160ms cubic-bezier(0.22, 1, 0.36, 1),
+          opacity 120ms cubic-bezier(0.22, 1, 0.36, 1);
+        will-change: left, top, width, height, opacity;
+      }
+      @keyframes cradle-browser-comment-frame-in {
+        from {
+          opacity: 0;
+          transform: scale(0.96);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1);
+        }
+      }
+      @keyframes cradle-browser-comment-popup-enter {
+        from {
+          opacity: 0;
+          transform: scale(0.95) translateY(4px);
+        }
+        to {
+          opacity: 1;
+          transform: scale(1) translateY(0);
+        }
+      }
+      @keyframes cradle-browser-comment-popup-exit {
+        from {
+          opacity: 1;
+          transform: scale(1) translateY(0);
+        }
+        to {
+          opacity: 0;
+          transform: scale(0.95) translateY(4px);
+        }
+      }
+      @keyframes cradle-browser-comment-popup-shake {
+        0%,
+        100% {
+          transform: scale(1) translateX(0);
+        }
+        20% {
+          transform: scale(1) translateX(-3px);
+        }
+        40% {
+          transform: scale(1) translateX(3px);
+        }
+        60% {
+          transform: scale(1) translateX(-2px);
+        }
+        80% {
+          transform: scale(1) translateX(2px);
+        }
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-editor] {
         position: absolute;
         box-sizing: border-box;
-        width: min(360px, calc(100vw - 24px));
+        width: min(280px, calc(100vw - 24px));
         min-height: 112px;
         pointer-events: auto;
-        border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 8px;
-        background: rgba(18, 17, 14, 0.96);
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 18px 48px rgba(0, 0, 0, 0.32);
-        padding: 10px 12px 10px;
+        border: 0;
+        border-radius: 16px;
+        background: #1a1a1a;
+        box-shadow: 0 4px 24px rgba(0, 0, 0, 0.30), 0 0 0 1px rgba(255, 255, 255, 0.08);
+        padding: 12px 16px 14px;
         backdrop-filter: blur(10px);
+        animation: cradle-browser-comment-popup-enter 200ms cubic-bezier(0.34, 1.56, 0.64, 1) both;
+        transform-origin: 24px 0;
+        will-change: transform, opacity;
+      }
+      #cradle-browser-comment-root[data-cradle-browser-comment-exiting] [data-cradle-browser-comment-editor] {
+        animation: cradle-browser-comment-popup-exit 150ms ease-in both;
+      }
+      #cradle-browser-comment-root[data-cradle-browser-comment-shaking] [data-cradle-browser-comment-editor] {
+        animation: cradle-browser-comment-popup-shake 250ms ease-out;
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-prompt-row] {
         display: flex;
@@ -452,10 +566,10 @@ class BrowserAnnotationRuntime {
         max-width: min(188px, calc(100vw - 80px));
         min-width: 0;
         align-items: center;
-        border-radius: 5px;
+        border-radius: 999px;
         padding: 2px 6px;
-        color: #9bd1ff;
-        background: rgba(54, 86, 116, 0.92);
+        color: #ffffff;
+        background: #0088ff;
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-token] span {
         min-width: 0;
@@ -468,16 +582,20 @@ class BrowserAnnotationRuntime {
         box-sizing: border-box;
         width: 100%;
         min-height: 48px;
-        margin: 6px 0 0;
+        margin: 8px 0 0;
         resize: none;
-        border: 0;
-        border-radius: 6px;
-        padding: 0;
+        border: 1px solid rgba(255, 255, 255, 0.15);
+        border-radius: 8px;
+        padding: 8px 10px;
         color: rgba(255, 255, 255, 0.94);
-        background: transparent;
+        background: rgba(255, 255, 255, 0.05);
         font: 400 12px/1.35 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         letter-spacing: 0;
         outline: none;
+        transition: border-color 150ms ease;
+      }
+      #cradle-browser-comment-root textarea:focus {
+        border-color: #0088ff;
       }
       #cradle-browser-comment-root textarea::placeholder {
         color: rgba(255, 255, 255, 0.42);
@@ -495,7 +613,7 @@ class BrowserAnnotationRuntime {
         height: 28px;
         align-items: center;
         justify-content: center;
-        border-radius: 6px;
+        border-radius: 999px;
         border: 0;
         padding: 0 9px;
         color: rgba(255, 255, 255, 0.62);
@@ -519,9 +637,10 @@ class BrowserAnnotationRuntime {
       #cradle-browser-comment-root button[data-primary] {
         margin-left: auto;
         width: 28px;
+        min-width: 28px;
         padding: 0;
-        color: #111111;
-        background: rgba(255, 255, 255, 0.94);
+        color: #ffffff;
+        background: #0088ff;
         font-size: 16px;
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-file-count] {
@@ -535,6 +654,17 @@ class BrowserAnnotationRuntime {
       }
       #cradle-browser-comment-root input[type="file"] {
         display: none;
+      }
+      @media (prefers-reduced-motion: reduce) {
+        #cradle-browser-comment-root [data-cradle-browser-comment-highlight],
+        #cradle-browser-comment-root [data-cradle-browser-comment-highlight-label],
+        #cradle-browser-comment-root [data-cradle-browser-comment-selection-label],
+        #cradle-browser-comment-root [data-cradle-browser-comment-selection-frame],
+        #cradle-browser-comment-root [data-cradle-browser-comment-region],
+        #cradle-browser-comment-root [data-cradle-browser-comment-editor] {
+          animation: none;
+          transition: none;
+        }
       }
     `
     const layer = document.createElement('div')
@@ -569,6 +699,10 @@ class BrowserAnnotationRuntime {
     }
     event.preventDefault()
     event.stopPropagation()
+    if (this.stage === 'editing') {
+      this.shakeEditor()
+      return
+    }
     this.dragStart = {
       x: event.clientX,
       y: event.clientY,
@@ -588,6 +722,11 @@ class BrowserAnnotationRuntime {
       if (rect.width > 4 || rect.height > 4) {
         this.showRegion(rect)
       }
+      return
+    }
+
+    if (this.stage === 'editing') {
+      this.hideHighlight()
       return
     }
 
@@ -756,6 +895,7 @@ class BrowserAnnotationRuntime {
 
     const editor = document.createElement('div')
     editor.setAttribute('data-cradle-browser-comment-editor', 'true')
+    const previousBody = this.textarea?.value ?? this.designChange?.comment ?? ''
     const promptRow = document.createElement('div')
     promptRow.setAttribute('data-cradle-browser-comment-prompt-row', 'true')
     const promptPrefix = document.createElement('span')
@@ -769,7 +909,7 @@ class BrowserAnnotationRuntime {
 
     const textarea = document.createElement('textarea')
     textarea.placeholder = 'Comment'
-    textarea.value = this.designChange?.comment ?? ''
+    textarea.value = previousBody
 
     const actions = document.createElement('div')
     actions.setAttribute('data-cradle-browser-comment-actions', 'true')
@@ -782,7 +922,9 @@ class BrowserAnnotationRuntime {
     fileLabel.appendChild(fileInput)
     const fileCount = document.createElement('span')
     fileCount.setAttribute('data-cradle-browser-comment-file-count', 'true')
-    fileCount.textContent = 'No files'
+    fileCount.textContent = this.attachedImages.length === 0
+      ? 'No files'
+      : `${this.attachedImages.length} file${this.attachedImages.length === 1 ? '' : 's'}`
     const cancelButton = document.createElement('button')
     cancelButton.type = 'button'
     cancelButton.textContent = 'Cancel'
@@ -816,7 +958,7 @@ class BrowserAnnotationRuntime {
     this.textarea = textarea
     this.fileInput = fileInput
 
-    const editorWidth = Math.min(360, Math.max(260, window.innerWidth - 24))
+    const editorWidth = Math.min(280, Math.max(260, window.innerWidth - 24))
     const leftCandidate = rect.x + rect.width + 8
     const fallbackLeft = rect.x
     const left = leftCandidate + editorWidth <= window.innerWidth - 12
@@ -826,6 +968,21 @@ class BrowserAnnotationRuntime {
     editor.style.left = `${Math.max(12, Math.min(window.innerWidth - editorWidth - 12, left))}px`
     editor.style.top = `${top}px`
     textarea.focus()
+  }
+
+  private shakeEditor(): void {
+    if (!this.root || !this.textarea) {
+      return
+    }
+    if (this.shakeTimer !== null) {
+      clearTimeout(this.shakeTimer)
+    }
+    this.root.setAttribute('data-cradle-browser-comment-shaking', 'true')
+    this.shakeTimer = setTimeout(() => {
+      this.root?.removeAttribute('data-cradle-browser-comment-shaking')
+      this.shakeTimer = null
+      this.textarea?.focus()
+    }, 250)
   }
 
   private submit(type: 'save' | 'submit'): void {
@@ -1060,6 +1217,7 @@ class BrowserAnnotationRuntime {
   }
 
   private selectPoint(x: number, y: number): void {
+    this.stage = 'editing'
     this.selectedElement = null
     this.selectedElements = []
     this.selectedAnchor = { kind: 'point', x, y }
@@ -1068,6 +1226,7 @@ class BrowserAnnotationRuntime {
   }
 
   private selectRegion(rect: { x: number, y: number, width: number, height: number }): void {
+    this.stage = 'editing'
     this.selectedElement = null
     this.selectedElements = []
     this.selectedAnchor = { kind: 'region', ...rect }
@@ -1095,10 +1254,11 @@ class BrowserAnnotationRuntime {
 
     this.selectedElement = primaryElement
     this.selectedElements = uniqueElements
+    this.stage = 'editing'
     if (uniqueElements.length === 1) {
       this.selectedAnchor = { kind: 'element', element: annotationElement }
-      this.clearSelectionFrames()
-      this.showHighlight(primaryElement.getBoundingClientRect(), annotationElement)
+      this.hideHighlight()
+      this.renderSelectionFrames(uniqueElements)
       return {
         anchor: this.selectedAnchor,
         element: annotationElement,
