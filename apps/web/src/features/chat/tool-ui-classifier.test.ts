@@ -123,7 +123,7 @@ describe('describeToolCall', () => {
 
     expect(describeToolCall(part)).toMatchObject({
       kind: 'plan',
-      title: 'Submit plan',
+      title: 'Plan',
       summary: 'Plan ready',
     })
   })

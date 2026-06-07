@@ -1,6 +1,7 @@
 /**
  * Shared shell primitives for compact composer-adjacent runtime slots.
  */
+import { m, useReducedMotion } from 'motion/react'
 import type { ReactNode } from 'react'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
@@ -13,13 +14,27 @@ interface ComposerSlotShellProps {
   children: ReactNode
 }
 
+const COMPOSER_SLOT_TRANSITION = { duration: 0.18, ease: [0.22, 1, 0.36, 1] } as const
+const COMPOSER_SLOT_REDUCED_TRANSITION = { duration: 0 } as const
+
 export function ComposerSlotShell({ stateName, testId, className, children }: ComposerSlotShellProps) {
+  const shouldReduceMotion = useReducedMotion()
+  const hiddenState = shouldReduceMotion
+    ? { opacity: 0 }
+    : { opacity: 0, y: 8, filter: 'blur(2px)' }
+  const visibleState = shouldReduceMotion
+    ? { opacity: 1 }
+    : { opacity: 1, y: 0, filter: 'blur(0px)' }
+
   return (
-    <div
+    <m.div
+      initial={hiddenState}
+      animate={visibleState}
+      exit={hiddenState}
+      transition={shouldReduceMotion ? COMPOSER_SLOT_REDUCED_TRANSITION : COMPOSER_SLOT_TRANSITION}
       className={cn(
-        'pointer-events-auto relative z-0 mx-2 -mb-px max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-background/70 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-xl',
+        'pointer-events-auto relative z-0 mx-2 -mb-px max-w-full transform-gpu overflow-hidden rounded-t-lg rounded-b-none bg-background/70 px-3 py-1.5 text-xs text-muted-foreground backdrop-blur-xl',
         'border border-border border-b-0 shadow-[0_-8px_24px_rgba(0,0,0,0.04),inset_0_1px_0_rgba(255,255,255,0.45)]',
-        'motion-safe:animate-in motion-safe:fade-in-0 motion-safe:slide-in-from-bottom-1 motion-safe:duration-150',
         'dark:bg-background/80 dark:shadow-[0_-8px_24px_rgba(0,0,0,0.18),inset_0_1px_0_rgba(255,255,255,0.08)]',
         className,
       )}
@@ -28,7 +43,7 @@ export function ComposerSlotShell({ stateName, testId, className, children }: Co
     >
       <div className="pointer-events-none absolute inset-x-4 bottom-0 h-px bg-gradient-to-r from-transparent via-border/60 to-transparent" />
       {children}
-    </div>
+    </m.div>
   )
 }
 

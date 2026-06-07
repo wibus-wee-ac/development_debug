@@ -945,7 +945,7 @@ function readToolTitle(kind: ToolUiKind, displayName: string, input: ToolPayload
     return 'Update todos'
   }
   if (kind === 'plan') {
-    return 'Submit plan'
+    return 'Plan'
   }
 
   const description = input.description

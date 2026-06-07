@@ -34,7 +34,7 @@ import { CODEX_REVIEW_SLASH_ACTION_ID, CODEX_USAGE_SLASH_ACTION_ID, CRADLE_APPSH
 import type { ComposerRuntimeSettingsController } from './composer'
 import { Composer } from './composer'
 import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
-import type { ComposerQuickQuestionSlotActions, ComposerReviewSlotActions, ComposerUsageSlotActions } from './composer-slot-states'
+import type { ComposerPlanSlotActions, ComposerQuickQuestionSlotActions, ComposerReviewSlotActions, ComposerUsageSlotActions } from './composer-slot-states'
 import { ComposerSlotStates } from './composer-slot-states'
 import type { MentionItem, PluginMentionItem } from './mention-panel'
 import { MessageBubbleById } from './message-bubble'
@@ -241,6 +241,7 @@ function ChatComposerSection({
   contextBar,
   droppedPath,
   goalActions,
+  planActions,
   quickQuestionSlot,
   reviewSlot,
   usageSlot,
@@ -271,12 +272,43 @@ function ChatComposerSection({
     onResume: (state: ChatRuntimeGoalUiSlotState) => void
     onClear: (state: ChatRuntimeGoalUiSlotState) => void
   }
+  planActions?: ComposerPlanSlotActions
   quickQuestionSlot?: ComposerQuickQuestionSlotActions
   reviewSlot: ComposerReviewSlotActions
   usageSlot: ComposerUsageSlotActions
   onQuickQuestion?: (question: string) => void
   onComposerFocusChange?: (focused: boolean) => void
 }) {
+  const [composerDraft, setComposerDraft] = useState('')
+  const [composerReplaceTextKey, setComposerReplaceTextKey] = useState(0)
+  const planSlotActions = useMemo<ComposerPlanSlotActions>(() => {
+    const sendPlanFollowUp = async (fallbackPrompt: string) => {
+      const prompt = composerDraft.trim() || fallbackPrompt
+      try {
+        await composerRuntime.send(prompt, [], [])
+      }
+      catch (error) {
+        toastManager.add({
+          type: 'error',
+          title: 'Plan action failed',
+          description: error instanceof Error ? error.message : 'Unknown plan action error.',
+        })
+        return false
+      }
+      setComposerReplaceTextKey(key => key + 1)
+      return true
+    }
+
+    return {
+      ...planActions,
+      disabled: planActions?.disabled || composerRuntime.disabled || composerRuntime.isStreaming,
+      onImplement: state => planActions?.onImplement?.(state)
+        ?? sendPlanFollowUp('Proceed with the plan.'),
+      onRefine: state => planActions?.onRefine?.(state)
+        ?? sendPlanFollowUp('Please refine the plan before implementation.'),
+    }
+  }, [composerDraft, composerRuntime, planActions])
+
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 px-4">
       <div className="pointer-events-auto mx-auto w-full max-w-208 bg-transparent">
@@ -291,6 +323,7 @@ function ChatComposerSection({
           slots={composerRuntime.uiSlots}
           states={composerRuntime.slotStates}
           actions={goalActions}
+          plan={planSlotActions}
           quickQuestion={quickQuestionSlot}
           review={reviewSlot}
           usage={usageSlot}
@@ -322,6 +355,8 @@ function ChatComposerSection({
           externalSignals={{
             appendText: droppedPath ? `${droppedPath.text}` : undefined,
             appendTextKey: droppedPath?.ts,
+            replaceText: composerReplaceTextKey > 0 ? '' : undefined,
+            replaceTextKey: composerReplaceTextKey,
           }}
           view={{
             placeholder,
@@ -335,6 +370,7 @@ function ChatComposerSection({
             sessionTokens: composerRuntime.tokenUsage?.tokens,
             sessionContextWindow: composerRuntime.tokenUsage?.contextWindow,
             compactState: composerRuntime.compactState,
+            onDraftChange: setComposerDraft,
           }}
         />
       </div>

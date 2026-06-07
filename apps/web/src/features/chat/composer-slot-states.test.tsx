@@ -6,7 +6,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { TooltipProvider } from '~/components/ui/tooltip'
 
-import type { ChatRuntimeUiSlot, ChatRuntimeUsageUiSlotState } from './chat-capabilities'
+import type { ChatRuntimePlanUiSlotState, ChatRuntimeUiSlot, ChatRuntimeUsageUiSlotState } from './chat-capabilities'
 import { ComposerSlotStates } from './composer-slot-states'
 
 vi.mock('@cradle/streamdown', () => ({
@@ -44,6 +44,34 @@ const USAGE_STATE: ChatRuntimeUsageUiSlotState = {
   hasCredits: false,
   rateLimitReachedType: null,
   planType: null,
+  updatedAt: 1,
+}
+
+const PLAN_SLOT: ChatRuntimeUiSlot = {
+  id: 'codex:plan',
+  name: 'plan',
+  label: 'Plan',
+  description: 'Show the current execution plan.',
+  argumentHint: '',
+  iconKey: 'plan',
+  commandText: '/plan ',
+  surfaces: ['composerState', 'runtimePanel'],
+}
+
+const PLAN_STATE: ChatRuntimePlanUiSlotState = {
+  kind: 'plan',
+  slotId: 'codex:plan',
+  threadId: 'thread-1',
+  turnId: 'turn-1',
+  explanation: 'Patch the composer rail',
+  steps: [
+    { step: 'Read current slots', status: 'pending' },
+    { step: 'Wire plan actions', status: 'pending' },
+  ],
+  currentStep: 'Read current slots',
+  pendingCount: 2,
+  inProgressCount: 0,
+  completedCount: 0,
   updatedAt: 1,
 }
 
@@ -104,6 +132,24 @@ describe('composer slot states', () => {
     )
 
     expect(screen.queryByText('rate limit unavailable')).toBeNull()
+  })
+
+  it('renders provider-owned plan state only from a composerState slot', () => {
+    render(
+      <TooltipProvider>
+        <ComposerSlotStates
+          slots={[PLAN_SLOT]}
+          states={[PLAN_STATE]}
+          plan={{ onImplement: vi.fn(), onRefine: vi.fn() }}
+        />
+      </TooltipProvider>,
+    )
+
+    expect(screen.getByTestId('plan-slot').getAttribute('data-chat-runtime-slot-state')).toBe('plan')
+    expect(screen.getByText('Plan ready')).toBeTruthy()
+    expect(screen.getByText('Patch the composer rail')).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Implement plan' })).toBeTruthy()
+    expect(screen.getByRole('button', { name: 'Refine plan' })).toBeTruthy()
   })
 
   it('dismisses the slash-triggered usage panel from its close action', () => {

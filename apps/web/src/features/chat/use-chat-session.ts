@@ -147,6 +147,7 @@ const SNAPSHOT_SYNC_DEBOUNCE_MS = 75
 const QUEUE_DRAIN_SYNC_DELAY_MS = 150
 const EMPTY_QUEUE_ITEMS: ChatQueueItem[] = []
 const BANG_COMMAND_DRIVER_PREFIX = 'bang-command'
+const STEER_FALLBACK_ERROR_CODES = new Set(['chat_steer_context_mismatch', 'chat_steer_no_active_run'])
 
 function readSideChatCommand(text: string): string | null {
   const normalized = text.trimStart()
@@ -158,6 +159,32 @@ function readSideChatCommand(text: string): string | null {
     return null
   }
   return normalized.slice('/side'.length).trim()
+}
+
+function releaseStaleSessionStreamingState(sessionId: string): void {
+  const state = useChatStore.getState()
+  const meta = state.sessionMetaMap.get(sessionId)
+  const messageIds = new Set((state.messagesMap.get(sessionId) ?? []).map(message => message.id))
+  if (meta?.localDriverMessageId) {
+    messageIds.add(meta.localDriverMessageId)
+  }
+
+  for (const messageId of messageIds) {
+    if (
+      state.generatingMessageIds.has(messageId)
+      || state.passiveStreamingMessageIds.has(messageId)
+      || meta?.localDriverMessageId === messageId
+    ) {
+      state.finishGeneration(messageId)
+    }
+  }
+  state.setPassiveStreamingMessageIds(sessionId, [])
+  state.setSessionMeta(sessionId, {
+    cancelling: false,
+    locallyDriving: false,
+    localDriverMessageId: undefined,
+    passiveStatus: 'idle',
+  })
 }
 
 interface ChatSessionRuntimeControls {
@@ -315,6 +342,32 @@ export function useChatSessionDriver(chatSessionId: string | null): void {
     useChatStore.getState().setSessionHydrated(chatSessionId, true)
     useChatStore.getState().setPassiveStatus(chatSessionId, 'error')
   }, [chatSessionId, snapshotRowsQuery.isError])
+
+  useEffect(() => {
+    if (!chatSessionId || !runtimeStatus || runtimeStatus.status !== 'idle' || runtimeStatus.activeRun) {
+      return
+    }
+
+    const state = useChatStore.getState()
+    const meta = state.sessionMetaMap.get(chatSessionId)
+    const sessionMessages = state.messagesMap.get(chatSessionId) ?? []
+    const hasStaleStreamingState = Boolean(meta?.locallyDriving || meta?.passiveStatus === 'streaming')
+      || sessionMessages.some(
+        message => state.generatingMessageIds.has(message.id) || state.passiveStreamingMessageIds.has(message.id),
+      )
+    if (!hasStaleStreamingState) {
+      return
+    }
+
+    if (passiveStreamRef.current?.sessionId === chatSessionId) {
+      passiveStreamRef.current.controller.abort()
+      passiveStreamRef.current.handler.dispose()
+      passiveStreamRef.current = null
+    }
+    releaseStaleSessionStreamingState(chatSessionId)
+    scheduleSnapshotRefresh(0)
+    refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
+  }, [chatSessionId, refreshQueue, runtimeStatus, scheduleSnapshotRefresh, snapshotRows])
 
   useEffect(() => {
     return () => {
@@ -637,6 +690,87 @@ export function useChatSession(chatSessionId: string | null) {
       return
     }
 
+    const startNewResponse = async () => {
+      const userMessageId = `user-${Date.now()}`
+      useChatStore.getState().appendMessage(chatSessionId, buildOptimisticUserMessage({
+        messageId: userMessageId,
+        text: trimmedText,
+        sourceText: text,
+        files,
+        contextParts,
+        runtimeKind,
+      }))
+      updateSessionInSessionLists(queryClient, { id: chatSessionId }, { promote: true })
+
+      const assistantMessageId = `assistant-${Date.now()}`
+      const controller = new AbortController()
+      const requestStartedAtMs = performance.now()
+      const handler = new ChatStreamingHandler(chatSessionId, assistantMessageId, requestStartedAtMs)
+      handler.start(controller)
+      handlerRef.current = handler
+      let acceptedByServer = false
+
+      try {
+        const transport = await startChatResponseStream({
+          sessionId: chatSessionId,
+          body: {
+            text: trimmedText,
+            files,
+            contextParts,
+            providerTargetId: opts?.providerTargetId ?? undefined,
+            modelId: opts?.modelId ?? undefined,
+            thinkingEffort: opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
+            runtimeSettings: opts?.runtimeSettings,
+          },
+          signal: controller.signal,
+        })
+        acceptedByServer = true
+
+        if (transport.runId) {
+          useChatStore.getState().setRunDisplayId(assistantMessageId, transport.runId)
+        }
+
+        if (sessionBindingQueryKey) {
+          void queryClient.invalidateQueries({ queryKey: sessionBindingQueryKey })
+        }
+        refreshSessionLists()
+
+        await handler.consume(transport.stream)
+        handler.finish()
+      }
+      catch (err) {
+        if (err instanceof DOMException && err.name === 'AbortError') {
+          handler.finish()
+        }
+        else if (!acceptedByServer) {
+          const store = useChatStore.getState()
+          store.finishGeneration(assistantMessageId)
+          store.removeMessage(chatSessionId, assistantMessageId)
+          store.removeMessage(chatSessionId, userMessageId)
+          throw err
+        }
+        else {
+          handler.fail(err instanceof Error ? err.message : 'Stream failed')
+        }
+      }
+      finally {
+        const wasLocallyAborted = controller.signal.aborted
+        handlerRef.current = null
+        const currentPassiveStatus = useChatStore.getState().sessionMetaMap.get(chatSessionId)?.passiveStatus
+        useChatStore.getState().setSessionMeta(chatSessionId, {
+          locallyDriving: false,
+          localDriverMessageId: undefined,
+          passiveStatus: currentPassiveStatus === 'streaming' ? 'streaming' : 'idle',
+        })
+        if (!wasLocallyAborted && acceptedByServer) {
+          scheduleSnapshotRefresh(0)
+          void queryClient.invalidateQueries({ queryKey: runtimeUiSlotStatesQueryKey(chatSessionId) })
+          void queryClient.invalidateQueries({ queryKey: runtimeSettingsQueryKey(chatSessionId) })
+          refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
+        }
+      }
+    }
+
     if (isBusy) {
       if (codexGoalObjective) {
         const runtimeStatus = await queryClient.fetchQuery({
@@ -698,8 +832,37 @@ export function useChatSession(chatSessionId: string | null) {
           scheduleSnapshotRefresh(0)
         }
         catch (error) {
-          if (readChatCommandErrorCode(error) !== 'chat_steer_context_mismatch') {
+          const errorCode = readChatCommandErrorCode(error)
+          if (!STEER_FALLBACK_ERROR_CODES.has(errorCode ?? '')) {
             throw error
+          }
+
+          if (errorCode === 'chat_steer_no_active_run') {
+            const runtimeStatus = await queryClient.fetchQuery({
+              queryKey: runtimeSessionStatusQueryKey(chatSessionId),
+              queryFn: () => getRuntimeSessionStatus(chatSessionId),
+              staleTime: 0,
+            }).catch(() => null)
+            releaseStaleSessionStreamingState(chatSessionId)
+            scheduleSnapshotRefresh(0)
+            void queryClient.invalidateQueries({ queryKey: runtimeSessionStatusQueryKey(chatSessionId) })
+            if (
+              !runtimeStatus
+              || (runtimeStatus.status === 'idle'
+                && !runtimeStatus.activeRun
+                && runtimeStatus.queue.pending === 0
+                && runtimeStatus.queue.running === 0)
+            ) {
+              await startNewResponse()
+              return
+            }
+
+            await enqueueChatSessionQueueItem({
+              sessionId: chatSessionId,
+              body,
+            })
+            refreshQueue()
+            return
           }
 
           await enqueueChatSessionQueueItem({
@@ -724,80 +887,7 @@ export function useChatSession(chatSessionId: string | null) {
       return
     }
 
-    // 1. Optimistic user message
-    const userMessageId = `user-${Date.now()}`
-    useChatStore.getState().appendMessage(chatSessionId, buildOptimisticUserMessage({
-      messageId: userMessageId,
-      text: trimmedText,
-      sourceText: text,
-      files,
-      contextParts,
-      runtimeKind,
-    }))
-    updateSessionInSessionLists(queryClient, { id: chatSessionId }, { promote: true })
-
-    // 2. Create handler for assistant response
-    const assistantMessageId = `assistant-${Date.now()}`
-    const controller = new AbortController()
-    const requestStartedAtMs = performance.now()
-    const handler = new ChatStreamingHandler(chatSessionId, assistantMessageId, requestStartedAtMs)
-    handler.start(controller)
-    handlerRef.current = handler
-
-    try {
-      // 3. Initiate SSE stream
-      const transport = await startChatResponseStream({
-        sessionId: chatSessionId,
-        body: {
-          text: trimmedText,
-          files,
-          contextParts,
-          providerTargetId: opts?.providerTargetId ?? undefined,
-          modelId: opts?.modelId ?? undefined,
-          thinkingEffort: opts?.thinkingEffort === null ? undefined : opts?.thinkingEffort,
-          runtimeSettings: opts?.runtimeSettings,
-        },
-        signal: controller.signal,
-      })
-
-      if (transport.runId) {
-        useChatStore.getState().setRunDisplayId(assistantMessageId, transport.runId)
-      }
-
-      if (sessionBindingQueryKey) {
-        void queryClient.invalidateQueries({ queryKey: sessionBindingQueryKey })
-      }
-      refreshSessionLists()
-
-      await handler.consume(transport.stream)
-
-      handler.finish()
-    }
-    catch (err) {
-      if (err instanceof DOMException && err.name === 'AbortError') {
-        handler.finish()
-      }
-      else {
-        handler.fail(err instanceof Error ? err.message : 'Stream failed')
-      }
-    }
-    finally {
-      const wasLocallyAborted = controller.signal.aborted
-      handlerRef.current = null
-      const currentPassiveStatus = useChatStore.getState().sessionMetaMap.get(chatSessionId)?.passiveStatus
-      useChatStore.getState().setSessionMeta(chatSessionId, {
-        locallyDriving: false,
-        localDriverMessageId: undefined,
-        passiveStatus: currentPassiveStatus === 'streaming' ? 'streaming' : 'idle',
-      })
-      if (!wasLocallyAborted) {
-        // Sync from server to get canonical message IDs
-        scheduleSnapshotRefresh(0)
-        void queryClient.invalidateQueries({ queryKey: runtimeUiSlotStatesQueryKey(chatSessionId) })
-        void queryClient.invalidateQueries({ queryKey: runtimeSettingsQueryKey(chatSessionId) })
-        refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
-      }
-    }
+    await startNewResponse()
   }, [chatSessionId, queryClient, refreshQueue, refreshSessionLists, runtimeKind, scheduleSnapshotRefresh, sessionBindingQueryKey, visibleStatus])
 
   const respondToToolApproval = useCallback(async (response: ToolApprovalResponseInput) => {
