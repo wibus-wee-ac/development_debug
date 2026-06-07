@@ -8,7 +8,7 @@ import {
   getWorkspacesByIdOptions,
 } from '~/api-gen/@tanstack/react-query.gen'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
-import { ChatSessionFrameHost } from '~/features/chat/chat-session-frame-host'
+import { ChatSessionFrameHost } from '~/features/chat/session/chat-session-frame-host'
 import { isElectron, nativeIpc } from '~/lib/electron'
 import { useSessionLayoutStore } from '~/store/session-layout'
 

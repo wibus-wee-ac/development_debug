@@ -294,6 +294,28 @@ describe('mapClaudeAgentMessageToChunks', () => {
     expect(terminalText).toContain('tail')
   })
 
+  it('closes streamed text and finishes the turn when Claude reports end_turn', async () => {
+    const state = createClaudeAgentChunkMapperState('text-1')
+    const chunks: import('ai').UIMessageChunk[] = []
+
+    for (const message of [
+      { type: 'stream_event', session_id: 's1', event: { type: 'content_block_start', index: 0, content_block: { type: 'text' } } },
+      { type: 'stream_event', session_id: 's1', event: { type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Done' } } },
+      { type: 'stream_event', session_id: 's1', event: { type: 'content_block_stop', index: 0 } },
+      { type: 'stream_event', session_id: 's1', event: { type: 'message_delta', delta: { stop_reason: 'end_turn' } } },
+    ]) {
+      const result = await mapClaudeAgentMessageToChunks(message as unknown as SDKMessage, state)
+      chunks.push(...result.chunks)
+    }
+
+    expect(chunks).toEqual([
+      { type: 'text-start', id: 'text-1' },
+      { type: 'text-delta', id: 'text-1', delta: 'Done' },
+      { type: 'text-end', id: 'text-1' },
+      { type: 'finish', finishReason: 'stop' },
+    ])
+  })
+
   it('does not duplicate thinking parts when an assistant snapshot arrives after stream events', async () => {
     const state = createClaudeAgentChunkMapperState('text-1')
     const allChunks: import('ai').UIMessageChunk[] = []

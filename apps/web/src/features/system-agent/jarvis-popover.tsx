@@ -21,8 +21,8 @@ import { useLayoutGeometry } from '~/components/layout/layout-geometry-context'
 import { CENTER_COLUMN_EXPANDED_SCALE, CENTER_COLUMN_EXPANDED_Y } from '~/components/layout/layout-motion'
 import { Button } from '~/components/ui/button'
 import { ScrollArea } from '~/components/ui/scroll-area'
-import { MessageBubble } from '~/features/chat/message-bubble'
-import { useChatSession } from '~/features/chat/use-chat-session'
+import { MessageBubble } from '../chat/rendering/message-bubble'
+
 import { cn } from '~/lib/cn'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useCradleTabStore } from '~/tabs/registry'
@@ -40,6 +40,7 @@ import { useJarvisUiStore } from './jarvis-ui-store'
 import { installSystemAgentContextProvider } from './system-context-provider'
 import { collectContextEnvelope } from './use-context-snapshot'
 import { useJarvisPreferences } from './use-jarvis-preferences'
+import { useChatSession } from '../chat/session/use-chat-session'
 
 const FALLBACK_EXPANDED_BOUNDS = { top: 44, left: 268, width: 800, height: 600 }
 const PANEL_MIN_WIDTH = 320

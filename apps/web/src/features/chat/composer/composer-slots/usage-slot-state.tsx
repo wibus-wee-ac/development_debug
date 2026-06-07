@@ -15,7 +15,7 @@ import { Progress } from '~/components/ui/progress'
 import { cn } from '~/lib/cn'
 import { clampPercent } from '~/lib/number-format'
 
-import type { ChatRuntimeUsageUiSlotState } from '../chat-capabilities'
+import type { ChatRuntimeUsageUiSlotState } from '../../capabilities/chat-capabilities'
 import { ComposerSlotIconAction, ComposerSlotShell } from './composer-slot-shell'
 import type { ComposerUsageSlotActions } from './types'
 

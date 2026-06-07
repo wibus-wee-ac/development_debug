@@ -38,7 +38,7 @@ import type {
   ChatRuntimeUiSlotIconKey,
   ChatRuntimeUiSlotState,
   ChatRuntimeUiSlotSurface,
-} from './chat-capabilities'
+} from '../capabilities/chat-capabilities'
 
 interface RuntimeUiSlotPanelProps {
   slots: ChatRuntimeUiSlot[]

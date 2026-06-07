@@ -12,12 +12,12 @@ import { forwardRef, useEffect, useImperativeHandle, useMemo, useRef } from 'rea
 
 import { cn } from '~/lib/cn'
 
-import type { ChatContextPart, ChatPluginContextPart, ChatSkillContextPart } from './chat-context-parts'
-import type { ChatComposerSlashCommand } from './chat-slash-commands'
-import type { MentionItem, PluginMentionItem } from './mention-panel'
-import type { SkillMentionItem } from './skill-mention-panel'
-import { formatSkillMentionTokenLabel, SKILL_MENTION_TOKEN_CLASS } from './skill-mention-token'
-import { getActiveSlashCommand } from './slash-command-input'
+import type { ChatContextPart, ChatPluginContextPart, ChatSkillContextPart } from '../context/chat-context-parts'
+import type { MentionItem, PluginMentionItem } from '../mentions/mention-panel'
+import type { SkillMentionItem } from '../mentions/skill-mention-panel'
+import { formatSkillMentionTokenLabel, SKILL_MENTION_TOKEN_CLASS } from '../mentions/skill-mention-token'
+import type { ChatComposerSlashCommand } from '../slash-commands/chat-slash-commands'
+import { getActiveSlashCommand } from '../slash-commands/slash-command-input'
 
 const PLACEHOLDER_PLUGIN_KEY = new PluginKey<{ placeholder: string }>('chatPromptPlaceholder')
 const TOKEN_LEAF_TEXT = '\uFFFC'

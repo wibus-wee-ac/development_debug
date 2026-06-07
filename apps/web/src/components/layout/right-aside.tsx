@@ -8,8 +8,6 @@ import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getWorkspacesById } from '~/api-gen/sdk.gen'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { BrowserAnnotationAdjustmentPanel } from '~/features/browser/browser-annotation-adjustment-panel'
-import { RuntimeSessionPanel } from '~/features/chat/runtime-session-panel'
-import { useSessionAwaitSummary } from '~/features/chat/use-session-await'
 import { ChangesPanel, GitPanel } from '~/features/git'
 import { IssueAsidePanel } from '~/features/kanban/issue-aside-panel'
 import { AwaitPanel } from '~/features/session-await/await-panel'
@@ -19,6 +17,8 @@ import type { RuntimeKind } from '~/features/agent-runtime/types'
 import type { Workspace } from '~/features/workspace/types'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
+import { RuntimeSessionPanel } from '~/features/chat/runtime/runtime-session-panel'
+import { useSessionAwaitSummary } from '~/features/chat/session/use-session-await'
 
 interface Tab {
   id: string

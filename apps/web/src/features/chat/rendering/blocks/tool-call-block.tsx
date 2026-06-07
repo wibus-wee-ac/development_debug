@@ -34,7 +34,7 @@ import { boundedPercent } from '~/lib/number-format'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 
-import { projectChatTodos, readTodoCompletion } from '../chat-todo-projection'
+
 import { readTerminalOutputSections } from '../terminal-tool-details'
 import type { RenderableToolPart, ToolPayload, ToolState, ToolUiDescriptor, ToolUiKind } from '../tool-ui-classifier'
 import {
@@ -43,6 +43,7 @@ import {
   readToolPayload,
 } from '../tool-ui-classifier'
 import { EditFileBlock } from './edit-file-block'
+import { projectChatTodos, readTodoCompletion } from '../../capabilities/chat-todo-projection'
 
 interface ToolCallBlockProps {
   toolName: string

@@ -275,6 +275,32 @@ export class ClaudeAgentProvider implements ChatRuntime {
       span.setAttribute('langfuse.trace.name', 'claude-agent-chat')
     }
     const outputTextCollector = createBoundedTextCollector()
+    let generationEnded = false
+    const endGeneration = (error?: unknown) => {
+      if (!generation || generationEnded) {
+        return
+      }
+      if (error !== undefined) {
+        generation.update({
+          level: 'ERROR',
+          statusMessage: error instanceof Error ? error.message : String(error),
+        })
+      }
+      else {
+        generation.update({
+          output: outputTextCollector.read(),
+          ...(this._lastUsage && {
+            usageDetails: {
+              input: this._lastUsage.promptTokens,
+              output: this._lastUsage.completionTokens,
+              total: this._lastUsage.totalTokens,
+            },
+          }),
+        })
+      }
+      generation.end()
+      generationEnded = true
+    }
 
     const shouldGenerateTitle = shouldGenerateClaudeSessionTitle({
       providerSessionId: resumedProviderSessionId,
@@ -332,40 +358,11 @@ export class ClaudeAgentProvider implements ChatRuntime {
           })
         }
 
-        for (const chunk of result.chunks) {
-          // Collect text output for Langfuse
-          if (generation && chunk.type === 'text-delta' && 'delta' in chunk) {
-            outputTextCollector.append((chunk as { delta: string }).delta)
-          }
-          yield chunk
-        }
-
-        if (result.sessionId && result.sessionId !== input.runtimeSession.providerSessionId) {
-          input.runtimeSession.providerSessionId = result.sessionId
-          await this.reportClaudeSessionTitle({
-            sessionId: result.sessionId,
-            runtimeSession: input.runtimeSession,
-            reportSessionTitle: input.reportSessionTitle,
-          })
-
-          if (shouldGenerateTitle) {
-            const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
-            const titleGeneration = this.resolveClaudeSessionTitleGenerationConfig({
-              currentProfile: input.profile,
-              fallbackModel: effectiveModel ?? null,
-            })
-            this.generateClaudeSessionTitleInBackground({
-              profile: titleGeneration.profile,
-              mainSessionId: result.sessionId,
-              promptText: userPromptText,
-              modelId: titleGeneration.modelId,
-              fallbackModel: titleGeneration.fallbackModel,
-              thinkingEffort: titleGeneration.thinkingEffort,
-              workspacePath: input.workspacePath ?? snapshot.workspacePath ?? '',
-              agentId: input.agentId ?? snapshot.agentId ?? null,
-              reportSessionTitle: input.reportSessionTitle,
-            })
-          }
+        const nextProviderSessionId = result.sessionId && result.sessionId !== input.runtimeSession.providerSessionId
+          ? result.sessionId
+          : null
+        if (nextProviderSessionId) {
+          input.runtimeSession.providerSessionId = nextProviderSessionId
         }
 
         if (result.usage) {
@@ -378,8 +375,43 @@ export class ClaudeAgentProvider implements ChatRuntime {
               totalTokens: this._totalUsage.totalTokens + result.usage.totalTokens,
             }
           }
- else {
+          else {
             this._totalUsage = { ...result.usage }
+          }
+        }
+
+        for (const chunk of result.chunks) {
+          // Collect text output for Langfuse
+          if (generation && chunk.type === 'text-delta' && 'delta' in chunk) {
+            outputTextCollector.append((chunk as { delta: string }).delta)
+          }
+          yield chunk
+        }
+
+        if (nextProviderSessionId) {
+          await this.reportClaudeSessionTitle({
+            sessionId: nextProviderSessionId,
+            runtimeSession: input.runtimeSession,
+            reportSessionTitle: input.reportSessionTitle,
+          })
+
+          if (shouldGenerateTitle) {
+            const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+            const titleGeneration = this.resolveClaudeSessionTitleGenerationConfig({
+              currentProfile: input.profile,
+              fallbackModel: effectiveModel ?? null,
+            })
+            this.generateClaudeSessionTitleInBackground({
+              profile: titleGeneration.profile,
+              mainSessionId: nextProviderSessionId,
+              promptText: userPromptText,
+              modelId: titleGeneration.modelId,
+              fallbackModel: titleGeneration.fallbackModel,
+              thinkingEffort: titleGeneration.thinkingEffort,
+              workspacePath: input.workspacePath ?? snapshot.workspacePath ?? '',
+              agentId: input.agentId ?? snapshot.agentId ?? null,
+              reportSessionTitle: input.reportSessionTitle,
+            })
           }
         }
 
@@ -393,33 +425,16 @@ export class ClaudeAgentProvider implements ChatRuntime {
         yield { type: 'text-end', id: mapperState.textItemId }
       }
 
-      // Record usage and output in the generation
-      if (generation) {
-        generation.update({
-          output: outputTextCollector.read(),
-          ...(this._lastUsage && {
-            usageDetails: {
-              input: this._lastUsage.promptTokens,
-              output: this._lastUsage.completionTokens,
-              total: this._lastUsage.totalTokens,
-            },
-          }),
-        })
-      }
-      generation?.end()
+      endGeneration()
     }
     catch (error) {
-      if (generation) {
-        generation.update({
-          level: 'ERROR',
-          statusMessage: error instanceof Error ? error.message : String(error),
-        })
-        generation.end()
-      }
+      endGeneration(error)
       throw error
     }
     finally {
       inputStream.close()
+      activeQuery.close()
+      endGeneration()
       this.releaseQuery(sessionId, activeEntry)
     }
   }

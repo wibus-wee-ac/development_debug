@@ -4,15 +4,15 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRe
 import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { getSkills, patchSessionsById } from '~/api-gen/sdk.gen'
 import type { MentionItem } from '~/features/chat'
-import type { SkillMentionItem } from '~/features/chat/skill-mention-panel'
+import type { SkillMentionItem } from './mentions/skill-mention-panel'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import { updateSessionInSessionLists } from '~/features/workspace/use-session'
 import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import type { RuntimeKind } from '~/features/agent-runtime/types'
 import type { SkillInventoryEntry } from '~/features/skills/types'
 
-import { searchSessionPluginMentions } from './plugin-mentions'
-import type { SendMessageOptions } from './use-chat-session'
+import { searchSessionPluginMentions } from './mentions/plugin-mentions'
+import type { SendMessageOptions } from './session/use-chat-session'
 
 const ChatView = lazy(() => import('./chat-view').then(module => ({ default: module.ChatView })))
 

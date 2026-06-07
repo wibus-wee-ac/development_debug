@@ -2,7 +2,7 @@ import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 import type { RuntimeKind } from '~/features/agent-runtime/types'
-import type { ChatRuntimeSettings } from '~/features/chat/chat-response-command'
+import type { ChatRuntimeSettings } from '~/features/chat/commands/chat-response-command'
 
 import { persistStorage } from './persist-storage'
 

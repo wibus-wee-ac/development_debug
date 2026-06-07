@@ -37,7 +37,7 @@ import {
 } from 'react'
 
 import { Button } from '~/components/ui/button'
-import { releaseSideConversation } from '~/features/chat/chat-response-command'
+import { releaseSideConversation } from '../chat/commands/chat-response-command'
 import {
   submitChatComposerFileIngress,
   submitChatPromptIngress,

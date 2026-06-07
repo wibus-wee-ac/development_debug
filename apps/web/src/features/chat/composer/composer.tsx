@@ -11,11 +11,16 @@ import { isLocalMode } from '~/lib/electron'
 import { formatTokenCount } from '~/lib/number-format'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 
-import { readBangCommand } from './bang-command'
-import type { ChatRuntimeCompactUiSlotState } from './chat-capabilities'
-import type { ChatContextPart } from './chat-context-parts'
-import type { ChatRuntimeSettings, ChatRuntimeSettingsPatch } from './chat-response-command'
-import type { ChatComposerSlashCommand } from './chat-slash-commands'
+import type { ChatRuntimeCompactUiSlotState } from '../capabilities/chat-capabilities'
+import { readBangCommand } from '../commands/bang-command'
+import type { ChatRuntimeSettings, ChatRuntimeSettingsPatch } from '../commands/chat-response-command'
+import type { ChatContextPart } from '../context/chat-context-parts'
+import type { MentionItem, MentionPickerItem, PluginMentionItem } from '../mentions/mention-panel'
+import { MentionPanel } from '../mentions/mention-panel'
+import type { SkillMentionItem } from '../mentions/skill-mention-panel'
+import { SkillMentionPanel } from '../mentions/skill-mention-panel'
+import type { SendMessageResult } from '../session/use-chat-session'
+import type { ChatComposerSlashCommand } from '../slash-commands/chat-slash-commands'
 import type {
   ComposerActionContextOptions,
   ComposerSlashCommandActionContext,
@@ -31,13 +36,9 @@ import {
   ComposerAttachmentInput,
   ComposerAttachmentList,
 } from './composer-attachments'
-import { ContextUsageDetailPanel } from './context-usage-detail-panel'
-import type { MentionItem, MentionPickerItem, PluginMentionItem } from './mention-panel'
-import { MentionPanel } from './mention-panel'
+import { ContextUsageDetailPanel } from '../context/context-usage-detail-panel'
 import type { PromptEditorController, PromptEditorSnapshot, PromptEditorTriggerRange } from './prompt-editor'
 import { PromptEditor } from './prompt-editor'
-import type { SkillMentionItem } from './skill-mention-panel'
-import { SkillMentionPanel } from './skill-mention-panel'
 import {
   CHAT_SLASH_COMMAND_LISTBOX_ID,
   getActiveSlashCommand,
@@ -46,9 +47,8 @@ import {
   getVisibleSlashCommands,
   isSlashCommandAwaitingRequiredArgument,
   replaceSlashTrigger,
-} from './slash-command-input'
-import { SlashCommandPanel } from './slash-command-panel'
-import type { SendMessageResult } from './use-chat-session'
+} from '../slash-commands/slash-command-input'
+import { SlashCommandPanel } from '../slash-commands/slash-command-panel'
 
 type ComposerSendResult = SendMessageResult | boolean
 

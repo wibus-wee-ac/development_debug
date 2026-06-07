@@ -8,20 +8,12 @@ import { useProviderTargetModels } from '~/features/agent-runtime/use-agent-mode
 import { useGitStatus } from '~/features/git/use-git'
 import { useChatPreferencesQuery } from '~/features/settings/use-chat-preferences'
 import { isElectron, platform } from '~/lib/electron'
-
-import type { ChatRuntimeCompactUiSlotState, ChatRuntimeUiSlot, ChatRuntimeUiSlotState } from './chat-capabilities'
-import { getChatRuntimeCapabilities, getChatRuntimeUiSlotStates, runtimeCapabilitiesQueryKey, runtimeUiSlotStatesQueryKey } from './chat-capabilities'
-import type { ChatContextPart } from './chat-context-parts'
-import type { ChatComposerSlashCommand } from './chat-slash-commands'
-import {
-  CODEX_USAGE_SLASH_ACTION_ID,
-  CRADLE_APPSHOT_SLASH_COMMAND,
-  CRADLE_SIDE_CHAT_SLASH_COMMAND,
-  projectRuntimeComposerSlashCommands,
-  withSlashCommandAvailability,
-} from './chat-slash-commands'
+import { ChatRuntimeUiSlot, ChatRuntimeUiSlotState, ChatRuntimeCompactUiSlotState, runtimeCapabilitiesQueryKey, getChatRuntimeCapabilities, runtimeUiSlotStatesQueryKey, getChatRuntimeUiSlotStates } from '../capabilities/chat-capabilities'
+import { ChatContextPart } from '../context/chat-context-parts'
+import { SendMessageOptions, SendMessageResult } from '../session/use-chat-session'
+import { ChatComposerSlashCommand, withSlashCommandAvailability, CRADLE_APPSHOT_SLASH_COMMAND, CRADLE_SIDE_CHAT_SLASH_COMMAND, CODEX_USAGE_SLASH_ACTION_ID, projectRuntimeComposerSlashCommands } from '../slash-commands/chat-slash-commands'
 import { modelSupportsAttachments } from './composer-attachment-state'
-import type { SendMessageOptions, SendMessageResult } from './use-chat-session'
+
 
 interface ChatComposerSendOverrides {
   providerTargetId?: string

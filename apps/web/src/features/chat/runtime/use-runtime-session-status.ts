@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
+import { getRuntimeSessionStatus } from '../commands/runtime-session-status-command'
 
-import { getRuntimeSessionStatus } from './runtime-session-status-command'
 
 export function runtimeSessionStatusQueryKey(sessionId: string | null): readonly unknown[] {
   return ['chat', 'runtime-session-status', sessionId ?? 'none']

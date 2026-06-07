@@ -10,14 +10,13 @@ import type {
 } from '~/lib/electron'
 import { readDesktopChatStreamBridge } from '~/lib/electron'
 
-import type { ChatResponseRequestBody } from './chat-response-command'
-import { startChatResponse, subscribeChatSessionStream } from './chat-response-command'
 import {
   buildUIMessageChunkStreamFromResponse,
   emitChatRunActivity,
   emitChatRunSettled,
   readTerminalChunkStatus,
 } from './sse-chat-transport'
+import { ChatResponseRequestBody, startChatResponse, subscribeChatSessionStream } from '../commands/chat-response-command'
 
 export interface ChatStreamTransportResult {
   streamId: string | null

@@ -3,7 +3,7 @@ import { useMemo } from 'react'
 
 import type { RuntimeKind } from '~/features/agent-runtime/types'
 
-import { draftRuntimeCapabilitiesQueryKey, getDraftChatRuntimeCapabilities } from './chat-capabilities'
+import { draftRuntimeCapabilitiesQueryKey, getDraftChatRuntimeCapabilities } from '../capabilities/chat-capabilities'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
 import {
   projectRuntimeComposerSlashCommands,

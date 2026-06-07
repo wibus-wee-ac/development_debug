@@ -496,7 +496,7 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
   const setBrowserPanelOpen = useLayoutStore(s => s.setBrowserPanelOpen)
   const [query, setQuery] = useState('')
   const [commandHistory, setCommandHistory] = useState(readCommandHistory)
-  const panelRef = useRef<HTMLDivElement>(null)
+  const panelRef = useRef<HTMLDialogElement>(null)
   const requestedQueryRef = useRef('')
   const measuredQueryRef = useRef('')
   const closeFromEscape = useEffectEvent(() => {

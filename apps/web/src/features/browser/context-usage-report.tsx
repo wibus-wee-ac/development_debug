@@ -19,12 +19,10 @@ import { Button } from '~/components/ui/button'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Separator } from '~/components/ui/separator'
-import type { ChatRuntimeContextUsage, ChatRuntimeContextUsageItem, ChatRuntimeContextUsageSection } from '~/features/chat/chat-capabilities'
-import {
-  getChatRuntimeContextUsage,
-} from '~/features/chat/chat-capabilities'
+
 import { cn } from '~/lib/cn'
 import { clampPercent, formatTokenCount } from '~/lib/number-format'
+import { getChatRuntimeContextUsage, ChatRuntimeContextUsageSection, ChatRuntimeContextUsageItem, ChatRuntimeContextUsage } from '../chat/capabilities/chat-capabilities'
 
 interface ContextUsageReportProps {
   sessionId: string

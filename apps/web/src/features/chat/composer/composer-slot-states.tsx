@@ -7,7 +7,7 @@ import type {
   ChatRuntimeUiSlot,
   ChatRuntimeUiSlotState,
   ChatRuntimeUsageUiSlotState,
-} from './chat-capabilities'
+} from '../capabilities/chat-capabilities'
 import { GoalSlotState } from './composer-slots/goal-slot-state'
 import { PlanSlotState } from './composer-slots/plan-slot-state'
 import { QuickQuestionSlotState } from './composer-slots/quick-question-slot-state'

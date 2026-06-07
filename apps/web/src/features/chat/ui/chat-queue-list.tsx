@@ -6,7 +6,7 @@ import { useTranslation } from 'react-i18next'
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
 
-import type { ChatQueueItem } from './chat-response-command'
+import type { ChatQueueItem } from '../commands/chat-response-command'
 
 interface ChatQueueListProps {
   items: ChatQueueItem[]

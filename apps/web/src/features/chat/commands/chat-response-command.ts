@@ -3,7 +3,7 @@ import { z } from 'zod'
 
 import { getServerUrl } from '~/lib/electron'
 
-import type { ChatContextPart } from './chat-context-parts'
+import type { ChatContextPart } from '../context/chat-context-parts'
 
 const SERVER_BASE = getServerUrl()
 
@@ -151,9 +151,15 @@ function parseChatSteerTurnResponse(value: unknown): ChatSteerTurnResponse {
   return ChatSteerTurnResponseSchema.parse(value) satisfies ChatSteerTurnResponse
 }
 
-function readResponseErrorCode(bodyText: string): string | null {
+function readJsonErrorCodeFromText(text: string): string | null {
+  const start = text.indexOf('{')
+  const end = text.lastIndexOf('}')
+  if (start === -1 || end < start) {
+    return null
+  }
+
   try {
-    const body = JSON.parse(bodyText) as { code?: unknown }
+    const body = JSON.parse(text.slice(start, end + 1)) as { code?: unknown }
     return typeof body.code === 'string' ? body.code : null
   }
   catch {
@@ -166,7 +172,11 @@ export function readChatCommandErrorCode(error: unknown): string | null {
     return null
   }
   const code = (error as { code?: unknown }).code
-  return typeof code === 'string' ? code : null
+  if (typeof code === 'string') {
+    return code
+  }
+  const message = (error as { message?: unknown }).message
+  return typeof message === 'string' ? readJsonErrorCodeFromText(message) : null
 }
 
 export function buildChatResponseRequestBody(
@@ -328,7 +338,7 @@ export async function steerChatSessionTurn(args: {
       new Error(`Failed to steer chat turn: ${res.status} ${bodyText}`),
       {
         bodyText,
-        code: readResponseErrorCode(bodyText),
+        code: readJsonErrorCodeFromText(bodyText),
         status: res.status,
       },
     )

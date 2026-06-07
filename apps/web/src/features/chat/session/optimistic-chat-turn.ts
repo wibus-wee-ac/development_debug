@@ -7,14 +7,13 @@ import {
 } from '~/api-gen/@tanstack/react-query.gen'
 import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { useChatStore } from '~/store/chat'
+import { runtimeUiSlotStatesQueryKey } from '../capabilities/chat-capabilities'
+import { ChatResponseRequestBody, ChatRuntimeSettingsPatch } from '../commands/chat-response-command'
+import { runtimeSettingsQueryKey } from '../commands/runtime-settings-command'
+import { ChatContextPart, toOrderedUserMessageParts } from '../context/chat-context-parts'
+import { startChatResponseStream } from '../transport/chat-stream-transport'
+import { ChatStreamingHandler } from '../transport/chat-streaming-handler'
 
-import { runtimeUiSlotStatesQueryKey } from './chat-capabilities'
-import type { ChatContextPart } from './chat-context-parts'
-import { toOrderedUserMessageParts } from './chat-context-parts'
-import type { ChatResponseRequestBody, ChatRuntimeSettingsPatch } from './chat-response-command'
-import { startChatResponseStream } from './chat-stream-transport'
-import { ChatStreamingHandler } from './chat-streaming-handler'
-import { runtimeSettingsQueryKey } from './runtime-settings-command'
 
 interface OptimisticUserMessageInput {
   messageId: string

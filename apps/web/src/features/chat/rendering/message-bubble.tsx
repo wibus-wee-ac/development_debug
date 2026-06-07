@@ -15,27 +15,22 @@ import { formatShortDurationMs } from '~/lib/number-format'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { STREAMDOWN_RENDER_OPTIONS } from '~/store/streamdown'
-
-import { AppshotAttachmentCard } from './appshot-attachment'
-import { readCradleAppshotMetadata } from './appshot-attachment-model'
-import type { BangCommandMetadata, BangResultMetadata } from './bang-command-metadata'
-import { readBangCommandMetadata, readBangResultMetadata } from './bang-command-metadata'
-import { BangCommandBlock, BangCommandPromptBlock } from './blocks/bang-command-block'
-import { GroupedToolCallBlock } from './blocks/grouped-tool-call-block'
-import { ReasoningBlock } from './blocks/reasoning-block'
-import { ToolCallBlock } from './blocks/tool-call-block'
-import type { ChatPluginContextMessagePart, ChatSkillContextMessagePart } from './chat-context-parts'
-import { isChatPluginContextPart, isChatSkillContextPart, readPluginContextLabel, readPluginContextPart, readSkillContextLabel, readSkillContextPart } from './chat-context-parts'
-import { readChatContinuationMetadata } from './chat-continuation-metadata'
-import type { ChatRenderItem, ChatRenderSegment, FileMessagePart } from './chat-render-plan'
-import { groupMessagePartRefs, groupMessageParts, readRenderableToolPart, splitExecutionPhase, splitSegmentExecutionPhase } from './chat-render-plan'
+import { readChatContinuationMetadata } from '../capabilities/chat-continuation-metadata'
+import { BangCommandMetadata, BangResultMetadata, readBangCommandMetadata, readBangResultMetadata } from '../commands/bang-command-metadata'
+import { AppshotAttachmentCard } from '../composer/appshot-attachment'
+import { readCradleAppshotMetadata } from '../composer/appshot-attachment-model'
+import { ChatSkillContextMessagePart, readSkillContextPart, readSkillContextLabel, ChatPluginContextMessagePart, readPluginContextPart, readPluginContextLabel, isChatSkillContextPart, isChatPluginContextPart } from '../context/chat-context-parts'
+import { PluginMentionIcon } from '../mentions/plugin-mention-icon'
+import { SkillMentionToken } from '../mentions/skill-mention-token'
+import { ToolCallBlock, GroupedToolCallBlock } from './blocks'
+import { BangCommandPromptBlock, BangCommandBlock } from './blocks/bang-command-block'
+import { FileMessagePart, ChatRenderItem, ChatRenderSegment, groupMessageParts, groupMessagePartRefs, readRenderableToolPart, splitSegmentExecutionPhase, splitExecutionPhase } from './chat-render-plan'
 import { readSubagentOutputMessage, toolNameFromPart } from './chat-tool-entities'
 import { ImageLightbox } from './image-lightbox'
 import { MarkdownFileLink } from './markdown-file-link'
-import { PluginMentionIcon } from './plugin-mention-icon'
-import { SkillMentionToken } from './skill-mention-token'
-import type { RenderableToolPart } from './tool-ui-classifier'
-import { describeToolCall } from './tool-ui-classifier'
+import { ReasoningBlock } from './blocks/reasoning-block'
+import { RenderableToolPart, describeToolCall } from './tool-ui-classifier'
+
 
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
 const IS_DEV = import.meta.env.DEV
@@ -1362,7 +1357,7 @@ const MessageBubbleSegmentsView = memo(({
               'rounded-lg text-sm leading-relaxed',
               isUser && !frame.isSteerMessage && !frame.bangCommand && !frame.bangResult && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
               (frame.bangCommand || frame.bangResult) && 'rounded-br-sm',
-              frame.isSteerMessage && STEER_MESSAGE_BUBBLE_CLASS,
+              // frame.isSteerMessage && STEER_MESSAGE_BUBBLE_CLASS,
               isAssistant && 'text-foreground',
             )}
           >

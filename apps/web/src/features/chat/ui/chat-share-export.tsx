@@ -18,8 +18,7 @@ import { toastManager } from '~/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 import { chatSelectors, useChatStore } from '~/store/chat'
-
-import { MessageBubble } from './message-bubble'
+import { MessageBubble } from '../rendering/message-bubble'
 
 type ExportScope = 'all' | 'selected'
 

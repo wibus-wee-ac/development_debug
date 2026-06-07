@@ -3,7 +3,7 @@ import { Settings2Icon } from 'lucide-react'
 import { Button } from '~/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 
-import type { ChatRuntimeUiSlot, ChatRuntimeUiSlotState } from './chat-capabilities'
+import type { ChatRuntimeUiSlot, ChatRuntimeUiSlotState } from '../capabilities/chat-capabilities'
 import { RuntimeUiSlotPanel } from './runtime-ui-slot-panel'
 
 interface RuntimeDiagnosticsPopoverProps {

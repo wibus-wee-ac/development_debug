@@ -1470,7 +1470,7 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
   }
 
   if (!activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId)) {
-    repairTerminalRunProjectionsForSession(sessionId)
+    failOrphanedPersistedStreamingSession(sessionId)
   }
 
   const binding = session.providerTargetId
@@ -4690,6 +4690,7 @@ async function executeRun(
       }
       if (isTerminalUIMessageChunk(chunk)) {
         finalChunk = chunk
+        break
       }
       else {
         if (chunk.type === 'start' && activeRun.startChunkPublished) {
@@ -4775,24 +4776,24 @@ async function executeRun(
 
       const usage = activeRun.runtime?.totalUsage ?? activeRun.runtime?.lastUsage
       actualModelId = activeRun.runtime?.lastModelId ?? activeRun.modelId
-	      if (usage) {
-	        insertUsage({
-	          sessionId: activeRun.sessionId,
-	          messageId: activeRun.messageId,
-	          providerTargetId: activeRun.providerTargetId,
-	          modelId: actualModelId,
-	          usage,
-	        })
-	        recordActiveRunSnapshotEvent(activeRun, {
-	          phase: 'usage',
-	          modelId: actualModelId,
-	          usage,
-	          estimatedCostUsd: estimateCost(actualModelId ?? 'gpt-4o', usage),
-	          payload: {
-	            source: activeRun.runtime?.totalUsage ? 'runtime.totalUsage' : 'runtime.lastUsage',
-	          },
-	        })
-	      }
+      if (usage) {
+        insertUsage({
+          sessionId: activeRun.sessionId,
+          messageId: activeRun.messageId,
+          providerTargetId: activeRun.providerTargetId,
+          modelId: actualModelId,
+          usage,
+        })
+        recordActiveRunSnapshotEvent(activeRun, {
+          phase: 'usage',
+          modelId: actualModelId,
+          usage,
+          estimatedCostUsd: estimateCost(actualModelId ?? 'gpt-4o', usage),
+          payload: {
+            source: activeRun.runtime?.totalUsage ? 'runtime.totalUsage' : 'runtime.lastUsage',
+          },
+        })
+      }
 
       // Write per-step usage if the runtime supports it
       const runtimeWithSteps = activeRun.runtime as {
@@ -4808,8 +4809,8 @@ async function executeRun(
         const fallbackModelId = actualModelId ?? 'gpt-4o'
         for (const step of steps) {
           const effectiveModelId = step.modelId ?? fallbackModelId
-	          db()
-	            .insert(stepUsageTable)
+          db()
+            .insert(stepUsageTable)
             .values({
               id: randomUUID(),
               runId: activeRun.runId,
@@ -4822,20 +4823,20 @@ async function executeRun(
               totalTokens: step.usage.totalTokens,
               estimatedCostUsd: estimateCost(effectiveModelId, step.usage),
               createdAt: currentUnixSeconds(),
-	            })
-	            .run()
-	          recordActiveRunSnapshotEvent(activeRun, {
-	            phase: 'step_usage',
-	            modelId: effectiveModelId,
-	            usage: step.usage,
-	            estimatedCostUsd: estimateCost(effectiveModelId, step.usage),
-	            payload: {
-	              stepNumber: step.stepNumber,
-	              stepType: step.stepType,
-	            },
-	          })
-	        }
-	      }
+            })
+            .run()
+          recordActiveRunSnapshotEvent(activeRun, {
+            phase: 'step_usage',
+            modelId: effectiveModelId,
+            usage: step.usage,
+            estimatedCostUsd: estimateCost(effectiveModelId, step.usage),
+            payload: {
+              stepNumber: step.stepNumber,
+              stepType: step.stepType,
+            },
+          })
+        }
+      }
     }
   }
  catch (error) {
@@ -4857,15 +4858,15 @@ async function executeRun(
     }
  catch {
       // session may have been deleted during the run
-	    }
-	    updateCodexGoalContinuationBackoff(activeRun, finalChunk)
-	    const shouldContinueCodexGoal = shouldScheduleCodexGoalContinuation(activeRun, finalChunk)
-	    finalizeActiveRunSnapshot(activeRun, finalChunk, {
-	      modelId: actualModelId,
-	      diagnostics,
-	      profile,
-	    })
-	    recordChatRuntimeProfile(activeRun, diagnostics, profile)
+    }
+    updateCodexGoalContinuationBackoff(activeRun, finalChunk)
+    const shouldContinueCodexGoal = shouldScheduleCodexGoalContinuation(activeRun, finalChunk)
+    finalizeActiveRunSnapshot(activeRun, finalChunk, {
+      modelId: actualModelId,
+      diagnostics,
+      profile,
+    })
+    recordChatRuntimeProfile(activeRun, diagnostics, profile)
     releaseActiveRun(activeRun)
     scheduleSessionQueueDrain(activeRun.sessionId)
     if (shouldContinueCodexGoal) {

@@ -1,6 +1,6 @@
 import type { FileUIPart } from 'ai'
 
-import type { ChatContextPart } from './chat-context-parts'
+import type { ChatContextPart } from './context/chat-context-parts'
 
 export interface ChatPromptIngressPayload {
   text: string

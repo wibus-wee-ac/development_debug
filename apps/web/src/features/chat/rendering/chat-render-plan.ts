@@ -1,8 +1,7 @@
 import type { UIMessage } from 'ai'
 
-import type { ChatPluginContextMessagePart, ChatSkillContextMessagePart } from './chat-context-parts'
-import { isChatPluginContextPart, isChatSkillContextPart } from './chat-context-parts'
 import type { RenderableToolPart, ToolUiKind } from './tool-ui-classifier'
+import { ChatSkillContextMessagePart, ChatPluginContextMessagePart, isChatSkillContextPart, isChatPluginContextPart } from '../context/chat-context-parts'
 
 export type MessagePart = UIMessage['parts'][number]
 export type FileMessagePart = Extract<MessagePart, { type: 'file' }>

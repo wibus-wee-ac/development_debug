@@ -23,7 +23,7 @@ import { cn } from '~/lib/cn'
 import {
   buildCodexReviewPrompt,
   createCodexReviewBranchLines,
-} from '../codex-review-mode'
+} from '../../capabilities/codex-review-mode'
 import { ComposerSlotIconAction, ComposerSlotShell } from './composer-slot-shell'
 import type { ComposerReviewSlotActions } from './types'
 

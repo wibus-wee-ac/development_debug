@@ -7,7 +7,7 @@ import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
 import { formatShortDurationMs } from '~/lib/number-format'
 
-import type { BangCommandMetadata, BangResultMetadata } from '../bang-command-metadata'
+import type { BangCommandMetadata, BangResultMetadata } from '../../commands/bang-command-metadata'
 import { readTerminalOutputSections } from '../terminal-tool-details'
 import type { ToolPayload } from '../tool-ui-classifier'
 

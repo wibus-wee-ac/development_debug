@@ -18,30 +18,17 @@ import type { PublicStatus } from '~/store/chat'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 import { useSessionLayoutStore } from '~/store/session-layout'
-
-import { readBangCommand } from './bang-command'
-import { annotateBangCommandMessage, annotateBangResultMessage } from './bang-command-metadata'
-import { runtimeUiSlotStatesQueryKey } from './chat-capabilities'
-import type { ChatContextPart } from './chat-context-parts'
-import type { ChatContinuationMode, ChatQueueItem, ChatRuntimeSettingsPatch, ChatThinkingEffort } from './chat-response-command'
-import {
-  cancelChatResponse,
-  cancelChatSessionQueueItem,
-  createSideChat,
-  enqueueChatSessionQueueItem,
-  executeBangCommand,
-  listChatSessionQueue,
-  readChatCommandErrorCode,
-  reorderChatSessionQueue,
-  steerChatSessionTurn,
-  submitRuntimeUserInput,
-} from './chat-response-command'
-import { startChatResponseStream, subscribeChatSessionStreamForSession } from './chat-stream-transport'
-import { ChatStreamingHandler } from './chat-streaming-handler'
-import { buildOptimisticUserMessage, readCodexGoalCommandObjective } from './optimistic-chat-turn'
-import { getRuntimeSessionStatus } from './runtime-session-status-command'
-import { runtimeSettingsQueryKey } from './runtime-settings-command'
-import { runtimeSessionStatusQueryKey, useRuntimeSessionStatus } from './use-runtime-session-status'
+import { runtimeUiSlotStatesQueryKey } from '../capabilities/chat-capabilities'
+import { readBangCommand } from '../commands/bang-command'
+import { annotateBangCommandMessage, annotateBangResultMessage } from '../commands/bang-command-metadata'
+import { ChatThinkingEffort, ChatRuntimeSettingsPatch, ChatContinuationMode, ChatQueueItem, listChatSessionQueue, createSideChat, executeBangCommand, steerChatSessionTurn, readChatCommandErrorCode, enqueueChatSessionQueueItem, submitRuntimeUserInput, cancelChatSessionQueueItem, reorderChatSessionQueue, cancelChatResponse } from '../commands/chat-response-command'
+import { getRuntimeSessionStatus } from '../commands/runtime-session-status-command'
+import { runtimeSettingsQueryKey } from '../commands/runtime-settings-command'
+import { ChatContextPart } from '../context/chat-context-parts'
+import { useRuntimeSessionStatus, runtimeSessionStatusQueryKey } from '../runtime/use-runtime-session-status'
+import { subscribeChatSessionStreamForSession, startChatResponseStream } from '../transport/chat-stream-transport'
+import { ChatStreamingHandler } from '../transport/chat-streaming-handler'
+import { readCodexGoalCommandObjective, buildOptimisticUserMessage } from './optimistic-chat-turn'
 
 // ── Message Snapshot Types ──────────────────────────────────
 
@@ -57,7 +44,7 @@ export interface ChatSessionMessageRow {
   taskId: string | null
   depth: number
 }
-export type { ChatContinuationMode, ChatQueueItem } from './chat-response-command'
+export type { ChatContinuationMode, ChatQueueItem }
 
 export interface SendMessageOptions {
   providerTargetId?: string

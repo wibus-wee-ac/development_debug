@@ -5,17 +5,10 @@ import { useShallow } from 'zustand/react/shallow'
 
 import { cn } from '~/lib/cn'
 import { chatSelectors, useChatStore } from '~/store/chat'
-
-import { ChatStreamingHandler } from '../chat/chat-streaming-handler'
-import { MessageBubble } from '../chat/message-bubble'
-import {
-  getProviderThread,
-  getProviderThreadTurns,
-  providerThreadQueryKey,
-  providerThreadTurnsQueryKey,
-  subscribeProviderThreadStream,
-} from '../chat/provider-thread-command'
-import { buildUIMessageChunkStreamFromResponse } from '../chat/sse-chat-transport'
+import { providerThreadQueryKey, getProviderThread, providerThreadTurnsQueryKey, getProviderThreadTurns, subscribeProviderThreadStream } from '../chat/commands/provider-thread-command'
+import { MessageBubble } from '../chat/rendering/message-bubble'
+import { ChatStreamingHandler } from '../chat/transport/chat-streaming-handler'
+import { buildUIMessageChunkStreamFromResponse } from '../chat/transport/sse-chat-transport'
 
 interface SubagentOutputPanelProps {
   sessionId: string

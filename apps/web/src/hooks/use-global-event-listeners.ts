@@ -3,7 +3,8 @@ import { useEffect } from 'react'
 
 import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { postSessionsByIdRead } from '~/api-gen/sdk.gen'
-import { onChatRunSettled } from '~/features/chat/sse-chat-transport'
+import { onChatRunSettled } from '~/features/chat/transport/sse-chat-transport'
+
 import { isSessionsQueryKey, updateSessionReadState } from '~/features/workspace/use-session'
 import {
   BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL,

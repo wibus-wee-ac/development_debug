@@ -1,8 +1,9 @@
 import { useTabNavigation } from '@cradle/tabs-next'
 import { useQueryClient } from '@tanstack/react-query'
 import { useCallback } from 'react'
+import { prefetchChatSession } from '~/features/chat/session/chat-session-prefetch'
 
-import { prefetchChatSession } from '~/features/chat/chat-session-prefetch'
+
 import { useCradleTabStore } from '~/tabs/registry'
 
 export function useCradleNavigation() {

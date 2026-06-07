@@ -9,7 +9,7 @@ import { useMemo, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 
-import type { ChatRuntimePlanUiSlotState } from '../chat-capabilities'
+import type { ChatRuntimePlanUiSlotState } from '../../capabilities/chat-capabilities'
 import { ComposerSlotIconAction, ComposerSlotShell } from './composer-slot-shell'
 import type { ComposerPlanSlotActions } from './types'
 

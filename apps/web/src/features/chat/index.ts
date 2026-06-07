@@ -1,1 +1,1 @@
-export type { MentionItem } from './mention-panel'
+export type { MentionItem } from './mentions/mention-panel'

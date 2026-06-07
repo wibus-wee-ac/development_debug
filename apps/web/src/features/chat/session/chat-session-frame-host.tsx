@@ -6,8 +6,8 @@ import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { cn } from '~/lib/utils'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
-import { ChatRuntimeView } from './chat-runtime-view'
 import { useChatSessionDriver } from './use-chat-session'
+import { ChatRuntimeView } from '../chat-runtime-view'
 
 const IDLE_FRAME_LIMIT = 6
 type ChatStoreSnapshot = ReturnType<typeof useChatStore.getState>

@@ -1,6 +1,6 @@
 import type { UIMessage } from 'ai'
 
-import type { ChatContinuationMode } from './chat-response-command'
+import type { ChatContinuationMode } from '../commands/chat-response-command'
 
 export interface ChatContinuationMetadata {
   mode: ChatContinuationMode

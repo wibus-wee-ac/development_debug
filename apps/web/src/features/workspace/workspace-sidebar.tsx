@@ -83,7 +83,7 @@ import {
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { toastManager } from '~/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
-import { prefetchChatSession } from '~/features/chat/chat-session-prefetch'
+import { prefetchChatSession } from '~/features/chat/session/chat-session-prefetch'
 import { KanbanSidebar } from '~/features/kanban/kanban-sidebar'
 import { PluginsSidebar } from '~/features/plugins/plugins-sidebar'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'

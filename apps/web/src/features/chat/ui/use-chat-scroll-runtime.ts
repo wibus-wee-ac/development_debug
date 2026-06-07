@@ -5,7 +5,7 @@ import { useShallow } from 'zustand/react/shallow'
 
 import { useChatStore } from '~/store/chat'
 
-import { clearChatAttentionSnapshot, installChatContextProvider, updateChatAttentionSnapshot } from './chat-context'
+import { clearChatAttentionSnapshot, installChatContextProvider, updateChatAttentionSnapshot } from '../context/chat-context'
 import type { ChatMinimapHandle } from './chat-minimap'
 
 export interface ChatScrollMetrics {

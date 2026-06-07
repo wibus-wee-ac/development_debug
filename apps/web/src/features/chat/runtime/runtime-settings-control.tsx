@@ -15,7 +15,7 @@ import {
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 
-import type { ChatRuntimeAccessMode, ChatRuntimeInteractionMode, ChatRuntimeSettings } from './chat-response-command'
+import type { ChatRuntimeAccessMode, ChatRuntimeInteractionMode, ChatRuntimeSettings } from '../commands/chat-response-command'
 
 interface RuntimeSettingsControlProps {
   settings: ChatRuntimeSettings

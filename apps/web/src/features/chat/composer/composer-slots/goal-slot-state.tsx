@@ -19,7 +19,7 @@ import { Progress } from '~/components/ui/progress'
 import { cn } from '~/lib/cn'
 import { clampPercent, formatElapsedSeconds } from '~/lib/number-format'
 
-import type { ChatRuntimeGoalUiSlotState } from '../chat-capabilities'
+import type { ChatRuntimeGoalUiSlotState } from '../../capabilities/chat-capabilities'
 import { ComposerSlotIconAction, ComposerSlotShell } from './composer-slot-shell'
 import type { ComposerGoalSlotActions } from './types'
 

@@ -22,7 +22,7 @@ import type {
   ChatRuntimeUiSlotState,
   ChatRuntimeUsageUiSlotState,
   ChatSlashCommand,
-} from './chat-capabilities'
+} from '../capabilities/chat-capabilities'
 
 export type ChatSlashCommandSource = 'runtime' | 'cradle'
 export type ChatSlashCommandPresentation = 'command' | 'slot'

@@ -47,6 +47,17 @@ interface BetaRawContentBlockStartEvent {
   content_block: BetaContentBlock
 }
 
+interface BetaRawMessageDeltaEvent {
+  type: 'message_delta'
+  delta?: {
+    stop_reason?: string | null
+  }
+  usage?: {
+    input_tokens?: number
+    output_tokens?: number
+  }
+}
+
 export interface ClaudeAgentChunkMapperState {
   textItemId: string
   assistantStarted: boolean
@@ -66,6 +77,8 @@ export interface ClaudeAgentChunkMapperState {
   toolArgsByToolCallId: Map<string, unknown>
   /** Accumulated child-agent stream state keyed by parent tool call. */
   subagentStreams: Map<string, ClaudeAgentSubagentStreamState>
+  /** Maps content block index → text item ID for currently-streaming text blocks. */
+  activeTextBlockByIndex: Map<number, string>
   /** Maps content block index → reasoning item ID for currently-streaming thinking blocks. */
   activeThinkingBlockByIndex: Map<number, string>
   /** Content block indices whose thinking blocks were fully emitted via stream events (reasoning-end sent). */
@@ -116,6 +129,7 @@ function normalizeClaudeAgentChunkMapperState(state: ClaudeAgentChunkMapperState
   state.toolInputTextByToolCallId ??= new Map()
   state.toolArgsByToolCallId ??= new Map()
   state.subagentStreams ??= new Map()
+  state.activeTextBlockByIndex ??= new Map()
   state.activeThinkingBlockByIndex ??= new Map()
   state.completedThinkingBlockIndices ??= new Set()
 }
@@ -132,6 +146,7 @@ export function createClaudeAgentChunkMapperState(textItemId: string = randomUUI
     toolInputTextByToolCallId: new Map(),
     toolArgsByToolCallId: new Map(),
     subagentStreams: new Map(),
+    activeTextBlockByIndex: new Map(),
     activeThinkingBlockByIndex: new Map(),
     completedThinkingBlockIndices: new Set(),
   }
@@ -361,7 +376,7 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
 
   switch (msg.event.type) {
     case 'message_delta': {
-      const messageDeltaEvent = msg.event as { type: 'message_delta', usage?: { input_tokens?: number, output_tokens?: number } }
+      const messageDeltaEvent = msg.event as BetaRawMessageDeltaEvent
       if (messageDeltaEvent.usage) {
         usage = {
           promptTokens: messageDeltaEvent.usage.input_tokens ?? 0,
@@ -369,21 +384,17 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
           totalTokens: (messageDeltaEvent.usage.input_tokens ?? 0) + (messageDeltaEvent.usage.output_tokens ?? 0),
         }
       }
+      const stopReason = messageDeltaEvent.delta?.stop_reason
+      if (stopReason && isTerminalClaudeStopReason(stopReason)) {
+        chunks.push(...finishOpenTextBlocks(state))
+        chunks.push({ type: 'finish', finishReason: 'stop' })
+      }
       break
     }
     case 'content_block_delta': {
       const deltaEvent = msg.event as BetaRawContentBlockDeltaEvent
       if (deltaEvent.delta.type === 'text_delta') {
-        // Rotate text segment ID if tool calls happened since last text
-        if (state.hadToolCallSinceLastText) {
-          state.textItemId = randomUUID()
-          state.hadToolCallSinceLastText = false
-          state.assistantStarted = false
-        }
-        if (!state.assistantStarted) {
-          chunks.push({ type: 'text-start', id: state.textItemId })
-          state.assistantStarted = true
-        }
+        chunks.push(...ensureTextBlockStarted(state, deltaEvent.index))
         const textDelta = deltaEvent.delta.text ?? ''
         appendEmittedText(state, state.textItemId, textDelta)
         chunks.push({ type: 'text-delta', id: state.textItemId, delta: textDelta })
@@ -404,7 +415,14 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
     }
     case 'content_block_start': {
       const startEvent = msg.event as BetaRawContentBlockStartEvent
-      if (startEvent.content_block.type === 'thinking') {
+      if (startEvent.content_block.type === 'text') {
+        chunks.push(...ensureTextBlockStarted(state, startEvent.index))
+        if (startEvent.content_block.text) {
+          appendEmittedText(state, state.textItemId, startEvent.content_block.text)
+          chunks.push({ type: 'text-delta', id: state.textItemId, delta: startEvent.content_block.text })
+        }
+      }
+      else if (startEvent.content_block.type === 'thinking') {
         const itemId = `thinking-${startEvent.index}`
         state.activeThinkingBlockByIndex.set(startEvent.index, itemId)
         chunks.push({ type: 'reasoning-start', id: itemId })
@@ -427,6 +445,15 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
     }
     case 'content_block_stop': {
       const stopEvent = msg.event as { type: 'content_block_stop', index: number }
+      const textItemId = state.activeTextBlockByIndex.get(stopEvent.index)
+      if (textItemId !== undefined) {
+        state.activeTextBlockByIndex.delete(stopEvent.index)
+        if (state.textItemId === textItemId) {
+          state.assistantStarted = false
+        }
+        chunks.push({ type: 'text-end', id: textItemId })
+        break
+      }
       const thinkingItemId = state.activeThinkingBlockByIndex.get(stopEvent.index)
       if (thinkingItemId !== undefined) {
         state.activeThinkingBlockByIndex.delete(stopEvent.index)
@@ -440,7 +467,54 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
   return { chunks, sessionId: msg.session_id, usage }
 }
 
-function mapResult(msg: SDKResultMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
+function ensureTextBlockStarted(state: ClaudeAgentChunkMapperState, blockIndex: number): UIMessageChunk[] {
+  const existingTextItemId = state.activeTextBlockByIndex.get(blockIndex)
+  if (existingTextItemId) {
+    state.textItemId = existingTextItemId
+    return []
+  }
+
+  if (state.hadToolCallSinceLastText) {
+    state.textItemId = randomUUID()
+    state.hadToolCallSinceLastText = false
+    state.assistantStarted = false
+  }
+
+  state.activeTextBlockByIndex.set(blockIndex, state.textItemId)
+  if (state.assistantStarted) {
+    return []
+  }
+
+  state.assistantStarted = true
+  return [{ type: 'text-start', id: state.textItemId }]
+}
+
+function finishOpenTextBlocks(state: ClaudeAgentChunkMapperState): UIMessageChunk[] {
+  if (state.activeTextBlockByIndex.size === 0) {
+    return []
+  }
+
+  const chunks: UIMessageChunk[] = []
+  const seenTextItemIds = new Set<string>()
+  for (const textItemId of state.activeTextBlockByIndex.values()) {
+    if (seenTextItemIds.has(textItemId)) {
+      continue
+    }
+    seenTextItemIds.add(textItemId)
+    chunks.push({ type: 'text-end', id: textItemId })
+    if (state.textItemId === textItemId) {
+      state.assistantStarted = false
+    }
+  }
+  state.activeTextBlockByIndex.clear()
+  return chunks
+}
+
+function isTerminalClaudeStopReason(stopReason: string): boolean {
+  return stopReason !== 'tool_use'
+}
+
+function mapResult(msg: SDKResultMessage, _state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
   const usage = msg.usage
     ? {
         promptTokens: msg.usage.input_tokens ?? 0,

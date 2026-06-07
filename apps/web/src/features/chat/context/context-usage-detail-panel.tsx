@@ -12,8 +12,8 @@ import type {
   ChatRuntimeCompactUiSlotState,
   ChatRuntimeContextUsage,
   ChatRuntimeContextUsageSection,
-} from './chat-capabilities'
-import { getChatRuntimeContextUsage } from './chat-capabilities'
+} from '../capabilities/chat-capabilities'
+import { getChatRuntimeContextUsage } from '../capabilities/chat-capabilities'
 
 interface ContextUsageDetailPanelProps {
   sessionId: string | null

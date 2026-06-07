@@ -19,7 +19,7 @@ import { useEffect, useRef, useState } from 'react'
 import { cn } from '~/lib/cn'
 import { STREAMDOWN_RENDER_OPTIONS } from '~/store/streamdown'
 
-import { MarkdownFileLink } from '../markdown-file-link'
+import { MarkdownFileLink } from '../../rendering/markdown-file-link'
 import { ComposerSlotIconAction, ComposerSlotShell } from './composer-slot-shell'
 import type { ComposerQuickQuestionSlotActions } from './types'
 

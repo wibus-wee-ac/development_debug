@@ -5,14 +5,11 @@ import { useMemo, useState } from 'react'
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
 import { chatSelectors, useChatStore } from '~/store/chat'
-
-import type { ChatContextPart } from '../chat/chat-context-parts'
-import { toOrderedUserMessageParts } from '../chat/chat-context-parts'
-import type { ChatRuntimeSettingsPatch, ChatThinkingEffort } from '../chat/chat-response-command'
-import { startSideConversationResponse } from '../chat/chat-response-command'
-import { ChatStreamingHandler } from '../chat/chat-streaming-handler'
-import { MessageBubble } from '../chat/message-bubble'
-import { buildUIMessageChunkStreamFromResponse } from '../chat/sse-chat-transport'
+import { ChatThinkingEffort, ChatRuntimeSettingsPatch, startSideConversationResponse } from '../chat/commands/chat-response-command'
+import { ChatContextPart, toOrderedUserMessageParts } from '../chat/context/chat-context-parts'
+import { MessageBubble } from '../chat/rendering/message-bubble'
+import { ChatStreamingHandler } from '../chat/transport/chat-streaming-handler'
+import { buildUIMessageChunkStreamFromResponse } from '../chat/transport/sse-chat-transport'
 
 interface SideConversationPanelProps {
   sideConversationId: string

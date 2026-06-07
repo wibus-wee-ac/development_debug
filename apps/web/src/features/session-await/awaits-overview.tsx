@@ -12,7 +12,7 @@ import {
   EmptyMedia,
   EmptyTitle,
 } from '~/components/ui/empty'
-import { prefetchChatSession } from '~/features/chat/chat-session-prefetch'
+import { prefetchChatSession } from '~/features/chat/session/chat-session-prefetch'
 import { readDesktopAwaits } from '~/features/desktop-tray/api'
 import type { DesktopAwaitItem } from '~/features/desktop-tray/types'
 import { cn } from '~/lib/cn'

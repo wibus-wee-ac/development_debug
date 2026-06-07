@@ -4,7 +4,7 @@
  * These types keep the composer slot dispatcher thin while individual slot
  * renderers own their own UI details.
  */
-import type { ChatRuntimeGoalUiSlotState, ChatRuntimePlanUiSlotState } from '../chat-capabilities'
+import type { ChatRuntimeGoalUiSlotState, ChatRuntimePlanUiSlotState } from '../../capabilities/chat-capabilities'
 
 export interface ComposerGoalSlotActions {
   busy?: boolean
