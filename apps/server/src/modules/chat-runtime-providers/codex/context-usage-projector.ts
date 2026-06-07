@@ -3,7 +3,6 @@ import type {
   RuntimeContextUsageItem,
   RuntimeContextUsageSection,
 } from '../../chat-runtime/runtime-provider-types'
-import type { ContentItem } from './app-server-protocol/ContentItem'
 import type { ThreadItem } from './app-server-protocol/v2/ThreadItem'
 import type { Turn } from './app-server-protocol/v2/Turn'
 import type { UserInput } from './app-server-protocol/v2/UserInput'
@@ -316,15 +315,6 @@ function estimateUserInputTokens(inputs: UserInput[]): number {
       default:
         return sum + estimateJsonTokens(input)
     }
-  }, 0)
-}
-
-function estimateContentTokens(content: ContentItem[]): number {
-  return content.reduce((sum, item) => {
-    if ('text' in item && typeof item.text === 'string') {
-      return sum + estimateTextTokens(item.text)
-    }
-    return sum + estimateJsonTokens(item)
   }, 0)
 }
 
