@@ -11,6 +11,8 @@
   "board.nameAria": "ボード名",
   "board.rename": "名前を変更",
   "board.sectionTitle": "ボード",
+  "beta.description": "この機能にはまだバグが含まれる可能性があります。Issue の並び順、ボード操作、保存される表示状態は安定するまで変わることがあります。",
+  "beta.title": "Kanban は Beta です",
   "agent.availableAgents": "Agent",
   "agent.noAgentsConfigured": "Agent は設定されていません",
   "agent.none": "Agent なし",

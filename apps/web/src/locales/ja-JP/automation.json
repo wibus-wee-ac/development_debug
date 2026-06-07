@@ -18,6 +18,8 @@
   "artifact.preview": "成果物プレビュー",
   "artifact.requestsTitle": "成果物",
   "artifact.title": "成果物",
+  "beta.description": "この機能はまだ不安定です。動作、スケジュールの意味、保存される成果物は変わる可能性があり、実行にはまだバグが含まれることがあります。",
+  "beta.title": "自動化は Beta です",
   "common.unknown": "不明",
   "create.cancelAria": "自動化ドラフトをキャンセル",
   "create.description": "Provider に接続された定期 Prompt を作成します。通常のチャット runtime で実行され、実行成果物を保存します。",

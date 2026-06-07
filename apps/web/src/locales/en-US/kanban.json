@@ -20,6 +20,8 @@
   "board.nameAria": "Board name",
   "board.rename": "Rename",
   "board.sectionTitle": "Boards",
+  "beta.description": "This feature may still contain bugs. Issue ordering, board interactions, and saved view state may change while it stabilizes.",
+  "beta.title": "Kanban is in Beta",
   "context.applyingChanges": "Applying changes",
   "context.cancel": "Cancel",
   "context.copyFailed": "Copy failed",

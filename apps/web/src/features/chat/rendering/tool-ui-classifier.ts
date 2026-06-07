@@ -136,7 +136,9 @@ interface ToolObjectPayload {
   task_id: string | null
   shell_id: string | null
   task_type: string | null
+  turnId: string | null
   plan: string | null
+  planContent: string | null
   server: string | null
   uri: string | null
   tool: string | null
@@ -343,7 +345,9 @@ function readToolObjectPayload(value: unknown): ToolObjectPayload {
     task_id: readNullableString(record.task_id),
     shell_id: readNullableString(record.shell_id),
     task_type: readNullableString(record.task_type),
+    turnId: readNullableString(record.turnId),
     plan: readNullableString(record.plan),
+    planContent: readNullableString(record.planContent),
     server: readNullableString(record.server),
     uri: readNullableString(record.uri),
     tool: readNullableString(record.tool),
@@ -414,7 +418,9 @@ export interface ToolPayload {
   agentType: string | null
   taskId: string | null
   taskType: string | null
+  turnId: string | null
   plan: string | null
+  planContent: string | null
   mcpTarget: string | null
   worktreeTarget: string | null
   worktreeBranch: string | null
@@ -480,7 +486,9 @@ function toolPayloadFromObject(value: ToolObjectPayload): ToolPayload {
     agentType: value.agentType,
     taskId: value.task_id ?? value.shell_id,
     taskType: value.task_type,
+    turnId: value.turnId,
     plan: value.plan,
+    planContent: value.planContent,
     mcpTarget: value.server ?? value.uri ?? value.tool,
     worktreeTarget: value.path ?? value.name ?? value.worktreePath ?? value.worktreeBranch,
     worktreeBranch: value.worktreeBranch,
@@ -945,7 +953,7 @@ function readToolTitle(kind: ToolUiKind, displayName: string, input: ToolPayload
     return 'Update todos'
   }
   if (kind === 'plan') {
-    return 'Plan'
+    return input.planContent || output.planContent ? 'Implement this plan?' : 'Plan'
   }
 
   const description = input.description
@@ -1003,6 +1011,9 @@ function readToolTarget(kind: ToolUiKind, input: ToolPayload, output: ToolPayloa
       return count === null ? null : `${count} item${count === 1 ? '' : 's'}`
     }
     case 'plan':
+      if (input.planContent || output.planContent) {
+        return null
+      }
       return input.mode === 'plan' || output.mode === 'plan'
         ? 'plan'
         : output.filePath
@@ -1040,6 +1051,9 @@ function readToolSummary(kind: ToolUiKind, input: ToolPayload, output: ToolPaylo
     case 'todo':
       return readTodoSummary(input, output)
     case 'plan':
+      if (input.planContent || output.planContent) {
+        return readFirstLine(input.planContent ?? output.planContent)
+      }
       return output.filePath
         ? 'Plan saved'
         : output.plan || output.text || input.plan || input.text || output.rawText
@@ -1164,11 +1178,14 @@ function isTodoTool(toolName: string, input: ToolPayload, output: ToolPayload): 
 
 function isPlanTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
   return toolName === 'plan'
+    || toolName === 'plan_implementation'
     || toolName === 'exitplanmode'
     || toolName === 'exit_plan_mode'
     || input.mode === 'plan'
     || output.mode === 'plan'
     || output.plan !== null
+    || input.planContent !== null
+    || output.planContent !== null
     || input.allowedPrompts.length > 0
 }
 

@@ -18,17 +18,20 @@ import type { PublicStatus } from '~/store/chat'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 import { useSessionLayoutStore } from '~/store/session-layout'
+
 import { runtimeUiSlotStatesQueryKey } from '../capabilities/chat-capabilities'
 import { readBangCommand } from '../commands/bang-command'
 import { annotateBangCommandMessage, annotateBangResultMessage } from '../commands/bang-command-metadata'
-import { ChatThinkingEffort, ChatRuntimeSettingsPatch, ChatContinuationMode, ChatQueueItem, listChatSessionQueue, createSideChat, executeBangCommand, steerChatSessionTurn, readChatCommandErrorCode, enqueueChatSessionQueueItem, submitRuntimeUserInput, cancelChatSessionQueueItem, reorderChatSessionQueue, cancelChatResponse } from '../commands/chat-response-command'
+import type { ChatContinuationMode, ChatQueueItem, ChatRuntimeSettingsPatch, ChatThinkingEffort } from '../commands/chat-response-command'
+import { cancelChatResponse, cancelChatSessionQueueItem, createSideChat, enqueueChatSessionQueueItem, executeBangCommand, listChatSessionQueue, readChatCommandErrorCode, reorderChatSessionQueue, resolvePlanImplementationApproval, steerChatSessionTurn, submitRuntimeUserInput } from '../commands/chat-response-command'
 import { getRuntimeSessionStatus } from '../commands/runtime-session-status-command'
 import { runtimeSettingsQueryKey } from '../commands/runtime-settings-command'
-import { ChatContextPart } from '../context/chat-context-parts'
-import { useRuntimeSessionStatus, runtimeSessionStatusQueryKey } from '../runtime/use-runtime-session-status'
-import { subscribeChatSessionStreamForSession, startChatResponseStream } from '../transport/chat-stream-transport'
+import type { ChatContextPart } from '../context/chat-context-parts'
+import { runtimeSessionStatusQueryKey, useRuntimeSessionStatus } from '../runtime/use-runtime-session-status'
+import { startChatResponseStream, subscribeChatSessionStreamForSession } from '../transport/chat-stream-transport'
 import { ChatStreamingHandler } from '../transport/chat-streaming-handler'
-import { readCodexGoalCommandObjective, buildOptimisticUserMessage } from './optimistic-chat-turn'
+import { emitChatSessionInvalidated } from '../transport/sse-chat-transport'
+import { buildOptimisticUserMessage, readCodexGoalCommandObjective } from './optimistic-chat-turn'
 
 // ── Message Snapshot Types ──────────────────────────────────
 
@@ -135,6 +138,68 @@ const QUEUE_DRAIN_SYNC_DELAY_MS = 150
 const EMPTY_QUEUE_ITEMS: ChatQueueItem[] = []
 const BANG_COMMAND_DRIVER_PREFIX = 'bang-command'
 const STEER_FALLBACK_ERROR_CODES = new Set(['chat_steer_context_mismatch', 'chat_steer_no_active_run'])
+const CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX = 'PLEASE IMPLEMENT THIS PLAN:'
+const CODEX_PLAN_IMPLEMENTATION_APPROVAL_PREFIX = 'implement-plan:'
+
+interface PlanImplementationApprovalRequest {
+  toolCallId: string
+  planContent: string
+}
+
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function readBuiltinToolCallInputPayload(value: unknown): { apiName: string, args: unknown } | null {
+  if (!isRecord(value) || value.type !== 'cradle.builtin-tool-call.input.v1' || typeof value.apiName !== 'string') {
+    return null
+  }
+  return {
+    apiName: value.apiName,
+    args: value.args,
+  }
+}
+
+function readToolApiName(part: UIMessage['parts'][number]): string | null {
+  const inputPayload = readBuiltinToolCallInputPayload((part as { input?: unknown }).input)
+  if (inputPayload) {
+    return inputPayload.apiName
+  }
+  const toolName = (part as { toolName?: unknown }).toolName
+  if (typeof toolName === 'string') {
+    return toolName
+  }
+  return part.type.startsWith('tool-') ? part.type.slice('tool-'.length) : null
+}
+
+function readPlanContentFromInput(input: unknown): string | null {
+  const inputPayload = readBuiltinToolCallInputPayload(input)
+  const args = inputPayload ? inputPayload.args : input
+  if (!isRecord(args) || typeof args.planContent !== 'string') {
+    return null
+  }
+  const planContent = args.planContent.trim()
+  return planContent.length > 0 ? planContent : null
+}
+
+function readPlanImplementationApprovalRequest(
+  messages: UIMessage[],
+  response: ToolApprovalResponseInput,
+): PlanImplementationApprovalRequest | null {
+  if (!response.approvalId.startsWith(CODEX_PLAN_IMPLEMENTATION_APPROVAL_PREFIX)) {
+    return null
+  }
+  const message = messages.find(item => item.id === response.messageId)
+  const part = message?.parts.find(item => isMatchingApprovalPart(item, response.approvalId))
+  if (!part || !('toolCallId' in part) || typeof part.toolCallId !== 'string') {
+    return null
+  }
+  if (part.toolCallId !== response.approvalId || readToolApiName(part) !== 'plan_implementation') {
+    return null
+  }
+  const planContent = readPlanContentFromInput((part as { input?: unknown }).input)
+  return planContent ? { toolCallId: part.toolCallId, planContent } : null
+}
 
 function readSideChatCommand(text: string): string | null {
   const normalized = text.trimStart()
@@ -210,6 +275,9 @@ function useChatSessionRuntimeControls(chatSessionId: string | null): ChatSessio
     if (!snapshotRowsQueryKey && !sessionBindingQueryKey) {
       return
     }
+    if (chatSessionId) {
+      emitChatSessionInvalidated({ chatSessionId })
+    }
     if (snapshotTimerRef.current) {
       clearTimeout(snapshotTimerRef.current)
     }
@@ -222,13 +290,16 @@ function useChatSessionRuntimeControls(chatSessionId: string | null): ChatSessio
         void queryClient.invalidateQueries({ queryKey: sessionBindingQueryKey })
       }
     }, delay)
-  }, [queryClient, sessionBindingQueryKey, snapshotRowsQueryKey])
+  }, [chatSessionId, queryClient, sessionBindingQueryKey, snapshotRowsQueryKey])
 
   const refreshSessionLists = useCallback(() => {
     void queryClient.invalidateQueries({ predicate: query => isSessionsQueryKey(query.queryKey) })
   }, [queryClient])
 
   const refreshQueue = useCallback((delay = 0) => {
+    if (chatSessionId) {
+      emitChatSessionInvalidated({ chatSessionId })
+    }
     if (delay <= 0) {
       void queryClient.invalidateQueries({ queryKey: queueQueryKey })
       void queryClient.refetchQueries({ queryKey: queueQueryKey, type: 'active' })
@@ -239,7 +310,7 @@ function useChatSessionRuntimeControls(chatSessionId: string | null): ChatSessio
       void queryClient.invalidateQueries({ queryKey: queueQueryKey })
       void queryClient.refetchQueries({ queryKey: queueQueryKey, type: 'active' })
     }, delay)
-  }, [queryClient, queueQueryKey])
+  }, [chatSessionId, queryClient, queueQueryKey])
 
   useEffect(() => {
     return () => {
@@ -713,6 +784,8 @@ export function useChatSession(chatSessionId: string | null) {
         })
         acceptedByServer = true
 
+        scheduleSnapshotRefresh(0)
+
         if (transport.runId) {
           useChatStore.getState().setRunDisplayId(assistantMessageId, transport.runId)
         }
@@ -883,6 +956,28 @@ export function useChatSession(chatSessionId: string | null) {
     }
 
     const store = useChatStore.getState()
+    const currentMessages = store.messagesMap.get(chatSessionId) ?? []
+    const planImplementationRequest = readPlanImplementationApprovalRequest(currentMessages, response)
+    if (planImplementationRequest) {
+      const result = await resolvePlanImplementationApproval({
+        sessionId: chatSessionId,
+        messageId: response.messageId,
+        approvalId: response.approvalId,
+        approved: response.approved,
+      })
+      useChatStore.getState().updateMessage(
+        chatSessionId,
+        response.messageId,
+        () => result.message,
+        { dirtyToolCallIds: new Set([planImplementationRequest.toolCallId]) },
+      )
+      scheduleSnapshotRefresh(0)
+      if (response.approved) {
+        await sendMessage(CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX)
+      }
+      return
+    }
+
     store.updateMessage(chatSessionId, response.messageId, message => ({
       ...message,
       parts: message.parts.map(part =>
@@ -920,6 +1015,8 @@ export function useChatSession(chatSessionId: string | null) {
         signal: controller.signal,
       })
 
+      scheduleSnapshotRefresh(0)
+
       if (transport.runId) {
         useChatStore.getState().setRunDisplayId(response.messageId, transport.runId)
       }
@@ -955,7 +1052,7 @@ export function useChatSession(chatSessionId: string | null) {
         refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
       }
     }
-  }, [chatSessionId, queryClient, refreshQueue, refreshSessionLists, scheduleSnapshotRefresh, sessionBindingQueryKey])
+  }, [chatSessionId, queryClient, refreshQueue, refreshSessionLists, scheduleSnapshotRefresh, sendMessage, sessionBindingQueryKey])
 
   const submitPendingUserInput = useCallback(async (response: RuntimeUserInputSubmitInput) => {
     if (!chatSessionId) {

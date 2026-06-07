@@ -77,8 +77,9 @@ describe('mapClaudeAgentMessageToChunks', () => {
     })
   })
 
-  it('captures Claude ExitPlanMode as a completed plan tool output once', async () => {
+  it('captures Claude ExitPlanMode as a completed plan and implementation approval once', async () => {
     const state = createClaudeAgentChunkMapperState('text-1')
+    const plan = '1. Inspect\n2. Patch\n3. Verify'
     const message = {
       type: 'assistant',
       session_id: 'claude-session-plan',
@@ -88,7 +89,7 @@ describe('mapClaudeAgentMessageToChunks', () => {
             type: 'tool_use',
             id: 'toolu_plan_1',
             name: 'ExitPlanMode',
-            input: { plan: '1. Inspect\n2. Patch\n3. Verify' },
+            input: { plan },
           },
         ],
       },
@@ -107,7 +108,7 @@ describe('mapClaudeAgentMessageToChunks', () => {
           type: 'cradle.builtin-tool-call.input.v1',
           identifier: 'claude-code',
           apiName: 'ExitPlanMode',
-          args: { plan: '1. Inspect\n2. Patch\n3. Verify' },
+          args: { plan },
         },
       },
       {
@@ -117,12 +118,64 @@ describe('mapClaudeAgentMessageToChunks', () => {
           type: 'cradle.builtin-tool-call.result.v1',
           identifier: 'claude-code',
           apiName: 'ExitPlanMode',
-          args: { plan: '1. Inspect\n2. Patch\n3. Verify' },
-          result: { plan: '1. Inspect\n2. Patch\n3. Verify' },
+          args: { plan },
+          result: { plan },
         },
+      },
+      { type: 'tool-input-start', toolCallId: 'implement-plan:toolu_plan_1', toolName: 'plan_implementation' },
+      {
+        type: 'tool-input-available',
+        toolCallId: 'implement-plan:toolu_plan_1',
+        toolName: 'plan_implementation',
+        input: {
+          type: 'cradle.builtin-tool-call.input.v1',
+          identifier: 'claude-code',
+          apiName: 'plan_implementation',
+          args: { turnId: 'toolu_plan_1', planContent: plan },
+        },
+      },
+      {
+        type: 'tool-approval-request',
+        toolCallId: 'implement-plan:toolu_plan_1',
+        approvalId: 'implement-plan:toolu_plan_1',
       },
     ])
     expect(second.chunks).toEqual([])
+  })
+
+  it('ignores the Claude ExitPlanMode denial result after capturing the plan', async () => {
+    const state = createClaudeAgentChunkMapperState('text-1')
+    await mapClaudeAgentMessageToChunks({
+      type: 'assistant',
+      session_id: 'claude-session-plan',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_plan_1',
+            name: 'ExitPlanMode',
+            input: { plan: '1. Inspect\n2. Patch' },
+          },
+        ],
+      },
+    } as unknown as SDKMessage, state)
+
+    const result = await mapClaudeAgentMessageToChunks({
+      type: 'user',
+      session_id: 'claude-session-plan',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_plan_1',
+            is_error: true,
+            content: 'Cradle captured the proposed plan. Stop here and wait for the user to refine or implement it in a later turn.',
+          },
+        ],
+      },
+    } as unknown as SDKMessage, state)
+
+    expect(result.chunks).toEqual([])
   })
 
   it('synthesizes TodoWrite plugin state when the matching tool result arrives', async () => {

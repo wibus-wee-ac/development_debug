@@ -32,8 +32,7 @@ import {
   SettingsIcon,
   Trash2Icon,
 } from 'lucide-react'
-import { AnimatePresence, m } from 'motion/react'
-import { Fragment, memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { shallow } from 'zustand/shallow'
 
@@ -87,9 +86,9 @@ import { prefetchChatSession } from '~/features/chat/session/chat-session-prefet
 import { KanbanSidebar } from '~/features/kanban/kanban-sidebar'
 import { PluginsSidebar } from '~/features/plugins/plugins-sidebar'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'
+import type { Workspace } from '~/features/workspace/types'
 import { cn } from '~/lib/cn'
 import { isElectron, isTearoffWindow, nativeIpc } from '~/lib/electron'
-import type { Workspace } from '~/features/workspace/types'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
@@ -109,8 +108,11 @@ import { useWorkspaceSidebarUiStore } from './workspace-sidebar-ui-store'
 
 type WorkspaceTranslation = TFunction<'workspace'>
 const SESSION_PREVIEW_LIMIT = 5
+const SESSION_REVEAL_BATCH_SIZE = 64
+const SESSION_REVEAL_DELAY_MS = 16
 const DEFAULT_WORKSPACE_FILE_NAME = 'untitled'
 const DEFAULT_WORKSPACE_FOLDER_NAME = 'untitled-folder'
+const EMPTY_WORKSPACE_SESSIONS: WorkspaceSession[] = []
 
 const PROJECT_FILTER_OPTIONS: readonly WorkspaceSidebarProjectFilter[] = ['all', 'pinned', 'unpinned', 'unread', 'running']
 const PROJECT_SORT_OPTIONS: readonly WorkspaceSidebarProjectSortKey[] = ['name', 'updatedAt', 'createdAt']
@@ -218,7 +220,45 @@ type WorkspaceMenuAction = {
   separatorBefore?: boolean
 }
 
-function SessionMenuActionItems({ actions, surface }: { actions: SessionMenuAction[], surface: 'button' | 'context' }) {
+type SessionMenuAnchor = HTMLElement | {
+  getBoundingClientRect: () => DOMRect
+}
+
+type SessionMenuSurface = 'button' | 'context'
+
+type SessionMenuRequest = {
+  sessionId: string
+  anchor: SessionMenuAnchor
+  surface: SessionMenuSurface
+}
+
+type SessionMenuState = {
+  open: boolean
+  sessionId: string | null
+  anchor: SessionMenuAnchor | null
+  surface: SessionMenuSurface
+}
+
+const CLOSED_SESSION_MENU_STATE: SessionMenuState = {
+  open: false,
+  sessionId: null,
+  anchor: null,
+  surface: 'button',
+}
+
+function createPointMenuAnchor(clientX: number, clientY: number): SessionMenuAnchor {
+  return {
+    getBoundingClientRect: () => new DOMRect(clientX, clientY, 0, 0),
+  }
+}
+
+function SessionMenuActionItems({
+  actions,
+  testIdSurface = 'button',
+}: {
+  actions: SessionMenuAction[]
+  testIdSurface?: 'button' | 'context'
+}) {
   return actions.map((action) => {
     const content = (
       <>
@@ -227,34 +267,300 @@ function SessionMenuActionItems({ actions, surface }: { actions: SessionMenuActi
       </>
     )
 
-    if (surface === 'context') {
-      return (
-        <Fragment key={action.key}>
-          {action.variant === 'destructive' && <ContextMenuSeparator />}
-          <ContextMenuItem
-            variant={action.variant}
-            onSelect={() => { void action.invoke() }}
-            data-testid={`${action.testId}-context`}
-          >
-            {content}
-          </ContextMenuItem>
-        </Fragment>
-      )
-    }
-
     return (
       <Fragment key={action.key}>
         {action.variant === 'destructive' && <MenuSeparator />}
         <MenuItem
           variant={action.variant}
           onClick={() => { void action.invoke() }}
-          data-testid={action.testId}
+          data-testid={testIdSurface === 'context' ? `${action.testId}-context` : action.testId}
         >
           {content}
         </MenuItem>
       </Fragment>
     )
   })
+}
+
+function SessionActionsMenu({
+  state,
+  session,
+  workspaceId,
+  workspacePath,
+  onOpenChange,
+  onPrepareSessionOpen,
+  onStartRename,
+}: {
+  state: SessionMenuState
+  session: WorkspaceSession | null
+  workspaceId: string
+  workspacePath: string
+  onOpenChange: (open: boolean) => void
+  onPrepareSessionOpen: (session: WorkspaceSession) => void
+  onStartRename: (sessionId: string) => void
+}) {
+  const { t } = useTranslation('workspace')
+  const { openNewTab } = useCradleNavigation()
+  const queryClient = useQueryClient()
+  const open = state.open && state.anchor !== null && session !== null
+  const sessionTitle = session?.title ?? t('session.fallbackTitle')
+
+  const invalidateSessionQueries = useCallback(async () => {
+    if (!session) {
+      return
+    }
+
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getSessionsByIdQueryKey({ path: { id: session.id } }) }),
+    ])
+  }, [queryClient, session, workspaceId])
+
+  const recordSessionLayout = useCallback(() => {
+    if (!session) {
+      return
+    }
+
+    useSessionLayoutStore.getState().upsertSession({
+      sessionId: session.id,
+      sessionTitle,
+      workspaceId: session.workspaceId ?? workspaceId,
+      workspacePath,
+      runtimeKind: session.runtimeKind,
+    })
+  }, [session, sessionTitle, workspaceId, workspacePath])
+
+  const handleOpenInNewTab = useCallback(() => {
+    if (!session) {
+      return
+    }
+
+    recordSessionLayout()
+    openNewTab('chat', { sessionId: session.id })
+  }, [openNewTab, recordSessionLayout, session])
+
+  const handleOpenInNewWindow = useCallback(() => {
+    if (!session || !isElectron || !nativeIpc) {
+      return
+    }
+
+    onPrepareSessionOpen(session)
+    const screenX = window.screenX + Math.round(window.outerWidth / 2)
+    const screenY = window.screenY + Math.round(window.outerHeight / 2)
+    if (!reserveTearoffSession(session.id)) {
+      return
+    }
+
+    void nativeIpc.window.tearOffSession(session.id, screenX, screenY)
+      .then(() => {
+        if (!isTearoffWindow) {
+          detachTearoffSessionTab(useCradleTabStore, session.id)
+        }
+      })
+      .catch(() => {
+        releaseTearoffSession(session.id)
+      })
+  }, [onPrepareSessionOpen, session])
+
+  const handleStartRename = useCallback(() => {
+    if (!session) {
+      return
+    }
+
+    onOpenChange(false)
+    onStartRename(session.id)
+  }, [onOpenChange, onStartRename, session])
+
+  const handleRegenerateTitle = useCallback(async () => {
+    if (!session) {
+      return
+    }
+
+    try {
+      const { error } = await postChatSessionsBySessionIdTitleRegenerate({ path: { sessionId: session.id } })
+      if (error) {
+        throw error
+      }
+      await invalidateSessionQueries()
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: t('session.toast.regenerateTitleFailed'),
+        description: error instanceof Error ? error.message : String(error),
+      })
+    }
+  }, [invalidateSessionQueries, session, t])
+
+  const handleToggleReadState = useCallback(async () => {
+    if (!session) {
+      return
+    }
+
+    const { data } = session.unread
+      ? await postSessionsByIdRead({ path: { id: session.id } })
+      : await postSessionsByIdUnread({ path: { id: session.id } })
+    if (data) {
+      updateSessionReadState(queryClient, data)
+    }
+  }, [queryClient, session])
+
+  const handleTogglePin = useCallback(async () => {
+    if (!session) {
+      return
+    }
+
+    await patchSessionsById({ path: { id: session.id }, body: { pinned: !session.pinned } })
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+    ])
+  }, [queryClient, session, workspaceId])
+
+  const handleExport = useCallback(async () => {
+    if (!session) {
+      return
+    }
+
+    const { data } = await getSessionsByIdExportMarkdown({ path: { id: session.id } })
+    const md = (data as { markdown?: string } | null)?.markdown
+    if (md) {
+      await navigator.clipboard.writeText(md)
+    }
+  }, [session])
+
+  const handleArchive = useCallback(async () => {
+    if (!session) {
+      return
+    }
+
+    await postSessionsByIdArchive({ path: { id: session.id }, body: { archived: true } })
+
+    const { tabs, closeTab } = useCradleTabStore.getState()
+    for (const tab of tabs) {
+      if (tab.type === 'chat' && tab.params.sessionId === session.id) {
+        closeTab(tab.id)
+      }
+    }
+
+    if (isElectron) {
+      void nativeIpc?.window.closeSession(session.id).catch(() => {})
+    }
+
+    await invalidateSessionQueries()
+  }, [invalidateSessionQueries, session])
+
+  const actions = useMemo<SessionMenuAction[]>(() => {
+    if (!session) {
+      return []
+    }
+
+    return [
+      {
+        key: 'open-new-tab',
+        label: t('session.action.openInNewTab'),
+        icon: <PlusIcon />,
+        testId: `session-menu-open-new-tab-${session.id}`,
+        invoke: handleOpenInNewTab,
+      },
+      ...(isElectron
+        ? [
+          {
+            key: 'open-new-window',
+            label: t('session.action.openInNewWindow'),
+            icon: <ExternalLinkIcon />,
+            testId: `session-menu-open-new-window-${session.id}`,
+            invoke: handleOpenInNewWindow,
+          },
+        ]
+        : []),
+      {
+        key: 'rename',
+        label: t('session.action.rename'),
+        icon: <PencilIcon />,
+        testId: `session-menu-rename-${session.id}`,
+        invoke: handleStartRename,
+      },
+      {
+        key: 'regenerate-title',
+        label: t('session.action.regenerateTitle'),
+        icon: <RefreshCwIcon />,
+        testId: `session-menu-regenerate-title-${session.id}`,
+        invoke: handleRegenerateTitle,
+      },
+      {
+        key: 'toggle-read-state',
+        label: session.unread ? t('session.action.markRead') : t('session.action.markUnread'),
+        icon: session.unread ? <MailOpenIcon /> : <MailIcon />,
+        testId: `session-menu-toggle-read-state-${session.id}`,
+        invoke: handleToggleReadState,
+      },
+      {
+        key: 'toggle-pin',
+        label: session.pinned ? t('session.action.unpin') : t('session.action.pin'),
+        icon: session.pinned ? <PinOffIcon /> : <PinIcon />,
+        testId: `session-menu-toggle-pin-${session.id}`,
+        invoke: handleTogglePin,
+      },
+      {
+        key: 'copy-markdown',
+        label: t('session.action.copyMarkdown'),
+        icon: <ClipboardCopyIcon />,
+        testId: `session-menu-copy-markdown-${session.id}`,
+        invoke: handleExport,
+      },
+      ...(import.meta.env.DEV
+        ? [
+          {
+            key: 'copy-session-id',
+            label: t('session.action.copySessionId'),
+            icon: <ClipboardCopyIcon />,
+            testId: `session-menu-copy-session-id-${session.id}`,
+            invoke: () => { navigator.clipboard.writeText(session.id) },
+          },
+        ]
+        : []),
+      {
+        key: 'archive',
+        label: t('session.action.archive'),
+        icon: <ArchiveIcon />,
+        testId: `session-menu-archive-${session.id}`,
+        invoke: handleArchive,
+      },
+    ]
+  }, [
+    handleArchive,
+    handleExport,
+    handleOpenInNewTab,
+    handleOpenInNewWindow,
+    handleRegenerateTitle,
+    handleStartRename,
+    handleTogglePin,
+    handleToggleReadState,
+    session,
+    t,
+  ])
+
+  return (
+    <Menu open={open} onOpenChange={onOpenChange}>
+      {open && state.anchor
+        ? (
+          <MenuPopup
+            align="start"
+            anchor={state.anchor}
+            side="bottom"
+            sideOffset={state.surface === 'context' ? 0 : 4}
+          >
+            <SessionMenuActionItems
+              actions={actions}
+              testIdSurface={state.surface}
+            />
+          </MenuPopup>
+        )
+        : null}
+    </Menu>
+  )
 }
 
 function WorkspaceMenuActionItems({ actions, surface }: { actions: WorkspaceMenuAction[], surface: 'button' | 'context' }) {
@@ -387,72 +693,46 @@ const SessionUnreadIndicator = memo(({
 })
 SessionUnreadIndicator.displayName = 'SessionUnreadIndicator'
 
-function usePopupContentMounted(open: boolean): boolean {
-  const [mounted, setMounted] = useState(open)
-
-  useEffect(() => {
-    if (open) {
-      setMounted(true)
-      return
-    }
-
-    const frame = window.requestAnimationFrame(() => setMounted(false))
-    return () => window.cancelAnimationFrame(frame)
-  }, [open])
-
-  return open || mounted
-}
-
 // ── Session item ──────────────────────────────────────────────────────────────
 
 const SessionItem = memo(({
   session,
-  workspaceId,
-  workspacePath,
   active,
-  onOpenSession,
+  isStreaming,
+  hasError,
+  isRenaming,
+  t,
+  onPrepareSessionOpen,
+  onPrefetchSession,
+  onRenameCommit,
+  onRenameCancel,
+  onOpenSessionMenu,
 }: {
   session: WorkspaceSession
-  workspaceId: string
-  workspacePath: string
   active: boolean
-  onOpenSession?: (sessionId: string) => void
+  isStreaming: boolean
+  hasError: boolean
+  isRenaming: boolean
+  t: WorkspaceTranslation
+  onPrepareSessionOpen: (session: WorkspaceSession) => void
+  onPrefetchSession: (sessionId: string) => void
+  onRenameCommit: (session: WorkspaceSession, nextTitle: string) => Promise<void>
+  onRenameCancel: () => void
+  onOpenSessionMenu: (request: SessionMenuRequest) => void
 }) => {
-  const { t } = useTranslation('workspace')
-  const { openNewTab } = useCradleNavigation()
-  const queryClient = useQueryClient()
   const isUnread = session.unread
-  const hasLocalStreamingState = useChatStore(chatSelectors.isSessionStreaming(session.id), (a, b) => a === b)
-  const isStreaming = session.status === 'streaming' || hasLocalStreamingState
-  const latestLocalError = useChatStore(chatSelectors.latestError(session.id), (a, b) => a === b)
-  const hasError = !isStreaming && (session.status === 'error' || Boolean(latestLocalError))
-  const [isRenaming, setIsRenaming] = useState(false)
   const dragPointerRef = useRef<ScreenCoordinates | null>(null)
   const dragCleanupRef = useRef<(() => void) | null>(null)
   const dragWasTornOffRef = useRef(false)
   const sessionTitle = session.title ?? t('session.fallbackTitle')
-  const [buttonMenuOpen, setButtonMenuOpen] = useState(false)
-  const buttonMenuMounted = usePopupContentMounted(buttonMenuOpen)
-
-  const recordSessionLayout = useCallback(() => {
-    useSessionLayoutStore.getState().upsertSession({
-      sessionId: session.id,
-      sessionTitle,
-      workspaceId: session.workspaceId ?? workspaceId,
-      workspacePath,
-      runtimeKind: session.runtimeKind,
-    })
-  }, [session.id, session.runtimeKind, session.workspaceId, sessionTitle, workspaceId, workspacePath])
-
-  const prefetchSession = useCallback(() => {
-    prefetchChatSession(queryClient, session.id)
-  }, [queryClient, session.id])
 
   const prepareSessionOpen = useCallback(() => {
-    onOpenSession?.(session.id)
-    recordSessionLayout()
-    prefetchSession()
-  }, [onOpenSession, prefetchSession, recordSessionLayout, session.id])
+    onPrepareSessionOpen(session)
+  }, [onPrepareSessionOpen, session])
+
+  const prefetchSession = useCallback(() => {
+    onPrefetchSession(session.id)
+  }, [onPrefetchSession, session.id])
 
   const releaseSessionDrag = useCallback(() => {
     dragCleanupRef.current?.()
@@ -474,102 +754,6 @@ const SessionItem = memo(({
     dragPointerRef.current = pointer
   }, [])
   const RuntimeIcon = PROVIDER_ICONS[RUNTIME_ICON_KEYS[session.runtimeKind]] ?? PROVIDER_ICONS.custom!
-
-  const invalidateSessionQueries = useCallback(async () => {
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
-      queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
-      queryClient.invalidateQueries({ queryKey: getSessionsByIdQueryKey({ path: { id: session.id } }) }),
-    ])
-  }, [queryClient, session.id, workspaceId])
-
-  const handleArchive = useCallback(async () => {
-    await postSessionsByIdArchive({ path: { id: session.id }, body: { archived: true } })
-
-    const { tabs, closeTab } = useCradleTabStore.getState()
-    for (const tab of tabs) {
-      if (tab.type === 'chat' && tab.params.sessionId === session.id) {
-        closeTab(tab.id)
-      }
-    }
-
-    if (isElectron) {
-      void nativeIpc?.window.closeSession(session.id).catch(() => {})
-    }
-
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
-      queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
-      queryClient.invalidateQueries({ queryKey: getSessionsByIdQueryKey({ path: { id: session.id } }) }),
-    ])
-  }, [session.id, workspaceId, queryClient])
-
-  const handleTogglePin = useCallback(async () => {
-    await patchSessionsById({ path: { id: session.id }, body: { pinned: !session.pinned } })
-    void Promise.all([
-      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
-      queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
-    ])
-  }, [session.id, session.pinned, workspaceId, queryClient])
-
-  const handleRename = useCallback(async (nextTitleRaw: string) => {
-    const nextTitle = nextTitleRaw.trim()
-    setIsRenaming(false)
-
-    if (!nextTitle || nextTitle === sessionTitle) {
-      return
-    }
-
-    await patchSessionsById({ path: { id: session.id }, body: { title: nextTitle } })
-    await invalidateSessionQueries()
-  }, [invalidateSessionQueries, session.id, sessionTitle])
-
-  const handleRenameCancel = useCallback(() => {
-    setIsRenaming(false)
-  }, [])
-
-  const handleStartRename = useCallback(() => {
-    setIsRenaming(true)
-  }, [])
-
-  const handleRegenerateTitle = useCallback(async () => {
-    try {
-      const { error } = await postChatSessionsBySessionIdTitleRegenerate({ path: { sessionId: session.id } })
-      if (error) {
-        throw error
-      }
-      await invalidateSessionQueries()
-    }
-    catch (error) {
-      toastManager.add({
-        type: 'error',
-        title: t('session.toast.regenerateTitleFailed'),
-        description: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }, [invalidateSessionQueries, session.id, t])
-
-  const handleExport = useCallback(async () => {
-    const { data } = await getSessionsByIdExportMarkdown({ path: { id: session.id } })
-    const md = (data as { markdown?: string } | null)?.markdown
-    if (md) {
-      await navigator.clipboard.writeText(md)
-    }
-  }, [session.id])
-
-  const handleToggleReadState = useCallback(async () => {
-    const { data } = isUnread
-      ? await postSessionsByIdRead({ path: { id: session.id } })
-      : await postSessionsByIdUnread({ path: { id: session.id } })
-    if (data) {
-      updateSessionReadState(queryClient, data)
-    }
-  }, [isUnread, queryClient, session.id])
-
-  const handleOpenInNewTab = useCallback(() => {
-    recordSessionLayout()
-    openNewTab('chat', { sessionId: session.id })
-  }, [openNewTab, recordSessionLayout, session.id])
 
   const handleOpenInNewWindow = useCallback(() => {
     if (!isElectron || !nativeIpc) {
@@ -670,80 +854,36 @@ const SessionItem = memo(({
     return releaseSessionDrag
   }, [releaseSessionDrag])
 
-  const sessionActions: SessionMenuAction[] = [
-    {
-      key: 'open-new-tab',
-      label: t('session.action.openInNewTab'),
-      icon: <PlusIcon />,
-      testId: `session-menu-open-new-tab-${session.id}`,
-      invoke: handleOpenInNewTab,
-    },
-    ...(isElectron
-      ? [
-        {
-          key: 'open-new-window',
-          label: t('session.action.openInNewWindow'),
-          icon: <ExternalLinkIcon />,
-          testId: `session-menu-open-new-window-${session.id}`,
-          invoke: handleOpenInNewWindow,
-        },
-      ]
-      : []),
-    {
-      key: 'rename',
-      label: t('session.action.rename'),
-      icon: <PencilIcon />,
-      testId: `session-menu-rename-${session.id}`,
-      invoke: handleStartRename,
-    },
-    {
-      key: 'regenerate-title',
-      label: t('session.action.regenerateTitle'),
-      icon: <RefreshCwIcon />,
-      testId: `session-menu-regenerate-title-${session.id}`,
-      invoke: handleRegenerateTitle,
-    },
-    {
-      key: 'toggle-read-state',
-      label: isUnread ? t('session.action.markRead') : t('session.action.markUnread'),
-      icon: isUnread ? <MailOpenIcon /> : <MailIcon />,
-      testId: `session-menu-toggle-read-state-${session.id}`,
-      invoke: handleToggleReadState,
-    },
-    {
-      key: 'toggle-pin',
-      label: session.pinned ? t('session.action.unpin') : t('session.action.pin'),
-      icon: session.pinned ? <PinOffIcon /> : <PinIcon />,
-      testId: `session-menu-toggle-pin-${session.id}`,
-      invoke: handleTogglePin,
-    },
-    {
-      key: 'copy-markdown',
-      label: t('session.action.copyMarkdown'),
-      icon: <ClipboardCopyIcon />,
-      testId: `session-menu-copy-markdown-${session.id}`,
-      invoke: handleExport,
-    },
-    //
-    ...(import.meta.env.DEV
-      ? [
-        {
-          key: 'copy-session-id',
-          label: t('session.action.copySessionId'),
-          icon: <ClipboardCopyIcon />,
-          testId: `session-menu-copy-session-id-${session.id}`,
-          invoke: () => { navigator.clipboard.writeText(session.id) },
-        },
-      ]
-      : []), // Hide export in production until we add a proper UI for it
-    {
-      key: 'archive',
-      label: t('session.action.archive'),
-      icon: <ArchiveIcon />,
-      testId: `session-menu-archive-${session.id}`,
-      invoke: handleArchive,
-    },
-  ]
+  const openSessionMenu = (anchor: SessionMenuAnchor, surface: SessionMenuSurface) => {
+    onOpenSessionMenu({
+      sessionId: session.id,
+      anchor,
+      surface,
+    })
+  }
+
+  const handleOpenButtonMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    openSessionMenu(event.currentTarget, 'button')
+  }
+
+  const handleSessionContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    openSessionMenu(createPointMenuAnchor(event.clientX, event.clientY), 'context')
+  }
+
+  const handleSessionKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+    if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) {
+      return
+    }
+
+    event.preventDefault()
+    event.stopPropagation()
+    const rect = event.currentTarget.getBoundingClientRect()
+    openSessionMenu(createPointMenuAnchor(rect.left + 24, rect.top + rect.height / 2), 'context')
+  }
 
   const itemContent = (
     <div
@@ -751,8 +891,10 @@ const SessionItem = memo(({
       onDragStart={handleDragStart}
       onDrag={handleDrag}
       onDragEnd={handleDragEnd}
+      onContextMenu={isRenaming ? undefined : handleSessionContextMenu}
+      onKeyDown={isRenaming ? undefined : handleSessionKeyDown}
       className={cn(
-        'group relative isolate flex min-w-0 w-full items-center rounded-lg text-left text-xs hover:bg-accent/50',
+        'group relative isolate flex min-w-0 w-full items-center rounded-lg text-left text-xs hover:bg-accent/50 [content-visibility:auto] [contain-intrinsic-block-size:30px]',
         !isRenaming && 'cursor-grab active:cursor-grabbing',
       )}
       data-testid={`session-item-${session.id}`}
@@ -767,8 +909,8 @@ const SessionItem = memo(({
             sessionId={session.id}
             pinned={Boolean(session.pinned)}
             listActivityAt={session.listActivityAt}
-            onCommit={handleRename}
-            onCancel={handleRenameCancel}
+            onCommit={nextTitle => onRenameCommit(session, nextTitle)}
+            onCancel={onRenameCancel}
           />
         )
         : (
@@ -820,47 +962,77 @@ const SessionItem = memo(({
                   </span>
                 )}
             </Link>
-            <Menu open={buttonMenuOpen} onOpenChange={setButtonMenuOpen}>
-              <MenuTrigger
-                render={(
-                  <button
-                    type="button"
-                    className="relative z-10 mr-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
-                    onClick={e => e.stopPropagation()}
-                    aria-label={t('session.aria.menu')}
-                  />
-                )}
-                data-testid={`session-menu-trigger-${session.id}`}
-              >
-                <MoreHorizontalIcon className="size-3" aria-hidden="true" />
-              </MenuTrigger>
-              {buttonMenuMounted && (
-                <MenuPopup align="start" side="bottom" sideOffset={4}>
-                  <SessionMenuActionItems actions={sessionActions} surface="button" />
-                </MenuPopup>
-              )}
-            </Menu>
+            <button
+              type="button"
+              className="relative z-10 mr-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
+              onClick={handleOpenButtonMenu}
+              aria-haspopup="menu"
+              aria-label={t('session.aria.menu')}
+              data-testid={`session-menu-trigger-${session.id}`}
+            >
+              <MoreHorizontalIcon className="size-3" aria-hidden="true" />
+            </button>
           </>
         )}
     </div>
   )
 
-  if (isRenaming) {
-    return itemContent
-  }
-
-  return (
-    <ContextMenu>
-      <ContextMenuTrigger asChild>
-        {itemContent}
-      </ContextMenuTrigger>
-      <ContextMenuContent className="w-48">
-        <SessionMenuActionItems actions={sessionActions} surface="context" />
-      </ContextMenuContent>
-    </ContextMenu>
-  )
+  return itemContent
 })
 SessionItem.displayName = 'SessionItem'
+
+interface SessionListProps {
+  sessions: WorkspaceSession[]
+  activeSessionId: string | null
+  renamingSessionId: string | null
+  locallyStreamingSessionIds: Set<string>
+  locallyErroredSessionIds: Set<string>
+  t: WorkspaceTranslation
+  onPrepareSessionOpen: (session: WorkspaceSession) => void
+  onPrefetchSession: (sessionId: string) => void
+  onRenameCommit: (session: WorkspaceSession, nextTitle: string) => Promise<void>
+  onRenameCancel: () => void
+  onOpenSessionMenu: (request: SessionMenuRequest) => void
+}
+
+const SessionListRows = memo(({
+  sessions,
+  activeSessionId,
+  renamingSessionId,
+  locallyStreamingSessionIds,
+  locallyErroredSessionIds,
+  t,
+  onPrepareSessionOpen,
+  onPrefetchSession,
+  onRenameCommit,
+  onRenameCancel,
+  onOpenSessionMenu,
+}: SessionListProps) => {
+  return (
+    <>
+      {sessions.map((session) => {
+        const isStreaming = isSessionRunning(session, locallyStreamingSessionIds)
+        return (
+          <SessionItem
+            key={session.id}
+            session={session}
+            active={session.id === activeSessionId}
+            isStreaming={isStreaming}
+            hasError={!isStreaming && (session.status === 'error' || locallyErroredSessionIds.has(session.id))}
+            isRenaming={session.id === renamingSessionId}
+            t={t}
+            onPrepareSessionOpen={onPrepareSessionOpen}
+            onPrefetchSession={onPrefetchSession}
+            onRenameCommit={onRenameCommit}
+            onRenameCancel={onRenameCancel}
+            onOpenSessionMenu={onOpenSessionMenu}
+          />
+        )
+      })}
+    </>
+  )
+})
+SessionListRows.displayName = 'SessionListRows'
 
 // ── Workspace group ───────────────────────────────────────────────────────────
 
@@ -891,9 +1063,22 @@ const WorkspaceGroup = memo(({
   const [createRequest, setCreateRequest] = useState<{
     kind: 'file' | 'folder'
   } | null>(null)
+  const [sessionMenuState, setSessionMenuState] = useState<SessionMenuState>(CLOSED_SESSION_MENU_STATE)
+  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
+  const [expandedSessionRenderCount, setExpandedSessionRenderCount] = useState(SESSION_PREVIEW_LIMIT)
   const workspacePinned = Boolean(workspace.pinned)
   const workspaceSessionIds = useMemo(() => sessions.map(session => session.id), [sessions])
+  const sessionsById = useMemo(() => {
+    const byId = new Map<string, WorkspaceSession>()
+    for (const session of sessions) {
+      byId.set(session.id, session)
+    }
+    return byId
+  }, [sessions])
   const workspaceSessionIdSet = useMemo(() => new Set(workspaceSessionIds), [workspaceSessionIds])
+  const activeMenuSession = sessionMenuState.sessionId
+    ? sessionsById.get(sessionMenuState.sessionId) ?? null
+    : null
   const activeSessionId = useCradleTabStore(
     useCallback((state) => {
       const activeTab = state.tabs.find(tab => tab.id === state.activeTabId)
@@ -908,6 +1093,13 @@ const WorkspaceGroup = memo(({
   const locallyStreamingSessionIds = useChatStore(
     useCallback(
       state => new Set(workspaceSessionIds.filter(sessionId => chatSelectors.isSessionStreaming(sessionId)(state))),
+      [workspaceSessionIds],
+    ),
+    shallow,
+  )
+  const locallyErroredSessionIds = useChatStore(
+    useCallback(
+      state => new Set(workspaceSessionIds.filter(sessionId => Boolean(chatSelectors.latestError(sessionId)(state)))),
       [workspaceSessionIds],
     ),
     shallow,
@@ -948,9 +1140,35 @@ const WorkspaceGroup = memo(({
   const collapsedSessionPreviewLimit = Math.max(SESSION_PREVIEW_LIMIT, requiredPreviewCount)
   const hasHiddenSessions = sortedSessions.length > collapsedSessionPreviewLimit
   const hiddenSessionCount = Math.max(sortedSessions.length - collapsedSessionPreviewLimit, 0)
-  const visibleSessions = sessionListExpanded
-    ? sortedSessions
-    : sortedSessions.slice(0, collapsedSessionPreviewLimit)
+  const renderedSessionCount = sessionListExpanded
+    ? Math.min(Math.max(expandedSessionRenderCount, collapsedSessionPreviewLimit), sortedSessions.length)
+    : collapsedSessionPreviewLimit
+  const visibleSessions = useMemo(
+    () => sortedSessions.slice(0, renderedSessionCount),
+    [renderedSessionCount, sortedSessions],
+  )
+
+  useEffect(() => {
+    if (!sessionListExpanded) {
+      setExpandedSessionRenderCount(current => current === collapsedSessionPreviewLimit ? current : collapsedSessionPreviewLimit)
+      return
+    }
+
+    if (expandedSessionRenderCount >= sortedSessions.length) {
+      return
+    }
+
+    const timeout = window.setTimeout(() => {
+      startTransition(() => {
+        setExpandedSessionRenderCount(current => Math.min(
+          Math.max(current, collapsedSessionPreviewLimit) + SESSION_REVEAL_BATCH_SIZE,
+          sortedSessions.length,
+        ))
+      })
+    }, SESSION_REVEAL_DELAY_MS)
+
+    return () => window.clearTimeout(timeout)
+  }, [collapsedSessionPreviewLimit, expandedSessionRenderCount, sessionListExpanded, sortedSessions.length])
 
   useEffect(() => {
     setRetainedSessionIds((current) => {
@@ -993,13 +1211,58 @@ const WorkspaceGroup = memo(({
       return next
     })
   }, [])
+  const prefetchSession = useCallback((sessionId: string) => {
+    prefetchChatSession(queryClient, sessionId)
+  }, [queryClient])
+  const recordSessionLayout = useCallback((session: WorkspaceSession) => {
+    useSessionLayoutStore.getState().upsertSession({
+      sessionId: session.id,
+      sessionTitle: session.title ?? t('session.fallbackTitle'),
+      workspaceId: session.workspaceId ?? workspace.id,
+      workspacePath: workspace.path,
+      runtimeKind: session.runtimeKind,
+    })
+  }, [t, workspace.id, workspace.path])
+  const handlePrepareSessionOpen = useCallback((session: WorkspaceSession) => {
+    handleOpenSession(session.id)
+    recordSessionLayout(session)
+    prefetchSession(session.id)
+  }, [handleOpenSession, prefetchSession, recordSessionLayout])
+  const handleRenameSession = useCallback(async (session: WorkspaceSession, nextTitleRaw: string) => {
+    const nextTitle = nextTitleRaw.trim()
+    setRenamingSessionId(null)
+
+    if (!nextTitle || nextTitle === (session.title ?? t('session.fallbackTitle'))) {
+      return
+    }
+
+    await patchSessionsById({ path: { id: session.id }, body: { title: nextTitle } })
+    await Promise.all([
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspace.id) }),
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: getSessionsByIdQueryKey({ path: { id: session.id } }) }),
+    ])
+  }, [queryClient, t, workspace.id])
+  const handleRenameCancel = useCallback(() => {
+    setRenamingSessionId(null)
+  }, [])
+  const handleStartSessionRename = useCallback((sessionId: string) => {
+    setRenamingSessionId(sessionId)
+  }, [])
+  const handleOpenSessionMenu = useCallback((request: SessionMenuRequest) => {
+    setSessionMenuState({
+      ...request,
+      open: true,
+    })
+  }, [])
+  const handleSessionMenuOpenChange = useCallback((open: boolean) => {
+    setSessionMenuState(current => open && current.anchor
+      ? { ...current, open: true }
+      : CLOSED_SESSION_MENU_STATE)
+  }, [])
 
   useEffect(() => {
     const next = new Set<string>()
-    const sessionsById = new Map<string, WorkspaceSession>()
-    for (const session of sessions) {
-      sessionsById.set(session.id, session)
-    }
 
     for (const sessionId of acknowledgedSessionIdsRef.current!) {
       const session = sessionsById.get(sessionId)
@@ -1009,7 +1272,7 @@ const WorkspaceGroup = memo(({
     }
 
     acknowledgedSessionIdsRef.current! = next
-  }, [locallyStreamingSessionIds, sessions])
+  }, [locallyStreamingSessionIds, sessionsById])
   const toggleExpanded = useCallback(() => {
     toggleWorkspaceExpanded(workspace.id)
   }, [toggleWorkspaceExpanded, workspace.id])
@@ -1289,54 +1552,56 @@ const WorkspaceGroup = memo(({
         onOpenChange={open => !open && setCreateRequest(null)}
         onCommit={handleCreateWorkspaceChild}
       />
+      <SessionActionsMenu
+        state={sessionMenuState}
+        session={activeMenuSession}
+        workspaceId={workspace.id}
+        workspacePath={workspace.path}
+        onOpenChange={handleSessionMenuOpenChange}
+        onPrepareSessionOpen={handlePrepareSessionOpen}
+        onStartRename={handleStartSessionRename}
+      />
 
-      {/* Session list with expand/collapse animation */}
-      <AnimatePresence initial={false}>
-        {expanded && (
-          <m.div
-            key="sessions"
-            initial={{ height: 0, opacity: 0 }}
-            animate={{ height: 'auto', opacity: 1 }}
-            exit={{ height: 0, opacity: 0 }}
-            transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
-            className="min-w-0 overflow-hidden"
-          >
-            <div className="ml-4.25 flex min-w-0 flex-col gap-0.5 border-l border-sidebar-border/50 pl-2 py-0.5">
-              {sessions.length === 0 && (
-                <p className="px-2.5 py-1.5 text-xs text-muted-foreground">{t('session.empty')}</p>
-              )}
-              {visibleSessions.map(session => (
-                <SessionItem
-                  key={session.id}
-                  session={session}
-                  workspaceId={workspace.id}
-                  workspacePath={workspace.path}
-                  active={session.id === activeSessionId}
-                  onOpenSession={handleOpenSession}
-                />
-              ))}
-              {hasHiddenSessions && (
-                <button
-                  type="button"
-                  onClick={toggleSessionListExpanded}
-                  className="mt-0.5 flex h-6 min-w-0 items-center gap-1.5 rounded-lg px-2.5 text-left text-[11px] text-muted-foreground hover:bg-accent/50 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                  aria-expanded={sessionListExpanded}
-                  data-testid={`workspace-sessions-toggle-${workspace.id}`}
-                >
+      {expanded && (
+        <div className="min-w-0 overflow-hidden">
+          <div className="ml-4.25 flex min-w-0 flex-col gap-0.5 border-l border-sidebar-border/50 pl-2 py-0.5">
+            {sessions.length === 0 && (
+              <p className="px-2.5 py-1.5 text-xs text-muted-foreground">{t('session.empty')}</p>
+            )}
+            <SessionListRows
+              sessions={visibleSessions}
+              activeSessionId={activeSessionId}
+              renamingSessionId={renamingSessionId}
+              locallyStreamingSessionIds={locallyStreamingSessionIds}
+              locallyErroredSessionIds={locallyErroredSessionIds}
+              t={t}
+              onPrepareSessionOpen={handlePrepareSessionOpen}
+              onPrefetchSession={prefetchSession}
+              onRenameCommit={handleRenameSession}
+              onRenameCancel={handleRenameCancel}
+              onOpenSessionMenu={handleOpenSessionMenu}
+            />
+            {hasHiddenSessions && (
+              <button
+                type="button"
+                onClick={toggleSessionListExpanded}
+                className="mt-0.5 flex h-6 min-w-0 items-center gap-1.5 rounded-lg px-2.5 text-left text-[11px] text-muted-foreground hover:bg-accent/50 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                aria-expanded={sessionListExpanded}
+                data-testid={`workspace-sessions-toggle-${workspace.id}`}
+              >
+                {sessionListExpanded
+                  ? <ChevronUpIcon className="size-3 shrink-0" aria-hidden="true" />
+                  : <ChevronDownIcon className="size-3 shrink-0" aria-hidden="true" />}
+                <span className="min-w-0 truncate">
                   {sessionListExpanded
-                    ? <ChevronUpIcon className="size-3 shrink-0" aria-hidden="true" />
-                    : <ChevronDownIcon className="size-3 shrink-0" aria-hidden="true" />}
-                  <span className="min-w-0 truncate">
-                    {sessionListExpanded
-                      ? t('session.action.showLess')
-                      : t('session.action.showAll', { count: hiddenSessionCount })}
-                  </span>
-                </button>
-              )}
-            </div>
-          </m.div>
-        )}
-      </AnimatePresence>
+                    ? t('session.action.showLess')
+                    : t('session.action.showAll', { count: hiddenSessionCount })}
+                </span>
+              </button>
+            )}
+          </div>
+        </div>
+      )}
     </div>
   )
 })
@@ -1690,7 +1955,7 @@ const WorkspaceSidebarBody = memo(({
             <WorkspaceGroup
               key={workspace.id}
               workspace={workspace}
-              sessions={sessionsByWorkspaceId.get(workspace.id) ?? []}
+              sessions={sessionsByWorkspaceId.get(workspace.id) ?? EMPTY_WORKSPACE_SESSIONS}
               onDelete={onDelete}
               onTogglePin={onTogglePin}
             />

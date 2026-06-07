@@ -1,6 +1,9 @@
 import { AnimatePresence, m } from 'motion/react'
 import { memo, useCallback, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
+import { ChromeSideSheet } from '~/components/layout/chrome-side-sheet'
+import { CHROME_COLLAPSED_SIDEBAR_WIDTH } from '~/components/layout/layout-responsive'
 import { ResizeHandle } from '~/components/layout/resize-handle'
 import { SettingsSidebar } from '~/features/settings/settings-sidebar'
 import { WorkspaceSidebar } from '~/features/workspace'
@@ -18,13 +21,13 @@ const DRILL_TRANSITION = {
 
 const SIDEBAR_SPRING = { type: 'spring', stiffness: 600, damping: 40 } as const
 const INSTANT = { duration: 0 } as const
-const COLLAPSED_WIDTH = 48
 const SIDEBAR_MIN = 180
 const SIDEBAR_MAX = 400
 
 interface AppSidebarContentProps {
   isSettings: boolean
   collapsed: boolean
+  reserveTopChrome?: boolean
   settingsSection: string
   onSetSettingsSection: (section: string) => void
   onCloseSettings: () => void
@@ -33,14 +36,16 @@ interface AppSidebarContentProps {
 const AppSidebarContent = memo(({
   isSettings,
   collapsed,
+  reserveTopChrome = true,
   settingsSection,
   onSetSettingsSection,
   onCloseSettings,
 }: AppSidebarContentProps) => {
   return (
     <>
-      {/* Traffic light spacer — drag region matching AppHeader height */}
-      <div className="h-11 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
+      {reserveTopChrome && (
+        <div className="h-11 shrink-0" style={{ WebkitAppRegion: 'drag' } as React.CSSProperties} />
+      )}
       <div
         className="relative flex flex-col flex-1 overflow-hidden"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
@@ -82,19 +87,13 @@ const AppSidebarContent = memo(({
 })
 AppSidebarContent.displayName = 'AppSidebarContent'
 
-export function AppSidebar() {
-  'use no memo'
-  const sidebarWidth = useLayoutStore(s => s.sidebarWidth)
-  const setSidebarWidth = useLayoutStore(s => s.setSidebarWidth)
-  const sidebarCollapsed = useLayoutStore(s => s.sidebarCollapsed)
-  const toggleSidebar = useLayoutStore(s => s.toggleSidebar)
+function useAppSidebarContentController() {
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const settingsSection = useSettingsOverlayStore(s => s.settingsSection)
   const openSettings = useSettingsOverlayStore(s => s.openSettings)
   const closeSettings = useSettingsOverlayStore(s => s.closeSettings)
   const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
   const isSettings = useCradleTabStore(s => settingsTabId !== null && s.activeTabId === settingsTabId)
-  const [dragWidth, setDragWidth] = useState<number | null>(null)
 
   const handleToggleSettings = useCallback(() => {
     if (isSettings) {
@@ -110,11 +109,34 @@ export function AppSidebar() {
 
   useShortcut('toggle-settings', { meta: true, key: ',' }, handleToggleSettings)
   useShortcut('exit-settings', { meta: true, key: 'Escape' }, closeSettings, isSettings)
+
+  return {
+    closeSettings,
+    isSettings,
+    setSettingsSection,
+    settingsSection,
+  }
+}
+
+export function AppSidebar() {
+  'use no memo'
+  const sidebarWidth = useLayoutStore(s => s.sidebarWidth)
+  const setSidebarWidth = useLayoutStore(s => s.setSidebarWidth)
+  const sidebarCollapsed = useLayoutStore(s => s.sidebarCollapsed)
+  const toggleSidebar = useLayoutStore(s => s.toggleSidebar)
+  const {
+    closeSettings,
+    isSettings,
+    setSettingsSection,
+    settingsSection,
+  } = useAppSidebarContentController()
+  const [dragWidth, setDragWidth] = useState<number | null>(null)
+
   useShortcut('toggle-sidebar', { meta: true, key: 'b' }, toggleSidebar)
 
   // Settings drill-in forces sidebar open; main mode respects user's collapse preference
   const collapsed = sidebarCollapsed && !isSettings
-  const currentWidth = collapsed ? COLLAPSED_WIDTH : dragWidth ?? sidebarWidth
+  const currentWidth = collapsed ? CHROME_COLLAPSED_SIDEBAR_WIDTH : dragWidth ?? sidebarWidth
 
   const handleSidebarResize = useCallback((width: number) => {
     setDragWidth(width)
@@ -156,5 +178,47 @@ export function AppSidebar() {
         />
       )}
     </>
+  )
+}
+
+interface AppSidebarSheetProps {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+}
+
+export function AppSidebarSheet({ open, onOpenChange }: AppSidebarSheetProps) {
+  'use no memo'
+  const { t } = useTranslation('chrome')
+  const {
+    closeSettings,
+    isSettings,
+    setSettingsSection,
+    settingsSection,
+  } = useAppSidebarContentController()
+
+  const toggleSidebarSheet = useCallback(() => {
+    onOpenChange(!open)
+  }, [onOpenChange, open])
+
+  useShortcut('toggle-sidebar', { meta: true, key: 'b' }, toggleSidebarSheet)
+
+  return (
+    <ChromeSideSheet
+      open={open}
+      onOpenChange={onOpenChange}
+      side="left"
+      title={t('chromeSheet.sidebar.title')}
+      closeLabel={t('chromeSheet.action.close')}
+      className="w-[min(20rem,calc(100vw-2rem))]"
+    >
+      <AppSidebarContent
+        isSettings={isSettings}
+        collapsed={false}
+        reserveTopChrome={false}
+        settingsSection={settingsSection}
+        onSetSettingsSection={setSettingsSection}
+        onCloseSettings={closeSettings}
+      />
+    </ChromeSideSheet>
   )
 }

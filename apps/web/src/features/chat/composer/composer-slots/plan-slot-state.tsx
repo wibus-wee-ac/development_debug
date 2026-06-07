@@ -17,20 +17,16 @@ export function PlanSlotState({
   state,
   actions,
   className,
+  onDismiss,
 }: {
   state: ChatRuntimePlanUiSlotState
   actions?: ComposerPlanSlotActions
   className?: string
+  onDismiss: () => void
 }) {
-  const planKey = `${state.threadId}:${state.turnId ?? 'turn'}:${state.updatedAt}`
-  const [dismissedPlanKey, setDismissedPlanKey] = useState<string | null>(null)
   const [pendingAction, setPendingAction] = useState<'implement' | 'refine' | null>(null)
   const summary = useMemo(() => readPlanSummary(state), [state])
   const disabled = actions?.disabled || actions?.busy || pendingAction !== null
-
-  if (dismissedPlanKey === planKey) {
-    return null
-  }
 
   return (
     <ComposerSlotShell stateName="plan" testId="plan-slot" className={className}>
@@ -53,12 +49,12 @@ export function PlanSlotState({
             size="xs"
             disabled={disabled || !actions?.onImplement}
             onClick={() => {
-              void runPlanAction('implement', state, actions?.onImplement, setPendingAction, () => setDismissedPlanKey(planKey))
+              void runPlanAction('implement', state, actions?.onImplement, setPendingAction, onDismiss)
             }}
             className="h-6 gap-1 px-2"
           >
             <CheckIcon className="size-3" aria-hidden="true" />
-            <span>Implement plan</span>
+            <span>Implement Plan</span>
           </Button>
           <Button
             type="button"
@@ -66,17 +62,17 @@ export function PlanSlotState({
             size="xs"
             disabled={disabled || !actions?.onRefine}
             onClick={() => {
-              void runPlanAction('refine', state, actions?.onRefine, setPendingAction, () => setDismissedPlanKey(planKey))
+              void runPlanAction('refine', state, actions?.onRefine, setPendingAction, onDismiss)
             }}
             className="h-6 gap-1 px-2"
           >
             <PencilIcon className="size-3" aria-hidden="true" />
-            <span>Refine plan</span>
+            <span>Refine Plan</span>
           </Button>
           <ComposerSlotIconAction
             label="Dismiss plan"
             disabled={pendingAction !== null}
-            onClick={() => setDismissedPlanKey(planKey)}
+            onClick={onDismiss}
           >
             <XIcon className="size-3.5" aria-hidden="true" />
           </ComposerSlotIconAction>
@@ -113,6 +109,11 @@ async function runPlanAction(
 }
 
 function readPlanSummary(state: ChatRuntimePlanUiSlotState): string | null {
+  const content = state.content?.trim()
+  if (content) {
+    return content.split('\n').find(line => line.trim())?.trim() ?? null
+  }
+
   const explanation = state.explanation?.trim()
   if (explanation) {
     return explanation

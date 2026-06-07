@@ -384,6 +384,7 @@ export interface CodexPlanSnapshot {
   threadId: string
   turnId: string | null
   explanation: string | null
+  content: string | null
   steps: Array<{ step: string, status: RuntimePlanStepStatus }>
   updatedAt: number
 }

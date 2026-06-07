@@ -1,4 +1,7 @@
 {
+  "chromeSheet.action.close": "閉じる",
+  "chromeSheet.rightAside.title": "右パネル",
+  "chromeSheet.sidebar.title": "サイドバー",
   "dev.action.hardReload": "ハードリロード",
   "dev.action.hardReload.title": "ハードリロード（キャッシュを無視）",
   "dev.action.openDevtools": "DevTools を開く",
@@ -7,8 +10,10 @@
   "dev.action.reactDiagnostics.disableTitle": "React Scan と React Grab を無効化します。読み込み済みスクリプトを解除するにはハードリロードしてください",
   "dev.action.reactDiagnostics.enableTitle": "React Scan と React Grab を有効化",
   "footer.action.askJarvis": "Jarvis に聞く",
+  "header.action.closeSidebar": "サイドバーを閉じる",
   "header.action.collapseSidebar": "サイドバーを折りたたむ",
   "header.action.expandSidebar": "サイドバーを展開",
+  "header.action.openSidebar": "サイドバーを開く",
   "header.action.toggleBottomPanel": "下部パネルを切り替え",
   "header.action.toggleBrowserPanel": "ブラウザパネルを切り替え",
   "header.action.toggleRightPanel": "右パネルを切り替え",

@@ -458,10 +458,32 @@ function projectCodexPlanSnapshot(
   notification: CodexAppServerMessage,
   fallbackThreadId: string,
 ): void {
+  if (notification.method === 'item/completed') {
+    const params = notification.params as ItemNotificationParams | undefined
+    if (params?.item?.type !== 'plan') {
+      return
+    }
+    const content = params.item.text?.trim()
+    if (!content) {
+      return
+    }
+    const existing = readCodexProviderSnapshot(runtimeSession.providerStateSnapshot).codex?.plan
+    writeCodexPlanSnapshot(runtimeSession, {
+      threadId: params.threadId ?? existing?.threadId ?? fallbackThreadId,
+      turnId: params.turnId ?? existing?.turnId ?? null,
+      explanation: existing?.explanation ?? null,
+      content,
+      steps: existing?.steps ?? [],
+      updatedAt: Date.now(),
+    })
+    return
+  }
+
   if (notification.method !== 'turn/plan/updated') {
     return
   }
   const params = notification.params as TurnPlanUpdatedNotificationParams | undefined
+  const existing = readCodexProviderSnapshot(runtimeSession.providerStateSnapshot).codex?.plan
   const steps = (params?.plan ?? [])
     .flatMap(step => typeof step.step === 'string' && isRuntimePlanStepStatus(step.status)
       ? [{ step: step.step, status: step.status }]
@@ -470,6 +492,7 @@ function projectCodexPlanSnapshot(
     threadId: params?.threadId ?? fallbackThreadId,
     turnId: params?.turnId ?? null,
     explanation: typeof params?.explanation === 'string' ? params.explanation : null,
+    content: existing?.turnId === (params?.turnId ?? null) ? existing.content : null,
     steps,
     updatedAt: Date.now(),
   })

@@ -1,10 +1,12 @@
 import { m } from 'motion/react'
 import type { ReactNode } from 'react'
 import { Activity, memo, useCallback, useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
 
 import { AppFooter } from '~/components/layout/app-footer'
 import { AppHeader } from '~/components/layout/app-header'
+import { ChromeSideSheet } from '~/components/layout/chrome-side-sheet'
 import { DevBottomBar } from '~/components/layout/dev-bottom-bar'
 import { deriveActiveLayoutContract } from '~/components/layout/layout-contract'
 import {
@@ -12,6 +14,12 @@ import {
   useLayoutGeometry,
 } from '~/components/layout/layout-geometry-context'
 import { CENTER_COLUMN_EXPANDED_SCALE, CENTER_COLUMN_EXPANDED_Y } from '~/components/layout/layout-motion'
+import {
+  CHROME_CENTER_MIN_WIDTH,
+  CHROME_COLLAPSED_SIDEBAR_WIDTH,
+  CHROME_RESPONSIVE_GUTTER_WIDTH,
+  useViewportWidth,
+} from '~/components/layout/layout-responsive'
 import { ResizeHandle } from '~/components/layout/resize-handle'
 import { RightAside } from '~/components/layout/right-aside'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
@@ -163,6 +171,14 @@ interface AppLayoutProps {
   sessionScoped?: boolean
   /** Show the main-window footer surface. */
   showFooter?: boolean
+  /** Render the left sidebar as a transient chrome sheet instead of a docked column. */
+  sidebarInSheet?: boolean
+  /** Current transient left sidebar sheet presentation state. */
+  sidebarSheetOpen?: boolean
+  /** Opens the transient left sidebar sheet. */
+  onOpenSidebarSheet?: () => void
+  /** Toggles the transient left sidebar sheet. */
+  onToggleSidebarSheet?: () => void
 }
 
 export function AppLayout({
@@ -172,6 +188,10 @@ export function AppLayout({
   panel,
   sessionScoped = false,
   showFooter = true,
+  sidebarInSheet = false,
+  sidebarSheetOpen = false,
+  onOpenSidebarSheet,
+  onToggleSidebarSheet,
 }: AppLayoutProps) {
   return (
     <LayoutGeometryProvider>
@@ -181,6 +201,10 @@ export function AppLayout({
         panel={panel}
         sessionScoped={sessionScoped}
         showFooter={showFooter}
+        sidebarInSheet={sidebarInSheet}
+        sidebarSheetOpen={sidebarSheetOpen}
+        onOpenSidebarSheet={onOpenSidebarSheet}
+        onToggleSidebarSheet={onToggleSidebarSheet}
       >
         {children}
       </AppLayoutContent>
@@ -195,8 +219,14 @@ function AppLayoutContent({
   panel,
   sessionScoped = false,
   showFooter = true,
+  sidebarInSheet = false,
+  sidebarSheetOpen = false,
+  onOpenSidebarSheet,
+  onToggleSidebarSheet,
 }: AppLayoutProps) {
+  const { t } = useTranslation('chrome')
   const [dragging, setDragging] = useState<string | null>(null)
+  const [rightAsideSheetOpen, setRightAsideSheetOpen] = useState(false)
   const [browserNativeBoundsPaused, setBrowserNativeBoundsPaused] = useState(false)
   const [browserPanelClosing, setBrowserPanelClosing] = useState(false)
   const [previousBrowserPanelVisible, setPreviousBrowserPanelVisible] = useState(false)
@@ -265,6 +295,9 @@ function AppLayoutContent({
   const bottomPanelHeight = useLayoutStore(state => state.bottomPanelHeight)
   const setBottomPanelHeight = useLayoutStore(state => state.setBottomPanelHeight)
   const bottomPanelOpen = useLayoutStore(state => state.bottomPanelOpen)
+  const sidebarWidth = useLayoutStore(state => state.sidebarWidth)
+  const sidebarCollapsed = useLayoutStore(state => state.sidebarCollapsed)
+  const asideWidth = useLayoutStore(state => state.asideWidth)
   const browserPanelOpen = useLayoutStore(state =>
     activeBrowserPanelOwnerId
       ? (state.browserPanelOpenByOwnerId[activeBrowserPanelOwnerId] ?? false)
@@ -276,6 +309,14 @@ function AppLayoutContent({
   const isSettings = settingsTabId !== null && settingsTabId === activeTab?.id
   const canUseRightAside
     = !isSettings && !!resolvedHasAside && (!!resolvedAsideSessionId || !!resolvedAsideWorkspaceId)
+  const viewportWidth = useViewportWidth()
+  const dockedSidebarWidth = sidebarInSheet
+    ? 0
+    : sidebarCollapsed
+      ? CHROME_COLLAPSED_SIDEBAR_WIDTH
+      : sidebarWidth
+  const rightAsideInSheet = canUseRightAside
+    && viewportWidth < dockedSidebarWidth + asideWidth + CHROME_CENTER_MIN_WIDTH + CHROME_RESPONSIVE_GUTTER_WIDTH
   const resolvedBrowserPanelOpen = !isSettings && !!resolvedHasBrowserPanel && browserPanelOpen
   const browserPanelMounted = isElectron
   const browserPanelVisible = browserPanelMounted && resolvedBrowserPanelOpen
@@ -432,6 +473,16 @@ function AppLayoutContent({
 
   useShortcut('toggle-zen-sidebars', { meta: true, key: '.' }, handleToggleZenSidebars)
 
+  const handleToggleRightAsideSheet = useCallback(() => {
+    setRightAsideSheetOpen(open => !open)
+  }, [])
+
+  useEffect(() => {
+    if (!rightAsideInSheet || !canUseRightAside) {
+      setRightAsideSheetOpen(false)
+    }
+  }, [canUseRightAside, rightAsideInSheet])
+
   useEffect(() => {
     useBrowserPanelStore.getState().setActiveOwner(activeBrowserPanelOwnerId)
     setActiveBrowserPanelOwner(activeBrowserPanelOwnerId)
@@ -460,6 +511,13 @@ function AppLayoutContent({
         browserPanelOpen={browserPanelOpen}
         sessionScoped={sessionScoped}
         headerActions={slots.headerActions}
+        sidebarInSheet={sidebarInSheet}
+        sidebarSheetOpen={sidebarSheetOpen}
+        onOpenSidebarSheet={onOpenSidebarSheet}
+        onToggleSidebarSheet={onToggleSidebarSheet}
+        asideInSheet={rightAsideInSheet}
+        asideSheetOpen={rightAsideSheetOpen}
+        onToggleAsideSheet={handleToggleRightAsideSheet}
       />
 
       {/* ── Content area ───────────────────────────────────────────────── */}
@@ -563,7 +621,7 @@ function AppLayoutContent({
         </m.div>
 
         {/* Right Aside — layout-owned, independent of tab lifecycle */}
-        {canUseRightAside && (
+        {canUseRightAside && !rightAsideInSheet && (
           <AppRightAside
             sessionId={resolvedAsideSessionId}
             workspaceId={resolvedAsideWorkspaceId}
@@ -572,6 +630,24 @@ function AppLayoutContent({
             onResizeStart={handleAsideLayoutResizeStart}
             onResizeEnd={handleAsideLayoutResizeEnd}
           />
+        )}
+        {canUseRightAside && rightAsideInSheet && (
+          <ChromeSideSheet
+            open={rightAsideSheetOpen}
+            onOpenChange={setRightAsideSheetOpen}
+            side="right"
+            title={t('chromeSheet.rightAside.title')}
+            closeLabel={t('chromeSheet.action.close')}
+            contentTestId="app-layout-right-aside"
+            className="w-[min(22rem,calc(100vw-2rem))]"
+          >
+            <MemoizedRightAside
+              sessionId={resolvedAsideSessionId}
+              workspaceId={resolvedAsideWorkspaceId}
+              workspaceName={resolvedAsideWorkspaceName}
+              workspacePath={resolvedAsideWorkspacePath}
+            />
+          </ChromeSideSheet>
         )}
       </div>
 

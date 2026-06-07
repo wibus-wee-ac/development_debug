@@ -1,8 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
-import { useWorkspaces } from '~/features/workspace/use-workspace'
-import type { Workspace } from '~/features/workspace/types'
+import { BetaNotice } from '~/components/common/beta-notice'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
+import type { Workspace } from '~/features/workspace/types'
+import { useWorkspaces } from '~/features/workspace/use-workspace'
 
 import { CreateIssueDialog } from './create-issue-dialog'
 import { IssueDetail } from './issue-detail'
@@ -83,6 +85,7 @@ function summarizeKanbanFilter(filter: FilterState, statuses: KanbanStatus[], mi
 }
 
 export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, initialMilestoneId, onSelectIssue, onOpenMilestone }: KanbanViewProps) {
+  const { t } = useTranslation('kanban')
   const boardId = _boardId
   const { config, setConfig, filter, setFilter, resetFilter } = useViewConfig(workspaceId)
   const { workspaces } = useWorkspaces()
@@ -549,6 +552,11 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
 
   return (
     <div className="relative flex flex-1 flex-col overflow-hidden h-full">
+      <BetaNotice
+        title={t('beta.title')}
+        description={t('beta.description')}
+      />
+
       {/* eslint-disable-next-line style/multiline-ternary */}
       {selectedIssueId ? (
         <IssueDetail

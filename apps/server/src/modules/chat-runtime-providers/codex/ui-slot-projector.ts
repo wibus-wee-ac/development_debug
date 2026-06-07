@@ -652,6 +652,7 @@ function projectCodexPlanState(
     threadId,
     turnId: plan.turnId,
     explanation: plan.explanation,
+    content: plan.content,
     steps: plan.steps,
     currentStep: plan.steps.find(step => step.status === 'inProgress')?.step
       ?? plan.steps.find(step => step.status === 'pending')?.step

@@ -23,6 +23,13 @@ interface AppHeaderProps {
   browserPanelOpen?: boolean
   sessionScoped?: boolean
   headerActions?: React.ReactNode
+  sidebarInSheet?: boolean
+  sidebarSheetOpen?: boolean
+  onOpenSidebarSheet?: () => void
+  onToggleSidebarSheet?: () => void
+  asideInSheet?: boolean
+  asideSheetOpen?: boolean
+  onToggleAsideSheet?: () => void
 }
 
 export function AppHeader({
@@ -33,6 +40,13 @@ export function AppHeader({
   browserPanelOpen = false,
   sessionScoped = false,
   headerActions,
+  sidebarInSheet = false,
+  sidebarSheetOpen = false,
+  onOpenSidebarSheet,
+  onToggleSidebarSheet,
+  asideInSheet = false,
+  asideSheetOpen = false,
+  onToggleAsideSheet,
 }: AppHeaderProps) {
   'use no memo'
   const { t } = useTranslation('chrome')
@@ -48,8 +62,37 @@ export function AppHeader({
   // Settings is open on a specific tab; we're "in settings" view when that tab is active
   const isSettingsActive = useCradleTabStore(s => settingsTabId !== null && s.activeTabId === settingsTabId)
   const isDrillIn = isSettingsActive
-  const sidebarToggleLabel = sidebarCollapsed ? t('header.action.expandSidebar') : t('header.action.collapseSidebar')
-  const reserveTrafficLightSpace = isTearoffWindow && platform === 'darwin'
+  const sidebarToggleLabel = sidebarInSheet
+    ? sidebarSheetOpen
+      ? t('header.action.closeSidebar')
+      : t('header.action.openSidebar')
+    : sidebarCollapsed
+      ? t('header.action.expandSidebar')
+      : t('header.action.collapseSidebar')
+  const reserveTrafficLightSpace = platform === 'darwin' && (isTearoffWindow || sidebarInSheet)
+  const asidePresentationOpen = asideInSheet ? asideSheetOpen : asideOpen
+
+  const handleSidebarToggle = useCallback(() => {
+    if (sidebarInSheet) {
+      if (onToggleSidebarSheet) {
+        onToggleSidebarSheet()
+        return
+      }
+      onOpenSidebarSheet?.()
+      return
+    }
+
+    toggleSidebar()
+  }, [onOpenSidebarSheet, onToggleSidebarSheet, sidebarInSheet, toggleSidebar])
+
+  const handleAsideToggle = useCallback(() => {
+    if (asideInSheet) {
+      onToggleAsideSheet?.()
+      return
+    }
+
+    toggleAside()
+  }, [asideInSheet, onToggleAsideSheet, toggleAside])
 
   const handleTabActivated = useCallback(() => {
     // No-op: settings is now per-tab, tab switching is handled by isSettingsVisible in app.tsx
@@ -164,11 +207,18 @@ export function AppHeader({
       className="relative flex h-11 shrink-0 items-center bg-sidebar pe-1 pl-1 mt-1 mb-0"
       style={{ WebkitAppRegion: 'drag' } as React.CSSProperties}
     >
+      {reserveTrafficLightSpace && (
+        <div
+          aria-hidden="true"
+          className="h-full w-20 shrink-0"
+        />
+      )}
+
       {/* Left: sidebar toggle (hidden in drill-in modes where sidebar is forced open) */}
-      {!isDrillIn && !isTearoffWindow && (
+      {(!isDrillIn || sidebarInSheet) && !isTearoffWindow && (
         <m.div
           initial={false}
-          animate={{ marginLeft: sidebarCollapsed ? 24 : 0 }}
+          animate={{ marginLeft: !sidebarInSheet && sidebarCollapsed ? 24 : 0 }}
           transition={{ duration: 0.2 }}
           className="overflow-hidden flex items-center"
         >
@@ -176,21 +226,19 @@ export function AppHeader({
             variant="ghost"
             size="icon-xs"
             // , sidebarCollapsed && 'ml-6'
-            className={cn('text-muted-foreground shrink-0')}
-            onClick={toggleSidebar}
+            className={cn('shrink-0 text-muted-foreground', sidebarInSheet && sidebarSheetOpen && 'text-foreground')}
+            onClick={handleSidebarToggle}
             aria-label={sidebarToggleLabel}
+            aria-pressed={sidebarInSheet ? sidebarSheetOpen : !sidebarCollapsed}
             title={sidebarToggleLabel}
+            data-chrome-side-sheet-trigger={sidebarInSheet ? 'left' : undefined}
             style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
           >
-            {sidebarCollapsed ? <PanelLeftOpenIcon aria-hidden="true" /> : <PanelLeftCloseIcon aria-hidden="true" />}
+            {(sidebarInSheet && !sidebarSheetOpen) || (!sidebarInSheet && sidebarCollapsed)
+              ? <PanelLeftOpenIcon aria-hidden="true" />
+              : <PanelLeftCloseIcon aria-hidden="true" />}
           </Button>
         </m.div>
-      )}
-      {reserveTrafficLightSpace && (
-        <div
-          aria-hidden="true"
-          className="h-full w-20 shrink-0"
-        />
       )}
 
       {/* Tab bar */}
@@ -243,12 +291,13 @@ export function AppHeader({
           <Button
             variant="ghost"
             size="icon-xs"
-            className={cn('text-muted-foreground', asideOpen && 'text-foreground')}
-            onClick={toggleAside}
+            className={cn('text-muted-foreground', asidePresentationOpen && 'text-foreground')}
+            onClick={handleAsideToggle}
             aria-label={t('header.action.toggleRightPanel')}
-            aria-pressed={asideOpen}
+            aria-pressed={asidePresentationOpen}
             title={t('header.action.toggleRightPanel')}
             data-testid="app-header-aside-toggle"
+            data-chrome-side-sheet-trigger={asideInSheet ? 'right' : undefined}
           >
             <PanelRightIcon aria-hidden="true" />
           </Button>

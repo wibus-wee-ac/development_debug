@@ -144,7 +144,7 @@ export function Hero() {
             <div className="mb-6 inline-flex items-center gap-2 rounded-full border border-fd-border/60 bg-fd-muted/50 px-3 py-1">
               <span className="size-1.5 rounded-full bg-emerald-500" />
               <span className="text-xs font-medium text-fd-muted-foreground">
-                Open source &middot; Local-first
+                Free forever &middot; Local-first
               </span>
             </div>
 

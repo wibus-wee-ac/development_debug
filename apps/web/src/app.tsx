@@ -1,12 +1,13 @@
 import './styles.css'
 
 import { createUrlSync, TabRenderer, TabsProvider } from '@cradle/tabs-next'
-import { lazy, Suspense, useCallback, useEffect } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useState } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
 import { AppEnvironmentProviders, useThemeClass } from '~/app-providers'
 import { AppLayout } from '~/components/layout/app-layout'
-import { AppSidebar } from '~/components/layout/app-sidebar'
+import { AppSidebar, AppSidebarSheet } from '~/components/layout/app-sidebar'
+import { useSidebarSheetMode } from '~/components/layout/layout-responsive'
 import { useSyncLayoutSlotScope } from '~/components/layout/use-layout-slots'
 import { useDesktopTrayActionBridge } from '~/features/desktop-tray/use-desktop-tray-action-bridge'
 import { useOnboardingStore } from '~/features/onboarding/onboarding-store'
@@ -82,6 +83,8 @@ function MainAppRuntime() {
   const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const settingsSection = useSettingsOverlayStore(s => s.settingsSection)
   const closeSettings = useSettingsOverlayStore(s => s.closeSettings)
+  const sidebarInSheet = useSidebarSheetMode()
+  const [sidebarSheetOpen, setSidebarSheetOpen] = useState(false)
 
   const activeSlotId = useCradleTabStore((s) => {
     const activeTab = s.tabs.find(tab => tab.id === s.activeTabId)
@@ -105,6 +108,12 @@ function MainAppRuntime() {
   const openGlobalSearch = useCallback(() => {
     useGlobalSearchStore.getState().openSearch()
   }, [])
+  const openSidebarSheet = useCallback(() => {
+    setSidebarSheetOpen(true)
+  }, [])
+  const toggleSidebarSheet = useCallback(() => {
+    setSidebarSheetOpen(open => !open)
+  }, [])
   const unreadSessionIds = useUnreadSessionIds()
 
   useDesktopTrayActionBridge({ onOpenGlobalSearch: openGlobalSearch })
@@ -124,6 +133,12 @@ function MainAppRuntime() {
       closeSettings()
     }
   }, [closeSettings, settingsTabExists, settingsTabId])
+
+  useEffect(() => {
+    if (!sidebarInSheet) {
+      setSidebarSheetOpen(false)
+    }
+  }, [sidebarInSheet])
 
   // Ensure at least one home tab exists on startup (fresh or cleared state)
   useEffect(() => {
@@ -164,8 +179,16 @@ function MainAppRuntime() {
   return (
     <TabsProvider store={cradleTabStore} registry={cradleRegistry}>
       <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
-        <AppSidebar />
-        <AppLayout>
+        {!sidebarInSheet && <AppSidebar />}
+        {sidebarInSheet && (
+          <AppSidebarSheet open={sidebarSheetOpen} onOpenChange={setSidebarSheetOpen} />
+        )}
+        <AppLayout
+          sidebarInSheet={sidebarInSheet}
+          sidebarSheetOpen={sidebarSheetOpen}
+          onOpenSidebarSheet={openSidebarSheet}
+          onToggleSidebarSheet={toggleSidebarSheet}
+        >
           <div className="relative h-full w-full overflow-hidden">
             <div
               className={cn(

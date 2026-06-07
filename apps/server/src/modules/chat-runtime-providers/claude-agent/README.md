@@ -14,7 +14,7 @@ Stored Cradle chats with a provider session id pass SDK `resume`, allowing Claud
 
 Stored turns pass the resolved model through SDK query options and model alias environment variables. When a persisted SDK session is resumed and the requested model differs from the snapshot model, the provider applies the switch through SDK `setModel()`.
 
-Claude SDK `ExitPlanMode` remains available in SDK plan mode as the provider-owned signal for submitting a proposed plan. Cradle captures that tool input into its existing tool chunk envelope for UI rendering, denies the native exit action, and keeps runtime interaction state changes owned by Chat Runtime settings.
+Claude SDK `ExitPlanMode` remains available in SDK plan mode as the provider-owned signal for submitting a proposed plan. Cradle captures that tool input into its existing tool chunk envelope, projects a synthetic `plan_implementation` approval so the renderer can submit `PLEASE IMPLEMENT THIS PLAN:` as an ordinary follow-up, denies the native exit action, and keeps runtime interaction state changes owned by Chat Runtime settings.
 
 ## Files
 

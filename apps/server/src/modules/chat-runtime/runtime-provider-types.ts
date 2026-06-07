@@ -205,6 +205,7 @@ export interface RuntimePlanUiSlotState {
   threadId: string
   turnId: string | null
   explanation: string | null
+  content: string | null
   steps: RuntimePlanStep[]
   currentStep: string | null
   pendingCount: number

@@ -1357,7 +1357,7 @@ const MessageBubbleSegmentsView = memo(({
               'rounded-lg text-sm leading-relaxed',
               isUser && !frame.isSteerMessage && !frame.bangCommand && !frame.bangResult && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
               (frame.bangCommand || frame.bangResult) && 'rounded-br-sm',
-              // frame.isSteerMessage && STEER_MESSAGE_BUBBLE_CLASS,
+              frame.isSteerMessage && STEER_MESSAGE_BUBBLE_CLASS,
               isAssistant && 'text-foreground',
             )}
           >

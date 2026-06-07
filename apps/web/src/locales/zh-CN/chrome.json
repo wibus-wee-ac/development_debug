@@ -1,4 +1,7 @@
 {
+  "chromeSheet.action.close": "关闭",
+  "chromeSheet.rightAside.title": "右侧面板",
+  "chromeSheet.sidebar.title": "侧边栏",
   "dev.action.hardReload": "强制刷新",
   "dev.action.hardReload.title": "强制刷新（忽略缓存）",
   "dev.action.openDevtools": "打开 DevTools",
@@ -7,8 +10,10 @@
   "dev.action.reactDiagnostics.disableTitle": "关闭 React Scan 和 React Grab；强制刷新后可完全卸载已加载脚本",
   "dev.action.reactDiagnostics.enableTitle": "开启 React Scan 和 React Grab",
   "footer.action.askJarvis": "询问 Jarvis",
+  "header.action.closeSidebar": "关闭侧边栏",
   "header.action.collapseSidebar": "收起侧边栏",
   "header.action.expandSidebar": "展开侧边栏",
+  "header.action.openSidebar": "打开侧边栏",
   "header.action.toggleBottomPanel": "切换底部面板",
   "header.action.toggleBrowserPanel": "切换浏览器面板",
   "header.action.toggleRightPanel": "切换右侧面板",

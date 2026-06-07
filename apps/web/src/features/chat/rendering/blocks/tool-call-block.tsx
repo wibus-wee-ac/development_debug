@@ -1,3 +1,4 @@
+import { StaticRender } from '@cradle/streamdown'
 import {
   BotIcon,
   CheckCircle2Icon,
@@ -672,14 +673,22 @@ function TodoSummary({ input, output }: { input: ToolPayload, output: ToolPayloa
 }
 
 function PlanSummary({ input, output }: { input: ToolPayload, output: ToolPayload }) {
-  const text = output.plan ?? input.plan ?? output.text ?? input.text ?? output.rawText ?? input.rawText
+  const text = output.planContent ?? input.planContent ?? output.plan ?? input.plan ?? output.text ?? input.text ?? output.rawText ?? input.rawText
   if (!text) {
     return null
   }
   return (
-    <div className="rounded-md bg-muted/30 px-2.5 py-2">
-      <div className="whitespace-pre-wrap text-xs leading-relaxed text-foreground/85">
-        {text}
+    <div
+      className="relative overflow-hidden rounded-md border border-border/70 bg-background/85"
+      data-testid="chat-plan-document"
+    >
+      <div
+        className="streamdown-root max-h-80 overflow-y-auto px-3 py-3 text-xs leading-relaxed"
+        style={{
+          maskImage: 'linear-gradient(to bottom, transparent, black 18px, black calc(100% - 24px), transparent)',
+        }}
+      >
+        <StaticRender content={text} />
       </div>
     </div>
   )
@@ -1053,7 +1062,7 @@ function hasHeroContent(descriptor: ToolUiDescriptor, input: ToolPayload, output
     case 'todo':
       return projectChatTodos(input, output).length > 0 || output.rawText !== null || input.rawText !== null
     case 'plan':
-      return !!(output.plan ?? input.plan ?? output.text ?? input.text ?? output.rawText ?? input.rawText)
+      return !!(output.planContent ?? input.planContent ?? output.plan ?? input.plan ?? output.text ?? input.text ?? output.rawText ?? input.rawText)
     default:
       return output.rawText !== null
         || output.outputText !== null
@@ -1102,6 +1111,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
   const Icon = TOOL_ICON_MAP[descriptor.kind]
   const running = isRunning(state)
   const errored = isError(state)
+  const planImplementationApproval = descriptor.toolName === 'plan_implementation' && state === 'approval-requested'
   const retainNestedActivity = descriptor.kind === 'subagent' && hasChildren
   const pendingQuestions = descriptor.kind === 'question' && state === 'input-available'
     ? readRuntimeQuestions(inputPayload.questions)
@@ -1302,7 +1312,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
               data-testid="approval-deny-btn"
               onClick={() => onApprovalResponse({ id: approval.id, approved: false })}
             >
-              Deny
+              {planImplementationApproval ? 'Dismiss' : 'Deny'}
             </Button>
             <Button
               type="button"
@@ -1310,7 +1320,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
               data-testid="approval-allow-btn"
               onClick={() => onApprovalResponse({ id: approval.id, approved: true })}
             >
-              Approve
+              {planImplementationApproval ? 'Yes, implement this plan' : 'Approve'}
             </Button>
           </div>
         )}

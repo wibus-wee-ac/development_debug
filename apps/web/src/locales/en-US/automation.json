@@ -20,6 +20,8 @@
   "artifact.preview": "Artifact preview",
   "artifact.requestsTitle": "Artifacts",
   "artifact.title": "Artifacts",
+  "beta.description": "This feature is unstable. Behavior, scheduling semantics, and saved artifacts may change, and runs may still contain bugs.",
+  "beta.title": "Automation is in Beta",
   "common.unknown": "Unknown",
   "create.cancelAria": "Cancel automation draft",
   "create.description": "Create a provider-backed scheduled prompt. It will run through the normal chat runtime and save a run artifact.",

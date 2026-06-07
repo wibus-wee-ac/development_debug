@@ -28,6 +28,9 @@ export interface CodexAppServerMapperState {
   startedToolItemIds: Set<string>
   startedAgentMessageIds: Set<string>
   pendingServerRequestIds: Set<number>
+  synthesizePlanImplementationRequest: boolean
+  lastCompletedPlan: CodexCompletedPlan | null
+  emittedPlanImplementationTurnIds: Set<string>
 }
 
 export interface CodexAppServerNotification {
@@ -37,6 +40,7 @@ export interface CodexAppServerNotification {
 
 interface ItemNotificationParams {
   item?: CodexAppServerItem
+  turnId?: string
 }
 
 interface DeltaNotificationParams {
@@ -57,7 +61,22 @@ interface ServerRequestPendingParams {
   params?: unknown
 }
 
-export function createCodexAppServerMapperState(textItemId: string): CodexAppServerMapperState {
+interface TurnCompletedParams {
+  turn?: {
+    id?: string
+    status?: string
+  }
+}
+
+interface CodexCompletedPlan {
+  turnId: string
+  content: string
+}
+
+export function createCodexAppServerMapperState(
+  textItemId: string,
+  options: { synthesizePlanImplementationRequest?: boolean } = {},
+): CodexAppServerMapperState {
   void textItemId
   return {
     openReasoningItemIds: new Set(),
@@ -69,6 +88,9 @@ export function createCodexAppServerMapperState(textItemId: string): CodexAppSer
     startedToolItemIds: new Set(),
     startedAgentMessageIds: new Set(),
     pendingServerRequestIds: new Set(),
+    synthesizePlanImplementationRequest: options.synthesizePlanImplementationRequest === true,
+    lastCompletedPlan: null,
+    emittedPlanImplementationTurnIds: new Set(),
   }
 }
 
@@ -80,7 +102,9 @@ export function mapCodexAppServerNotificationToChunks(
     case 'item/started':
       return mapStartedItem(getItem(notification), state)
     case 'item/completed':
-      return mapCompletedItem(getItem(notification), state)
+      return mapCompletedItem(notification.params, state)
+    case 'turn/completed':
+      return mapCompletedTurn(notification.params, state)
     case 'item/agentMessage/delta':
       return mapAgentMessageDelta(notification.params, state)
     case 'item/reasoning/textDelta':
@@ -168,7 +192,9 @@ function mapStartedToolItem(item: CodexAppServerItem, state: CodexAppServerMappe
   ]
 }
 
-function mapCompletedItem(item: CodexAppServerItem | null, state: CodexAppServerMapperState): UIMessageChunk[] {
+function mapCompletedItem(rawParams: unknown, state: CodexAppServerMapperState): UIMessageChunk[] {
+  const params = rawParams as ItemNotificationParams
+  const item = params.item ?? null
   if (!item) {
     return []
   }
@@ -185,10 +211,61 @@ function mapCompletedItem(item: CodexAppServerItem | null, state: CodexAppServer
     case 'webSearch':
     case 'plan':
     case 'contextCompaction':
+      recordCompletedPlan(item, params.turnId, state)
       return mapCompletedToolItem(item, state)
     default:
       return []
   }
+}
+
+function recordCompletedPlan(
+  item: CodexAppServerItem,
+  turnId: string | undefined,
+  state: CodexAppServerMapperState,
+): void {
+  if (item.type !== 'plan' || !turnId) {
+    return
+  }
+  const content = item.text?.trim()
+  if (!content) {
+    return
+  }
+  state.lastCompletedPlan = { turnId, content }
+}
+
+function mapCompletedTurn(rawParams: unknown, state: CodexAppServerMapperState): UIMessageChunk[] {
+  if (!state.synthesizePlanImplementationRequest) {
+    return []
+  }
+  const params = rawParams as TurnCompletedParams
+  const turn = params.turn
+  const turnId = turn?.id
+  if (!turnId || turn.status !== 'completed') {
+    return []
+  }
+  const plan = state.lastCompletedPlan
+  if (!plan || plan.turnId !== turnId || state.emittedPlanImplementationTurnIds.has(turnId)) {
+    return []
+  }
+  state.emittedPlanImplementationTurnIds.add(turnId)
+  state.lastCompletedPlan = null
+
+  const toolCallId = `implement-plan:${turnId}`
+  const item: CodexAppServerItem = {
+    id: toolCallId,
+    type: 'planImplementation',
+    turnId,
+    planContent: plan.content,
+  }
+  state.startedToolItemIds.add(toolCallId)
+  state.toolArgsById.set(toolCallId, buildCodexToolInput(item).args)
+
+  return [
+    ...closeOpenAgentMessageSegments(state),
+    { type: 'tool-input-start', toolCallId, toolName: readCodexToolName(item) },
+    { type: 'tool-input-available', toolCallId, toolName: readCodexToolName(item), input: buildCodexToolInput(item) },
+    { type: 'tool-approval-request', toolCallId, approvalId: toolCallId },
+  ]
 }
 
 function mapCompletedToolItem(item: CodexAppServerItem, state: CodexAppServerMapperState): UIMessageChunk[] {

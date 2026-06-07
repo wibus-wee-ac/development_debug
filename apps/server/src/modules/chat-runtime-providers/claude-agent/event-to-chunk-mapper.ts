@@ -21,6 +21,9 @@ import {
 import { createClaudeCodeToolInputPayload, createClaudeCodeToolResultPayload } from './tools/mapper'
 import { isTodoWriteToolName, synthesizeTodoWritePluginState } from './tools/todo-plugin-state'
 
+const CLAUDE_EXIT_PLAN_MODE_CAPTURED_MESSAGE = 'Cradle captured the proposed plan. Stop here and wait for the user to refine or implement it in a later turn.'
+const PLAN_IMPLEMENTATION_TOOL_NAME = 'plan_implementation'
+
 interface BetaContentBlock {
   type: string
   text?: string
@@ -66,7 +69,7 @@ export interface ClaudeAgentChunkMapperState {
   /** Tracks emitted text per text segment so full assistant snapshots do not replay streamed text. */
   emittedTextByTextItemId: Map<string, TextAccumulator>
   /** Tracks emitted tool lifecycle fragments so full assistant snapshots do not replay streamed tool blocks. */
-  emittedToolStateByToolCallId: Map<string, { started: boolean, inputAvailable: boolean, outputAvailable?: boolean }>
+  emittedToolStateByToolCallId: Map<string, { started: boolean, inputAvailable: boolean, outputAvailable?: boolean, approvalRequested?: boolean }>
   /** Maps content block index → tool_use block ID for streaming tool input deltas */
   activeToolBlockIds: Map<number, string>
   /** Tracks tool names by call ID so result messages can read adapter-owned semantics. */
@@ -302,7 +305,11 @@ async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState):
         if (b.type === 'tool_result' && b.tool_use_id) {
           const normalizedOutput = normalizeToolResultContent(b.content)
           if (b.is_error) {
-            chunks.push({ type: 'tool-output-error', toolCallId: b.tool_use_id, errorText: normalizeToolErrorText(normalizedOutput) })
+            const errorText = normalizeToolErrorText(normalizedOutput)
+            if (isCapturedExitPlanModeError(b.tool_use_id, errorText, state)) {
+              continue
+            }
+            chunks.push({ type: 'tool-output-error', toolCallId: b.tool_use_id, errorText })
           }
           else {
             const subagentState = state.subagentStreams.get(b.tool_use_id)
@@ -613,11 +620,14 @@ function emitToolUseChunks(
   }
 
   state.emittedToolStateByToolCallId.set(toolCallId, current)
+  if (exitPlan) {
+    chunks.push(...emitPlanImplementationApprovalChunks(toolCallId, exitPlan, state))
+  }
   return { chunks }
 }
 
 function readExitPlanModePlan(toolName: string, input: unknown): string | null {
-  if (toolName !== 'ExitPlanMode' && toolName !== 'exit_plan_mode' && toolName !== 'exitplanmode') {
+  if (!isExitPlanModeToolName(toolName)) {
     return null
   }
   if (!isRecord(input) || typeof input.plan !== 'string') {
@@ -625,6 +635,53 @@ function readExitPlanModePlan(toolName: string, input: unknown): string | null {
   }
   const plan = input.plan.trim()
   return plan.length > 0 ? plan : null
+}
+
+function emitPlanImplementationApprovalChunks(
+  sourceToolCallId: string,
+  planContent: string,
+  state: ClaudeAgentChunkMapperState,
+): UIMessageChunk[] {
+  const toolCallId = `implement-plan:${sourceToolCallId}`
+  const current = state.emittedToolStateByToolCallId.get(toolCallId) ?? { started: false, inputAvailable: false }
+  const chunks: UIMessageChunk[] = []
+  if (!current.started) {
+    chunks.push({ type: 'tool-input-start', toolCallId, toolName: PLAN_IMPLEMENTATION_TOOL_NAME })
+    current.started = true
+  }
+  if (!current.inputAvailable) {
+    chunks.push({
+      type: 'tool-input-available',
+      toolCallId,
+      toolName: PLAN_IMPLEMENTATION_TOOL_NAME,
+      input: createClaudeCodeToolInputPayload(PLAN_IMPLEMENTATION_TOOL_NAME, {
+        turnId: sourceToolCallId,
+        planContent,
+      }),
+    })
+    current.inputAvailable = true
+  }
+  if (!current.approvalRequested) {
+    chunks.push({ type: 'tool-approval-request', toolCallId, approvalId: toolCallId })
+    current.approvalRequested = true
+  }
+  state.emittedToolStateByToolCallId.set(toolCallId, current)
+  return chunks
+}
+
+function isExitPlanModeToolName(toolName: string): boolean {
+  return toolName === 'ExitPlanMode' || toolName === 'exit_plan_mode' || toolName === 'exitplanmode'
+}
+
+function isCapturedExitPlanModeError(
+  toolCallId: string,
+  errorText: string,
+  state: ClaudeAgentChunkMapperState,
+): boolean {
+  const toolName = state.toolNamesByToolCallId.get(toolCallId)
+  return toolName !== undefined
+    && isExitPlanModeToolName(toolName)
+    && errorText === CLAUDE_EXIT_PLAN_MODE_CAPTURED_MESSAGE
 }
 
 function appendToolInputText(

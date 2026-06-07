@@ -1,10 +1,13 @@
+import type { QueryClient } from '@tanstack/react-query'
 import { useQueryClient } from '@tanstack/react-query'
 import { useEffect } from 'react'
 
-import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
+import { getChatSessionsBySessionIdMessagesQueryKey, getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { postSessionsByIdRead } from '~/api-gen/sdk.gen'
-import { onChatRunSettled } from '~/features/chat/transport/sse-chat-transport'
-
+import { runtimeUiSlotStatesQueryKey } from '~/features/chat/capabilities/chat-capabilities'
+import { runtimeSettingsQueryKey } from '~/features/chat/commands/runtime-settings-command'
+import { runtimeSessionStatusQueryKey } from '~/features/chat/runtime/use-runtime-session-status'
+import { onAnyChatRunEvent, onChatRunSettled, onChatSessionInvalidated } from '~/features/chat/transport/sse-chat-transport'
 import { isSessionsQueryKey, updateSessionReadState } from '~/features/workspace/use-session'
 import {
   BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL,
@@ -33,6 +36,20 @@ function deriveVisibleChatSessionId(args: {
 
   const sessionId = activeTab.params?.sessionId
   return typeof sessionId === 'string' ? sessionId : null
+}
+
+function invalidateChatSessionRuntimeQueries(queryClient: QueryClient, sessionId: string): void {
+  void queryClient.invalidateQueries({
+    queryKey: getChatSessionsBySessionIdMessagesQueryKey({ path: { sessionId } }),
+  })
+  void queryClient.invalidateQueries({
+    queryKey: getSessionsByIdQueryKey({ path: { id: sessionId } }),
+  })
+  void queryClient.invalidateQueries({ queryKey: runtimeSessionStatusQueryKey(sessionId) })
+  void queryClient.invalidateQueries({ queryKey: ['chat', 'session-queue', sessionId] })
+  void queryClient.invalidateQueries({ queryKey: runtimeUiSlotStatesQueryKey(sessionId) })
+  void queryClient.invalidateQueries({ queryKey: runtimeSettingsQueryKey(sessionId) })
+  void queryClient.invalidateQueries({ predicate: query => isSessionsQueryKey(query.queryKey) })
 }
 
 export function useGlobalEventListeners() {
@@ -139,6 +156,7 @@ export function useGlobalEventListeners() {
 
   useEffect(() => {
     return onChatRunSettled(({ chatSessionId }) => {
+      invalidateChatSessionRuntimeQueries(queryClient, chatSessionId)
       if (useSessionActivityStore.getState().visibleSessionId === chatSessionId) {
         void postSessionsByIdRead({ path: { id: chatSessionId } })
           .then(({ data }) => {
@@ -147,11 +165,22 @@ export function useGlobalEventListeners() {
             }
           })
           .catch(() => {})
+      }
+    })
+  }, [queryClient])
+
+  useEffect(() => {
+    return onAnyChatRunEvent(({ chatSessionId, chunk }) => {
+      if (chunk.type !== 'start') {
         return
       }
+      invalidateChatSessionRuntimeQueries(queryClient, chatSessionId)
+    })
+  }, [queryClient])
 
-      void queryClient.invalidateQueries({ queryKey: getSessionsByIdQueryKey({ path: { id: chatSessionId } }) })
-      void queryClient.invalidateQueries({ predicate: query => isSessionsQueryKey(query.queryKey) })
+  useEffect(() => {
+    return onChatSessionInvalidated(({ chatSessionId }) => {
+      invalidateChatSessionRuntimeQueries(queryClient, chatSessionId)
     })
   }, [queryClient])
 }

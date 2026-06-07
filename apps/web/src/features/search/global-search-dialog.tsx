@@ -496,7 +496,7 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
   const setBrowserPanelOpen = useLayoutStore(s => s.setBrowserPanelOpen)
   const [query, setQuery] = useState('')
   const [commandHistory, setCommandHistory] = useState(readCommandHistory)
-  const panelRef = useRef<HTMLDialogElement>(null)
+  const panelRef = useRef<HTMLDivElement>(null)
   const requestedQueryRef = useRef('')
   const measuredQueryRef = useRef('')
   const closeFromEscape = useEffectEvent(() => {
@@ -699,9 +699,9 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
         }
       }}
     >
-      <dialog
+      <div
         ref={panelRef}
-        open={open}
+        role="dialog"
         aria-modal="true"
         aria-label={t('aria.dialog')}
         className="w-full max-w-2xl overflow-hidden rounded-xl border-0 bg-popover p-0 text-popover-foreground shadow-[0_20px_80px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.08)] ring-1 ring-foreground/10 dark:shadow-[0_20px_80px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.1)]"
@@ -847,7 +847,7 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
             </div>
           </div>
         </Command>
-      </dialog>
+      </div>
     </div>,
     document.body,
   )

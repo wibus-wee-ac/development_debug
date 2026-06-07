@@ -31,6 +31,8 @@ export interface CodexAppServerItem {
   model?: string | null
   query?: string
   action?: { type: string, query?: string | null, url?: string | null, pattern?: string | null } | null
+  turnId?: string
+  planContent?: string
 }
 
 export interface CodexAppServerServerRequestItem {
@@ -55,6 +57,8 @@ export function readCodexToolName(item: CodexAppServerItem): string {
       return 'web_search'
     case 'plan':
       return 'plan'
+    case 'planImplementation':
+      return 'plan_implementation'
     case 'imageView':
       return 'image_view'
     case 'imageGeneration':
@@ -121,6 +125,8 @@ export function buildCodexToolArgs(item: CodexAppServerItem): unknown {
       return { query: item.query ?? '', action: item.action }
     case 'plan':
       return { text: item.text ?? '' }
+    case 'planImplementation':
+      return { turnId: item.turnId ?? '', planContent: item.planContent ?? '' }
     case 'imageView':
       return { path: (item as { path?: string }).path ?? '' }
     case 'imageGeneration':
@@ -186,6 +192,8 @@ export function buildCodexToolResult(
       }
     case 'plan':
       return { plan: item.text ?? '' }
+    case 'planImplementation':
+      return { turnId: item.turnId ?? '', planContent: item.planContent ?? '' }
     case 'imageView':
       return { path: (item as { path?: string }).path ?? '' }
     case 'imageGeneration':

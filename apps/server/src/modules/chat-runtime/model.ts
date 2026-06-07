@@ -228,6 +228,7 @@ const runtimePlanUiSlotStateSchema = t.Object({
   threadId: t.String(),
   turnId: t.Union([t.String(), t.Null()]),
   explanation: t.Union([t.String(), t.Null()]),
+  content: t.Union([t.String(), t.Null()]),
   steps: t.Array(t.Object({
     step: t.String(),
     status: runtimePlanStepStatusSchema,
@@ -880,6 +881,11 @@ export const ChatRuntimeModel = {
     requestId: t.String({ minLength: 1 }),
   }),
 
+  planImplementationApprovalParams: t.Object({
+    sessionId: t.String({ minLength: 1 }),
+    messageId: t.String({ minLength: 1 }),
+  }),
+
   responseBody: t.Object({
     text: t.Optional(t.String()),
     files: t.Optional(t.Array(filePartSchema)),
@@ -906,6 +912,11 @@ export const ChatRuntimeModel = {
 
   userInputBody: t.Object({
     answers: t.Record(t.String(), t.Array(t.String())),
+  }),
+
+  planImplementationApprovalBody: t.Object({
+    approvalId: t.String({ minLength: 1 }),
+    approved: t.Boolean(),
   }),
 
   sideChatResponse: t.Object({
@@ -941,6 +952,10 @@ export const ChatRuntimeModel = {
   userInputResponse: t.Object({
     requestId: t.String(),
     answers: t.Record(t.String(), t.Array(t.String())),
+  }),
+
+  planImplementationApprovalResponse: t.Object({
+    message: uiMessageSchema,
   }),
 
   runtimeSettingsBody: runtimeSettingsPatchSchema,

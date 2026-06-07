@@ -393,17 +393,17 @@ class BrowserAnnotationRuntime {
       #cradle-browser-comment-root [data-cradle-browser-comment-selection-label] {
         position: absolute;
         box-sizing: border-box;
-        max-width: min(260px, calc(100vw - 24px));
-        height: 30px;
+        max-width: min(220px, calc(100vw - 16px));
+        height: 22px;
         display: flex;
         align-items: center;
-        gap: 7px;
-        padding: 0 10px;
+        gap: 5px;
+        padding: 0 7px;
         border-radius: 0;
         color: #9bd1ff;
         background: rgba(30, 55, 80, 0.94);
-        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 10px 24px rgba(0, 0, 0, 0.22);
-        font: 500 13px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        box-shadow: 0 1px 0 rgba(255, 255, 255, 0.08) inset, 0 8px 18px rgba(0, 0, 0, 0.2);
+        font: 500 11px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         pointer-events: none;
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-highlight-label] span,
@@ -425,23 +425,23 @@ class BrowserAnnotationRuntime {
       #cradle-browser-comment-root [data-cradle-browser-comment-editor] {
         position: absolute;
         box-sizing: border-box;
-        width: min(704px, calc(100vw - 24px));
-        min-height: 152px;
+        width: min(360px, calc(100vw - 24px));
+        min-height: 112px;
         pointer-events: auto;
         border: 1px solid rgba(255, 255, 255, 0.12);
-        border-radius: 14px;
+        border-radius: 8px;
         background: rgba(18, 17, 14, 0.96);
-        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 24px 80px rgba(0, 0, 0, 0.35);
-        padding: 18px 20px 14px;
-        backdrop-filter: blur(14px);
+        box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.04), 0 18px 48px rgba(0, 0, 0, 0.32);
+        padding: 10px 12px 10px;
+        backdrop-filter: blur(10px);
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-prompt-row] {
         display: flex;
         min-width: 0;
         align-items: baseline;
-        gap: 8px;
+        gap: 6px;
         color: rgba(255, 255, 255, 0.94);
-        font: 400 25px/1.28 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font: 400 12px/1.35 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         letter-spacing: 0;
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-prompt-row] span {
@@ -449,11 +449,11 @@ class BrowserAnnotationRuntime {
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-token] {
         display: inline-flex;
-        max-width: min(360px, calc(100vw - 80px));
+        max-width: min(188px, calc(100vw - 80px));
         min-width: 0;
         align-items: center;
-        border-radius: 7px;
-        padding: 3px 10px 4px;
+        border-radius: 5px;
+        padding: 2px 6px;
         color: #9bd1ff;
         background: rgba(54, 86, 116, 0.92);
       }
@@ -467,15 +467,15 @@ class BrowserAnnotationRuntime {
         display: block;
         box-sizing: border-box;
         width: 100%;
-        min-height: 64px;
-        margin: 8px 0 0;
+        min-height: 48px;
+        margin: 6px 0 0;
         resize: none;
         border: 0;
-        border-radius: 8px;
+        border-radius: 6px;
         padding: 0;
         color: rgba(255, 255, 255, 0.94);
         background: transparent;
-        font: 400 25px/1.28 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font: 400 12px/1.35 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         letter-spacing: 0;
         outline: none;
       }
@@ -485,22 +485,22 @@ class BrowserAnnotationRuntime {
       #cradle-browser-comment-root [data-cradle-browser-comment-actions] {
         display: flex;
         align-items: center;
-        gap: 10px;
-        margin-top: 16px;
+        gap: 6px;
+        margin-top: 10px;
       }
       #cradle-browser-comment-root button,
       #cradle-browser-comment-root label {
         display: inline-flex;
-        min-width: 40px;
-        height: 40px;
+        min-width: 28px;
+        height: 28px;
         align-items: center;
         justify-content: center;
-        border-radius: 999px;
+        border-radius: 6px;
         border: 0;
-        padding: 0 14px;
+        padding: 0 9px;
         color: rgba(255, 255, 255, 0.62);
         background: transparent;
-        font: 500 14px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font: 500 11px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         cursor: pointer;
         transition: background-color 160ms cubic-bezier(0.2, 0, 0, 1), color 160ms cubic-bezier(0.2, 0, 0, 1), transform 160ms cubic-bezier(0.2, 0, 0, 1);
       }
@@ -518,11 +518,11 @@ class BrowserAnnotationRuntime {
       }
       #cradle-browser-comment-root button[data-primary] {
         margin-left: auto;
-        width: 40px;
+        width: 28px;
         padding: 0;
         color: #111111;
         background: rgba(255, 255, 255, 0.94);
-        font-size: 24px;
+        font-size: 16px;
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-file-count] {
         min-width: 0;
@@ -531,7 +531,7 @@ class BrowserAnnotationRuntime {
         white-space: nowrap;
         text-overflow: ellipsis;
         color: rgba(255, 255, 255, 0.48);
-        font: 14px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font: 11px/1.2 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
       }
       #cradle-browser-comment-root input[type="file"] {
         display: none;
@@ -816,13 +816,13 @@ class BrowserAnnotationRuntime {
     this.textarea = textarea
     this.fileInput = fileInput
 
-    const editorWidth = Math.min(704, Math.max(320, window.innerWidth - 24))
-    const leftCandidate = rect.x + rect.width + 12
+    const editorWidth = Math.min(360, Math.max(260, window.innerWidth - 24))
+    const leftCandidate = rect.x + rect.width + 8
     const fallbackLeft = rect.x
     const left = leftCandidate + editorWidth <= window.innerWidth - 12
       ? leftCandidate
       : fallbackLeft
-    const top = Math.min(window.innerHeight - 188, Math.max(12, rect.y + rect.height + 18))
+    const top = Math.min(window.innerHeight - 136, Math.max(12, rect.y + rect.height + 8))
     editor.style.left = `${Math.max(12, Math.min(window.innerWidth - editorWidth - 12, left))}px`
     editor.style.top = `${top}px`
     textarea.focus()
@@ -1025,7 +1025,7 @@ class BrowserAnnotationRuntime {
     if (this.highlightLabel) {
       this.highlightLabel.hidden = false
       this.highlightLabel.style.left = `${Math.max(8, rect.left)}px`
-      this.highlightLabel.style.top = `${Math.max(8, rect.top - 30)}px`
+      this.highlightLabel.style.top = `${Math.max(8, rect.top - 22)}px`
       this.highlightLabel.innerHTML = ''
       const label = document.createElement('span')
       label.textContent = element ? this.elementTokenLabel(element) : 'Element'
@@ -1149,7 +1149,7 @@ class BrowserAnnotationRuntime {
         const label = document.createElement('div')
         label.setAttribute('data-cradle-browser-comment-selection-label', 'true')
         label.style.left = `${Math.max(8, rect.left)}px`
-        label.style.top = `${Math.max(8, rect.top - 30)}px`
+        label.style.top = `${Math.max(8, rect.top - 22)}px`
         const labelText = document.createElement('span')
         labelText.textContent = annotationElement
           ? `${elements.length} selected · ${this.elementTokenLabel(annotationElement)}`

@@ -8,7 +8,6 @@ import { acp } from './modules/acp'
 import { agentIdentity } from './modules/agent-identity'
 import { automation } from './modules/automation'
 import { chatRuntime } from './modules/chat-runtime'
-import { chronicle, chronicleApi, chronicleMemoryApi } from './modules/chronicle'
 import { desktop } from './modules/desktop'
 import { externalProviderSources } from './modules/external-provider-sources'
 import { externalWorkImport } from './modules/external-work-import'
@@ -115,9 +114,6 @@ export async function createServerContractApp(options: CreateServerContractAppOp
   app.use(git)
   app.use(acp)
   app.use(chatRuntime)
-  app.use(chronicle)
-  app.use(chronicleApi)
-  app.use(chronicleMemoryApi)
   app.use(desktop)
   registerPtyRoutes(app)
   app.use(observability)

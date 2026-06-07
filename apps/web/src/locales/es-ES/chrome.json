@@ -1,4 +1,7 @@
 {
+  "chromeSheet.action.close": "Cerrar",
+  "chromeSheet.rightAside.title": "Panel derecho",
+  "chromeSheet.sidebar.title": "Barra lateral",
   "dev.action.hardReload": "Recarga completa",
   "dev.action.hardReload.title": "Recarga completa (ignorar caché)",
   "dev.action.openDevtools": "Abrir DevTools",
@@ -7,8 +10,10 @@
   "dev.action.reactDiagnostics.disableTitle": "Desactivar React Scan y React Grab; usa recarga completa para descargar los scripts activos",
   "dev.action.reactDiagnostics.enableTitle": "Activar React Scan y React Grab",
   "footer.action.askJarvis": "Preguntar a Jarvis",
+  "header.action.closeSidebar": "Cerrar barra lateral",
   "header.action.collapseSidebar": "Contraer barra lateral",
   "header.action.expandSidebar": "Expandir barra lateral",
+  "header.action.openSidebar": "Abrir barra lateral",
   "header.action.toggleBottomPanel": "Alternar panel inferior",
   "header.action.toggleBrowserPanel": "Alternar panel del navegador",
   "header.action.toggleRightPanel": "Alternar panel derecho",

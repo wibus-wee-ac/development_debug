@@ -11,6 +11,8 @@
   "board.nameAria": "Nombre del tablero",
   "board.rename": "Renombrar",
   "board.sectionTitle": "Tableros",
+  "beta.description": "Esta función todavía puede contener errores. El orden de los issues, las interacciones del tablero y el estado de vista guardado pueden cambiar mientras se estabiliza.",
+  "beta.title": "Kanban está en Beta",
   "agent.availableAgents": "Agents",
   "agent.noAgentsConfigured": "No hay agents configurados",
   "agent.none": "Sin agent",

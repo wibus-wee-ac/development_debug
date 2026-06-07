@@ -45,7 +45,7 @@ export function CTA() {
             Start building with agents
           </h2>
           <p className="cta-child mb-10 max-w-md text-base leading-7 text-fd-muted-foreground">
-            Open source, local-first, and ready to extend. Install Cradle and
+            Free forever, local-first, and ready to extend. Install Cradle and
             ship faster today.
           </p>
           <div className="cta-child flex flex-wrap items-center justify-center gap-3">

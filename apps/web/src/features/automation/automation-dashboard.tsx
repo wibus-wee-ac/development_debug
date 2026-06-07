@@ -23,6 +23,7 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
+import { BetaNotice } from '~/components/common/beta-notice'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import {
@@ -48,6 +49,7 @@ import { Textarea } from '~/components/ui/textarea'
 import { toastManager } from '~/components/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
+import type { ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
 import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
 import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
 import { listRuntimeCatalogForSurface, useRuntimeCatalog } from '~/features/agent-runtime/use-runtime-catalog'
@@ -58,7 +60,6 @@ import { RuntimeSelector } from '~/features/composer-toolbar/runtime-selector'
 import type { ThinkingEffort } from '~/features/composer-toolbar/types'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
-import type { ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
 
 import { listAutomationArtifacts, listAutomationRuns } from './api-client'
 import type { AutomationArtifact, AutomationDefinition, AutomationInput, AutomationRecipe, AutomationRun, AutomationRunStatus, AutomationTrigger, CreateAutomationInput } from './types'
@@ -1149,6 +1150,11 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
       data-testid="automation-dashboard"
       data-automation-ready={automationReady ? 'true' : 'false'}
     >
+      <BetaNotice
+        title={t('beta.title')}
+        description={t('beta.description')}
+      />
+
       <div className="flex shrink-0 items-center justify-between border-b border-border/50 px-4 py-3">
         <div className="flex items-center gap-3">
           {onBack

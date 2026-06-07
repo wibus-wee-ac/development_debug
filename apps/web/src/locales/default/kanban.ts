@@ -11,6 +11,8 @@ export default {
   'board.addAria': 'Create board',
   'board.rename': 'Rename',
   'board.delete': 'Delete Board',
+  'beta.description': 'This feature may still contain bugs. Issue ordering, board interactions, and saved view state may change while it stabilizes.',
+  'beta.title': 'Kanban is in Beta',
   'issue.loading': 'Loading...',
   'issue.closePeek': 'Close peek',
   'issue.newTitlePlaceholder': 'Issue title',

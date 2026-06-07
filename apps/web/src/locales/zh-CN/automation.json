@@ -18,6 +18,8 @@
   "artifact.preview": "产物预览",
   "artifact.requestsTitle": "产物",
   "artifact.title": "产物",
+  "beta.description": "这个功能仍不稳定。行为、调度语义和保存的产物都可能变化，运行过程中也可能仍有 Bug。",
+  "beta.title": "自动化仍处于 Beta",
   "common.unknown": "未知",
   "create.cancelAria": "取消自动化草稿",
   "create.description": "创建一个由 Provider 支持的定时 Prompt。它会通过普通聊天运行时执行，并保存运行产物。",

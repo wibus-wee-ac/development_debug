@@ -25,6 +25,7 @@ import { getServerUrl } from '~/lib/electron'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { useLayoutStore } from '~/store/layout'
 import { MentionItem } from '.'
+import type { ChatRuntimePlanUiSlotState } from './capabilities/chat-capabilities'
 import { ChatRuntimeGoalUiSlotState, runtimeUiSlotStatesQueryKey } from './capabilities/chat-capabilities'
 import { useQuickQuestion } from './capabilities/use-quick-question'
 import { ChatQueueItem } from './commands/chat-response-command'
@@ -46,6 +47,8 @@ import { ChatComposerSlashCommand, CODEX_REVIEW_SLASH_ACTION_ID, CODEX_USAGE_SLA
 import { ChatMinimap } from './ui/chat-minimap'
 import { ChatQueueList } from './ui/chat-queue-list'
 import { ChatScrollRuntime, useChatScrollRuntime } from './ui/use-chat-scroll-runtime'
+
+const CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX = 'PLEASE IMPLEMENT THIS PLAN:'
 
 interface ChatViewProps {
   sessionId: string | null
@@ -270,12 +273,28 @@ function ChatComposerSection({
   onComposerFocusChange?: (focused: boolean) => void
 }) {
   const [composerDraft, setComposerDraft] = useState('')
+  const [composerReplaceText, setComposerReplaceText] = useState<string | undefined>(undefined)
   const [composerReplaceTextKey, setComposerReplaceTextKey] = useState(0)
+  const [dismissPlanSignal, setDismissPlanSignal] = useState(0)
+  const planState = composerRuntime.slotStates.find((state): state is ChatRuntimePlanUiSlotState => state.kind === 'plan') ?? null
+
+  const dismissCurrentPlanSlot = useCallback(() => {
+    if (planState) {
+      setDismissPlanSignal(signal => signal + 1)
+    }
+  }, [planState])
+
+  const submitComposerMessage = useCallback<typeof composerRuntime.send>(async (...args) => {
+    const result = await composerRuntime.send(...args)
+    dismissCurrentPlanSlot()
+    return result
+  }, [composerRuntime, dismissCurrentPlanSlot])
+
   const planSlotActions = useMemo<ComposerPlanSlotActions>(() => {
     const sendPlanFollowUp = async (fallbackPrompt: string) => {
       const prompt = composerDraft.trim() || fallbackPrompt
       try {
-        await composerRuntime.send(prompt, [], [])
+        await submitComposerMessage(prompt, [], [])
       }
       catch (error) {
         toastManager.add({
@@ -285,6 +304,7 @@ function ChatComposerSection({
         })
         return false
       }
+      setComposerReplaceText('')
       setComposerReplaceTextKey(key => key + 1)
       return true
     }
@@ -293,11 +313,21 @@ function ChatComposerSection({
       ...planActions,
       disabled: planActions?.disabled || composerRuntime.disabled || composerRuntime.isStreaming,
       onImplement: state => planActions?.onImplement?.(state)
-        ?? sendPlanFollowUp('Proceed with the plan.'),
-      onRefine: state => planActions?.onRefine?.(state)
-        ?? sendPlanFollowUp('Please refine the plan before implementation.'),
+        ?? sendPlanFollowUp(CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX),
+      onRefine: (state) => {
+        const handled = planActions?.onRefine?.(state)
+        if (handled !== undefined) {
+          return handled
+        }
+        const content = state.content?.trim()
+          || state.explanation?.trim()
+          || state.steps.map(step => step.step).join('\n')
+        setComposerReplaceText(`${CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX}\n${content}`.trimEnd())
+        setComposerReplaceTextKey(key => key + 1)
+        return true
+      },
     }
-  }, [composerDraft, composerRuntime, planActions])
+  }, [composerDraft, composerRuntime.disabled, composerRuntime.isStreaming, planActions, submitComposerMessage])
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 px-4">
@@ -317,10 +347,11 @@ function ChatComposerSection({
           quickQuestion={quickQuestionSlot}
           review={reviewSlot}
           usage={usageSlot}
+          dismissPlanSignal={dismissPlanSignal}
         />
         <Composer
           send={{
-            submit: composerRuntime.send,
+            submit: submitComposerMessage,
             stop: composerRuntime.stop,
             isStreaming: composerRuntime.isStreaming,
             disabled: composerRuntime.disabled,
@@ -345,7 +376,7 @@ function ChatComposerSection({
           externalSignals={{
             appendText: droppedPath ? `${droppedPath.text}` : undefined,
             appendTextKey: droppedPath?.ts,
-            replaceText: composerReplaceTextKey > 0 ? '' : undefined,
+            replaceText: composerReplaceText,
             replaceTextKey: composerReplaceTextKey,
           }}
           view={{

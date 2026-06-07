@@ -18,6 +18,8 @@
   "artifact.preview": "Vista previa del artefacto",
   "artifact.requestsTitle": "Artefactos",
   "artifact.title": "Artefactos",
+  "beta.description": "Esta función aún es inestable. El comportamiento, la semántica de programación y los artefactos guardados pueden cambiar, y las ejecuciones todavía pueden contener errores.",
+  "beta.title": "Automatización está en Beta",
   "common.unknown": "Desconocido",
   "create.cancelAria": "Cancelar borrador de automatización",
   "create.description": "Crea un prompt programado respaldado por un proveedor. Se ejecutará con el runtime normal de chat y guardará un artefacto.",

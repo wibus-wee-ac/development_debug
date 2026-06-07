@@ -526,6 +526,22 @@ export const chatRuntime = new Elysia({
     params: ChatRuntimeModel.sessionIdParams,
     body: ChatRuntimeModel.codexAppServerStreamBody,
   })
+  // POST /chat/sessions/:sessionId/messages/:messageId/plan-implementation-approval -> resolve a synthetic provider plan implementation approval
+  .post('/sessions/:sessionId/messages/:messageId/plan-implementation-approval', async ({ params, body }) => {
+    return (await loadChatRuntime()).resolvePlanImplementationApproval({
+      sessionId: params.sessionId,
+      messageId: params.messageId,
+      approvalId: body.approvalId,
+      approved: body.approved,
+    })
+  }, {
+    detail: {
+      summary: 'Resolve a synthetic provider plan implementation approval',
+    },
+    params: ChatRuntimeModel.planImplementationApprovalParams,
+    body: ChatRuntimeModel.planImplementationApprovalBody,
+    response: { 200: ChatRuntimeModel.planImplementationApprovalResponse },
+  })
   // GET /chat/sessions/:sessionId/messages → historical message snapshot rows
   .get('/sessions/:sessionId/messages', async ({ params }) => {
     return (await loadChatRuntime()).getMessageGroups(params.sessionId)

@@ -1,5 +1,6 @@
-import { AnimatePresence } from 'motion/react'
-import { useMemo } from 'react'
+import { AnimatePresence, m, useReducedMotion } from 'motion/react'
+import type { ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 
 import type {
   ChatRuntimeGoalUiSlotState,
@@ -29,6 +30,14 @@ export type {
   ComposerUsageSlotActions,
 } from './composer-slots/types'
 
+const COMPOSER_SLOT_LAYOUT_TRANSITION = { duration: 0.36, ease: [0.22, 1, 0.36, 1] } as const
+const COMPOSER_SLOT_CONTENT_ENTER_TRANSITION = { type: 'spring', duration: 0.42, bounce: 0 } as const
+const COMPOSER_SLOT_CONTENT_EXIT_TRANSITION = { duration: 0.18, ease: [0.4, 0, 0.2, 1] } as const
+const COMPOSER_SLOT_REDUCED_TRANSITION = { duration: 0 } as const
+const COMPOSER_SLOT_STAGGER_SECONDS = 0.035
+
+type ComposerSlotEntry = { key: string, node: ReactNode }
+
 interface ComposerSlotStatesProps {
   slots: ChatRuntimeUiSlot[]
   states: ChatRuntimeUiSlotState[]
@@ -38,9 +47,11 @@ interface ComposerSlotStatesProps {
   review?: ComposerReviewSlotActions
   usage?: ComposerUsageSlotActions
   className?: string
+  dismissPlanSignal?: number
 }
 
-export function ComposerSlotStates({ slots, states, actions, plan, quickQuestion, review, usage, className }: ComposerSlotStatesProps) {
+export function ComposerSlotStates({ slots, states, actions, plan, quickQuestion, review, usage, className, dismissPlanSignal }: ComposerSlotStatesProps) {
+  const [dismissedPlanKey, setDismissedPlanKey] = useState<string | null>(null)
   const composerSlotIds = useMemo(() => new Set(
     slots.filter(slot => slot.surfaces.includes('composerState')).map(slot => slot.id),
   ), [slots])
@@ -53,14 +64,124 @@ export function ComposerSlotStates({ slots, states, actions, plan, quickQuestion
   const planState = states.find((state): state is ChatRuntimePlanUiSlotState => {
     return state.kind === 'plan' && composerSlotIds.has(state.slotId)
   })
+  const planKey = planState ? readPlanSlotKey(planState) : null
+  const planKeyRef = useRef<string | null>(planKey)
+  const dismissPlanSignalRef = useRef<number | undefined>(dismissPlanSignal)
+  const visiblePlanState = planState && dismissedPlanKey !== planKey ? planState : null
+
+  useEffect(() => {
+    planKeyRef.current = planKey
+  }, [planKey])
+
+  useEffect(() => {
+    if (!planKey) {
+      setDismissedPlanKey(null)
+    }
+  }, [planKey])
+
+  useEffect(() => {
+    if (dismissPlanSignalRef.current === dismissPlanSignal) {
+      return
+    }
+    dismissPlanSignalRef.current = dismissPlanSignal
+    const currentPlanKey = planKeyRef.current
+    if (currentPlanKey && dismissPlanSignal !== undefined) {
+      setDismissedPlanKey(currentPlanKey)
+    }
+  }, [dismissPlanSignal])
+
+  const entryCandidates: Array<ComposerSlotEntry | null> = [
+    usageState
+      ? {
+          key: 'usage',
+          node: <UsageSlotState state={usageState} usage={usage} className={className} />,
+        }
+      : null,
+    goalState
+      ? {
+          key: 'goal',
+          node: <GoalSlotState state={goalState} actions={actions} className={className} />,
+        }
+      : null,
+    visiblePlanState
+      ? {
+          key: 'plan',
+          node: (
+            <PlanSlotState
+              state={visiblePlanState}
+              actions={plan}
+              className={className}
+              onDismiss={() => setDismissedPlanKey(planKey)}
+            />
+          ),
+        }
+      : null,
+    quickQuestion?.open
+      ? {
+          key: 'quick-question',
+          node: <QuickQuestionSlotState quickQuestion={quickQuestion} className={className} />,
+        }
+      : null,
+    review?.open
+      ? {
+          key: 'review',
+          node: <ReviewSlotState review={review} className={className} />,
+        }
+      : null,
+  ]
+  const entries = entryCandidates.filter((entry): entry is ComposerSlotEntry => entry !== null)
 
   return (
     <AnimatePresence initial={false}>
-      {usageState && <UsageSlotState key="usage" state={usageState} usage={usage} className={className} />}
-      {goalState && <GoalSlotState key="goal" state={goalState} actions={actions} className={className} />}
-      {planState && <PlanSlotState key="plan" state={planState} actions={plan} className={className} />}
-      {quickQuestion?.open && <QuickQuestionSlotState key="quick-question" quickQuestion={quickQuestion} className={className} />}
-      {review?.open && <ReviewSlotState key="review" review={review} className={className} />}
+      {entries.map((entry, index) => (
+        <ComposerSlotMotionItem key={entry.key} index={index}>
+          {entry.node}
+        </ComposerSlotMotionItem>
+      ))}
     </AnimatePresence>
   )
+}
+
+function ComposerSlotMotionItem({ index, children }: { index: number, children: ReactNode }) {
+  const shouldReduceMotion = useReducedMotion()
+  const hiddenState = shouldReduceMotion
+    ? { opacity: 0 }
+    : { opacity: 0, y: 18, filter: 'blur(2px)' }
+  const visibleState = shouldReduceMotion
+    ? { opacity: 1 }
+    : { opacity: 1, y: 0, filter: 'blur(0px)' }
+
+  return (
+    <m.div
+      initial={{ height: 0 }}
+      animate={{ height: 'auto' }}
+      exit={{ height: 0 }}
+      transition={shouldReduceMotion ? COMPOSER_SLOT_REDUCED_TRANSITION : COMPOSER_SLOT_LAYOUT_TRANSITION}
+      className="overflow-hidden"
+    >
+      <m.div
+        initial={hiddenState}
+        animate={{
+          ...visibleState,
+          transition: shouldReduceMotion
+            ? COMPOSER_SLOT_REDUCED_TRANSITION
+            : {
+                ...COMPOSER_SLOT_CONTENT_ENTER_TRANSITION,
+                delay: index * COMPOSER_SLOT_STAGGER_SECONDS,
+              },
+        }}
+        exit={{
+          ...hiddenState,
+          transition: shouldReduceMotion ? COMPOSER_SLOT_REDUCED_TRANSITION : COMPOSER_SLOT_CONTENT_EXIT_TRANSITION,
+        }}
+        className="transform-gpu"
+      >
+        {children}
+      </m.div>
+    </m.div>
+  )
+}
+
+function readPlanSlotKey(state: ChatRuntimePlanUiSlotState): string {
+  return `${state.threadId}:${state.turnId ?? 'turn'}:${state.updatedAt}`
 }

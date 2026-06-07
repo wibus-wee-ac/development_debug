@@ -13,4 +13,5 @@
 ## Files
 
 - **app-error-boundary.tsx**: App-wide React error boundary with a restrained fallback for renderer crashes; it logs caught render errors, allows history back, local retry, and full reload actions, and only shows stack details in development.
+- **beta-notice.tsx**: Shared app-level Beta/unstable feature notice. It owns the restrained warning treatment while callers provide feature-specific localized title and description copy.
 - **workspace-file-icon.tsx**: Shared workspace file icon renderer backed by the `@pierre/trees` built-in complete icon resolver and sprite sheet, reused by file mentions and Git change rows.

@@ -1,6 +1,11 @@
 export default {
+  'chromeSheet.action.close': 'Close',
+  'chromeSheet.rightAside.title': 'Right panel',
+  'chromeSheet.sidebar.title': 'Sidebar',
+  'header.action.closeSidebar': 'Close sidebar',
   'header.action.collapseSidebar': 'Collapse sidebar',
   'header.action.expandSidebar': 'Expand sidebar',
+  'header.action.openSidebar': 'Open sidebar',
   'header.action.toggleBottomPanel': 'Toggle bottom panel',
   'header.action.toggleBrowserPanel': 'Toggle browser panel',
   'header.action.toggleRightPanel': 'Toggle right panel',

@@ -172,6 +172,7 @@ export interface ChatRuntimePlanUiSlotState {
   threadId: string
   turnId: string | null
   explanation: string | null
+  content: string | null
   steps: ChatRuntimePlanStep[]
   currentStep: string | null
   pendingCount: number

@@ -150,7 +150,7 @@ function WorkspaceDiffViewerContent({ ownerId, tabId, workspaceId, paths }: Work
         version: typeof item.version === 'number' ? item.version + 1 : 1,
       })
     }
-    viewer.scrollTo({ type: 'item', id: itemId, align: 'start', behavior: 'smooth-auto' })
+    viewer.scrollTo({ type: 'item', id: itemId, align: 'start', behavior: 'smooth' })
   })
 
   // Handle scroll requests from the Changes Panel

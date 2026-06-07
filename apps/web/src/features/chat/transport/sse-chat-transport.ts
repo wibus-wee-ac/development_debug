@@ -15,13 +15,28 @@ interface ChatRunSettledPayload {
   status: ChatRunSettledStatus
 }
 
+interface ChatSessionInvalidatedPayload {
+  chatSessionId: string
+}
+
 type RunActivityHandler = (data: ChatRunActivityPayload) => void
 type RunSettledHandler = (data: ChatRunSettledPayload) => void
+type SessionInvalidatedHandler = (data: ChatSessionInvalidatedPayload) => void
+type ChatRunBroadcastEvent
+  = | { kind: 'activity', payload: ChatRunActivityPayload }
+    | { kind: 'settled', payload: ChatRunSettledPayload }
+    | { kind: 'session-invalidated', payload: ChatSessionInvalidatedPayload }
 
 const globalHandlers = new Set<RunActivityHandler>()
 const settledHandlers = new Set<RunSettledHandler>()
+const sessionInvalidatedHandlers = new Set<SessionInvalidatedHandler>()
+const CHAT_RUN_BROADCAST_CHANNEL = 'cradle:chat-run-events:v1'
+const rendererEventSourceId = createRendererEventSourceId()
+let broadcastChannel: BroadcastChannel | null | undefined
+let broadcastListenerAttached = false
 
 export function onAnyChatRunEvent(handler: RunActivityHandler): () => void {
+  ensureBroadcastListener()
   globalHandlers.add(handler)
   return () => {
     globalHandlers.delete(handler)
@@ -29,9 +44,18 @@ export function onAnyChatRunEvent(handler: RunActivityHandler): () => void {
 }
 
 export function onChatRunSettled(handler: RunSettledHandler): () => void {
+  ensureBroadcastListener()
   settledHandlers.add(handler)
   return () => {
     settledHandlers.delete(handler)
+  }
+}
+
+export function onChatSessionInvalidated(handler: SessionInvalidatedHandler): () => void {
+  ensureBroadcastListener()
+  sessionInvalidatedHandlers.add(handler)
+  return () => {
+    sessionInvalidatedHandlers.delete(handler)
   }
 }
 
@@ -39,12 +63,102 @@ export function emitChatRunActivity(data: ChatRunActivityPayload): void {
   for (const handler of globalHandlers) {
     handler(data)
   }
+  if (data.chunk.type === 'start') {
+    publishChatRunBroadcastEvent({ kind: 'activity', payload: data })
+  }
 }
 
 export function emitChatRunSettled(data: ChatRunSettledPayload): void {
   for (const handler of settledHandlers) {
     handler(data)
   }
+  publishChatRunBroadcastEvent({ kind: 'settled', payload: data })
+}
+
+export function emitChatSessionInvalidated(data: ChatSessionInvalidatedPayload): void {
+  for (const handler of sessionInvalidatedHandlers) {
+    handler(data)
+  }
+  publishChatRunBroadcastEvent({ kind: 'session-invalidated', payload: data })
+}
+
+function publishChatRunBroadcastEvent(event: ChatRunBroadcastEvent): void {
+  const channel = readBroadcastChannel()
+  if (!channel) {
+    return
+  }
+  channel.postMessage({
+    sourceId: rendererEventSourceId,
+    event,
+  })
+}
+
+function ensureBroadcastListener(): void {
+  const channel = readBroadcastChannel()
+  if (!channel || broadcastListenerAttached) {
+    return
+  }
+  broadcastListenerAttached = true
+  channel.addEventListener('message', (message) => {
+    const value = readBroadcastMessage(message.data)
+    if (!value || value.sourceId === rendererEventSourceId) {
+      return
+    }
+    if (value.event.kind === 'activity') {
+      for (const handler of globalHandlers) {
+        handler(value.event.payload)
+      }
+      return
+    }
+    if (value.event.kind === 'session-invalidated') {
+      for (const handler of sessionInvalidatedHandlers) {
+        handler(value.event.payload)
+      }
+      return
+    }
+    for (const handler of settledHandlers) {
+      handler(value.event.payload)
+    }
+  })
+}
+
+function readBroadcastChannel(): BroadcastChannel | null {
+  if (broadcastChannel !== undefined) {
+    return broadcastChannel
+  }
+  broadcastChannel = typeof BroadcastChannel === 'function'
+    ? new BroadcastChannel(CHAT_RUN_BROADCAST_CHANNEL)
+    : null
+  return broadcastChannel
+}
+
+function readBroadcastMessage(value: unknown): { sourceId: string, event: ChatRunBroadcastEvent } | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  const sourceId = (value as { sourceId?: unknown }).sourceId
+  const event = (value as { event?: unknown }).event
+  if (typeof sourceId !== 'string' || !event || typeof event !== 'object' || Array.isArray(event)) {
+    return null
+  }
+  const kind = (event as { kind?: unknown }).kind
+  const payload = (event as { payload?: unknown }).payload
+  if (
+    (kind !== 'activity' && kind !== 'settled' && kind !== 'session-invalidated')
+    || !payload
+    || typeof payload !== 'object'
+    || Array.isArray(payload)
+  ) {
+    return null
+  }
+  return { sourceId, event: { kind, payload } as ChatRunBroadcastEvent }
+}
+
+function createRendererEventSourceId(): string {
+  if (typeof crypto !== 'undefined' && typeof crypto.randomUUID === 'function') {
+    return crypto.randomUUID()
+  }
+  return `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`
 }
 
 function readChunkMessageId(chunk: UIMessageChunk): string | null {

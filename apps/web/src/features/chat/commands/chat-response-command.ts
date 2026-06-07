@@ -65,6 +65,10 @@ export interface ChatSteerTurnResponse {
   message: UIMessage
 }
 
+export interface PlanImplementationApprovalResult {
+  message: UIMessage
+}
+
 export interface SideChatResult {
   sideConversationId: string
   parentSessionId: string
@@ -138,6 +142,11 @@ const ChatSteerTurnResponseSchema = z.object({
   ...item,
   message: item.message as UIMessage,
 }))
+const PlanImplementationApprovalResponseSchema = z.object({
+  message: z.unknown(),
+}).transform(item => ({
+  message: item.message as UIMessage,
+}))
 
 function parseChatQueueItem(value: unknown): ChatQueueItem {
   return ChatQueueItemSchema.parse(value) satisfies ChatQueueItem
@@ -149,6 +158,10 @@ function parseChatQueueListResponse(value: unknown): ChatQueueListResponse {
 
 function parseChatSteerTurnResponse(value: unknown): ChatSteerTurnResponse {
   return ChatSteerTurnResponseSchema.parse(value) satisfies ChatSteerTurnResponse
+}
+
+function parsePlanImplementationApprovalResponse(value: unknown): PlanImplementationApprovalResult {
+  return PlanImplementationApprovalResponseSchema.parse(value) satisfies PlanImplementationApprovalResult
 }
 
 function readJsonErrorCodeFromText(text: string): string | null {
@@ -411,4 +424,31 @@ export async function submitRuntimeUserInput(args: {
   }
 
   return await res.json() as { requestId: string, answers: Record<string, string[]> }
+}
+
+export async function resolvePlanImplementationApproval(args: {
+  sessionId: string
+  messageId: string
+  approvalId: string
+  approved: boolean
+  signal?: AbortSignal
+}): Promise<PlanImplementationApprovalResult> {
+  const sessionId = encodeURIComponent(args.sessionId)
+  const messageId = encodeURIComponent(args.messageId)
+  const res = await fetch(`${SERVER_BASE}/chat/sessions/${sessionId}/messages/${messageId}/plan-implementation-approval`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      approvalId: args.approvalId,
+      approved: args.approved,
+    }),
+    signal: args.signal,
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Failed to resolve plan implementation approval: ${res.status} ${body}`)
+  }
+
+  return parsePlanImplementationApprovalResponse(await res.json())
 }

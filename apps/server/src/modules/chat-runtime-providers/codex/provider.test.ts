@@ -1951,6 +1951,15 @@ describe('codexProvider app-server integration', () => {
       },
     })
     client.pushNotification({
+      method: 'item/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        completedAtMs: 8,
+        item: { id: 'plan-1', type: 'plan', text: '1. Inspect\n2. Patch' },
+      },
+    })
+    client.pushNotification({
       method: 'item/started',
       params: {
         threadId: 'codex-thread-1',
@@ -2032,6 +2041,7 @@ describe('codexProvider app-server integration', () => {
         kind: 'plan',
         slotId: 'codex:plan',
         threadId: 'codex-thread-1',
+        content: '1. Inspect\n2. Patch',
         currentStep: 'Project provider state',
         pendingCount: 1,
         inProgressCount: 1,
@@ -2042,7 +2052,7 @@ describe('codexProvider app-server integration', () => {
         slotId: 'codex:tool-activity',
         threadId: 'codex-thread-1',
         activeCount: 1,
-        completedCount: 1,
+        completedCount: 2,
         failedCount: 0,
         recentItems: expect.arrayContaining([
           expect.objectContaining({ id: 'mcp-1', label: 'github/search', status: 'running' }),

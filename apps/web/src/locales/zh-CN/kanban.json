@@ -11,6 +11,8 @@
   "board.nameAria": "看板名称",
   "board.rename": "重命名",
   "board.sectionTitle": "看板",
+  "beta.description": "这个功能可能仍有 Bug。事项排序、看板交互和保存的视图状态在稳定前都可能变化。",
+  "beta.title": "Kanban 仍处于 Beta",
   "agent.availableAgents": "Agent",
   "agent.noAgentsConfigured": "未配置 Agent",
   "agent.none": "无 Agent",
