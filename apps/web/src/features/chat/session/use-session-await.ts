@@ -7,6 +7,7 @@ export function useSessionAwaitSummary(sessionId: string | null) {
   return useQuery({
     ...getSessionAwaitsSummaryOptions({ query: { sessionId: sessionId ?? '' } }),
     ...queryRefreshPolicies.interactive,
+    refetchInterval: query => query.state.data?.awaiting ? 1_000 : queryRefreshPolicies.interactive.refetchInterval,
     enabled: !!sessionId,
   })
 }

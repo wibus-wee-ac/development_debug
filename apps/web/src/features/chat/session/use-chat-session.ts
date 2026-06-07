@@ -362,6 +362,7 @@ export function useChatSessionDriver(chatSessionId: string | null): void {
     handler: ChatStreamingHandler
   } | null>(null)
   const requestedRuntimeActiveRunMessageRef = useRef<string | null>(null)
+  const runtimeQueueSignatureRef = useRef<string | null>(null)
 
   useLayoutEffect(() => {
     if (!chatSessionId || !snapshotRows) {
@@ -435,8 +436,36 @@ export function useChatSessionDriver(chatSessionId: string | null): void {
         passiveStreamRef.current = null
       }
       requestedRuntimeActiveRunMessageRef.current = null
+      runtimeQueueSignatureRef.current = null
     }
   }, [chatSessionId])
+
+  useEffect(() => {
+    if (!chatSessionId || !runtimeStatus) {
+      runtimeQueueSignatureRef.current = null
+      return
+    }
+
+    const queueSignature = [
+      runtimeStatus.queue.pending,
+      runtimeStatus.queue.running,
+      runtimeStatus.pendingQueueItemId ?? '',
+      runtimeStatus.activeRun?.queueItemId ?? '',
+    ].join(':')
+    if (runtimeQueueSignatureRef.current === queueSignature) {
+      return
+    }
+    runtimeQueueSignatureRef.current = queueSignature
+
+    if (
+      runtimeStatus.queue.pending > 0
+      || runtimeStatus.queue.running > 0
+      || runtimeStatus.pendingQueueItemId
+      || runtimeStatus.activeRun?.queueItemId
+    ) {
+      refreshQueue(0)
+    }
+  }, [chatSessionId, refreshQueue, runtimeStatus])
 
   useEffect(() => {
     if (!chatSessionId) {
