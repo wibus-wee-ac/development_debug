@@ -1436,6 +1436,7 @@ export const zPostChatSessionsBySessionIdResponseBody = z.object({
             position: z.number().gte(0).optional()
         }), z.object({
             type: z.string(),
+            provider: z.string().optional(),
             pluginName: z.string().min(1),
             displayName: z.string().min(1),
             description: z.string().nullable(),
@@ -1448,6 +1449,10 @@ export const zPostChatSessionsBySessionIdResponseBody = z.object({
                 label: z.string().nullable()
             })),
             mcpServers: z.array(z.string().min(1)),
+            nativeMention: z.object({
+                name: z.string().min(1),
+                path: z.string().min(1)
+            }).nullish(),
             position: z.number().gte(0).optional()
         })])).optional(),
     messages: z.array(z.object({
@@ -1536,6 +1541,7 @@ export const zPostChatSideConversationsBySideConversationIdResponseBody = z.obje
             position: z.number().gte(0).optional()
         }), z.object({
             type: z.string(),
+            provider: z.string().optional(),
             pluginName: z.string().min(1),
             displayName: z.string().min(1),
             description: z.string().nullable(),
@@ -1548,6 +1554,10 @@ export const zPostChatSideConversationsBySideConversationIdResponseBody = z.obje
                 label: z.string().nullable()
             })),
             mcpServers: z.array(z.string().min(1)),
+            nativeMention: z.object({
+                name: z.string().min(1),
+                path: z.string().min(1)
+            }).nullish(),
             position: z.number().gte(0).optional()
         })])).optional(),
     messages: z.array(z.object({
@@ -1610,6 +1620,7 @@ export const zPostChatSessionsBySessionIdQueueBody = z.object({
             position: z.number().gte(0).optional()
         }), z.object({
             type: z.string(),
+            provider: z.string().optional(),
             pluginName: z.string().min(1),
             displayName: z.string().min(1),
             description: z.string().nullable(),
@@ -1622,6 +1633,10 @@ export const zPostChatSessionsBySessionIdQueueBody = z.object({
                 label: z.string().nullable()
             })),
             mcpServers: z.array(z.string().min(1)),
+            nativeMention: z.object({
+                name: z.string().min(1),
+                path: z.string().min(1)
+            }).nullish(),
             position: z.number().gte(0).optional()
         })])).optional(),
     providerTargetId: z.string().optional(),
@@ -1660,6 +1675,7 @@ export const zPostChatSessionsBySessionIdSteerBody = z.object({
             position: z.number().gte(0).optional()
         }), z.object({
             type: z.string(),
+            provider: z.string().optional(),
             pluginName: z.string().min(1),
             displayName: z.string().min(1),
             description: z.string().nullable(),
@@ -1672,20 +1688,13 @@ export const zPostChatSessionsBySessionIdSteerBody = z.object({
                 label: z.string().nullable()
             })),
             mcpServers: z.array(z.string().min(1)),
+            nativeMention: z.object({
+                name: z.string().min(1),
+                path: z.string().min(1)
+            }).nullish(),
             position: z.number().gte(0).optional()
         })])).optional(),
-    providerTargetId: z.string().optional(),
-    modelId: z.string().optional(),
-    thinkingEffort: z.enum([
-        'low',
-        'medium',
-        'high',
-        'xhigh'
-    ]).optional(),
-    runtimeSettings: z.object({
-        accessMode: z.enum(['approval-required', 'full-access']).optional(),
-        interactionMode: z.enum(['default', 'plan']).optional()
-    }).optional()
+    providerTargetId: z.string().optional()
 });
 
 export const zPostChatSessionsBySessionIdSteerPath = z.object({
@@ -2395,30 +2404,6 @@ export const zGetChroniclePrivacyBreadcrumbsQuery = z.object({
 
 export const zPostChronicleEmbeddingsBody = z.object({
     texts: z.array(z.string().min(1)).min(1).max(64)
-});
-
-export const zGetApiActivitySessionsQuery = z.object({
-    limit: z.number().gte(1).lte(200).optional().default(20)
-});
-
-export const zGetApiActivitySessionByIdPath = z.object({
-    id: z.string().min(1)
-});
-
-export const zGetApiActivitySessionByIdSnapshotsPath = z.object({
-    id: z.string().min(1)
-});
-
-export const zGetApiActivitySnapshotByIdPath = z.object({
-    id: z.string().min(1)
-});
-
-export const zGetApiActivitySnapshotByIdOcrPath = z.object({
-    id: z.string().min(1)
-});
-
-export const zPostApiMemoryCrystallizeBody = z.object({
-    segmentId: z.string().min(1).optional()
 });
 
 export const zPostTerminalSessionsBySessionIdStartOrAttachBody = z.object({

@@ -6236,6 +6236,7 @@ export type PostChatSessionsBySessionIdResponseData = {
             position?: number;
         } | {
             type: string;
+            provider?: string;
             pluginName: string;
             displayName: string;
             description: string | null;
@@ -6248,6 +6249,10 @@ export type PostChatSessionsBySessionIdResponseData = {
                 label: string | null;
             }>;
             mcpServers: Array<string>;
+            nativeMention?: {
+                name: string;
+                path: string;
+            } | null;
             position?: number;
         }>;
         messages?: Array<{
@@ -6469,6 +6474,7 @@ export type PostChatSideConversationsBySideConversationIdResponseData = {
             position?: number;
         } | {
             type: string;
+            provider?: string;
             pluginName: string;
             displayName: string;
             description: string | null;
@@ -6481,6 +6487,10 @@ export type PostChatSideConversationsBySideConversationIdResponseData = {
                 label: string | null;
             }>;
             mcpServers: Array<string>;
+            nativeMention?: {
+                name: string;
+                path: string;
+            } | null;
             position?: number;
         }>;
         messages?: Array<{
@@ -6638,6 +6648,7 @@ export type GetChatSessionsBySessionIdQueueResponses = {
                 position?: number;
             } | {
                 type: string;
+                provider?: string;
                 pluginName: string;
                 displayName: string;
                 description: string | null;
@@ -6650,6 +6661,10 @@ export type GetChatSessionsBySessionIdQueueResponses = {
                     label: string | null;
                 }>;
                 mcpServers: Array<string>;
+                nativeMention?: {
+                    name: string;
+                    path: string;
+                } | null;
                 position?: number;
             }>;
             providerTargetId: string | null;
@@ -6691,6 +6706,7 @@ export type PostChatSessionsBySessionIdQueueData = {
             position?: number;
         } | {
             type: string;
+            provider?: string;
             pluginName: string;
             displayName: string;
             description: string | null;
@@ -6703,6 +6719,10 @@ export type PostChatSessionsBySessionIdQueueData = {
                 label: string | null;
             }>;
             mcpServers: Array<string>;
+            nativeMention?: {
+                name: string;
+                path: string;
+            } | null;
             position?: number;
         }>;
         providerTargetId?: string;
@@ -6747,6 +6767,7 @@ export type PostChatSessionsBySessionIdQueueResponses = {
             position?: number;
         } | {
             type: string;
+            provider?: string;
             pluginName: string;
             displayName: string;
             description: string | null;
@@ -6759,6 +6780,10 @@ export type PostChatSessionsBySessionIdQueueResponses = {
                 label: string | null;
             }>;
             mcpServers: Array<string>;
+            nativeMention?: {
+                name: string;
+                path: string;
+            } | null;
             position?: number;
         }>;
         providerTargetId: string | null;
@@ -6799,6 +6824,7 @@ export type PostChatSessionsBySessionIdSteerData = {
             position?: number;
         } | {
             type: string;
+            provider?: string;
             pluginName: string;
             displayName: string;
             description: string | null;
@@ -6811,15 +6837,13 @@ export type PostChatSessionsBySessionIdSteerData = {
                 label: string | null;
             }>;
             mcpServers: Array<string>;
+            nativeMention?: {
+                name: string;
+                path: string;
+            } | null;
             position?: number;
         }>;
         providerTargetId?: string;
-        modelId?: string;
-        thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
-        runtimeSettings?: {
-            accessMode?: 'approval-required' | 'full-access';
-            interactionMode?: 'default' | 'plan';
-        };
     };
     path: {
         sessionId: string;
@@ -6891,6 +6915,7 @@ export type PostChatSessionsBySessionIdQueueReorderResponses = {
                 position?: number;
             } | {
                 type: string;
+                provider?: string;
                 pluginName: string;
                 displayName: string;
                 description: string | null;
@@ -6903,6 +6928,10 @@ export type PostChatSessionsBySessionIdQueueReorderResponses = {
                     label: string | null;
                 }>;
                 mcpServers: Array<string>;
+                nativeMention?: {
+                    name: string;
+                    path: string;
+                } | null;
                 position?: number;
             }>;
             providerTargetId: string | null;
@@ -6961,6 +6990,7 @@ export type DeleteChatSessionsBySessionIdQueueByQueueItemIdResponses = {
             position?: number;
         } | {
             type: string;
+            provider?: string;
             pluginName: string;
             displayName: string;
             description: string | null;
@@ -6973,6 +7003,10 @@ export type DeleteChatSessionsBySessionIdQueueByQueueItemIdResponses = {
                 label: string | null;
             }>;
             mcpServers: Array<string>;
+            nativeMention?: {
+                name: string;
+                path: string;
+            } | null;
             position?: number;
         }>;
         providerTargetId: string | null;
@@ -10461,382 +10495,6 @@ export type PostChronicleEmbeddingsResponses = {
 };
 
 export type PostChronicleEmbeddingsResponse = PostChronicleEmbeddingsResponses[keyof PostChronicleEmbeddingsResponses];
-
-export type GetApiActivitySessionsData = {
-    body?: never;
-    path?: never;
-    query?: {
-        limit?: number;
-    };
-    url: '/api/activity/sessions';
-};
-
-export type GetApiActivitySessionsResponses = {
-    /**
-     * Response for status 200
-     */
-    200: Array<{
-        id: string;
-        workspaceId: string | null;
-        startedAt: string;
-        startedAtUnix: number;
-        endedAt: string | null;
-        endedAtUnix: number | null;
-        durationSeconds: number | null;
-        frontApp: string | null;
-        title: string | null;
-        segmentCount: number;
-        snapshotCount: number;
-        messageCount: number;
-        audioTranscriptCount: number;
-        audioRawSegmentCount: number;
-        accessibilitySnapshotCount: number;
-        isMeeting: boolean;
-        meetingTitle: string | null;
-        metadata: {
-            [key: string]: unknown;
-        };
-    }>;
-};
-
-export type GetApiActivitySessionsResponse = GetApiActivitySessionsResponses[keyof GetApiActivitySessionsResponses];
-
-export type GetApiActivitySessionByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/activity/session/{id}';
-};
-
-export type GetApiActivitySessionByIdResponses = {
-    /**
-     * Response for status 200
-     */
-    200: {
-        id: string;
-        workspaceId: string | null;
-        startedAt: string;
-        startedAtUnix: number;
-        endedAt: string | null;
-        endedAtUnix: number | null;
-        durationSeconds: number | null;
-        frontApp: string | null;
-        title: string | null;
-        segmentCount: number;
-        snapshotCount: number;
-        messageCount: number;
-        audioTranscriptCount: number;
-        audioRawSegmentCount: number;
-        accessibilitySnapshotCount: number;
-        isMeeting: boolean;
-        meetingTitle: string | null;
-        metadata: {
-            [key: string]: unknown;
-        };
-        segments: Array<{
-            id: string;
-            sessionId: string;
-            startedAt: string;
-            startedAtUnix: number;
-            endedAt: string;
-            endedAtUnix: number;
-            durationSeconds: number;
-            segmentType: 'work' | 'meeting' | 'browsing' | 'chat' | 'audio' | 'idle' | 'unknown';
-            frontApp: string | null;
-            title: string | null;
-            summary: string | null;
-            sourceCounts: {
-                [key: string]: unknown;
-            };
-            sourceRefs: {
-                [key: string]: unknown;
-            };
-            pipelineStatus: 'collecting' | 'triaged' | 'summarized' | 'crystallized' | 'error';
-            isCrystallized: boolean;
-            metadata: {
-                [key: string]: unknown;
-            };
-        }>;
-    };
-};
-
-export type GetApiActivitySessionByIdResponse = GetApiActivitySessionByIdResponses[keyof GetApiActivitySessionByIdResponses];
-
-export type GetApiActivitySessionByIdSnapshotsData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/activity/session/{id}/snapshots';
-};
-
-export type GetApiActivitySessionByIdSnapshotsResponses = {
-    /**
-     * Response for status 200
-     */
-    200: Array<{
-        id: string;
-        sourceId: string;
-        workspaceId: string | null;
-        capturedAt: string;
-        capturedAtUnix: number;
-        displayId: number;
-        segmentDir: string;
-        framePath: string;
-        artifactPath: string | null;
-        ocrText: string | null;
-        appBundleId: string | null;
-        windowTitle: string | null;
-        metadata: {
-            [key: string]: unknown;
-        };
-        createdAt: string;
-        createdAtUnix: number;
-        updatedAt: string;
-        updatedAtUnix: number;
-    }>;
-};
-
-export type GetApiActivitySessionByIdSnapshotsResponse = GetApiActivitySessionByIdSnapshotsResponses[keyof GetApiActivitySessionByIdSnapshotsResponses];
-
-export type GetApiActivitySnapshotByIdData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/activity/snapshot/{id}';
-};
-
-export type GetApiActivitySnapshotByIdResponses = {
-    /**
-     * Response for status 200
-     */
-    200: {
-        id: string;
-        sourceId: string;
-        workspaceId: string | null;
-        capturedAt: string;
-        capturedAtUnix: number;
-        displayId: number;
-        segmentDir: string;
-        framePath: string;
-        artifactPath: string | null;
-        ocrText: string | null;
-        appBundleId: string | null;
-        windowTitle: string | null;
-        metadata: {
-            [key: string]: unknown;
-        };
-        createdAt: string;
-        createdAtUnix: number;
-        updatedAt: string;
-        updatedAtUnix: number;
-    };
-};
-
-export type GetApiActivitySnapshotByIdResponse = GetApiActivitySnapshotByIdResponses[keyof GetApiActivitySnapshotByIdResponses];
-
-export type GetApiActivitySnapshotByIdOcrData = {
-    body?: never;
-    path: {
-        id: string;
-    };
-    query?: never;
-    url: '/api/activity/snapshot/{id}/ocr';
-};
-
-export type GetApiActivitySnapshotByIdOcrResponses = {
-    /**
-     * Response for status 200
-     */
-    200: {
-        snapshotId: string;
-        sourceId: string;
-        ocrText: string | null;
-        ocrPath: string | null;
-        capturedAt: string;
-        capturedAtUnix: number;
-    };
-};
-
-export type GetApiActivitySnapshotByIdOcrResponse = GetApiActivitySnapshotByIdOcrResponses[keyof GetApiActivitySnapshotByIdOcrResponses];
-
-export type GetApiActivityMonitorStatusData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/activity/monitor-status';
-};
-
-export type GetApiActivityMonitorStatusResponses = {
-    /**
-     * Response for status 200
-     */
-    200: {
-        enabled: boolean;
-        available: boolean;
-        running: boolean;
-        pid: number | null;
-        monitorStatus: 'disabled' | 'running' | 'unavailable';
-        captureStatus: 'idle' | 'capturing' | 'error';
-        pipelineStatus: 'disabled' | 'running' | 'idle';
-        audioStatus: 'disabled' | 'armed' | 'unavailable';
-        lastCaptureAt: string | null;
-        lastCaptureAtUnix: number | null;
-        lastActivityAt: string | null;
-        lastActivityAtUnix: number | null;
-        lastPipelineRunAt: string | null;
-        lastPipelineRunAtUnix: number | null;
-        lastErrorAt: string | null;
-        lastErrorAtUnix: number | null;
-        lastError: string | null;
-        totals: {
-            snapshots: number;
-            activitySessions: number;
-            activitySegments: number;
-            pipelineRuns: number;
-            accessibilitySnapshots: number;
-            accessibilityEvents: number;
-            audioTranscripts: number;
-            audioRawSegments: number;
-            memories: number;
-            messages: number;
-        };
-        config: {
-            activityPipelineEnabled: boolean;
-            activityPipelineIntervalMs: number;
-            activityPipelineBatchSize: number;
-            audioCaptureEnabled: boolean;
-            audioSource: 'microphone' | 'system' | 'mixed';
-            closedEyesDiscardEnabled: boolean;
-            closedEyesMode: 'auto' | 'always-record' | 'always-pause';
-        };
-    };
-};
-
-export type GetApiActivityMonitorStatusResponse = GetApiActivityMonitorStatusResponses[keyof GetApiActivityMonitorStatusResponses];
-
-export type GetApiActivityStorageStatsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/activity/storage-stats';
-};
-
-export type GetApiActivityStorageStatsResponses = {
-    /**
-     * Response for status 200
-     */
-    200: {
-        storageRoot: string;
-        modelsRoot: string;
-        storage: {
-            exists: boolean;
-            fileCount: number;
-            directoryCount: number;
-            totalBytes: number;
-        };
-        models: {
-            exists: boolean;
-            fileCount: number;
-            directoryCount: number;
-            totalBytes: number;
-        };
-        database: {
-            snapshots: number;
-            activitySessions: number;
-            activitySegments: number;
-            memories: number;
-            memoryChunks: number;
-            knowledgeCards: number;
-            pipelineRuns: number;
-            dreamRuns: number;
-            accessibilitySnapshots: number;
-            accessibilityEvents: number;
-            audioTranscripts: number;
-            audioRawSegments: number;
-            messages: number;
-            modelResources: number;
-        };
-    };
-};
-
-export type GetApiActivityStorageStatsResponse = GetApiActivityStorageStatsResponses[keyof GetApiActivityStorageStatsResponses];
-
-export type GetApiMemoryStatusData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/memory/status';
-};
-
-export type GetApiMemoryStatusResponses = {
-    /**
-     * Response for status 200
-     */
-    200: {
-        available: boolean;
-        totalMemories: number;
-        totalChunks: number;
-        totalKeywords: number;
-        totalEmbeddings: number;
-        totalKnowledgeCards: number;
-        totalKnowledgeVersions: number;
-        totalActivitySegments: number;
-        pendingActivitySegments: number;
-        crystallizedActivitySegments: number;
-        totalPipelineRuns: number;
-        lastMemoryAt: string | null;
-        lastMemoryAtUnix: number | null;
-        lastKnowledgeCardAt: string | null;
-        lastKnowledgeCardAtUnix: number | null;
-        lastPipelineRunAt: string | null;
-        lastPipelineRunAtUnix: number | null;
-        searchIndex: {
-            chunkCount: number;
-            keywordCount: number;
-            embeddingCount: number;
-            embeddingReadyCount: number;
-            embeddingPendingCount: number;
-            embeddingErrorCount: number;
-        };
-        pipeline: {
-            activityPipelineEnabled: boolean;
-            activityPipelineRunning: boolean;
-            dreamSchedulerEnabled: boolean;
-            dreamSchedulerRunning: boolean;
-        };
-    };
-};
-
-export type GetApiMemoryStatusResponse = GetApiMemoryStatusResponses[keyof GetApiMemoryStatusResponses];
-
-export type PostApiMemoryCrystallizeData = {
-    body: {
-        segmentId?: string;
-    };
-    path?: never;
-    query?: never;
-    url: '/api/memory/crystallize';
-};
-
-export type PostApiMemoryCrystallizeResponses = {
-    /**
-     * Response for status 200
-     */
-    200: {
-        status: 'success' | 'error' | 'skipped';
-        message: string;
-        segmentId: string | null;
-        result: unknown;
-    };
-};
-
-export type PostApiMemoryCrystallizeResponse = PostApiMemoryCrystallizeResponses[keyof PostApiMemoryCrystallizeResponses];
 
 export type GetDesktopSummaryData = {
     body?: never;
