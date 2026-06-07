@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { CircleAlertIcon, DownloadIcon, GlobeIcon, KeyIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 
 import { postSecrets } from '~/api-gen/sdk.gen'
@@ -70,6 +70,10 @@ function fingerprintProvider(provider: ParsedProvider): string {
   return `${provider.providerKind}:${provider.baseUrl}:${hash.toString(36)}`
 }
 
+function stringArraysEqual(a: string[], b: string[]): boolean {
+  return a.length === b.length && a.every((value, index) => value === b[index])
+}
+
 export function ImportProviderDialog({
   open,
   onOpenChange,
@@ -85,16 +89,22 @@ export function ImportProviderDialog({
   const [kinds, setKinds] = useState<ApiProviderKind[]>([])
   const [manualUrl, setManualUrl] = useState('')
   const [manualKind, setManualKind] = useState<ApiProviderKind>('openai-compatible')
-  const prevTokenRef = useRef<string | null>(null)
+  const prevParsedConfigKeyRef = useRef<string | null>(null)
 
-  const parseResult = (() => {
+  const parseResult = useMemo(() => {
     if (!text.trim()) { return null }
     return parseProviderConfig(text)
-  })()
+  }, [text])
+  const parsedConfigKey = useMemo(() => {
+    if (!parseResult) { return null }
+    return [
+      parseResult.token ?? '',
+      ...parseResult.providers.map(fingerprintProvider),
+    ].join('\n')
+  }, [parseResult])
 
   // Deduplicate provider names: append " (2)", " (3)" etc for same-name entries
-  const computeResolvedNames = () => {
-    const parsed = parseResult?.providers ?? []
+  const computeResolvedNames = useCallback((parsed: ParsedProvider[]) => {
     const counts = new Map<string, number>()
     const allExisting = new Set(profiles.map(p => p.name.toLowerCase()))
     return parsed.map((p) => {
@@ -109,25 +119,29 @@ export function ImportProviderDialog({
       counts.set(candidate.toLowerCase(), n)
       return candidate
     })
-  }
+  }, [profiles])
 
   const [resolvedNames, setResolvedNames] = useState<string[]>([])
 
   useEffect(() => {
-    if (parseResult) {
-      setResolvedNames(computeResolvedNames())
+    if (!parseResult) {
+      setResolvedNames(prev => (prev.length === 0 ? prev : []))
+      return
     }
-  }, [parseResult, computeResolvedNames])
+
+    const next = computeResolvedNames(parseResult.providers)
+    setResolvedNames(prev => (stringArraysEqual(prev, next) ? prev : next))
+  }, [computeResolvedNames, parseResult])
 
   useEffect(() => {
     if (!parseResult) { return }
-    if (parseResult.token !== prevTokenRef.current) {
-      prevTokenRef.current = parseResult.token
+    if (parsedConfigKey !== prevParsedConfigKeyRef.current) {
+      prevParsedConfigKeyRef.current = parsedConfigKey
       setKinds(parseResult.providers.map(p => p.providerKind))
       setManualUrl('')
       setEnabledSet(new Set(parseResult.providers.map((_, i) => i)))
     }
-  }, [parseResult])
+  }, [parseResult, parsedConfigKey])
 
   const token = parseResult?.token ?? null
   const hasProviders = parseResult && parseResult.providers.length > 0
