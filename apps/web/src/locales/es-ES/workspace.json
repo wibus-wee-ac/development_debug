@@ -46,6 +46,7 @@
   "fileTree.dialog.newFolderTitle": "Nueva carpeta",
   "fileTree.error.operationFailed": "La operación de archivo falló",
   "fileTree.search.aria": "Buscar archivos",
+  "fileTree.search.empty": "No se encontraron archivos",
   "fileTree.search.placeholder": "Buscar archivos",
   "fileTree.selection.files": "{{count}} archivos",
   "fileTree.status.empty": "El espacio de trabajo está vacío",

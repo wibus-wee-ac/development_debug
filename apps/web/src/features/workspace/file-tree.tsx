@@ -1,5 +1,5 @@
 import { prepareFileTreeInput } from '@pierre/trees'
-import { FileTree as PierreFileTree, useFileTree, useFileTreeSearch, useFileTreeSelection } from '@pierre/trees/react'
+import { FileTree as PierreFileTree, useFileTree, useFileTreeSelection } from '@pierre/trees/react'
 import { useQuery } from '@tanstack/react-query'
 import {
   FilePlusIcon,
@@ -14,10 +14,11 @@ import { z } from 'zod'
 import { Button } from '~/components/ui/button'
 import { DelayedSpinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
+import type { GitFileStatus } from '~/features/git/types'
 import { useGitFileStatuses } from '~/features/git/use-git'
+import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { getServerUrl, isElectron, nativeIpc } from '~/lib/electron'
 import { queryRefreshPolicies } from '~/lib/query-refresh-policy'
-import type { GitFileStatus } from '~/features/git/types'
 import { serializeWorkspaceFileDragPayload, writeWorkspaceFileDragData } from '~/lib/workspace-drag-data'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
@@ -56,6 +57,7 @@ const WorkspaceFileEventSchema = z.object({
 const ROOT_DIRECTORY_KEY = ''
 
 type WorkspaceFileEntry = z.infer<typeof WorkspaceFileListSchema>[number]
+const EMPTY_WORKSPACE_FILE_ENTRIES: WorkspaceFileEntry[] = []
 
 function toTreeGitStatus(statuses: GitFileStatus[]): TreeGitStatus[] {
   return statuses.map(s => ({ path: s.path, status: s.status }))
@@ -120,6 +122,42 @@ function toTreeDirectoryPath(path: string): string {
   return path.endsWith('/') ? path : `${path}/`
 }
 
+function toTreeEntryPath(entry: WorkspaceFileEntry): string {
+  return entry.type === 'directory' ? toTreeDirectoryPath(entry.path) : entry.path
+}
+
+function addSearchRevealDirectoryPaths(entry: WorkspaceFileEntry, directories: Set<string>): void {
+  const normalizedPath = normalizeDirectoryPath(entry.path)
+  directories.add(ROOT_DIRECTORY_KEY)
+  if (normalizedPath.length === 0) {
+    return
+  }
+
+  const segments = normalizedPath.split('/')
+  const directoryDepth = entry.type === 'directory' ? segments.length : segments.length - 1
+  for (let depth = 1; depth <= directoryDepth; depth += 1) {
+    directories.add(segments.slice(0, depth).join('/'))
+  }
+}
+
+function getSearchRevealDirectoryLoadPaths(entries: WorkspaceFileEntry[]): string[] {
+  const directories = new Set<string>()
+  for (const entry of entries) {
+    addSearchRevealDirectoryPaths(entry, directories)
+  }
+  return [...directories]
+}
+
+function getSearchRevealExpandedTreePaths(entries: WorkspaceFileEntry[]): string[] {
+  const expandedTreePaths: string[] = []
+  for (const path of getSearchRevealDirectoryLoadPaths(entries)) {
+    if (path.length > 0) {
+      expandedTreePaths.push(toTreeDirectoryPath(path))
+    }
+  }
+  return expandedTreePaths
+}
+
 function readExpandedTreePaths(model: ReturnType<typeof useFileTree>['model'], paths: string[]): string[] {
   const expandedPaths: string[] = []
   for (const path of paths) {
@@ -138,11 +176,28 @@ function resetFileTreePaths(
   model: ReturnType<typeof useFileTree>['model'],
   paths: string[],
   preparedInput: ReturnType<typeof prepareFileTreeInput>,
+  expandedTreePaths: readonly string[] = [],
 ): void {
+  const initialExpandedPaths = new Set(readExpandedTreePaths(model, paths))
+  for (const path of expandedTreePaths) {
+    initialExpandedPaths.add(path)
+  }
   model.resetPaths(paths, {
     preparedInput,
-    initialExpandedPaths: readExpandedTreePaths(model, paths),
+    initialExpandedPaths: [...initialExpandedPaths],
   })
+}
+
+function expandFileTreeDirectories(model: ReturnType<typeof useFileTree>['model'], treePaths: readonly string[]): void {
+  for (const path of treePaths) {
+    const item = model.getItem(path)
+    if (!item || !item.isDirectory() || !('isExpanded' in item)) {
+      continue
+    }
+    if (!item.isExpanded()) {
+      item.expand()
+    }
+  }
 }
 
 async function fetchWorkspaceFileChildren(workspaceId: string, path: string): Promise<WorkspaceFileEntry[]> {
@@ -170,6 +225,7 @@ interface FileTreeProps {
 
 export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
   const { t } = useTranslation('workspace')
+  const [searchQuery, setSearchQuery] = useState('')
   const [createDialog, setCreateDialog] = useState<{
     kind: 'file' | 'folder'
     parentPath: string
@@ -187,6 +243,14 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
   const gitStatusQuery = useGitFileStatuses(workspaceId)
 
   const gitStatuses = gitStatusQuery.data
+  const normalizedSearchQuery = searchQuery.trim()
+  const searchEnabled = normalizedSearchQuery.length > 0
+  const { files: searchFiles, isPending: searchPending } = useWorkspaceFiles(workspaceId, {
+    query: searchQuery,
+    limit: 100,
+    enabled: searchEnabled,
+  })
+  const searchRevealEntries = searchEnabled && !searchPending ? searchFiles : EMPTY_WORKSPACE_FILE_ENTRIES
 
   useEffect(() => {
     setChildrenByDirectory(new Map())
@@ -272,6 +336,14 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
       loadingDirectoriesRef.current.delete(normalizedPath)
     }
   }, [t, workspaceId])
+  useEffect(() => {
+    if (!searchEnabled || searchPending || searchFiles.length === 0) {
+      return
+    }
+
+    const directoryPaths = getSearchRevealDirectoryLoadPaths(searchFiles)
+    void Promise.all(directoryPaths.map(directoryPath => loadDirectoryChildren(directoryPath)))
+  }, [loadDirectoryChildren, searchEnabled, searchFiles, searchPending])
   useEffect(() => {
     if (!workspaceId) {
       return
@@ -382,10 +454,15 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
       workspaceId={workspaceId}
       paths={paths}
       preparedInput={preparedInput}
-      ready={rootChildrenQuery.isSuccess && gitStatusQuery.isSuccess}
+      ready={rootChildrenQuery.isSuccess && gitStatusQuery.isSuccess && !searchPending}
       gitStatus={treeGitStatus}
       onDirectoryExpanded={loadDirectoryChildren}
       onRefreshDirectory={loadDirectoryChildren}
+      searchQuery={searchQuery}
+      onSearchQueryChange={setSearchQuery}
+      searchPending={searchPending}
+      searchResultCount={searchEnabled && !searchPending ? searchFiles.length : 0}
+      searchRevealEntries={searchRevealEntries}
       workspacePath={workspacePath ?? undefined}
     />
   )
@@ -401,10 +478,15 @@ interface FileTreeInnerProps {
   gitStatus?: TreeGitStatus[]
   onDirectoryExpanded: (path: string) => Promise<void>
   onRefreshDirectory: (path: string, force?: boolean) => Promise<void>
+  searchQuery: string
+  onSearchQueryChange: (query: string) => void
+  searchPending: boolean
+  searchResultCount: number
+  searchRevealEntries: WorkspaceFileEntry[]
   workspacePath?: string
 }
 
-function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, onDirectoryExpanded, onRefreshDirectory, workspacePath }: FileTreeInnerProps) {
+function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, onDirectoryExpanded, onRefreshDirectory, searchQuery, onSearchQueryChange, searchPending, searchResultCount, searchRevealEntries, workspacePath }: FileTreeInnerProps) {
   const { t } = useTranslation('workspace')
   const [createDialog, setCreateDialog] = useState<{
     kind: 'file' | 'folder'
@@ -444,8 +526,6 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
 
   const { model } = useFileTree({
     preparedInput,
-    initialSearchQuery: '',
-    fileTreeSearchMode: 'hide-non-matches',
     dragAndDrop: {
       canDrop: () => false,
     },
@@ -476,8 +556,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
   })
 
   const selectedPaths = useFileTreeSelection(model)
-  const search = useFileTreeSearch(model)
-  const hasSearchValue = search.value.length > 0
+  const hasSearchValue = searchQuery.trim().length > 0
 
   const openWorkspaceFile = useCallback((path: string, view: 'editor' | 'preview') => {
     openWorkspaceFileTab({ workspaceId, path, view })
@@ -556,8 +635,24 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
   }, [t, workspacePath])
 
   useEffect(() => {
-    resetFileTreePaths(model, paths, preparedInput)
-  }, [model, paths, preparedInput])
+    const searchRevealExpandedTreePaths = hasSearchValue ? getSearchRevealExpandedTreePaths(searchRevealEntries) : []
+    resetFileTreePaths(model, paths, preparedInput, searchRevealExpandedTreePaths)
+  }, [hasSearchValue, model, paths, preparedInput, searchRevealEntries])
+
+  useEffect(() => {
+    const normalizedQuery = searchQuery.trim()
+    model.setSearch(null)
+    if (normalizedQuery.length === 0) {
+      return
+    }
+
+    const searchRevealExpandedTreePaths = getSearchRevealExpandedTreePaths(searchRevealEntries)
+    expandFileTreeDirectories(model, searchRevealExpandedTreePaths)
+    const firstRevealEntry = searchRevealEntries[0]
+    if (firstRevealEntry) {
+      model.focusPath(toTreeEntryPath(firstRevealEntry))
+    }
+  }, [model, searchQuery, searchRevealEntries])
 
   // Update git status when it changes
   useEffect(() => {
@@ -715,21 +810,25 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
         <div className="flex h-8 items-center gap-1.5 rounded-md border border-border/60 bg-background/60 px-2 focus-within:border-ring/50 focus-within:ring-2 focus-within:ring-ring/15">
           <SearchIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
           <input
-            value={search.value}
-            onChange={event => search.setValue(event.target.value)}
+            value={searchQuery}
+            onChange={event => onSearchQueryChange(event.target.value)}
             placeholder={t('fileTree.search.placeholder')}
             aria-label={t('fileTree.search.aria')}
             className="min-w-0 flex-1 bg-transparent text-xs text-foreground outline-none placeholder:text-muted-foreground/45"
           />
           {hasSearchValue && (
-            <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/55" data-testid="right-aside-file-search-count">
-              {search.matchingPaths.length}
-            </span>
+            searchPending
+              ? <DelayedSpinner active className="size-3 shrink-0 text-muted-foreground/40" />
+              : (
+                  <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/55" data-testid="right-aside-file-search-count">
+                    {searchResultCount}
+                  </span>
+                )
           )}
           {hasSearchValue && (
             <button
               type="button"
-              onClick={() => search.setValue('')}
+              onClick={() => onSearchQueryChange('')}
               aria-label={t('fileTree.action.clearSearch')}
               className="flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 transition-colors hover:bg-accent hover:text-foreground"
             >

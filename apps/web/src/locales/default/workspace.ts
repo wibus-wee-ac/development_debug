@@ -46,6 +46,7 @@ export default {
   'fileTree.dialog.newFolderTitle': 'New folder',
   'fileTree.error.operationFailed': 'File operation failed',
   'fileTree.search.aria': 'Search files',
+  'fileTree.search.empty': 'No files found',
   'fileTree.search.placeholder': 'Search files',
   'fileTree.selection.files': '{{count}} files',
   'fileTree.status.empty': 'Workspace is empty',
