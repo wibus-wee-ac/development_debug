@@ -1,19 +1,8 @@
 import { useQuery } from '@tanstack/react-query'
-import {
-  BotIcon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  DatabaseIcon,
-  FileTextIcon,
-  GaugeIcon,
-  MessageSquareIcon,
-  PackageIcon,
-  PuzzleIcon,
-  WrenchIcon,
-} from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { GaugeIcon } from 'lucide-react'
+import { m } from 'motion/react'
+import { useMemo } from 'react'
 
-import { Progress } from '~/components/ui/progress'
 import { cn } from '~/lib/cn'
 import { clampPercent, formatTokenCount } from '~/lib/number-format'
 
@@ -37,18 +26,19 @@ interface ContextWindowAggregate {
   source: 'details' | 'compact'
 }
 
-const SECTION_TONE_CLASS_NAMES: Record<string, string> = {
-  'system-prompt': 'bg-[var(--color-accent-session)]',
-  'messages': 'bg-[var(--color-accent)]',
-  'tools': 'bg-[var(--color-accent-diff)]',
-  'tool-results': 'bg-[var(--color-accent-summary)]',
-  'memory-files': 'bg-[var(--color-accent-scope)]',
-  'attachments': 'bg-[var(--color-accent-global)]',
-  'skills': 'bg-[var(--color-accent-agent)]',
-  'mcp-tools': 'bg-[var(--color-warning)]',
-  'plugins': 'bg-[var(--color-accent-legacy)]',
-  'agents': 'bg-[var(--color-success)]',
-  'others': 'bg-muted-foreground',
+const SECTION_ACCENT: Record<string, string> = {
+  'system-prompt': 'bg-(--color-accent-session)',
+  'messages': 'bg-(--color-accent)',
+  'tools': 'bg-(--color-accent-diff)',
+  'tool-results': 'bg-(--color-accent-summary)',
+  'memory-files': 'bg-(--color-accent-scope)',
+  'attachments': 'bg-(--color-accent-global)',
+  'skills': 'bg-(--color-accent-agent)',
+  'mcp-tools': 'bg-(--color-warning)',
+  'plugins': 'bg-(--color-accent-legacy)',
+  'agents': 'bg-(--color-success)',
+  'slash-commands': 'bg-(--color-info)',
+  'others': 'bg-(--color-neutral-5)',
 }
 
 const SECTION_LABELS: Record<string, string> = {
@@ -89,18 +79,18 @@ export function ContextWindowViewer({
   return (
     <section className={cn('space-y-2', className)} data-testid="context-window-viewer">
       <div className="flex items-center justify-between gap-2">
-        <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
+        <div className="flex min-w-0 items-center gap-1.5 text-[11px] font-medium text-(--color-neutral-6)">
           <GaugeIcon className="size-3.5" aria-hidden="true" />
           <span>Context window</span>
         </div>
         {aggregate && (
-          <span className="shrink-0 rounded-md bg-muted px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">
+          <span className="shrink-0 rounded-md bg-(--color-neutral-3) px-1.5 py-0.5 text-[10px] tabular-nums text-(--color-neutral-6)">
             {formatUsagePercent(aggregate.percentage)}
           </span>
         )}
       </div>
 
-      <div className="space-y-2 rounded-md bg-muted/35 p-2 shadow-[inset_0_1px_0_rgba(255,255,255,0.45)]">
+      <div className="space-y-2.5 rounded-lg bg-(--color-neutral-2) p-2.5 shadow-[inset_0_1px_0_rgba(255,255,255,0.5),inset_0_-1px_0_rgba(0,0,0,0.04)]">
         {aggregate
           ? (
             <>
@@ -112,7 +102,7 @@ export function ContextWindowViewer({
             </>
           )
           : (
-            <p className="rounded bg-background/45 px-2 py-1.5 text-[11px] text-muted-foreground">
+            <p className="rounded-md bg-background/50 px-2.5 py-2 text-[11px] text-(--color-neutral-6)">
               {isLoading ? 'Loading context usage...' : isError ? 'Context usage failed to load' : 'Context usage is unavailable for this runtime'}
             </p>
           )}
@@ -134,7 +124,7 @@ function ContextWindowSummary({ aggregate }: { aggregate: ContextWindowAggregate
           <div className="text-[18px] font-semibold tabular-nums text-foreground">
             {formatTokenCount(aggregate.totalTokens)}
           </div>
-          <div className="text-[10px] text-muted-foreground">
+          <div className="text-[10px] text-(--color-neutral-6)">
             {aggregate.source === 'details' ? 'Provider breakdown' : 'Runtime aggregate'}
           </div>
         </div>
@@ -142,12 +132,21 @@ function ContextWindowSummary({ aggregate }: { aggregate: ContextWindowAggregate
           <div className="text-[11px] tabular-nums text-foreground">
             {aggregate.maxTokens === null ? 'Unknown limit' : `${formatTokenCount(aggregate.totalTokens)} / ${formatTokenCount(aggregate.maxTokens)}`}
           </div>
-          <div className="text-[10px] tabular-nums text-muted-foreground">
+          <div className="text-[10px] tabular-nums text-(--color-neutral-6)">
             {remainingTokens === null ? 'Remaining unknown' : `${formatTokenCount(remainingTokens)} remaining`}
           </div>
         </div>
       </div>
-      <Progress value={progressValue} className="h-1.5 bg-background/60" />
+
+      {/* Segmented bar */}
+      <div className="relative h-1.5 w-full overflow-hidden rounded-full bg-background/60">
+        <m.div
+          className="absolute inset-y-0 left-0 rounded-full bg-primary"
+          initial={{ width: 0 }}
+          animate={{ width: `${progressValue}%` }}
+          transition={{ type: 'spring', stiffness: 500, damping: 35 }}
+        />
+      </div>
     </div>
   )
 }
@@ -160,66 +159,27 @@ function ContextSectionList({
   totalTokens: number
 }) {
   return (
-    <div className="space-y-1.5">
-      {sections.map(section => (
-        <ContextSectionRow key={section.kind} section={section} totalTokens={totalTokens} />
-      ))}
-    </div>
-  )
-}
-
-function ContextSectionRow({
-  section,
-  totalTokens,
-}: {
-  section: ChatRuntimeContextUsageSection
-  totalTokens: number
-}) {
-  const [open, setOpen] = useState(false)
-  const percent = totalTokens > 0 ? clampPercent((section.tokenCount / totalTokens) * 100) : 0
-  const Icon = readSectionIcon(section.kind)
-  const hasItems = section.items.length > 0
-
-  return (
-    <div className="rounded bg-background/45">
-      <button
-        type="button"
-        className="flex w-full min-w-0 items-center gap-2 px-2 py-1.5 text-left"
-        onClick={() => hasItems && setOpen(value => !value)}
-        disabled={!hasItems}
-      >
-        <span className={cn('size-2 shrink-0 rounded-full', readSectionToneClassName(section.kind))} />
-        <Icon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        <span className="min-w-0 flex-1 truncate text-[11px] text-foreground">
-          {readSectionLabel(section)}
-        </span>
-        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
-          {formatTokenCount(section.tokenCount)}
-        </span>
-        <span className="w-7 shrink-0 text-right text-[10px] tabular-nums text-muted-foreground">
-          {percent}%
-        </span>
-        {hasItems
-          ? open
-            ? <ChevronDownIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-            : <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground" aria-hidden="true" />
-          : <span className="size-3 shrink-0" />}
-      </button>
-      {open && hasItems && (
-        <div className="space-y-1 border-t border-border/50 px-2 py-1.5">
-          {section.items.slice(0, 12).map((item, index) => (
-            <div key={`${item.kind}:${item.label}:${index}`} className="flex min-w-0 items-center gap-2 text-[10px]">
-              <span className="min-w-0 flex-1 truncate text-muted-foreground">{item.label}</span>
-              <span className="shrink-0 tabular-nums text-foreground">{formatTokenCount(item.tokenCount)}</span>
-            </div>
-          ))}
-          {section.items.length > 12 && (
-            <div className="text-[10px] text-muted-foreground">
-              {section.items.length - 12} more items
-            </div>
-          )}
-        </div>
-      )}
+    <div className="space-y-0.5">
+      {sections.map((section) => {
+        const percent = totalTokens > 0 ? clampPercent((section.tokenCount / totalTokens) * 100) : 0
+        return (
+          <div
+            key={section.kind}
+            className="flex items-center gap-2 rounded-md px-2 py-1 transition-colors hover:bg-background/50"
+          >
+            <span className={cn('size-2 shrink-0 rounded-full', getSectionAccentClass(section.kind))} />
+            <span className="min-w-0 flex-1 truncate text-[11px] text-foreground">
+              {readSectionLabel(section)}
+            </span>
+            <span className="shrink-0 text-[10px] tabular-nums text-(--color-neutral-6)">
+              {formatTokenCount(section.tokenCount)}
+            </span>
+            <span className="w-7 shrink-0 text-right text-[10px] tabular-nums text-(--color-neutral-6)">
+              {percent}%
+            </span>
+          </div>
+        )
+      })}
     </div>
   )
 }
@@ -237,17 +197,17 @@ function ContextAggregateFallback({ compactState }: { compactState: ChatRuntimeC
 
   if (rows.length === 0) {
     return (
-      <p className="rounded bg-background/45 px-2 py-1.5 text-[11px] text-muted-foreground">
+      <p className="rounded-md bg-background/50 px-2.5 py-2 text-[11px] text-(--color-neutral-6)">
         Detailed usage is unavailable for this runtime
       </p>
     )
   }
 
   return (
-    <div className="space-y-1.5">
+    <div className="space-y-0.5">
       {rows.map(row => (
-        <div key={row.label} className="flex min-w-0 items-center gap-2 rounded bg-background/45 px-2 py-1.5 text-[11px]">
-          <span className="min-w-0 flex-1 truncate text-muted-foreground">{row.label}</span>
+        <div key={row.label} className="flex min-w-0 items-center gap-2 rounded-md bg-background/50 px-2.5 py-1.5 text-[11px]">
+          <span className="min-w-0 flex-1 truncate text-(--color-neutral-6)">{row.label}</span>
           <span className="shrink-0 tabular-nums text-foreground">{formatTokenCount(row.value)}</span>
         </div>
       ))}
@@ -292,30 +252,6 @@ function readSectionLabel(section: ChatRuntimeContextUsageSection): string {
   return SECTION_LABELS[section.kind] ?? section.label
 }
 
-function readSectionToneClassName(kind: string): string {
-  return SECTION_TONE_CLASS_NAMES[kind] ?? SECTION_TONE_CLASS_NAMES.others
-}
-
-function readSectionIcon(kind: string) {
-  switch (kind) {
-    case 'system-prompt':
-      return FileTextIcon
-    case 'messages':
-      return MessageSquareIcon
-    case 'tools':
-    case 'tool-results':
-    case 'mcp-tools':
-      return WrenchIcon
-    case 'memory-files':
-    case 'attachments':
-      return DatabaseIcon
-    case 'skills':
-      return PackageIcon
-    case 'plugins':
-      return PuzzleIcon
-    case 'agents':
-      return BotIcon
-    default:
-      return GaugeIcon
-  }
+function getSectionAccentClass(kind: string): string {
+  return SECTION_ACCENT[kind] ?? SECTION_ACCENT.others
 }

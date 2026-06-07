@@ -13,6 +13,7 @@ import {
   ExternalLinkIcon,
   FileDiffIcon,
   FileTextIcon,
+  GaugeIcon,
   GlobeIcon,
   LoaderCircleIcon,
   MessageSquarePlusIcon,
@@ -74,6 +75,7 @@ import {
   resolveBrowserAddressSync,
   resolveBrowserChromeStatus,
 } from './browser-panel.logic'
+import { ContextUsageReport } from './context-usage-report'
 import { SideConversationPanel } from './side-conversation-panel'
 import { SubagentOutputPanel } from './subagent-output-panel'
 import { WorkspaceDiffViewer } from './workspace-diff-viewer'
@@ -754,6 +756,7 @@ function createBrowserAnnotationPrompt(input: {
 export function BrowserPanel({
   ownerId = null,
   activeSessionId = null,
+  activeSessionTitle = null,
   nativeBoundsPaused = false,
   onCloseLastTab,
 }: BrowserPanelProps) {
@@ -782,6 +785,9 @@ export function BrowserPanel({
   const setActiveTab = useBrowserPanelStore(state => state.setActiveTab)
   const closePanelTab = useBrowserPanelStore(state => state.closeTab)
   const openWorkspaceFileTab = useBrowserPanelStore(state => state.openWorkspaceFileTab)
+  const openContextUsageReportTab = useBrowserPanelStore(
+    state => state.openContextUsageReportTab,
+  )
   const saveAnnotation = useBrowserPanelStore(state => state.saveAnnotation)
   const markAnnotationSent = useBrowserPanelStore(state => state.markAnnotationSent)
   const deleteAnnotation = useBrowserPanelStore(state => state.deleteAnnotation)
@@ -1909,6 +1915,17 @@ export function BrowserPanel({
     [activePanelTab, handleCloseTab, handleSelectTab, handleToggleAnnotation, tabs],
   )
 
+  const handleOpenContextUsageReport = useCallback(() => {
+    if (!activeSessionId) {
+      return
+    }
+    openContextUsageReportTab({
+      sessionId: activeSessionId,
+      sessionTitle: activeSessionTitle,
+      ownerId: resolvedOwnerId,
+    })
+  }, [activeSessionId, activeSessionTitle, openContextUsageReportTab, resolvedOwnerId])
+
   if (!isElectron) {
     return (
       <div
@@ -1972,6 +1989,9 @@ export function BrowserPanel({
                 {tab.kind === 'side-conversation' && (
                   <MessageSquarePlusIcon className="size-3 shrink-0 text-muted-foreground/60" />
                 )}
+                {tab.kind === 'context-usage-report' && (
+                  <GaugeIcon className="size-3 shrink-0 text-muted-foreground/60" />
+                )}
                 <span className="truncate">{getPanelTabTitle(tab)}</span>
                 {tab.kind === 'browser'
                   && tab.sessionId
@@ -2004,6 +2024,16 @@ export function BrowserPanel({
             <PlusIcon className="size-3.5" />
           </button>
         </div>
+        <button
+          type="button"
+          className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-30"
+          onClick={handleOpenContextUsageReport}
+          disabled={!activeSessionId}
+          aria-label="Open context usage report"
+          title="Context Usage Report"
+        >
+          <GaugeIcon className="size-3.5" />
+        </button>
       </div>
 
       {
@@ -2389,6 +2419,13 @@ export function BrowserPanel({
             sideConversationId={activePanelTab.sideConversationId}
             parentSessionId={activePanelTab.parentSessionId}
             title={activePanelTab.title}
+          />
+        )}
+
+        {activePanelTab?.kind === 'context-usage-report' && (
+          <ContextUsageReport
+            sessionId={activePanelTab.sessionId}
+            sessionTitle={activePanelTab.sessionTitle}
           />
         )}
 

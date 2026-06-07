@@ -113,12 +113,23 @@ export interface BrowserSideConversationTab {
   favicon: null
 }
 
+export interface BrowserContextUsageReportTab {
+  kind: 'context-usage-report'
+  id: string
+  sessionId: string
+  sessionTitle: string | null
+  title: string
+  loading: false
+  favicon: null
+}
+
 export type BrowserPanelTab
   = | BrowserWebTab
     | BrowserWorkspaceFileTab
     | BrowserWorkspaceDiffTab
     | BrowserSubagentTab
     | BrowserSideConversationTab
+    | BrowserContextUsageReportTab
 
 export interface BrowserHistoryEntry {
   url: string
@@ -348,6 +359,11 @@ interface BrowserPanelState {
     sideConversationId: string
     providerSessionId?: string | null
     title: string
+    ownerId?: string | null
+  }) => string
+  openContextUsageReportTab: (input: {
+    sessionId: string
+    sessionTitle?: string | null
     ownerId?: string | null
   }) => string
   requestScrollToFilePath: (input: { path: string, tabId: string }) => void
@@ -886,6 +902,36 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
           sideConversationId,
           providerSessionId: providerSessionId ?? null,
           title,
+          loading: false,
+          favicon: null,
+        }
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            tabs: [...ownerState.tabs, tab],
+            activeTabId: tab.id,
+          })
+        })
+        return tab.id
+      },
+
+      openContextUsageReportTab: ({ sessionId, sessionTitle, ownerId: ownerIdInput }) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        const ownerState = getOwnerState(get(), ownerId)
+        const existing = ownerState.tabs.find(
+          tab => tab.kind === 'context-usage-report' && tab.sessionId === sessionId,
+        )
+        if (existing) {
+          get().setActiveTab(existing.id, ownerId)
+          return existing.id
+        }
+        const tab: BrowserContextUsageReportTab = {
+          kind: 'context-usage-report',
+          id: `context-usage-report:${sessionId}`,
+          sessionId,
+          sessionTitle: sessionTitle ?? null,
+          title: 'Context Usage Report',
           loading: false,
           favicon: null,
         }
