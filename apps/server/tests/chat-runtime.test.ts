@@ -10,7 +10,8 @@ import { describe, expect, it, vi } from 'vitest'
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 import { getRuntimeRegistry, registerRuntime } from '../src/modules/chat-runtime/chat-runtime-provider-registry'
-import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata, ExecuteShellCommandInput, ExecuteShellCommandResult, ForkRuntimeSessionInput, ProviderNativeAppServerInvokeInput, ProviderNativeAppServerInvokeResponse, ProviderNativeAppServerStreamInput, ProviderThreadListInput, ProviderThreadListResult, QuickQuestionInput, ResumeChatSessionInput, RuntimePresentationCapabilities, RuntimeSession, StartChatSessionInput, SteerTurnInput, StreamTurnInput, UpdateRuntimeSettingsInput } from '../src/modules/chat-runtime/runtime-provider-types'
+import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata, ExecuteShellCommandInput, ExecuteShellCommandResult, ForkRuntimeSessionInput, GenerateSessionTitleInput, ProviderNativeAppServerInvokeInput, ProviderNativeAppServerInvokeResponse, ProviderNativeAppServerStreamInput, ProviderThreadListInput, ProviderThreadListResult, QuickQuestionInput, ResumeChatSessionInput, RuntimePresentationCapabilities, RuntimeSession, StartChatSessionInput, SteerTurnInput, StreamTurnInput, UpdateRuntimeSettingsInput } from '../src/modules/chat-runtime/runtime-provider-types'
+import { ProviderErrors, ProviderRuntimeError } from '../src/modules/chat-runtime/runtime-provider-types'
 import { getActiveRunReplayBufferSummary, reportRuntimeSessionTitle } from '../src/modules/chat-runtime/service'
 import { providerRuntimeHostManager } from '../src/modules/provider-runtime/host-manager'
 import {
@@ -411,6 +412,49 @@ class TestCodexQuickQuestionRuntime implements ChatRuntime {
   }
 
   async* streamTurn(): AsyncGenerator<UIMessageChunk, void, void> {}
+
+  async cancelTurn(): Promise<void> {}
+}
+
+class TestFailingCodexQuickQuestionRuntime extends TestCodexQuickQuestionRuntime {
+  override async* quickQuestion(input: QuickQuestionInput): AsyncGenerator<UIMessageChunk, void, void> {
+    this.quickQuestionInputs.push(input)
+    throw new Error('quick question provider failed')
+  }
+}
+
+class TestCodexTitleGenerationRuntime implements ChatRuntime {
+  readonly runtimeKind = 'codex' as const
+  readonly metadata = TEST_CODEX_RUNTIME_METADATA
+  readonly capabilities = TEST_CODEX_RUNTIME_CAPABILITIES
+
+  async startChatSession(input: StartChatSessionInput): Promise<RuntimeSession> {
+    return {
+      id: input.chatSessionId,
+      chatSessionId: input.chatSessionId,
+      providerTargetId: input.profile.providerTargetId,
+      runtimeKind: 'codex',
+      providerSessionId: `codex-thread-title-${input.chatSessionId}`,
+      providerStateSnapshot: JSON.stringify({
+        models: { currentModelId: input.modelId ?? 'codex-title-model' },
+      }),
+    }
+  }
+
+  async resumeChatSession(input: ResumeChatSessionInput): Promise<RuntimeSession> {
+    return input.runtimeSession
+  }
+
+  async generateSessionTitle(_input: GenerateSessionTitleInput): Promise<string | null> {
+    throw new ProviderRuntimeError(ProviderErrors.requestFailed('codex', 'turn/start', 'model quota exceeded'))
+  }
+
+  async* streamTurn(): AsyncGenerator<UIMessageChunk, void, void> {
+    yield { type: 'text-start', id: 'title-generation-seed-text' }
+    yield { type: 'text-delta', id: 'title-generation-seed-text', delta: 'Seed response' }
+    yield { type: 'text-end', id: 'title-generation-seed-text' }
+    yield { type: 'finish', finishReason: 'stop' }
+  }
 
   async cancelTurn(): Promise<void> {}
 }
@@ -1070,6 +1114,151 @@ describe('chat runtime capability', () => {
         workspaceId: 'workspace-codex-quick-question',
         workspacePath: workspaceRoot,
       }))
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('streams quick question provider failures as AI SDK error frames', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestFailingCodexQuickQuestionRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-quick-question-error',
+        name: 'Workspace Codex Quick Question Error',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-quick-question-error', {
+        providerTargetId: 'provider-target-codex-quick-question-error',
+        sessionId: 'session-codex-quick-question-error',
+        runtimeKind: 'codex',
+      })
+
+      const response = await app.handle(new Request('http://localhost/chat/sessions/session-codex-quick-question-error/quick-question', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ question: 'Will this fail?' }),
+      }))
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('content-type')).toContain('text/event-stream')
+      const payload = await response.text()
+      expect(payload).toContain('data: {"type":"error","errorText":"quick question provider failed"}\n\n')
+      expect(payload).toContain('data: [DONE]\n\n')
+      expect(await collectSseChunks(new Response(payload, { headers: { 'content-type': 'text/event-stream' } }))).toEqual([
+        { type: 'error', errorText: 'quick question provider failed' },
+      ])
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('reports Codex session title regeneration provider failures with diagnostics', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexTitleGenerationRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-codex-title-generation-error',
+        name: 'Workspace Codex Title Generation Error',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-codex-title-generation-error', {
+        providerTargetId: 'provider-target-codex-title-generation-error',
+        sessionId: 'session-codex-title-generation-error',
+        runtimeKind: 'codex',
+      })
+
+      const seedResponse = await app.handle(new Request('http://localhost/chat/sessions/session-codex-title-generation-error/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Name this broken title session.' }),
+      }))
+      expect(seedResponse.status).toBe(200)
+      await collectSseChunks(seedResponse)
+      await waitForMessageStatus(app, 'session-codex-title-generation-error', 'complete')
+
+      const response = await app.handle(new Request('http://localhost/chat/sessions/session-codex-title-generation-error/title/regenerate', {
+        method: 'POST',
+      }))
+      expect(response.status).toBe(502)
+      const body = await response.json() as {
+        code: string
+        message: string
+        details?: {
+          reason?: string
+          providerError?: { _tag?: string, method?: string, detail?: string }
+          error?: { message?: string, stack?: string }
+        }
+      }
+      expect(body).toEqual(expect.objectContaining({
+        code: 'chat_session_title_generation_failed',
+        message: 'Runtime could not generate a session title: model quota exceeded',
+      }))
+      expect(body.details).toEqual(expect.objectContaining({
+        reason: 'request_failed',
+        providerError: expect.objectContaining({
+          _tag: 'request_failed',
+          method: 'turn/start',
+          detail: 'model quota exceeded',
+        }),
+      }))
+      expect(body.details?.error?.stack).toBeUndefined()
+
+      const flushResponse = await app.handle(new Request('http://localhost/observability/flush', { method: 'POST' }))
+      expect(flushResponse.status).toBe(200)
+      const eventsResponse = await app.handle(new Request('http://localhost/observability/events?chatSessionId=session-codex-title-generation-error&code=CHAT_SESSION_TITLE_GENERATION_FAILED'))
+      expect(eventsResponse.status).toBe(200)
+      const events = await eventsResponse.json() as Array<{ code: string, message: string, attrs?: { reason?: string, providerError?: { method?: string } } }>
+      expect(events).toEqual([
+        expect.objectContaining({
+          code: 'CHAT_SESSION_TITLE_GENERATION_FAILED',
+          message: 'Runtime could not generate a session title: model quota exceeded',
+          attrs: expect.objectContaining({
+            reason: 'request_failed',
+            providerError: expect.objectContaining({ method: 'turn/start' }),
+          }),
+        }),
+      ])
     }
     finally {
       if (originalCodexRuntime) {

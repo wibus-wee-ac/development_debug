@@ -1,6 +1,6 @@
 # Chronicle Server Module
 
-此目录负责 Server 侧 Chronicle 行为。Rust daemon 负责本地 capture、OCR 与 artifact 落盘；Server 负责 Cradle-owned 持久化、远程模型调用、资源状态、事件记录和 Web UI API。
+此目录负责 Chronicle 的产品语义核心。Server 与 `chronicle_*` DB tables 是 canonical source，拥有 config、ingest、activity segmentation、memory/search、knowledge、privacy projection、agent context、CLI/API 和 Web UI。Rust daemon 只负责本地 capture、audio、local model runtime、artifact 落盘、evidence outbox 与 best-effort ingest delivery。
 
 ## Files
 
@@ -8,15 +8,13 @@
 - `model.ts`: Elysia TypeBox schemas for Chronicle request and response contracts。
 - `service.ts`: DB-backed Chronicle service，读写 preferences、upsert snapshot/accessibility/memory/message/raw audio segment/audio transcript/speaker profile rows、把 snapshot/message/audio/transcript/memory evidence 归入 Chronicle-owned activity sessions/segments、运行 activity segment triage/summarization/crystallization、写入 knowledge cards/version/source links、记录 dream merge dry-run candidates、记录 pipeline runs、维护 Chronicle-owned memory chunk/keyword/embedding index 与 content-hash dedup foundation、管理 Chronicle-owned local model resource manifest/status、调用 configured profile 生成 summary、后台轮询同步 Slack channel history、校验 Slack Events API signatures、渲染 snapshot frame privacy mask projection、在 snapshot ingest 边界执行 closed-eyes discard gate、记录 Chronicle events，并把 opt-in background audio capture config、closed-eyes discard config 和 sensitive app/title/url privacy rules 投影到 daemon launch options。
 - `agent-context.ts`: Chat runtime 的只读 Chronicle memory/knowledge context helper。它按当前用户 turn 做轻量 keyword retrieval，注入只读长期记忆 context，并在 prompt 边界 redacts 常见敏感值；它不 import `service.ts`，避免 Chronicle 与 chat-runtime 形成依赖环。
-- `daemon-manager.ts`: Rust `cradle-chronicle` process lifecycle、restart handoff、audio/privacy launch option tracking、local ONNX embedding worker invocation and memory/CPU resource usage tracking。
-- `mcp.ts`: 注册 Chronicle-owned builtin MCP server，并把当前 Server base URL 通过 `CRADLE_URL` 传给 MCP stdio process。
-- `mcp-server.mjs`: builtin Chronicle MCP stdio server。它不 import Server internals，只通过 `/chronicle/*` HTTP API 暴露 read-oriented tools：`memory_search`、`memory_get`、`activity_query_segments`、`activity_get_segment`、`knowledge_search` 和 `knowledge_get_card`。
+- `daemon-manager.ts`: Rust `cradle-chronicle` evidence runtime process lifecycle、restart handoff、audio/privacy launch option tracking、local ONNX embedding worker invocation and memory/CPU resource usage tracking。
 
 ## Ownership Notes
 
 CLI metadata is intentionally limited to Agent-facing read/query/list commands and explicit operational commands: config/status/daemon resources, model resource reconciliation/install/verify, Slack source management/sync, activity pipeline actions, knowledge/dream listings, timeline, realtime event backlog, memories search/list, privacy redaction/export/breadcrumbs, and evidence listings. Binary frame reads and frame-mask image projections, SSE download progress/event streams, Slack Events webhook ingress, daemon ingest endpoints, and destructive model resource removal are HTTP-only because they are not stable plain shell interactions.
 
-Chronicle 的 canonical UI source 是 Cradle DB，不是 artifact filename scan。Artifact files 仍然是本地证据和恢复来源；Server ingest 会把 Rust 上报的 paths 转成 Chronicle storage root 相对路径。
+Chronicle 的 canonical product state 是 Cradle DB，不是 artifact filename scan，也不是 Rust outbox。Artifact files 与 `outbox/events.ndjson` 是本地证据和恢复来源；Server ingest 会把 Rust 上报的 paths 转成 Chronicle storage root 相对路径，并决定这些 evidence 如何进入 activity、memory、knowledge 和 privacy projections。
 
 Memory search 由 Chronicle-owned `chronicle_memory_chunks`、`chronicle_memory_keywords` 和 `chronicle_memory_embeddings` 支撑。`recordMemory()` 会为新写入和更新后的 memory 重建 keyword index 与 text embedding，并用 canonicalized content hash 做跨 source duplicate merge。安装 `embedding` model resource 后，Server 会通过 Rust `cradle-chronicle --embed-texts` 调用本地 all-MiniLM-L6-v2 ONNX runtime；未安装或 runtime 失败时保留 `chronicle-lexical/v1` deterministic fallback，保证基础 search 不因模型缺失中断。
 
@@ -26,7 +24,7 @@ Model resource install 接受本地文件或目录映射到内置 manifest；man
 
 Slack message scanning 也属于 Chronicle namespace。Slack bot token 与 Slack signing secret 明文由 `secrets` module 加密保存；Chronicle 只保存 `botTokenRef`、`signingSecretRef`、channel allowlist、realtime mode、sync status 与 normalized messages。当前实现包含 Server-first Slack `conversations.history` 后台轮询、手动 sync route，以及 Slack Events API webhook ingress。Events API route 使用 raw body HMAC 校验 `x-slack-signature` 与 `x-slack-request-timestamp`，支持 URL verification、channel allowlist、message/app mention ingest 与 duplicate suppression。Socket Mode 仅保留为旧配置兼容枚举，当前 runtime 不再接线。
 
-Raw audio segment ingest 现在是一等 Chronicle-owned evidence contract：`POST /chronicle/audio-raw-segments` 记录 Rust daemon 已经写出的 microphone/system/mixed WAV/metadata artifact，`GET /chronicle/audio-raw-segments` 与 status 会显示最近原始片段。Server 会把 artifact paths 归一化为 Chronicle storage root 相对路径，并用 `sourceId` upsert，避免同一片段重复登记。
+Raw audio segment ingest 是一等 Chronicle-owned evidence contract：`POST /chronicle/audio-raw-segments` 记录 Rust daemon 已经写出的 microphone/system/mixed WAV/metadata artifact，`GET /chronicle/audio-raw-segments` 与 status 会显示最近原始片段。Server 会把 artifact paths 归一化为 Chronicle storage root 相对路径，并用 `sourceId` upsert，避免同一片段重复登记。
 
 Raw audio processing result 是 raw audio evidence 的回写 contract：`POST /chronicle/audio-raw-segments/:sourceId/processing-result` 允许 Rust runtime 在后续 VAD/ASR/speaker pipeline 完成后按 `sourceId` 更新 `vadStatus`、`asrStatus`、`speakerStatus`、raw segment lifecycle status、派生 transcript source 和 speaker profile refs。它不创建 transcript；真实 transcript 仍由 `/chronicle/audio-transcripts` 拥有。
 
@@ -55,7 +53,5 @@ Knowledge 与 dream maintenance 使用 Chronicle-owned `chronicle_knowledge_card
 Memory direct mutation 由 Chronicle 自己负责：`PATCH /chronicle/memories/:memoryId` 更新 memory content/metadata/source refs 并重建 chunk、keyword 和 embedding index；`DELETE /chronicle/memories/:memoryId` 在写入 Chronicle event 后删除 memory row，并让 DB cascade 清理 memory chunks、keywords 和 embeddings。
 
 Agent runtime context 使用 Chronicle-owned read-only projection：Chat runtime 在每个 user turn 解析 context 时会调用 `agent-context.ts`，用当前 turn 文本检索相关 Chronicle memories 和 active knowledge cards，把少量结果追加到 system prompt。这个投影不写 Chronicle namespace，不调用本地 embedding worker，也不会阻断 chat turn；若无相关记忆则不注入。
-
-Agent runtime tool access 使用 Chronicle-owned builtin MCP server：`mcp.ts` 在 Server app 启动时注册名为 `chronicle` 的 MCP server，支持 MCP 的 Claude Agent、Codex 和 ACP runtimes 会从 shared registry 读取它。这个 MCP server 只读调用 Chronicle HTTP API，不直接写 DB，也不跨 namespace 写入其他产品数据。它补足 Solve 层按需检索能力：agent 可以在长任务中主动搜索/读取 memories、activity segments 和 knowledge cards，而不只依赖 turn-start prompt context。
 
 Background audio capture 是单独 opt-in 的 preference。Server 保存 `audioCaptureEnabled`、`audioSource`、`audioSegmentMs`、`audioSegmentIntervalMs` 和 `audioRmsThreshold`，并只在用户开启时把 `--audio-capture --audio-source <microphone|system|mixed>` 传给 Rust daemon。Status 的 `audioRuntimeStatus` 表示 daemon 当前是否以 audio segment mode 启动；macOS `system` audio 优先走 ScreenCaptureKit audio stream，ScreenCaptureKit 不可用或权限被拒绝时才回落到 CPAL loopback/system-audio input device。

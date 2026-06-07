@@ -1,11 +1,14 @@
 # Issue Agent Module
 
-Provides server-owned issue delegation, agent identity binding, agent session tracking, activity timeline projection, rerun, undelegation semantics, and a thin continuation bridge into Chat Runtime.
-Route metadata includes `x-cradle-cli` descriptors for generated CLI commands.
-The continuation bridge records Issue Agent activity and session status for visibility, but queue state is owned by Chat Runtime in `chat_session_queue_items`. Issue Agent reads Chat Runtime queue/run state to keep delegated Agent Sessions active while queued continuations drain, and stop/undelegate cancels the linked Chat Session run plus pending queue items instead of writing Issue Agent-owned queue state.
+Owns issue delegation semantics only: assigning an issue to an agent delegate, clearing delegation, building the issue prompt, and bridging delegated work into Chat Runtime.
+
+Agent session and activity records are owned by `../agent-interaction-runtime`. Issue Agent writes those records only through the Agent Interaction Runtime service. Chat Runtime owns provider execution, `backend_runs`, messages, queue/steer, snapshots, usage, and cancellation.
+
+Route metadata includes `x-cradle-cli` descriptors for generated CLI commands on the existing issue delegation and issue-agent-session command surface.
+The continuation bridge records Agent Interaction activity and session status for visibility, but queue state is owned by Chat Runtime in `chat_session_queue_items`. Issue Agent reads Chat Runtime queue/run state to keep delegated Agent Sessions active while queued continuations drain, and stop/undelegate cancels the linked Chat Session run plus pending queue items instead of writing Issue Agent-owned queue state.
 
 ## Files
 
-- `index.ts`: Elysia routes for issue delegation, issue-agent sessions, and the UI-only continuation bridge.
-- `model.ts`: TypeBox schemas for delegation state, session views, activity views, continuation requests, params, and bodies.
-- `service.ts`: delegation semantics, unified issue assignee synchronization, agent identity resolution, issue prompts with stable issue IDs, chat-runtime completion subscription for agent run status, continuation watcher status projection, stop/undelegate cancellation of linked Chat Runtime work, and activity recording for Chat Runtime continuations.
+- `index.ts`: Elysia routes for issue delegation, issue-linked session projection, and the UI-only continuation bridge.
+- `model.ts`: TypeBox schemas for delegation state, issue-specific session views, continuation requests, params, and bodies. Generic activity/status schemas are imported from Agent Interaction Runtime.
+- `service.ts`: delegation semantics, unified issue assignee synchronization, agent identity resolution, issue prompts with stable issue IDs, chat-runtime completion subscription for delegated run status, continuation watcher status projection, and stop/undelegate cancellation of linked Chat Runtime work.

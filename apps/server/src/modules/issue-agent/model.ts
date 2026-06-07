@@ -1,30 +1,9 @@
 import { t } from 'elysia'
 
-const agentSessionStatus = t.Union([
-  t.Literal('created'),
-  t.Literal('active'),
-  t.Literal('completed'),
-  t.Literal('stopped'),
-  t.Literal('failed'),
-])
+import { AgentInteractionRuntimeModel } from '../agent-interaction-runtime/model'
 
 export const IssueAgentModel = {
-  agentActivity: t.Object({
-    id: t.String(),
-    agentSessionId: t.String(),
-    type: t.Union([
-      t.Literal('thought'),
-      t.Literal('action'),
-      t.Literal('response'),
-      t.Literal('elicitation'),
-      t.Literal('error'),
-      t.Literal('prompt'),
-    ]),
-    content: t.String(),
-    signal: t.Nullable(t.String()),
-    signalMetadata: t.Nullable(t.String()),
-    createdAt: t.Number(),
-  }),
+  agentActivity: AgentInteractionRuntimeModel.agentActivity,
 
   delegationState: t.Object({
     issueId: t.String(),
@@ -41,7 +20,7 @@ export const IssueAgentModel = {
     providerTargetId: t.String(),
     agentId: t.Nullable(t.String()),
     chatSessionId: t.Nullable(t.String()),
-    status: agentSessionStatus,
+    status: AgentInteractionRuntimeModel.agentSessionStatus,
     isCurrentDelegation: t.Boolean(),
     createdAt: t.Number(),
     updatedAt: t.Number(),

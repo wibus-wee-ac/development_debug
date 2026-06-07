@@ -357,6 +357,10 @@ describe('issue-agent capability', () => {
         'Completed work on issue',
       ]))
 
+      const genericActivitiesRes = await app.handle(new Request(`http://localhost/agent-sessions/${encodeURIComponent(delegatedSession.id)}/activities`))
+      expect(genericActivitiesRes.status).toBe(200)
+      expect(await genericActivitiesRes.json()).toEqual(activities)
+
       const messagesRes = await app.handle(new Request(`http://localhost/sessions/${encodeURIComponent(String(delegationState.chatSessionId))}/messages`))
       expect(messagesRes.status).toBe(200)
       const messages = await messagesRes.json() as Array<{ role: string, content: string, status: string }>
@@ -622,7 +626,11 @@ describe('issue-agent capability', () => {
 
       const missingActivities = await app.handle(new Request('http://localhost/issue-agent-sessions/missing-session/activities'))
       expect(missingActivities.status).toBe(404)
-      expect((await missingActivities.json()).code).toBe('issue_agent_session_not_found')
+      expect((await missingActivities.json()).code).toBe('agent_interaction_session_not_found')
+
+      const missingGenericActivities = await app.handle(new Request('http://localhost/agent-sessions/missing-session/activities'))
+      expect(missingGenericActivities.status).toBe(404)
+      expect((await missingGenericActivities.json()).code).toBe('agent_interaction_session_not_found')
 
       const missingRerun = await app.handle(new Request('http://localhost/issue-agent-sessions/missing-session/rerun', {
         method: 'POST',
@@ -630,7 +638,7 @@ describe('issue-agent capability', () => {
         body: JSON.stringify({}),
       }))
       expect(missingRerun.status).toBe(404)
-      expect((await missingRerun.json()).code).toBe('issue_agent_session_not_found')
+      expect((await missingRerun.json()).code).toBe('agent_interaction_session_not_found')
     }
     finally {
       vi.restoreAllMocks()

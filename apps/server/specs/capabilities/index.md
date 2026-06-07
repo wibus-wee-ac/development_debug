@@ -49,14 +49,15 @@ Each capability is documented in its own file following the per-capability recon
 | 12 | skills | ✅ | Skill catalog CRUD, import/export, source fetching |
 | 13 | workflow-rules | ✅ | Workflow rules read/write by scope |
 | 14 | issue-agent | ✅ | Issue delegation, agent sessions, activities, rerun |
-| 15 | git | ✅ | Workspace-owned status, branches, graph, checkout, fetch |
-| 16 | pty | ✅ | Session-owned cli-tui terminal runtime, stream, input, cleanup |
+| 15 | agent-interaction-runtime | ✅ | Agent session lifecycle and append-only activity records |
+| 16 | git | ✅ | Workspace-owned status, branches, graph, checkout, fetch |
+| 17 | pty | ✅ | Session-owned cli-tui terminal runtime, stream, input, cleanup |
 
 ### Tier 4 — Advanced / Deferred
 
 | # | Capability | Status | Description |
 |---|-----------|--------|-------------|
-| 17 | acp | ✅ | ACP registry, install lifecycle, installed-agent inventory, and audit queries |
-| 18 | observability | ✅ | Telemetry recording, incident rules |
-| 19 | preferences | ✅ | User preferences store |
-| 20 | cursor-agent | 📝 | Cursor Agent runtime, checkpoints, queue/immediate messaging, tools, MCP, CLI/headless, and background-agent feature model |
+| 18 | acp | ✅ | ACP registry, install lifecycle, installed-agent inventory, and audit queries |
+| 19 | observability | ✅ | Telemetry recording, incident rules |
+| 20 | preferences | ✅ | User preferences store |
+| 21 | cursor-agent | 📝 | Cursor Agent runtime, checkpoints, queue/immediate messaging, tools, MCP, CLI/headless, and background-agent feature model |

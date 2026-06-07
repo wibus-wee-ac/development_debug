@@ -41,6 +41,9 @@ export const PreferencesModel = {
   }, { additionalProperties: false }),
   desktopPreferences: t.Object({
     requireDoubleCommandQToQuit: t.Boolean({ default: true }),
+    appshotHotkeyEnabled: t.Boolean({ default: true }),
+    autoCheckForUpdates: t.Boolean({ default: true }),
+    autoDownloadUpdates: t.Boolean({ default: false }),
   }, { additionalProperties: false }),
   jarvisPreferences: t.Object({
     runtimeKind: t.Optional(runtimeKindRef),
@@ -100,8 +103,14 @@ export const DesktopPreferencesJsonSchema = z.union([
   z.undefined(),
 ]).pipe(z.object({
   requireDoubleCommandQToQuit: z.boolean().default(true),
+  appshotHotkeyEnabled: z.boolean().default(true),
+  autoCheckForUpdates: z.boolean().default(true),
+  autoDownloadUpdates: z.boolean().default(false),
 }).default({
   requireDoubleCommandQToQuit: true,
+  appshotHotkeyEnabled: true,
+  autoCheckForUpdates: true,
+  autoDownloadUpdates: false,
 }))
 
 export const JarvisPreferencesJsonSchema = z.union([

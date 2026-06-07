@@ -1,18 +1,14 @@
-import { randomUUID } from 'node:crypto'
-
 import type { Agent, AgentActivity, AgentSession } from '@cradle/db'
 import {
-  agentActivities,
   agents,
-  agentSessions,
   providerTargets,
 } from '@cradle/db'
-import { desc, eq } from 'drizzle-orm'
-import { z } from 'zod'
+import { eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
+import * as AgentInteraction from '../agent-interaction-runtime/service'
 import * as ChatRuntime from '../chat-runtime/service'
 import * as Issue from '../issue/service'
 import * as Session from '../session/service'
@@ -43,74 +39,6 @@ interface IssueAgentDelegationState {
 
 const activeRuns = new Map<string, ActiveAgentRun>()
 const continuationWatchers = new Map<string, Promise<void>>()
-
-const AgentActivityInputSchema = z.object({
-  agentSessionId: z.string(),
-  type: z.custom<AgentActivity['type']>(),
-  body: z.string(),
-  signal: z.string().nullable().default(null),
-  signalMetadata: z.record(z.string(), z.unknown()).nullable().optional(),
-})
-
-// ── DB queries (merged from store) ──
-
-function getAgentSession(agentSessionId: string): AgentSession | undefined {
-  return db().select().from(agentSessions).where(eq(agentSessions.id, agentSessionId)).get()
-}
-
-function listAgentSessions(issueId: string): AgentSession[] {
-  return db().select().from(agentSessions).where(eq(agentSessions.issueId, issueId)).orderBy(desc(agentSessions.createdAt)).all()
-}
-
-function listAgentActivities(agentSessionId: string): AgentActivity[] {
-  return db().select().from(agentActivities).where(eq(agentActivities.agentSessionId, agentSessionId)).orderBy(agentActivities.createdAt).all()
-}
-
-function createDelegationSession(input: { issueId: string, providerTargetId: string, agentId: string }): AgentSession {
-  const now = currentUnixSeconds()
-  return db().insert(agentSessions).values({
-    id: randomUUID(),
-    issueId: input.issueId,
-    providerTargetId: input.providerTargetId,
-    agentId: input.agentId,
-    chatSessionId: null,
-    status: 'created',
-    createdAt: now,
-    updatedAt: now,
-  }).returning().get()
-}
-
-function attachChatSession(input: { agentSessionId: string, chatSessionId: string }): AgentSession | undefined {
-  db().update(agentSessions).set({
-    chatSessionId: input.chatSessionId,
-    updatedAt: currentUnixSeconds(),
-  }).where(eq(agentSessions.id, input.agentSessionId)).run()
-  return getAgentSession(input.agentSessionId)
-}
-
-function updateAgentSessionStatus(agentSessionId: string, status: AgentSession['status']): AgentSession | undefined {
-  db().update(agentSessions).set({ status, updatedAt: currentUnixSeconds() }).where(eq(agentSessions.id, agentSessionId)).run()
-  return getAgentSession(agentSessionId)
-}
-
-function createActivity(rawInput: {
-  agentSessionId: string
-  type: AgentActivity['type']
-  body: string
-  signal?: string | null
-  signalMetadata?: Record<string, unknown> | null
-}): AgentActivity {
-  const input = AgentActivityInputSchema.parse(rawInput)
-  return db().insert(agentActivities).values({
-    id: randomUUID(),
-    agentSessionId: input.agentSessionId,
-    type: input.type,
-    content: JSON.stringify({ body: input.body }),
-    signal: input.signal,
-    signalMetadata: input.signalMetadata ? JSON.stringify(input.signalMetadata) : null,
-    createdAt: currentUnixSeconds(),
-  }).returning().get()
-}
 
 // ── require helpers ──
 
@@ -179,16 +107,7 @@ function requireDelegationAgent(agentId: string): Agent & { providerTargetId: st
 }
 
 function requireAgentSession(agentSessionId: string) {
-  const session = getAgentSession(agentSessionId)
-  if (!session) {
-    throw new AppError({
-      code: 'issue_agent_session_not_found',
-      status: 404,
-      message: 'Issue agent session not found',
-      details: { agentSessionId },
-    })
-  }
-  return session
+  return AgentInteraction.requireSession(agentSessionId)
 }
 
 // ── prompt builder ──
@@ -248,8 +167,8 @@ async function watchRunCompletion(agentSessionId: string, runId: string): Promis
         })
         return
       }
-      updateAgentSessionStatus(agentSessionId, 'completed')
-      createActivity({
+      AgentInteraction.updateSessionStatus(agentSessionId, 'completed')
+      AgentInteraction.createActivity({
         agentSessionId,
         type: 'response',
         body: 'Completed work on issue',
@@ -259,8 +178,8 @@ async function watchRunCompletion(agentSessionId: string, runId: string): Promis
     }
 
     if (run.status === 'failed') {
-      updateAgentSessionStatus(agentSessionId, 'failed')
-      createActivity({
+      AgentInteraction.updateSessionStatus(agentSessionId, 'failed')
+      AgentInteraction.createActivity({
         agentSessionId,
         type: 'error',
         body: run.errorText ?? 'Issue agent run failed',
@@ -269,9 +188,9 @@ async function watchRunCompletion(agentSessionId: string, runId: string): Promis
       return
     }
 
-    updateAgentSessionStatus(agentSessionId, 'stopped')
+    AgentInteraction.updateSessionStatus(agentSessionId, 'stopped')
     if (!tracked?.aborted) {
-      createActivity({
+      AgentInteraction.createActivity({
         agentSessionId,
         type: 'response',
         body: 'Stopped by user',
@@ -281,8 +200,8 @@ async function watchRunCompletion(agentSessionId: string, runId: string): Promis
   }
   catch (error) {
     activeRuns.delete(agentSessionId)
-    updateAgentSessionStatus(agentSessionId, 'failed')
-    createActivity({
+    AgentInteraction.updateSessionStatus(agentSessionId, 'failed')
+    AgentInteraction.createActivity({
       agentSessionId,
       type: 'error',
       body: error instanceof Error ? error.message : 'Issue agent run disappeared before completion',
@@ -327,12 +246,12 @@ async function watchContinuationWork(input: {
   since: number
 }): Promise<void> {
   try {
-    updateAgentSessionStatus(input.agentSessionId, 'active')
+    AgentInteraction.updateSessionStatus(input.agentSessionId, 'active')
     while (hasChatSessionContinuationWork(input.chatSessionId)) {
       await delay(500)
     }
 
-    const session = getAgentSession(input.agentSessionId)
+    const session = AgentInteraction.getSession(input.agentSessionId)
     if (!session || session.status === 'stopped') {
       return
     }
@@ -341,8 +260,8 @@ async function watchContinuationWork(input: {
       .filter(item => item.createdAt >= input.since)
     const failedItem = queueItems.find(item => item.status === 'failed')
     if (failedItem) {
-      updateAgentSessionStatus(input.agentSessionId, 'failed')
-      createActivity({
+      AgentInteraction.updateSessionStatus(input.agentSessionId, 'failed')
+      AgentInteraction.createActivity({
         agentSessionId: input.agentSessionId,
         type: 'error',
         body: failedItem.errorText ?? 'Continuation failed',
@@ -355,8 +274,8 @@ async function watchContinuationWork(input: {
       return
     }
 
-    updateAgentSessionStatus(input.agentSessionId, 'completed')
-    createActivity({
+    AgentInteraction.updateSessionStatus(input.agentSessionId, 'completed')
+    AgentInteraction.createActivity({
       agentSessionId: input.agentSessionId,
       type: 'response',
       body: 'Completed queued continuation',
@@ -365,8 +284,8 @@ async function watchContinuationWork(input: {
     })
   }
   catch (error) {
-    updateAgentSessionStatus(input.agentSessionId, 'failed')
-    createActivity({
+    AgentInteraction.updateSessionStatus(input.agentSessionId, 'failed')
+    AgentInteraction.createActivity({
       agentSessionId: input.agentSessionId,
       type: 'error',
       body: error instanceof Error ? error.message : 'Continuation watcher failed',
@@ -421,9 +340,9 @@ async function runSession(agentSessionId: string): Promise<void> {
       configJson: JSON.stringify({ permissionMode: 'bypassPermissions' }),
     })
 
-    attachChatSession({ agentSessionId, chatSessionId: chatSession.id })
-    updateAgentSessionStatus(agentSessionId, 'active')
-    createActivity({
+    AgentInteraction.attachChatSession({ agentSessionId, chatSessionId: chatSession.id })
+    AgentInteraction.updateSessionStatus(agentSessionId, 'active')
+    AgentInteraction.createActivity({
       agentSessionId,
       type: 'thought',
       body: 'Examining issue...',
@@ -444,8 +363,8 @@ async function runSession(agentSessionId: string): Promise<void> {
     void watchRunCompletion(agentSessionId, run.runId)
   }
   catch (error) {
-    updateAgentSessionStatus(agentSessionId, 'failed')
-    createActivity({
+    AgentInteraction.updateSessionStatus(agentSessionId, 'failed')
+    AgentInteraction.createActivity({
       agentSessionId,
       type: 'error',
       body: error instanceof Error ? error.message : String(error),
@@ -458,12 +377,12 @@ async function runSession(agentSessionId: string): Promise<void> {
 
 export function getDelegation(issueId: string): IssueAgentDelegationState {
   requireIssue(issueId)
-  const latestSession = listAgentSessions(issueId)[0]
+  const latestSession = AgentInteraction.listSessionsForIssue(issueId)[0]
   if (!latestSession) {
     return { issueId, delegated: false, providerTargetId: null, agentId: null, agentSessionId: null, chatSessionId: null }
   }
 
-  const latestActivity = listAgentActivities(latestSession.id).at(-1)
+  const latestActivity = AgentInteraction.listActivities(latestSession.id).at(-1)
   if (latestActivity?.signal === 'delegation.removed') {
     return { issueId, delegated: false, providerTargetId: null, agentId: null, agentSessionId: null, chatSessionId: null }
   }
@@ -481,7 +400,7 @@ export function getDelegation(issueId: string): IssueAgentDelegationState {
 export function listSessions(issueId: string): IssueAgentSessionView[] {
   requireIssue(issueId)
   const current = getDelegation(issueId)
-  return listAgentSessions(issueId).map(session => ({
+  return AgentInteraction.listSessionsForIssue(issueId).map(session => ({
     ...session,
     isCurrentDelegation: current.delegated && current.agentSessionId === session.id,
   }))
@@ -489,7 +408,7 @@ export function listSessions(issueId: string): IssueAgentSessionView[] {
 
 export function listActivities(agentSessionId: string): AgentActivity[] {
   requireAgentSession(agentSessionId)
-  return listAgentActivities(agentSessionId)
+  return AgentInteraction.listActivities(agentSessionId)
 }
 
 export async function enqueueContinuation(input: {
@@ -527,7 +446,7 @@ export async function enqueueContinuation(input: {
       text,
     })
 
-    createActivity({
+    AgentInteraction.createActivity({
       agentSessionId: session.id,
       type: 'prompt',
       body: text,
@@ -552,7 +471,7 @@ export async function enqueueContinuation(input: {
     text,
   })
 
-  createActivity({
+  AgentInteraction.createActivity({
     agentSessionId: session.id,
     type: 'prompt',
     body: text,
@@ -605,13 +524,13 @@ export async function delegateIssue(input: { issueId: string, agentId: string, p
   // Add system comment to activity timeline
   Issue.addComment({ issueId: input.issueId, content: `Delegated to ${agent.name}`, authorKind: 'system.delegated' })
 
-  const session = createDelegationSession({
+  const session = AgentInteraction.createSession({
     issueId: input.issueId,
     providerTargetId: agent.providerTargetId,
     agentId: agent.id,
   })
 
-  createActivity({
+  AgentInteraction.createActivity({
     agentSessionId: session.id,
     type: 'response',
     body: `Delegated to ${agent.name}`,
@@ -635,7 +554,7 @@ export async function rerunSession(input: { agentSessionId: string }): Promise<I
     })
   }
 
-  const refreshed = updateAgentSessionStatus(session.id, 'created') ?? session
+  const refreshed = AgentInteraction.updateSessionStatus(session.id, 'created') ?? session
   void runSession(session.id)
 
   const delegation = getDelegation(session.issueId)
@@ -653,11 +572,11 @@ export async function undelegateIssue(issueId: string): Promise<void> {
   if (run) {
     run.aborted = true
     await cancelChatSessionContinuationWork(run.chatSessionId)
-    updateAgentSessionStatus(state.agentSessionId, 'stopped')
+    AgentInteraction.updateSessionStatus(state.agentSessionId, 'stopped')
   }
   else if (state.chatSessionId) {
     await cancelChatSessionContinuationWork(state.chatSessionId)
-    updateAgentSessionStatus(state.agentSessionId, 'stopped')
+    AgentInteraction.updateSessionStatus(state.agentSessionId, 'stopped')
   }
 
   Issue.updateIssueDelegation(issueId, null)
@@ -665,7 +584,7 @@ export async function undelegateIssue(issueId: string): Promise<void> {
   // Add system comment to activity timeline
   Issue.addComment({ issueId, content: 'Delegation removed', authorKind: 'system.undelegated' })
 
-  createActivity({
+  AgentInteraction.createActivity({
     agentSessionId: state.agentSessionId,
     type: 'response',
     body: 'Delegation removed',
@@ -683,8 +602,8 @@ export async function stopSession(agentSessionId: string): Promise<void> {
   else if (session.chatSessionId) {
     await cancelChatSessionContinuationWork(session.chatSessionId)
   }
-  updateAgentSessionStatus(agentSessionId, 'stopped')
-  createActivity({
+  AgentInteraction.updateSessionStatus(agentSessionId, 'stopped')
+  AgentInteraction.createActivity({
     agentSessionId,
     type: 'response',
     body: 'Session stopped by user',

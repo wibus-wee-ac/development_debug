@@ -154,6 +154,7 @@ describe('preferences capability', () => {
       expect(initialRes.status).toBe(200)
       expect(await initialRes.json()).toEqual({
         requireDoubleCommandQToQuit: true,
+        appshotHotkeyEnabled: true,
       })
 
       const filePath = join(dataDir, 'preferences', 'desktop.json')
@@ -164,6 +165,7 @@ describe('preferences capability', () => {
         headers: { 'content-type': 'application/json' },
         body: JSON.stringify({
           requireDoubleCommandQToQuit: false,
+          appshotHotkeyEnabled: false,
         }),
       }))
       expect(saveRes.status).toBe(200)
@@ -171,12 +173,14 @@ describe('preferences capability', () => {
 
       expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({
         requireDoubleCommandQToQuit: false,
+        appshotHotkeyEnabled: false,
       })
 
       const finalRes = await app.handle(new Request('http://localhost/preferences/desktop'))
       expect(finalRes.status).toBe(200)
       expect(await finalRes.json()).toEqual({
         requireDoubleCommandQToQuit: false,
+        appshotHotkeyEnabled: false,
       })
     }
     finally {

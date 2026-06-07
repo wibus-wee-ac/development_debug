@@ -6,8 +6,10 @@ import { createOpenApiPlugin, registerOpenApiAlias } from './http/openapi'
 import { createRequestIdPlugin } from './http/request-id'
 import { acp } from './modules/acp'
 import { agentIdentity } from './modules/agent-identity'
+import { agentInteractionRuntime } from './modules/agent-interaction-runtime'
 import { automation } from './modules/automation'
 import { chatRuntime } from './modules/chat-runtime'
+import { chronicle } from './modules/chronicle'
 import { desktop } from './modules/desktop'
 import { externalProviderSources } from './modules/external-provider-sources'
 import { externalWorkImport } from './modules/external-work-import'
@@ -19,8 +21,8 @@ import { issueAgent } from './modules/issue-agent'
 import { kanban } from './modules/kanban'
 import { modelRegistry } from './modules/model-registry'
 import { observability } from './modules/observability'
-import { preferences } from './modules/preferences'
 import { plugins as pluginsApi } from './modules/plugins'
+import { preferences } from './modules/preferences'
 import { profiles } from './modules/profiles'
 import { providers } from './modules/provider-catalog'
 import { providerTargets } from './modules/provider-targets'
@@ -114,6 +116,8 @@ export async function createServerContractApp(options: CreateServerContractAppOp
   app.use(git)
   app.use(acp)
   app.use(chatRuntime)
+  app.use(chronicle)
+  app.use(agentInteractionRuntime)
   app.use(desktop)
   registerPtyRoutes(app)
   app.use(observability)

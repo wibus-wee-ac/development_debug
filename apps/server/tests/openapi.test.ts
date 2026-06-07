@@ -98,6 +98,7 @@ describe('openapi capability', () => {
       expect(document.paths['/issues/{id}/agent-sessions']).toBeTruthy()
       expect(document.paths['/issue-agent/issues/{issueId}/delegation']).toBeUndefined()
       expect(document.paths['/issue-agent-sessions/{agentSessionId}/activities']).toBeTruthy()
+      expect(document.paths['/agent-sessions/{agentSessionId}/activities']).toBeTruthy()
       expect(document.paths['/providers/models']?.post?.requestBody).toBeTruthy()
       expect(document.paths['/providers/health-check']).toBeUndefined()
       expect(document.components?.schemas).toBeTruthy()

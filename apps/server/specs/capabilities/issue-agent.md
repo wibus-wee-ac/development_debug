@@ -3,7 +3,7 @@
 ## User / System Goal
 
 - 用户可以把某个 issue 委派给一个 agent profile，并看到该委派对应的 agent session 与 activity timeline。
-- issue-agent 负责 issue delegation / session / activity 的 owner 语义；chat runtime 继续负责 chat session、timeline、usage 的执行与持久化。
+- issue-agent 负责 issue delegation owner 语义；agent session / activity 由 agent-interaction-runtime 拥有；chat runtime 继续负责 chat session、timeline、usage 的执行与持久化。
 - 第一阶段只交付 HTTP-first 最小闭环：delegate、list sessions、list activities、rerun、undelegate、读取当前 delegation state。
 
 ## Current Behavior Evidence
@@ -18,7 +18,7 @@
 - `POST /issues/:issueId/delegation`
 - `DELETE /issues/:issueId/delegation`
 - `GET /issues/:issueId/agent-sessions`
-- `GET /issue-agent-sessions/:agentSessionId/activities`
+- `GET /issue-agent-sessions/:agentSessionId/activities` (current UI/CLI path; implemented through Agent Interaction Runtime)
 - `POST /issue-agent-sessions/:agentSessionId/rerun`
 
 ## Target Module Design
@@ -26,8 +26,9 @@
 - `IssueAgentModule`
   - `IssueAgentController`: HTTP 参数校验
   - `IssueAgentService`: delegation 语义、rerun/undelegate 边界、后台 watcher 编排
-  - `IssueAgentStore`: DB-backed issue/session/activity/current-delegation query model
-- Delegation state is exposed through Issue-owned route paths while issue-agent owns the delegation/session/activity semantics.
+- `AgentInteractionRuntimeModule`
+  - owns DB-backed agent session/activity writes and generic session/activity reads
+- Delegation state is exposed through Issue-owned route paths while issue-agent owns delegation semantics and Agent Interaction Runtime owns session/activity semantics.
 - 不复制 chat runtime provider 逻辑；统一调用既有 `Session` + `ChatRuntimeService`。
 
 ## Test Plan

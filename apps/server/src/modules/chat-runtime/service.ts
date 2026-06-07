@@ -2810,16 +2810,27 @@ export async function regenerateSessionTitle(sessionId: string): Promise<Session
     }
   }
 
-  const title = await runtime.generateSessionTitle({
-    ...buildRuntimeProviderInput(resolved),
-    promptText,
-  } satisfies GenerateSessionTitleInput)
+  let title: string | null
+  try {
+    title = await runtime.generateSessionTitle({
+      ...buildRuntimeProviderInput(resolved),
+      promptText,
+    } satisfies GenerateSessionTitleInput)
+  }
+  catch (error) {
+    throw createSessionTitleGenerationError({
+      sessionId,
+      runtimeKind: resolved.runtimeKind,
+      providerTargetId: resolved.context.providerTarget.id,
+      error,
+    })
+  }
   if (!title) {
-    throw new AppError({
-      code: 'chat_session_title_generation_failed',
-      status: 502,
-      message: 'Runtime could not generate a session title',
-      details: { sessionId, runtimeKind: resolved.runtimeKind },
+    throw createSessionTitleGenerationError({
+      sessionId,
+      runtimeKind: resolved.runtimeKind,
+      providerTargetId: resolved.context.providerTarget.id,
+      reason: 'empty_title',
     })
   }
 
@@ -3726,17 +3737,31 @@ export async function streamQuickQuestion(input: QuickQuestionInput): Promise<Re
   return new ReadableStream({
     async start(controller) {
       const encoder = new TextEncoder()
+      let terminalPublished = false
+      const publish = (chunk: UIMessageChunk, terminal = isTerminalUIMessageChunk(chunk)) => {
+        if (terminalPublished) {
+          return
+        }
+        controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+        if (terminal) {
+          terminalPublished = true
+          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
+        }
+      }
+
       try {
         for await (const chunk of chunkStream) {
-          controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
-          if (isTerminalUIMessageChunk(chunk)) {
-            controller.enqueue(encoder.encode('data: [DONE]\n\n'))
-          }
+          publish(chunk)
         }
-        controller.close()
+        if (!terminalPublished) {
+          publish({ type: 'finish', finishReason: 'stop' }, true)
+        }
       }
- catch (error) {
-        controller.error(error)
+      catch (error) {
+        publish({ type: 'error', errorText: serializeChatError(error).text }, true)
+      }
+      finally {
+        controller.close()
       }
     },
   })
@@ -6879,6 +6904,94 @@ function resolveTurnFailureObservabilityCode(chunk: UIMessageChunk): string {
   }
 
   return OBSERVABILITY_CODES.turnStreamFailed
+}
+
+function createSessionTitleGenerationError(input: {
+  sessionId: string
+  runtimeKind: RuntimeKind
+  providerTargetId: string | null
+  reason?: string
+  error?: unknown
+}): AppError {
+  const providerError = input.error instanceof ProviderRuntimeError ? input.error.providerError : null
+  const errorDetails = input.error === undefined ? null : serializeTitleGenerationError(input.error)
+  const failureReason = input.reason ?? providerError?._tag ?? 'provider_error'
+  const message = errorDetails?.message
+    ? `Runtime could not generate a session title: ${errorDetails.message}`
+    : 'Runtime could not generate a session title'
+
+  Observability.record({
+    source: 'chat-engine',
+    code: OBSERVABILITY_CODES.chatSessionTitleGenerationFailed,
+    severity: 'error',
+    category: 'chat',
+    message,
+    chatSessionId: input.sessionId,
+    dedupeKey: createDedupeKey({
+      code: OBSERVABILITY_CODES.chatSessionTitleGenerationFailed,
+      chatSessionId: input.sessionId,
+      runId: null,
+    }),
+    attrs: {
+      runtimeKind: input.runtimeKind,
+      providerTargetId: input.providerTargetId,
+      reason: failureReason,
+      ...(providerError ? { providerError } : {}),
+      ...(errorDetails ? { error: errorDetails } : {}),
+    },
+  })
+
+  return new AppError({
+    code: 'chat_session_title_generation_failed',
+    status: 502,
+    message,
+    details: {
+      sessionId: input.sessionId,
+      runtimeKind: input.runtimeKind,
+      providerTargetId: input.providerTargetId,
+      reason: failureReason,
+      ...(providerError ? { providerError } : {}),
+      ...(errorDetails ? { error: omitTitleGenerationErrorStack(errorDetails) } : {}),
+    },
+  })
+}
+
+function serializeTitleGenerationError(error: unknown): {
+  name?: string
+  message: string
+  code?: string | number
+  data?: unknown
+  stack?: string
+} {
+  const output: {
+    name?: string
+    message: string
+    code?: string | number
+    data?: unknown
+    stack?: string
+  } = {
+    message: error instanceof Error ? error.message : String(error),
+  }
+
+  if (error instanceof Error) {
+    output.name = error.name
+    output.stack = error.stack
+  }
+  if (error && typeof error === 'object') {
+    const candidate = error as { code?: unknown, data?: unknown }
+    if (typeof candidate.code === 'string' || typeof candidate.code === 'number') {
+      output.code = candidate.code
+    }
+    if ('data' in candidate) {
+      output.data = candidate.data
+    }
+  }
+  return output
+}
+
+function omitTitleGenerationErrorStack(error: ReturnType<typeof serializeTitleGenerationError>): Omit<ReturnType<typeof serializeTitleGenerationError>, 'stack'> {
+  const { stack: _stack, ...safeError } = error
+  return safeError
 }
 
 function serializeChatError(error: unknown): SerializedChatError {
