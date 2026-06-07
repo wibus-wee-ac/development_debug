@@ -7,10 +7,16 @@ import { putPreferencesDesktop } from '~/api-gen/sdk.gen'
 
 export interface DesktopPreferences {
   requireDoubleCommandQToQuit: boolean
+  appshotHotkeyEnabled: boolean
+  autoCheckForUpdates: boolean
+  autoDownloadUpdates: boolean
 }
 
 const DesktopPreferencesSchema = z.object({
   requireDoubleCommandQToQuit: z.boolean().default(true),
+  appshotHotkeyEnabled: z.boolean().default(true),
+  autoCheckForUpdates: z.boolean().default(true),
+  autoDownloadUpdates: z.boolean().default(false),
 })
 
 export const DESKTOP_PREFS_QUERY_KEY = getPreferencesDesktopQueryKey()

@@ -1,5 +1,5 @@
 import { DownloadIcon, PackageCheckIcon, RefreshCwIcon, RotateCwIcon, TerminalIcon, UnlinkIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
@@ -43,7 +43,7 @@ function readTargetSize(status: DesktopUpdateStatus): number {
 }
 
 function StatusBadge({ status }: { status: DesktopUpdateStatus }) {
-  const label = useMemo(() => {
+  const label = (() => {
     if (status.unsupported) {
       return 'Unavailable'
     }
@@ -60,7 +60,7 @@ function StatusBadge({ status }: { status: DesktopUpdateStatus }) {
       return 'Available'
     }
     return 'Current'
-  }, [status])
+  })()
 
   return (
     <Badge variant={status.errorMessage ? 'destructive' : 'outline'} className="font-mono text-[11px]">
@@ -70,7 +70,7 @@ function StatusBadge({ status }: { status: DesktopUpdateStatus }) {
 }
 
 function CliStatusBadge({ status }: { status: DesktopCliStatus }) {
-  const label = useMemo(() => {
+  const label = (() => {
     if (!status.supported) {
       return 'Unavailable'
     }
@@ -81,7 +81,7 @@ function CliStatusBadge({ status }: { status: DesktopCliStatus }) {
       return 'Repair'
     }
     return 'Not installed'
-  }, [status])
+  })()
 
   return (
     <Badge variant={status.errorMessage ? 'destructive' : 'outline'} className="font-mono text-[11px]">
@@ -108,7 +108,7 @@ export function DesktopUpdateSettings() {
   const canDownload = canCheck && !!status.updateInfo && !status.updateDownloaded
   const canApply = isElectron && !!nativeIpc && !status.unsupported && status.updateDownloaded && !busy
 
-  const refreshStatus = useCallback(async () => {
+  const refreshStatus = async () => {
     if (!isElectron || !nativeIpc) {
       setStatus(EMPTY_UPDATE_STATUS)
       setCliStatus(EMPTY_CLI_STATUS)
@@ -129,9 +129,9 @@ export function DesktopUpdateSettings() {
     finally {
       setLoading(false)
     }
-  }, [])
+  }
 
-  const runCliAction = useCallback(async (
+  const runCliAction = async (
     action: () => Promise<DesktopCliStatus>,
   ) => {
     setLoading(true)
@@ -141,9 +141,9 @@ export function DesktopUpdateSettings() {
     finally {
       setLoading(false)
     }
-  }, [])
+  }
 
-  const runUpdateAction = useCallback(async (
+  const runUpdateAction = async (
     action: () => Promise<DesktopUpdateStatus | void>,
   ) => {
     setLoading(true)
@@ -156,15 +156,15 @@ export function DesktopUpdateSettings() {
     finally {
       setLoading(false)
     }
-  }, [])
+  }
 
-  const handleDoubleCommandQChange = useCallback((requireDoubleCommandQToQuit: boolean) => {
+  const handleDoubleCommandQChange = (requireDoubleCommandQToQuit: boolean) => {
     void saveDesktopPrefs({ requireDoubleCommandQToQuit }).then((updated) => {
       if (updated && isElectron && nativeIpc) {
         void nativeIpc.native.setDesktopPreferences(updated).catch(() => {})
       }
     })
-  }, [saveDesktopPrefs])
+  }
 
   useEffect(() => {
     void refreshStatus()

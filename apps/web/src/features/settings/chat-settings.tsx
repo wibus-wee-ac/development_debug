@@ -1,7 +1,7 @@
 // Chat settings for default continuation behavior and archived session recovery.
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArchiveRestoreIcon, BrainIcon, CheckIcon, MessageSquareIcon, SearchIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
@@ -150,12 +150,9 @@ function ArchivedSessionList() {
   const queryClient = useQueryClient()
   const { sessions, loading } = useAllSessions(true)
   const [query, setQuery] = useState('')
-  const sortedSessions = useMemo(
-    () => sessions.toSorted((a, b) => (b.archivedAt ?? b.updatedAt) - (a.archivedAt ?? a.updatedAt)),
-    [sessions],
-  )
+  const sortedSessions = sessions.toSorted((a, b) => (b.archivedAt ?? b.updatedAt) - (a.archivedAt ?? a.updatedAt))
   const trimmedQuery = query.trim().toLocaleLowerCase()
-  const filteredSessions = useMemo(() => {
+  const filteredSessions = (() => {
     if (!trimmedQuery) {
       return sortedSessions
     }
@@ -170,7 +167,7 @@ function ArchivedSessionList() {
         session.modelId ?? '',
       ].some(value => value.toLocaleLowerCase().includes(trimmedQuery))
     })
-  }, [sortedSessions, t, trimmedQuery])
+  })()
   const restoreSession = useMutation({
     mutationFn: async (sessionId: string) => {
       const { data } = await postSessionsByIdArchive({
@@ -314,15 +311,9 @@ function TitleGenerationSettings({
   const [pendingProviderTargetId, setPendingProviderTargetId] = useState<string | null>(null)
   const { providerOptions } = useProviderTargets()
   const { runtimes } = useRuntimeCatalog()
-  const profiles = useMemo(
-    () => listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind: 'codex', runtimes }),
-    [providerOptions, runtimes],
-  )
+  const profiles = listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind: 'codex', runtimes })
   const selectedProviderTargetId = pendingProviderTargetId ?? prefs.providerTargetId
-  const initialModelProfileIds = useMemo(
-    () => [prefs.providerTargetId, pendingProviderTargetId],
-    [pendingProviderTargetId, prefs.providerTargetId],
-  )
+  const initialModelProfileIds = [prefs.providerTargetId, pendingProviderTargetId]
   const {
     modelsByProviderTargetId,
     loadingProviderTargetIds,
@@ -338,31 +329,28 @@ function TitleGenerationSettings({
     : null
   const selectedModelId = pendingProviderTargetId ? null : prefs.modelId
   const selectedModel = selectedModels.find(model => model.id === selectedModelId) ?? null
-  const thinkingOptions = useMemo<Array<ThinkingOption<TitleGenerationThinkingEffort>>>(() => TITLE_GENERATION_THINKING_LEVELS.map(value => ({
+  const thinkingOptions = TITLE_GENERATION_THINKING_LEVELS.map(value => ({
     value,
     label: t(titleGenerationThinkingLabelKeys[value]),
     description: t(titleGenerationThinkingDescriptionKeys[value]),
-  })), [t])
-  const supportedThinkingOptions = useMemo(
-    () => selectedProviderTargetId && selectedModel ? filterThinkingOptionsForModel(selectedModel, thinkingOptions) : thinkingOptions,
-    [selectedModel, selectedProviderTargetId, thinkingOptions],
-  )
+  }))
+  const supportedThinkingOptions = selectedProviderTargetId && selectedModel ? filterThinkingOptionsForModel(selectedModel, thinkingOptions) : thinkingOptions
   const selectedThinkingEffort = selectedProviderTargetId && selectedModel
     ? selectTitleGenerationThinkingEffort(selectedModel, thinkingOptions, prefs.thinkingEffort)
     : prefs.thinkingEffort
-  const selectThinkingForCurrentSelection = useCallback((thinkingEffort: TitleGenerationThinkingEffort): TitleGenerationThinkingEffort => {
+  const selectThinkingForCurrentSelection = (thinkingEffort: TitleGenerationThinkingEffort): TitleGenerationThinkingEffort => {
     if (!selectedProviderTargetId || !selectedModel) {
       return thinkingEffort
     }
     return selectTitleGenerationThinkingEffort(selectedModel, thinkingOptions, thinkingEffort)
-  }, [selectedModel, selectedProviderTargetId, thinkingOptions])
-  const saveResolvedModel = useCallback((providerTargetId: string, model: ModelDescriptor) => {
+  }
+  const saveResolvedModel = (providerTargetId: string, model: ModelDescriptor) => {
     save({
       providerTargetId,
       modelId: model.id,
       thinkingEffort: selectTitleGenerationThinkingEffort(model, thinkingOptions, prefs.thinkingEffort),
     })
-  }, [prefs.thinkingEffort, save, thinkingOptions])
+  }
 
   useEffect(() => {
     if (!pendingProviderTargetId) {
@@ -460,9 +448,9 @@ export function ChatSettings() {
   const { t } = useTranslation('settings')
   const { prefs, isSaving, savePrefs } = useChatPreferences()
   const { prefs: codexPrefs, isSaving: isSavingCodexPrefs, savePrefs: saveCodexPrefs } = useCodexPreferences()
-  const handleTitleGenerationChange = useCallback((titleGeneration: Partial<TitleGenerationPreferences>) => {
+  const handleTitleGenerationChange = (titleGeneration: Partial<TitleGenerationPreferences>) => {
     void savePrefs({ titleGeneration })
-  }, [savePrefs])
+  }
 
   if (!prefs) {
     return null

@@ -48,7 +48,7 @@ export function SettingsRow({
         )}
       </div>
 
-      <div className={cn('shrink-0 max-w-[50%]', vertical ? 'w-full' : undefined)}>
+      <div className={cn('shrink-0', vertical ? 'w-full max-w-none' : 'max-w-[50%]')}>
         {children}
       </div>
     </>

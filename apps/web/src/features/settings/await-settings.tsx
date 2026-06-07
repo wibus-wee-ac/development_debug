@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRightIcon, GitBranchIcon, LoaderCircleIcon, PlusIcon, ShieldCheckIcon, TrashIcon } from 'lucide-react'
-import { memo, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
@@ -346,7 +346,7 @@ function AddRuleForm({ onSubmit, onCancel, isPending }: {
 
 // ── Per-workspace section ──
 
-const WorkspaceBypassSection = memo(({ workspace }: { workspace: Workspace }) => {
+const WorkspaceBypassSection = ({ workspace }: { workspace: Workspace }) => {
   const { t } = useTranslation('settings')
   const { data: rules = [], isPending: rulesPending } = useQuery({
     queryKey: ['bypass-rules', workspace.id],
@@ -457,7 +457,7 @@ const WorkspaceBypassSection = memo(({ workspace }: { workspace: Workspace }) =>
       )}
     </div>
   )
-})
+}
 
 // ── Page ──
 

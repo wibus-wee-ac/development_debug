@@ -2,9 +2,10 @@ import {
   ClipboardIcon,
   FolderOpenIcon,
   LifeBuoyIcon,
+  RotateCcwIcon,
   Share2Icon,
 } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -14,6 +15,7 @@ import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Spinner } from '~/components/ui/spinner'
+import { useOnboardingStore } from '~/features/onboarding/onboarding-store'
 import { getServerUrl, isElectron, nativeIpc } from '~/lib/electron'
 
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
@@ -145,7 +147,7 @@ export function SupportSettings() {
   const [message, setMessage] = useState<string | null>(null)
   const [dataPath, setDataPath] = useState<string | null>(null)
 
-  const template = useMemo(() => createSupportTemplate({
+  const template = createSupportTemplate({
     title: t('support.template.title'),
     version: t('support.template.version', { version: import.meta.env.PACKAGE_VERSION ?? '0.0.1' }),
     runtime: t('support.template.runtime', { runtime: isElectron ? t('support.template.runtime.electron') : t('support.template.runtime.web') }),
@@ -155,8 +157,8 @@ export function SupportSettings() {
     reproduction: t('support.template.reproduction'),
     diagnostics: t('support.template.diagnostics'),
     diagnosticsNote: t('support.template.diagnosticsNote'),
-  }), [t])
-  const handoff = useMemo(() => [
+  })
+  const handoff = [
     t('support.privateHandoff.title'),
     '',
     t('support.privateHandoff.step1'),
@@ -164,11 +166,11 @@ export function SupportSettings() {
     t('support.privateHandoff.step3'),
     '',
     template,
-  ].join('\n'), [t, template])
+  ].join('\n')
   const canOpenDataPath = isElectron && !!nativeIpc
   const settingsSupportReady = template.length > 0
 
-  const exportDiagnostics = useCallback(async () => {
+  const exportDiagnostics = async () => {
     setStatus('working')
     setMessage(null)
     try {
@@ -197,9 +199,9 @@ export function SupportSettings() {
       setStatus('error')
       setMessage(error instanceof Error ? error.message : String(error))
     }
-  }, [t])
+  }
 
-  const copyFeedbackTemplate = useCallback(async () => {
+  const copyFeedbackTemplate = async () => {
     setStatus('working')
     setMessage(null)
     try {
@@ -211,9 +213,9 @@ export function SupportSettings() {
       setStatus('error')
       setMessage(error instanceof Error ? error.message : String(error))
     }
-  }, [t, template])
+  }
 
-  const copyPrivateHandoff = useCallback(async () => {
+  const copyPrivateHandoff = async () => {
     setStatus('working')
     setMessage(null)
     try {
@@ -225,16 +227,16 @@ export function SupportSettings() {
       setStatus('error')
       setMessage(error instanceof Error ? error.message : String(error))
     }
-  }, [handoff, t])
+  }
 
-  const openDataDirectory = useCallback(async () => {
+  const openDataDirectory = async () => {
     if (!nativeIpc) {
       return
     }
     const paths = await nativeIpc.native.getCradleDataPaths()
     setDataPath(paths.serverDataPath)
     await nativeIpc.native.showItemInFolder(paths.serverDataPath)
-  }, [])
+  }
 
   return (
     <div
@@ -321,6 +323,22 @@ export function SupportSettings() {
         >
           <FolderOpenIcon className="size-3.5" aria-hidden="true" />
           {t('support.action.reveal')}
+        </Button>
+      </SettingsRow>
+
+      <SettingsDivider />
+      <SettingsRow
+        label={t('support.onboarding.label')}
+        description={t('support.onboarding.description')}
+      >
+        <Button
+          type="button"
+          size="sm"
+          variant="outline"
+          onClick={() => useOnboardingStore.getState().reset()}
+        >
+          <RotateCcwIcon className="size-3.5" aria-hidden="true" />
+          {t('support.action.showOnboarding')}
         </Button>
       </SettingsRow>
 

@@ -1,5 +1,5 @@
 import { CheckCircle2Icon, DatabaseIcon, DownloadIcon, LaptopIcon, RefreshCwIcon, ServerIcon, TriangleAlertIcon } from 'lucide-react'
-import { memo, useCallback, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { VList } from 'virtua'
 import { useStore } from 'zustand'
@@ -153,7 +153,7 @@ interface ExternalWorkImportRowProps {
   selectionStore: ImportSelectionStore
 }
 
-const ExternalWorkImportRow = memo(({
+const ExternalWorkImportRow = ({
   item,
   busy,
   duplicateLabel,
@@ -161,12 +161,12 @@ const ExternalWorkImportRow = memo(({
 }: ExternalWorkImportRowProps) => {
   const checked = useStore(
     selectionStore,
-    useCallback(state => state.fingerprints.has(item.fingerprint), [item.fingerprint]),
+    state => state.fingerprints.has(item.fingerprint),
   )
   const toggle = useStore(selectionStore, state => state.toggle)
-  const handleToggle = useCallback((value: boolean | 'indeterminate') => {
+  const handleToggle = (value: boolean | 'indeterminate') => {
     toggle(item.fingerprint, value === true)
-  }, [item.fingerprint, toggle])
+  }
 
   return (
     <div
@@ -203,7 +203,7 @@ const ExternalWorkImportRow = memo(({
       </div>
     </div>
   )
-})
+}
 
 ExternalWorkImportRow.displayName = 'ExternalWorkImportRow'
 
@@ -214,7 +214,7 @@ interface ImportActionButtonsProps {
   onImport: () => void
 }
 
-const ImportActionButtons = memo(({
+const ImportActionButtons = ({
   status,
   selectionStore,
   onScan,
@@ -247,7 +247,7 @@ const ImportActionButtons = memo(({
       </Button>
     </div>
   )
-})
+}
 
 ImportActionButtons.displayName = 'ImportActionButtons'
 
@@ -258,7 +258,7 @@ interface ImportSelectionControlProps {
   selectionStore: ImportSelectionStore
 }
 
-const ImportSelectionControl = memo(({
+const ImportSelectionControl = ({
   busy,
   importableCount,
   importableFingerprints,
@@ -267,13 +267,13 @@ const ImportSelectionControl = memo(({
   const { t } = useTranslation('settings')
   const selectedCount = useStore(selectionStore, state => state.count)
   const checked = importableCount > 0 && selectedCount === importableCount
-  const handleCheckedChange = useCallback((value: boolean | 'indeterminate') => {
+  const handleCheckedChange = (value: boolean | 'indeterminate') => {
     if (value === true) {
       selectionStore.getState().replace(importableFingerprints)
       return
     }
     selectionStore.getState().clear()
-  }, [importableFingerprints, selectionStore])
+  }
 
   return (
     <SettingsRow
@@ -288,7 +288,7 @@ const ImportSelectionControl = memo(({
       />
     </SettingsRow>
   )
-})
+}
 
 ImportSelectionControl.displayName = 'ImportSelectionControl'
 
@@ -300,20 +300,11 @@ export function ExternalWorkImportSettings() {
   const [message, setMessage] = useState<string | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
 
-  const itemByFingerprint = useMemo(
-    () => new Map(items.map(item => [item.fingerprint, item])),
-    [items],
-  )
-  const importableFingerprints = useMemo(
-    () => items.filter(item => item.importable).map(item => item.fingerprint),
-    [items],
-  )
-  const importableCount = useMemo(
-    () => importableFingerprints.length,
-    [importableFingerprints],
-  )
+  const itemByFingerprint = new Map(items.map(item => [item.fingerprint, item]))
+  const importableFingerprints = items.filter(item => item.importable).map(item => item.fingerprint)
+  const importableCount = importableFingerprints.length
 
-  const scan = useCallback(async () => {
+  const scan = async () => {
     setStatus('scanning')
     setMessage(null)
     setWarnings([])
@@ -349,9 +340,9 @@ export function ExternalWorkImportSettings() {
       setStatus('error')
       setMessage(error instanceof Error ? error.message : String(error))
     }
-  }, [selectionStore, t])
+  }
 
-  const importSelected = useCallback(async () => {
+  const importSelected = async () => {
     setStatus('importing')
     setMessage(null)
     try {
@@ -376,7 +367,7 @@ export function ExternalWorkImportSettings() {
       setStatus('error')
       setMessage(error instanceof Error ? error.message : String(error))
     }
-  }, [itemByFingerprint, scan, selectionStore, t])
+  }
 
   const busy = status === 'scanning' || status === 'importing'
 

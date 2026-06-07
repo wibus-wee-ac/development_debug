@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { ChevronRightIcon, DatabaseIcon, PlusIcon, SearchIcon, Trash2Icon } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -39,7 +39,7 @@ export function ModelRegistrySettings() {
 
   const { data: mappings = [], isLoading } = useQuery(getModelRegistryMappingsOptions())
 
-  const filteredMappings = useMemo(() => {
+  const filteredMappings = (() => {
     const needle = query.trim().toLowerCase()
     if (!needle) {
       return mappings
@@ -50,12 +50,9 @@ export function ModelRegistrySettings() {
         || mapping.registryModelId.toLowerCase().includes(needle)
         || mapping.model?.name?.toLowerCase().includes(needle),
     )
-  }, [mappings, query])
+  })()
 
-  const selectedMapping = useMemo(
-    () => mappings.find(m => m.modelId === selectedMappingId) ?? null,
-    [mappings, selectedMappingId],
-  )
+  const selectedMapping = mappings.find(m => m.modelId === selectedMappingId) ?? null
 
   const deleteMapping = useMutation({
     mutationFn: async (id: string) => {
