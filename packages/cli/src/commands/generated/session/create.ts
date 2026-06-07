@@ -11,10 +11,12 @@ const spec = {
   "description": "Create session",
   "flags": [
     {
+      "description": "Defaults to CRADLE_WORKSPACE_ID.",
       "name": "workspaceId",
       "required": false,
       "target": "body.workspaceId",
-      "type": "string"
+      "type": "string",
+      "envDefault": "CRADLE_WORKSPACE_ID"
     },
     {
       "name": "title",

@@ -5,10 +5,12 @@ import type { Command } from 'commander'
 const spec = {
   "arguments": [
     {
+      "description": "Defaults to CRADLE_WORKSPACE_ID.",
       "name": "workspaceId",
       "required": true,
       "target": "path.workspaceId",
-      "type": "string"
+      "type": "string",
+      "envDefault": "CRADLE_WORKSPACE_ID"
     }
   ],
   "command": [

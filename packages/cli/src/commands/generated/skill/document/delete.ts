@@ -32,10 +32,13 @@ const spec = {
       "type": "string"
     },
     {
+      "description": "Defaults to CRADLE_WORKSPACE_ID. Pass --all-workspaces to query every workspace.",
       "name": "workspaceId",
       "required": false,
       "target": "query.workspaceId",
-      "type": "string"
+      "type": "string",
+      "envDefault": "CRADLE_WORKSPACE_ID",
+      "disableEnvDefaultFlag": "allWorkspaces"
     },
     {
       "name": "agentId",

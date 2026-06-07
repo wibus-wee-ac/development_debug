@@ -12,10 +12,12 @@ const spec = {
   "description": "List issue statuses",
   "flags": [
     {
+      "description": "Defaults to CRADLE_WORKSPACE_ID.",
       "name": "workspaceId",
       "required": true,
       "target": "query.workspaceId",
-      "type": "string"
+      "type": "string",
+      "envDefault": "CRADLE_WORKSPACE_ID"
     }
   ],
   "method": "get",

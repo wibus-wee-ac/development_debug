@@ -6,6 +6,7 @@ export type CliOutputFormat = 'auto' | 'json' | 'ndjson' | 'pretty' | 'table'
 export interface CliArgumentSpec {
   name: string
   description?: string
+  envDefault?: string
   target: string
   required?: boolean
   type?: CliValueType
@@ -14,6 +15,8 @@ export interface CliArgumentSpec {
 export interface CliFlagSpec {
   name: string
   description?: string
+  disableEnvDefaultFlag?: string
+  envDefault?: string
   target: string
   required?: boolean
   type?: CliValueType

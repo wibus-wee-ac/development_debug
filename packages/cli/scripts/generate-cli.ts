@@ -54,6 +54,7 @@ const generatedRoot = path.join(packageRoot, 'src', 'commands', 'generated')
 const cradleCliSkillPath = path.join(repoRoot, 'resources', 'skills', 'cradle-cli', 'SKILL.md')
 const generatedSkillStart = '<!-- CRADLE_CLI_MODULES_START -->'
 const generatedSkillEnd = '<!-- CRADLE_CLI_MODULES_END -->'
+const workspaceIdEnvDefault = 'CRADLE_WORKSPACE_ID'
 
 const moduleDescriptions: Record<string, string> = {
   'acp': 'Manage ACP agent installation and registry state.',
@@ -134,10 +135,38 @@ function getJsonBodySchema(operation: OpenApiOperation): OpenApiSchema | undefin
   return unwrapSchema(operation.requestBody?.content?.['application/json']?.schema)
 }
 
+function withWorkspaceEnvDefault<T extends CliArgumentSpec | CliFlagSpec>(spec: T): T {
+  if (spec.name !== 'workspaceId' || spec.type !== 'string') {
+    return spec
+  }
+
+  const description = spec.description
+    ? `${spec.description} Defaults to ${workspaceIdEnvDefault}.`
+    : `Defaults to ${workspaceIdEnvDefault}.`
+
+  return {
+    ...spec,
+    description,
+    envDefault: workspaceIdEnvDefault,
+  }
+}
+
+function withWorkspaceQueryScopeFlag(flag: CliFlagSpec): CliFlagSpec {
+  if (flag.name !== 'workspaceId' || flag.target !== 'query.workspaceId' || flag.required) {
+    return flag
+  }
+
+  return {
+    ...flag,
+    description: `${flag.description ?? `Defaults to ${workspaceIdEnvDefault}.`} Pass --all-workspaces to query every workspace.`,
+    disableEnvDefaultFlag: 'allWorkspaces',
+  }
+}
+
 function collectArguments(operation: OpenApiOperation): CliArgumentSpec[] {
   return (operation.parameters ?? [])
     .filter(parameter => parameter.in === 'path')
-    .map(parameter => ({
+    .map(parameter => withWorkspaceEnvDefault({
       description: parameter.description ?? parameter.schema?.description,
       name: parameter.name,
       required: parameter.required !== false,
@@ -153,28 +182,28 @@ function collectFlags(operation: OpenApiOperation): CliFlagSpec[] {
     if (parameter.in !== 'query') {
       continue
     }
-    flags.push({
+    flags.push(withWorkspaceQueryScopeFlag(withWorkspaceEnvDefault({
       description: parameter.description ?? parameter.schema?.description,
       name: parameter.name,
       required: parameter.required === true,
       target: `query.${parameter.name}`,
       type: inferValueType(parameter.schema),
       values: getSchemaValues(parameter.schema),
-    })
+    })))
   }
 
   const bodySchema = getJsonBodySchema(operation)
   if (bodySchema?.properties) {
     const required = new Set(bodySchema.required ?? [])
     for (const [name, schema] of Object.entries(bodySchema.properties)) {
-      flags.push({
+      flags.push(withWorkspaceEnvDefault({
         description: schema.description,
         name,
         required: required.has(name),
         target: `body.${name}`,
         type: inferValueType(schema),
         values: getSchemaValues(schema),
-      })
+      }))
     }
   }
 

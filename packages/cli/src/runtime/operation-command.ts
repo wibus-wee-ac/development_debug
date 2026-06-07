@@ -11,11 +11,13 @@ const CliValueTypeSchema = z.enum(['boolean', 'json', 'number', 'string', 'strin
 const CliArgumentSpecSchema = z.object({
   name: z.string(),
   description: z.string().optional(),
+  envDefault: z.string().optional(),
   target: z.string(),
   required: z.boolean().optional(),
   type: CliValueTypeSchema.default('string'),
 })
 const CliFlagSpecSchema = CliArgumentSpecSchema.extend({
+  disableEnvDefaultFlag: z.string().optional(),
   values: z.array(z.string()).optional(),
 })
 const CliOperationSpecSchema = z.object({
@@ -59,6 +61,29 @@ function parseCliValue(type: CliValueType, value: unknown): unknown {
     return parseBooleanValue(value)
   }
   return CliValueSchemas[type].parse(value)
+}
+
+function readEnvDefault(envName: string | undefined): string | undefined {
+  if (!envName) {
+    return undefined
+  }
+  return process.env[envName]?.trim() || undefined
+}
+
+function readResolvedCliValue(input: {
+  envDefault?: string
+  optionName: string
+  required?: boolean
+  type: CliValueType
+  value: unknown
+}): unknown {
+  const value = input.value ?? readEnvDefault(input.envDefault)
+  const parsed = parseCliValue(input.type, value)
+  if (parsed === undefined && input.required) {
+    const envHint = input.envDefault ? ` or set ${input.envDefault}` : ''
+    throw new Error(`${input.optionName} is required. Pass ${input.optionName}${envHint}.`)
+  }
+  return parsed
 }
 
 function findSubcommand(parent: Command, name: string): Command | undefined {
@@ -156,10 +181,11 @@ export function registerOperationCommand(root: Command, rawSpec: CliOperationSpe
   leaf.option('--json [fields]', 'Print JSON, optionally selecting comma-separated fields')
 
   for (const argument of spec.arguments) {
-    const name = argument.required === false ? `[${argument.name}]` : `<${argument.name}>`
+    const name = argument.required === false || argument.envDefault ? `[${argument.name}]` : `<${argument.name}>`
     leaf.argument(name, argument.description)
   }
 
+  const envDefaultDisableFlags = new Map<string, string>()
   for (const flag of spec.flags) {
     const optionName = toKebabCase(flag.name)
     const description = flag.values?.length
@@ -170,13 +196,20 @@ export function registerOperationCommand(root: Command, rawSpec: CliOperationSpe
       : flag.type === 'boolean'
         ? `--${optionName}`
         : `--${optionName} <value>`
-    if (flag.required) {
+    if (flag.required && !flag.envDefault) {
       leaf.requiredOption(option, description)
     }
     else {
       leaf.option(option, description)
       if (flag.type === 'boolean') {
         leaf.option(`--no-${optionName}`, description)
+      }
+    }
+    if (flag.disableEnvDefaultFlag) {
+      const disableOptionName = toKebabCase(flag.disableEnvDefaultFlag)
+      if (!envDefaultDisableFlags.has(flag.disableEnvDefaultFlag)) {
+        leaf.option(`--${disableOptionName}`, `Do not default --${optionName} from ${flag.envDefault}`)
+        envDefaultDisableFlags.set(flag.disableEnvDefaultFlag, flag.name)
       }
     }
   }
@@ -193,15 +226,34 @@ export function registerOperationCommand(root: Command, rawSpec: CliOperationSpe
     for (const [index, argument] of spec.arguments.entries()) {
       setTarget(
         argument.target,
-        parseCliValue(argument.type, args[index]),
+        readResolvedCliValue({
+          envDefault: argument.envDefault,
+          optionName: `<${argument.name}>`,
+          required: argument.required,
+          type: argument.type,
+          value: args[index],
+        }),
         containers,
       )
     }
 
     for (const flag of spec.flags) {
+      if (
+        flag.disableEnvDefaultFlag
+        && opts[flag.disableEnvDefaultFlag] === true
+        && opts[flag.name] !== undefined
+      ) {
+        throw new Error(`--${toKebabCase(flag.name)} cannot be used with --${toKebabCase(flag.disableEnvDefaultFlag)}.`)
+      }
       setTarget(
         flag.target,
-        parseCliValue(flag.type, opts[flag.name]),
+        readResolvedCliValue({
+          envDefault: opts[flag.disableEnvDefaultFlag ?? ''] === true ? undefined : flag.envDefault,
+          optionName: `--${toKebabCase(flag.name)}`,
+          required: flag.required,
+          type: flag.type,
+          value: opts[flag.name],
+        }),
         containers,
       )
     }

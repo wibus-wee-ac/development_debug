@@ -42,6 +42,8 @@ Cradle automatically injects these environment variables into your shell — no 
 
 Use them directly in commands (e.g. `$CRADLE_CHAT_SESSION_ID`). They are available in both GUI (Claude Agent) and TUI (terminal) modes.
 
+Generated CLI commands that expose a `workspaceId` argument or flag default to `CRADLE_WORKSPACE_ID` when it is available. Optional workspace-scoped list/search commands therefore operate on the current workspace by default; pass `--all-workspaces` only when you intentionally want a global query.
+
 ## Discovery
 
 ```bash
@@ -54,7 +56,7 @@ cradle man workspace git status
 cradle man chronicle memories search
 cradle man automation create
 cradle workspace list --json id,name,path
-cradle issue status list --workspace-id <workspaceId> --json id,name
+cradle issue status list --json id,name
 cradle profile list --json id,name,providerKind,enabled
 cradle agent list --json id,name,agentProfileId,enabled
 ```
@@ -62,8 +64,8 @@ cradle agent list --json id,name,agentProfileId,enabled
 ## Issue Workflow
 
 ```bash
-cradle issue list --workspace-id "$CRADLE_WORKSPACE_ID" --json id,title,statusId,priority,assigneeKind,assigneeId
-cradle issue create --workspace-id "$CRADLE_WORKSPACE_ID" --title "Fix login redirect" --description "Describe the failure mode"
+cradle issue list --json id,title,statusId,priority,assigneeKind,assigneeId
+cradle issue create --title "Fix login redirect" --description "Describe the failure mode"
 cradle issue create --workspace-id "$CRADLE_WORKSPACE_ID" --title "Triage build failure" --status-name triage
 cradle issue move <issueId> in_progress
 cradle issue update <issueId> --priority high --labels bug,agent
@@ -236,4 +238,3 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `workspace` | 20 | Manage workspaces, files, and git helpers. | `cradle man workspace` |
 
 <!-- CRADLE_CLI_MODULES_END -->
-
