@@ -158,8 +158,8 @@ function readGoalStatusAction(status: ChatRuntimeGoalUiSlotState['status']): { k
     case 'active':
       return { kind: 'pause', label: 'Pause goal' }
     case 'paused':
-      return { kind: 'resume', label: 'Resume goal' }
     case 'blocked':
+      return { kind: 'resume', label: 'Resume goal' }
     case 'budgetLimited':
     case 'complete':
     case 'usageLimited':

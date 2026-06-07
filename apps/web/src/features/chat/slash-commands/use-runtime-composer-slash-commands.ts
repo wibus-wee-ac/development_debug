@@ -9,8 +9,11 @@ import {
   projectRuntimeComposerSlashCommands,
 } from './chat-slash-commands'
 
+const EMPTY_CRADLE_COMMANDS: ChatComposerSlashCommand[] = []
+
 export function useRuntimeComposerSlashCommands(
   runtimeKind: RuntimeKind | string | null | undefined,
+  cradleCommands: ChatComposerSlashCommand[] = EMPTY_CRADLE_COMMANDS,
 ): ChatComposerSlashCommand[] {
   const { data: draftCapabilities } = useQuery({
     queryKey: draftRuntimeCapabilitiesQueryKey(runtimeKind),
@@ -24,6 +27,7 @@ export function useRuntimeComposerSlashCommands(
     return projectRuntimeComposerSlashCommands({
       capabilities: draftCapabilities,
       mode: 'draft',
+      cradleCommands,
     })
-  }, [draftCapabilities])
+  }, [cradleCommands, draftCapabilities])
 }

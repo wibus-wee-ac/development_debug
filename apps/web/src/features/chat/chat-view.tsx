@@ -24,31 +24,45 @@ import type { ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/type
 import { getServerUrl } from '~/lib/electron'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { useLayoutStore } from '~/store/layout'
-import { MentionItem } from '.'
-import type { ChatRuntimePlanUiSlotState } from './capabilities/chat-capabilities'
-import { ChatRuntimeGoalUiSlotState, runtimeUiSlotStatesQueryKey } from './capabilities/chat-capabilities'
+
+import type { MentionItem } from '.'
+import type { ChatRuntimeGoalUiSlotState, ChatRuntimePlanUiSlotState } from './capabilities/chat-capabilities'
+import { runtimeUiSlotStatesQueryKey } from './capabilities/chat-capabilities'
 import { useQuickQuestion } from './capabilities/use-quick-question'
-import { ChatQueueItem } from './commands/chat-response-command'
-import { ComposerRuntimeSettingsController, Composer } from './composer/composer'
-import { ComposerSlashCommandActionContext, ComposerSlashCommandActionTools, ComposerSlashCommandActionResult } from './composer/composer-action-context'
-import { ComposerPlanSlotActions, ComposerQuickQuestionSlotActions, ComposerReviewSlotActions, ComposerUsageSlotActions, ComposerSlotStates } from './composer/composer-slot-states'
-import { ChatComposerRuntime, useChatComposerRuntime } from './composer/use-chat-composer-runtime'
-import { ComposerAppshotRuntime, useComposerAppshotCapture } from './composer/use-composer-appshot-capture'
-import { PluginMentionItem } from './mentions/mention-panel'
-import { SkillMentionItem } from './mentions/skill-mention-panel'
+import type { ChatQueueItem } from './commands/chat-response-command'
+import type { ComposerRuntimeSettingsController } from './composer/composer'
+import { Composer } from './composer/composer'
+import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer/composer-action-context'
+import type { ComposerPlanSlotActions, ComposerQuickQuestionSlotActions, ComposerReviewSlotActions, ComposerUsageSlotActions } from './composer/composer-slot-states'
+import { ComposerSlotStates } from './composer/composer-slot-states'
+import type { ChatComposerRuntime } from './composer/use-chat-composer-runtime'
+import { useChatComposerRuntime } from './composer/use-chat-composer-runtime'
+import type { ComposerAppshotRuntime } from './composer/use-composer-appshot-capture'
+import { useComposerAppshotCapture } from './composer/use-composer-appshot-capture'
+import type { PluginMentionItem } from './mentions/mention-panel'
+import type { SkillMentionItem } from './mentions/skill-mention-panel'
+import { registerChatComposerFileIngressHandler, registerChatPromptIngressHandler } from './prompt-ingress'
 import { MessageBubbleById } from './rendering/message-bubble'
-import { registerChatPromptIngressHandler, registerChatComposerFileIngressHandler } from './prompt-ingress'
 import { RuntimeDiagnosticsPopover } from './runtime/runtime-diagnostics-popover'
 import { RuntimeSettingsControl } from './runtime/runtime-settings-control'
 import { useRuntimeSettings } from './runtime/use-runtime-settings'
-import { SendMessageOptions, useChatSession } from './session/use-chat-session'
+import type { SendMessageOptions } from './session/use-chat-session'
+import { useChatSession } from './session/use-chat-session'
 import { useSessionAwaitSummary } from './session/use-session-await'
-import { ChatComposerSlashCommand, CODEX_REVIEW_SLASH_ACTION_ID, CODEX_USAGE_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_ACTION_ID } from './slash-commands/chat-slash-commands'
+import type { ChatComposerSlashCommand } from './slash-commands/chat-slash-commands'
+import { CODEX_REVIEW_SLASH_ACTION_ID, CODEX_USAGE_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_ACTION_ID } from './slash-commands/chat-slash-commands'
 import { ChatMinimap } from './ui/chat-minimap'
 import { ChatQueueList } from './ui/chat-queue-list'
-import { ChatScrollRuntime, useChatScrollRuntime } from './ui/use-chat-scroll-runtime'
+import type { ChatScrollRuntime } from './ui/use-chat-scroll-runtime'
+import { useChatScrollRuntime } from './ui/use-chat-scroll-runtime'
 
 const CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX = 'PLEASE IMPLEMENT THIS PLAN:'
+
+function readPlanSlotContent(state: ChatRuntimePlanUiSlotState): string {
+  return state.content?.trim()
+    || state.explanation?.trim()
+    || state.steps.map(step => step.step).join('\n').trim()
+}
 
 interface ChatViewProps {
   sessionId: string | null
@@ -272,7 +286,6 @@ function ChatComposerSection({
   onQuickQuestion?: (question: string) => void
   onComposerFocusChange?: (focused: boolean) => void
 }) {
-  const [composerDraft, setComposerDraft] = useState('')
   const [composerReplaceText, setComposerReplaceText] = useState<string | undefined>(undefined)
   const [composerReplaceTextKey, setComposerReplaceTextKey] = useState(0)
   const [dismissPlanSignal, setDismissPlanSignal] = useState(0)
@@ -284,17 +297,19 @@ function ChatComposerSection({
     }
   }, [planState])
 
-  const submitComposerMessage = useCallback<typeof composerRuntime.send>(async (...args) => {
+  const submitComposerMessage = useCallback(async (...args: Parameters<ChatComposerRuntime['send']>) => {
     const result = await composerRuntime.send(...args)
     dismissCurrentPlanSlot()
     return result
   }, [composerRuntime, dismissCurrentPlanSlot])
 
   const planSlotActions = useMemo<ComposerPlanSlotActions>(() => {
-    const sendPlanFollowUp = async (fallbackPrompt: string) => {
-      const prompt = composerDraft.trim() || fallbackPrompt
+    const sendPlanFollowUp = async (
+      prompt: string,
+      options?: { runtimeSettings?: SendMessageOptions['runtimeSettings'] },
+    ) => {
       try {
-        await submitComposerMessage(prompt, [], [])
+        await submitComposerMessage(prompt, [], [], options)
       }
       catch (error) {
         toastManager.add({
@@ -312,22 +327,28 @@ function ChatComposerSection({
     return {
       ...planActions,
       disabled: planActions?.disabled || composerRuntime.disabled || composerRuntime.isStreaming,
-      onImplement: state => planActions?.onImplement?.(state)
-        ?? sendPlanFollowUp(CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX),
+      onImplement: (state) => {
+        const handled = planActions?.onImplement?.(state)
+        if (handled !== undefined) {
+          return handled
+        }
+        runtimeSettings?.onChange({ interactionMode: 'default' })
+        return sendPlanFollowUp(CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX, {
+          runtimeSettings: { interactionMode: 'default' },
+        })
+      },
       onRefine: (state) => {
         const handled = planActions?.onRefine?.(state)
         if (handled !== undefined) {
           return handled
         }
-        const content = state.content?.trim()
-          || state.explanation?.trim()
-          || state.steps.map(step => step.step).join('\n')
+        const content = readPlanSlotContent(state)
         setComposerReplaceText(`${CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX}\n${content}`.trimEnd())
         setComposerReplaceTextKey(key => key + 1)
         return true
       },
     }
-  }, [composerDraft, composerRuntime.disabled, composerRuntime.isStreaming, planActions, submitComposerMessage])
+  }, [composerRuntime.disabled, composerRuntime.isStreaming, planActions, runtimeSettings, submitComposerMessage])
 
   return (
     <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 px-4">
@@ -385,13 +406,12 @@ function ChatComposerSection({
             searchFiles,
             searchPlugins,
             searchSkills,
-            textareaRows: 1,
+            textareaRows: 3,
             onFocusChange: onComposerFocusChange,
             sessionId,
             sessionTokens: composerRuntime.tokenUsage?.tokens,
             sessionContextWindow: composerRuntime.tokenUsage?.contextWindow,
             compactState: composerRuntime.compactState,
-            onDraftChange: setComposerDraft,
           }}
         />
       </div>

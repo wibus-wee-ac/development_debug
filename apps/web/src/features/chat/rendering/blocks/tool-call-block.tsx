@@ -13,15 +13,19 @@ import {
   GitBranchIcon,
   GlobeIcon,
   HelpCircleIcon,
+  ListChecksIcon,
   ListTodoIcon,
+  Maximize2Icon,
   NotebookTabsIcon,
   PanelTopIcon,
   ServerIcon,
   SquareTerminalIcon,
+  XIcon,
 } from 'lucide-react'
-import { m } from 'motion/react'
-import type { ComponentType, FocusEvent, KeyboardEvent, PointerEvent, ReactElement, ReactNode } from 'react'
-import { Activity, cloneElement, useEffect, useMemo, useState } from 'react'
+import { AnimatePresence, m } from 'motion/react'
+import type { ComponentType, FocusEvent, KeyboardEvent, MouseEvent, PointerEvent, ReactElement, ReactNode } from 'react'
+import { Activity, cloneElement, useEffect, useRef, useState } from 'react'
+import { createPortal } from 'react-dom'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
@@ -35,7 +39,7 @@ import { boundedPercent } from '~/lib/number-format'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 
-
+import { projectChatTodos, readTodoCompletion } from '../../capabilities/chat-todo-projection'
 import { readTerminalOutputSections } from '../terminal-tool-details'
 import type { RenderableToolPart, ToolPayload, ToolState, ToolUiDescriptor, ToolUiKind } from '../tool-ui-classifier'
 import {
@@ -44,7 +48,6 @@ import {
   readToolPayload,
 } from '../tool-ui-classifier'
 import { EditFileBlock } from './edit-file-block'
-import { projectChatTodos, readTodoCompletion } from '../../capabilities/chat-todo-projection'
 
 interface ToolCallBlockProps {
   toolName: string
@@ -79,6 +82,7 @@ const TOOL_ICON_MAP: Record<ToolUiKind, IconComponent> = {
   'task-control': ClockIcon,
   'todo': ListTodoIcon,
   'plan': PanelTopIcon,
+  'plan-implementation': ListChecksIcon,
   'question': HelpCircleIcon,
   'mcp': ServerIcon,
   'worktree': GitBranchIcon,
@@ -418,7 +422,7 @@ function PathList({ paths, emptyText = 'No paths returned' }: { paths: string[],
   )
 }
 
-function ToolHero({ descriptor, state, input, output, errorText }: { descriptor: ToolUiDescriptor, state: ToolState, input: ToolPayload, output: ToolPayload, errorText?: string }) {
+function ToolHero({ descriptor, state, input, output, errorText, toolCallId }: { descriptor: ToolUiDescriptor, state: ToolState, input: ToolPayload, output: ToolPayload, errorText?: string, toolCallId: string }) {
   switch (descriptor.kind) {
     case 'terminal':
       return <TerminalSummary errorText={errorText} />
@@ -436,8 +440,10 @@ function ToolHero({ descriptor, state, input, output, errorText }: { descriptor:
       return <SubagentSummary output={output} />
     case 'todo':
       return <TodoSummary input={input} output={output} />
+    case 'plan-implementation':
+      return <PlanImplementationSummary />
     case 'plan':
-      return <PlanSummary input={input} output={output} />
+      return <PlanSummary input={input} output={output} toolCallId={toolCallId} />
     case 'question':
       return <QuestionSummary output={output} />
     default:
@@ -672,18 +678,71 @@ function TodoSummary({ input, output }: { input: ToolPayload, output: ToolPayloa
   )
 }
 
-function PlanSummary({ input, output }: { input: ToolPayload, output: ToolPayload }) {
+function PlanImplementationSummary() {
+  return (
+    <div className="rounded-md bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground">
+      Plan implementation request recorded.
+    </div>
+  )
+}
+
+function PlanSummary({ input, output, toolCallId }: { input: ToolPayload, output: ToolPayload, toolCallId: string }) {
   const text = output.planContent ?? input.planContent ?? output.plan ?? input.plan ?? output.text ?? input.text ?? output.rawText ?? input.rawText
+  const openPlanDocumentTab = useBrowserPanelStore(s => s.openPlanDocumentTab)
+  const setBrowserPanelOpen = useLayoutStore(s => s.setBrowserPanelOpen)
+
   if (!text) {
     return null
   }
+
+  const openPlan = () => {
+    openPlanDocumentTab({ toolCallId, text })
+    setBrowserPanelOpen(true)
+  }
+
+  const handlePreviewClick = (event: MouseEvent<HTMLDivElement>) => {
+    const target = event.target instanceof HTMLElement ? event.target : null
+    if (target?.closest('a, button')) {
+      return
+    }
+    openPlan()
+  }
+
+  const handlePreviewKeyDown = (event: KeyboardEvent<HTMLDivElement>) => {
+    if (event.key === 'Enter' || event.key === ' ') {
+      event.preventDefault()
+      openPlan()
+    }
+  }
+
   return (
     <div
-      className="relative overflow-hidden rounded-md border border-border/70 bg-background/85"
+      className="group/plan relative overflow-hidden rounded-md border border-border/70 bg-background/85 shadow-xs transition-[border-color,box-shadow] duration-150 hover:border-border hover:shadow-sm"
       data-testid="chat-plan-document"
+      role="button"
+      tabIndex={0}
+      aria-label="Open plan document"
+      onClick={handlePreviewClick}
+      onKeyDown={handlePreviewKeyDown}
     >
+      <div className="flex h-8 items-center justify-between border-b border-border/60 px-3">
+        <div className="flex min-w-0 items-center gap-2">
+          <PanelTopIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+          <span className="min-w-0 truncate text-xs font-medium text-foreground/80">Plan document</span>
+        </div>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-xs"
+          className="size-6 shrink-0 text-muted-foreground/70 opacity-70 transition-[opacity,scale] duration-150 hover:text-foreground group-hover/plan:opacity-100 active:scale-[0.96]"
+          aria-label="Open plan document in panel"
+          onClick={openPlan}
+        >
+          <Maximize2Icon className="size-3" aria-hidden="true" />
+        </Button>
+      </div>
       <div
-        className="streamdown-root max-h-80 overflow-y-auto px-3 py-3 text-xs leading-relaxed"
+        className="streamdown-root max-h-64 overflow-y-auto px-3 py-3 text-xs leading-relaxed"
         style={{
           maskImage: 'linear-gradient(to bottom, transparent, black 18px, black calc(100% - 24px), transparent)',
         }}
@@ -1061,6 +1120,8 @@ function hasHeroContent(descriptor: ToolUiDescriptor, input: ToolPayload, output
       return !!(output.status || output.contentBlocks.length > 0)
     case 'todo':
       return projectChatTodos(input, output).length > 0 || output.rawText !== null || input.rawText !== null
+    case 'plan-implementation':
+      return true
     case 'plan':
       return !!(output.planContent ?? input.planContent ?? output.plan ?? input.plan ?? output.text ?? input.text ?? output.rawText ?? input.rawText)
     default:
@@ -1072,9 +1133,9 @@ function hasHeroContent(descriptor: ToolUiDescriptor, input: ToolPayload, output
 }
 
 export function ToolCallBlock({ toolName, toolCallId, state, animated = true, approval, argumentsText, input, output, errorText, workspaceDiffTarget, onApprovalResponse, onUserInputSubmit, children }: ToolCallBlockProps) {
-  const inputPayload = useMemo(() => readToolInputPayload(input, argumentsText), [argumentsText, input])
-  const outputPayload = useMemo(() => readToolPayload(output), [output])
-  const descriptor = useMemo(() => {
+  const inputPayload = readToolInputPayload(input, argumentsText)
+  const outputPayload = readToolPayload(output)
+  const descriptor = (() => {
     const part: RenderableToolPart = {
       type: 'dynamic-tool',
       toolName,
@@ -1086,7 +1147,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
       errorText,
     }
     return describeToolCall(part)
-  }, [argumentsText, errorText, input, output, state, toolCallId, toolName])
+  })()
 
   const hasTerminalPanel = descriptor.kind === 'terminal' && (
     inputPayload.command !== null
@@ -1111,7 +1172,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
   const Icon = TOOL_ICON_MAP[descriptor.kind]
   const running = isRunning(state)
   const errored = isError(state)
-  const planImplementationApproval = descriptor.toolName === 'plan_implementation' && state === 'approval-requested'
+  const planImplementationApproval = descriptor.kind === 'plan-implementation' && state === 'approval-requested'
   const retainNestedActivity = descriptor.kind === 'subagent' && hasChildren
   const pendingQuestions = descriptor.kind === 'question' && state === 'input-available'
     ? readRuntimeQuestions(inputPayload.questions)
@@ -1299,7 +1360,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
 
         {(!(hasTerminalPanel || hasDiffPanel) || !expanded) && hasHeroContent(descriptor, inputPayload, outputPayload, errorText) && (
           <div className="px-3 pb-3">
-            <ToolHero descriptor={descriptor} state={state} input={inputPayload} output={outputPayload} errorText={errorText} />
+            <ToolHero descriptor={descriptor} state={state} input={inputPayload} output={outputPayload} errorText={errorText} toolCallId={toolCallId} />
           </div>
         )}
 

@@ -237,9 +237,10 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
   const [selection, setSelection] = useState({ activeIndex: 0, query })
   const listRef = useRef<HTMLMenuElement>(null)
 
-  const results = useMemo(() => {
-    return getSlashCommandPanelItems(commands, query).slice(0, MAX_RESULTS).map(item => ({ item }))
-  }, [commands, query])
+  const results = useMemo(
+    () => getSlashCommandPanelItems(commands, query).slice(0, MAX_RESULTS).map(item => ({ item })),
+    [commands, query],
+  )
 
   const effectiveActiveIndex
     = results.length === 0
@@ -323,12 +324,12 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
           return (
             <li key={formatCommandKey(item, idx)}>
               <button
-              type="button"
-              id={formatSlashCommandOptionId(item, idx)}
-              aria-label={`${readCommandTitle(item)} ${getSlashCommandSourceLabel(item)}`}
-              data-active={formatSlashCommandOptionId(item, idx) === activeOptionId}
-              disabled={!isAvailable}
-              className={cn(
+                type="button"
+                id={formatSlashCommandOptionId(item, idx)}
+                aria-label={`${readCommandTitle(item)} ${getSlashCommandSourceLabel(item)}`}
+                data-active={formatSlashCommandOptionId(item, idx) === activeOptionId}
+                disabled={!isAvailable}
+                className={cn(
                 'flex w-full items-start gap-2.5 rounded-lg px-2.5 py-1 text-left',
                 isAvailable
                   ? idx === effectiveActiveIndex
@@ -336,10 +337,10 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
                     : 'text-foreground/80 hover:bg-accent/40'
                   : 'cursor-not-allowed text-muted-foreground/45 opacity-75',
               )}
-              onMouseEnter={() => setSelection({ activeIndex: idx, query })}
-              onFocus={() => setSelection({ activeIndex: idx, query })}
-              onClick={() => handleOptionClick(item)}
-            >
+                onMouseEnter={() => setSelection({ activeIndex: idx, query })}
+                onFocus={() => setSelection({ activeIndex: idx, query })}
+                onClick={() => handleOptionClick(item)}
+              >
               <SlashCommandIcon command={item} />
               <span className="flex min-w-0 flex-1 flex-row items-center gap-1.5">
                 <span className="flex shrink-0 items-baseline gap-1.5">

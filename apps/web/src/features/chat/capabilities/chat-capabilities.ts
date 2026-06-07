@@ -1,5 +1,5 @@
-import { getServerUrl } from '~/lib/electron'
 import type { GetChatSessionsBySessionIdContextUsageResponse } from '~/api-gen/types.gen'
+import { getServerUrl } from '~/lib/electron'
 
 const SERVER_BASE = getServerUrl()
 

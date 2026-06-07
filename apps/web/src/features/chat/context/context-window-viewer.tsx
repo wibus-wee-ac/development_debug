@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { GaugeIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { useMemo } from 'react'
 
 import { cn } from '~/lib/cn'
 import { clampPercent, formatTokenCount } from '~/lib/number-format'
@@ -69,8 +68,8 @@ export function ContextWindowViewer({
     retry: false,
   })
   const usage = data?.usage ?? null
-  const aggregate = useMemo(() => readContextAggregate(usage, compactState), [compactState, usage])
-  const sections = useMemo(() => readContextSections(usage), [usage])
+  const aggregate = readContextAggregate(usage, compactState)
+  const sections = readContextSections(usage)
 
   if (!sessionId) {
     return null

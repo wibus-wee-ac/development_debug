@@ -2,17 +2,18 @@ import type { FileUIPart } from 'ai'
 import { SettingsIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import type { ReactNode } from 'react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { getSkills } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
+import { toastManager } from '~/components/ui/toast'
 import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import type { SkillInventoryEntry } from '~/features/skills/types'
 import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { cn } from '~/lib/cn'
-import { getServerUrl } from '~/lib/electron'
+import { getServerUrl, isElectron, platform } from '~/lib/electron'
 import { useNewChatStore } from '~/store/new-chat'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
@@ -25,12 +26,13 @@ import { searchPluginMentions } from '../mentions/plugin-mentions'
 import type { SkillMentionItem } from '../mentions/skill-mention-panel'
 import { RuntimeSettingsControl } from '../runtime/runtime-settings-control'
 import type { ChatComposerSlashCommand } from '../slash-commands/chat-slash-commands'
-import { CODEX_REVIEW_SLASH_ACTION_ID } from '../slash-commands/chat-slash-commands'
+import { CODEX_REVIEW_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_COMMAND, withSlashCommandAvailability } from '../slash-commands/chat-slash-commands'
 import { useRuntimeComposerSlashCommands } from '../slash-commands/use-runtime-composer-slash-commands'
 import { Composer } from './composer'
-import type { ComposerSlashCommandActionResult } from './composer-action-context'
+import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer-action-context'
 import { modelSupportsAttachments } from './composer-attachment-state'
 import { ComposerSlotStates } from './composer-slot-states'
+import { useComposerAppshotCapture } from './use-composer-appshot-capture'
 
 type ChatThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh'
 
@@ -109,15 +111,38 @@ export function DraftChatComposer({
   const openSettings = useSettingsOverlayStore(s => s.openSettings)
   const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
 
-  const placeholderHints = useMemo(() => PLACEHOLDER_HINT_KEYS.map(key => t(key)), [t])
+  const placeholderHints = PLACEHOLDER_HINT_KEYS.map(key => t(key))
   const placeholder = useRotatingPlaceholder(placeholderHints, active)
-  const supportsAttachments = useMemo(() => modelSupportsAttachments(effectiveModel), [effectiveModel])
-  const slashCommands = useRuntimeComposerSlashCommands(selection.runtimeKind)
+  const supportsAttachments = modelSupportsAttachments(effectiveModel)
+  const appshotRuntime = useComposerAppshotCapture({
+    active,
+    supportsAttachments,
+  })
+  const cradleSlashCommands = (() => {
+    const appshotCommand = (() => {
+      if (!isElectron || platform !== 'darwin') {
+        return withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, {
+          enabled: false,
+          reason: 'Requires the macOS desktop app.',
+        })
+      }
+      if (!supportsAttachments) {
+        return withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, {
+          enabled: false,
+          reason: 'Requires an image-capable model.',
+        })
+      }
+      return withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, undefined)
+    })()
+
+    return [appshotCommand]
+  })()
+  const slashCommands = useRuntimeComposerSlashCommands(selection.runtimeKind, cradleSlashCommands)
   const sendDisabled = selection.runtimeKind === 'cli-tui'
     ? !effectiveAgent || sending
     : !effectiveProfile || sending
 
-  const readinessNotice = useMemo(() => {
+  const readinessNotice = (() => {
     if (
       composerState.isLoadingAgents
       || composerState.isLoadingProfiles
@@ -144,24 +169,16 @@ export function DraftChatComposer({
       }
     }
     return null
-  }, [
-    composerState.isLoadingAgents,
-    composerState.isLoadingModels,
-    composerState.isLoadingProfiles,
-    effectiveAgent,
-    effectiveProfile,
-    selection.runtimeKind,
-    t,
-  ])
+  })()
 
-  const searchFiles = useCallback(async (query: string, signal?: AbortSignal): Promise<MentionItem[]> => {
+  const searchFiles = async (query: string, signal?: AbortSignal): Promise<MentionItem[]> => {
     if (!workspaceId) {
       return []
     }
     return searchWorkspaceFiles({ workspaceId, query, limit: 30, signal })
-  }, [workspaceId])
+  }
 
-  const searchSkills = useCallback(async (_query: string, signal?: AbortSignal): Promise<SkillMentionItem[]> => {
+  const searchSkills = async (_query: string, signal?: AbortSignal): Promise<SkillMentionItem[]> => {
     const { data } = await getSkills({
       query: {
         workspaceId: workspaceId ?? undefined,
@@ -182,9 +199,9 @@ export function DraftChatComposer({
       })
     }
     return activeSkills
-  }, [effectiveAgent?.id, workspaceId])
+  }
 
-  const openSettingsSection = useCallback((section: string) => {
+  const openSettingsSection = (section: string) => {
     const tabStore = useCradleTabStore.getState()
     const activeTabId = tabStore.activeTabId && tabStore.tabs.some(tab => tab.id === tabStore.activeTabId)
       ? tabStore.activeTabId
@@ -194,16 +211,16 @@ export function DraftChatComposer({
     }
     setSettingsSection(section)
     openSettings(activeTabId)
-  }, [openSettings, setSettingsSection])
+  }
 
-  const updateRuntimeSettings = useCallback((patch: Partial<ChatRuntimeSettings>) => {
+  const updateRuntimeSettings = (patch: Partial<ChatRuntimeSettings>) => {
     setRuntimeSettings({
       ...runtimeSettings,
       ...patch,
     })
-  }, [runtimeSettings, setRuntimeSettings])
+  }
 
-  const toolbar = useMemo(() => (
+  const toolbar = (
     <div className="flex min-w-0 items-center gap-1">
       <RuntimeSettingsControl
         settings={runtimeSettings}
@@ -213,9 +230,9 @@ export function DraftChatComposer({
       />
       <ComposerToolbar context="new-chat" state={composerState} />
     </div>
-  ), [composerState, runtimeSettings, sending, updateRuntimeSettings])
+  )
 
-  const handleSendWithTarget = useCallback(async (
+  const handleSendWithTarget = async (
     sendTarget: DraftChatComposerSendHandler,
     text: string,
     files: FileUIPart[],
@@ -253,31 +270,68 @@ export function DraftChatComposer({
     finally {
       setSending(false)
     }
-  }, [effectiveAgent, effectiveModel, effectiveProfile, runtimeSettings, selection.modelId, selection.runtimeKind, selection.thinkingEffort, sending])
+  }
 
-  const handleSend = useCallback((text: string, files: FileUIPart[], contextParts: ChatContextPart[]) => {
+  const handleSend = (text: string, files: FileUIPart[], contextParts: ChatContextPart[]) => {
     return handleSendWithTarget(onSend, text, files, contextParts)
-  }, [handleSendWithTarget, onSend])
+  }
 
-  const handleSendInNewWindow = useCallback((text: string, files: FileUIPart[], contextParts: ChatContextPart[]) => {
+  const handleSendInNewWindow = (text: string, files: FileUIPart[], contextParts: ChatContextPart[]) => {
     return onSendInNewWindow
       ? handleSendWithTarget(onSendInNewWindow, text, files, contextParts)
       : handleSend(text, files, contextParts)
-  }, [handleSend, handleSendWithTarget, onSendInNewWindow])
+  }
 
-  const handleSlashCommandAction = useCallback((command: ChatComposerSlashCommand): ComposerSlashCommandActionResult | void => {
-    if (command.action.kind !== 'uiAction' || command.action.actionId !== CODEX_REVIEW_SLASH_ACTION_ID) {
+  const handleSlashCommandAction = async (
+    command: ChatComposerSlashCommand,
+    _context: ComposerSlashCommandActionContext,
+    tools?: ComposerSlashCommandActionTools,
+  ): Promise<ComposerSlashCommandActionResult | void> => {
+    if (command.action.kind !== 'uiAction') {
       return
     }
-    setReviewModeOpen(true)
-    return { insertText: '' }
-  }, [])
+    if (command.action.actionId === CODEX_REVIEW_SLASH_ACTION_ID) {
+      setReviewModeOpen(true)
+      return { insertText: '' }
+    }
+    if (command.action.actionId !== CRADLE_APPSHOT_SLASH_ACTION_ID) {
+      return
+    }
+    if (!appshotRuntime.hasNativeCapture) {
+      toastManager.add({
+        type: 'error',
+        title: 'Appshot is unavailable',
+        description: 'Appshot capture requires the Electron desktop app.',
+      })
+      return
+    }
+    if (!supportsAttachments) {
+      toastManager.add({
+        type: 'error',
+        title: 'Appshot attachment is unavailable',
+        description: 'The selected model does not accept image attachments.',
+      })
+      return
+    }
 
-  const submitCodexReviewPrompt = useCallback((prompt: string) => {
+    try {
+      await appshotRuntime.capture({ tools })
+      return { insertText: '' }
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: 'Appshot capture failed',
+        description: error instanceof Error ? error.message : 'Unknown Appshot capture error.',
+      })
+    }
+  }
+
+  const submitCodexReviewPrompt = (prompt: string) => {
     void handleSend(prompt, [], [])
-  }, [handleSend])
+  }
 
-  const resolveCodexReviewMergeBase = useCallback(async (baseBranch: string) => {
+  const resolveCodexReviewMergeBase = async (baseBranch: string) => {
     if (!workspaceId) {
       return null
     }
@@ -289,15 +343,15 @@ export function DraftChatComposer({
     }
     const payload = await response.json() as { mergeBaseSha?: unknown }
     return typeof payload.mergeBaseSha === 'string' ? payload.mergeBaseSha : null
-  }, [workspaceId])
+  }
 
-  const reviewSlot = useMemo(() => ({
+  const reviewSlot = ({
     open: reviewModeOpen,
     workspaceId,
     onDismiss: () => setReviewModeOpen(false),
     onSubmitPrompt: submitCodexReviewPrompt,
     resolveMergeBase: resolveCodexReviewMergeBase,
-  }), [resolveCodexReviewMergeBase, reviewModeOpen, submitCodexReviewPrompt, workspaceId])
+  })
 
   return (
     <>
@@ -320,6 +374,10 @@ export function DraftChatComposer({
         }}
         attachments={{
           supportsAttachments,
+          appendFileParts: appshotRuntime.externalFileParts,
+          appendFilePartsKey: appshotRuntime.externalFilePartsKey,
+          pendingAppshots: appshotRuntime.pendingAppshots,
+          onActionTargetElementChange: appshotRuntime.setActionTargetElement,
         }}
         runtimeSettings={{
           settings: runtimeSettings,

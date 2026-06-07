@@ -1,5 +1,5 @@
 import type { FileUIPart } from 'ai'
-import { LoaderCircleIcon, SendHorizonalIcon, SquareIcon, SquareTerminalIcon } from 'lucide-react'
+import { LoaderCircleIcon, RouteIcon, SendHorizonalIcon, SquareIcon, SquareTerminalIcon } from 'lucide-react'
 import type { ChangeEvent } from 'react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 
@@ -15,12 +15,23 @@ import type { ChatRuntimeCompactUiSlotState } from '../capabilities/chat-capabil
 import { readBangCommand } from '../commands/bang-command'
 import type { ChatRuntimeSettings, ChatRuntimeSettingsPatch } from '../commands/chat-response-command'
 import type { ChatContextPart } from '../context/chat-context-parts'
+import { ContextUsageDetailPanel } from '../context/context-usage-detail-panel'
 import type { MentionItem, MentionPickerItem, PluginMentionItem } from '../mentions/mention-panel'
 import { MentionPanel } from '../mentions/mention-panel'
 import type { SkillMentionItem } from '../mentions/skill-mention-panel'
 import { SkillMentionPanel } from '../mentions/skill-mention-panel'
 import type { SendMessageResult } from '../session/use-chat-session'
 import type { ChatComposerSlashCommand } from '../slash-commands/chat-slash-commands'
+import {
+  CHAT_SLASH_COMMAND_LISTBOX_ID,
+  getActiveSlashCommand,
+  getSlashCommandPanelItems,
+  getSlashCommandPrefix,
+  getVisibleSlashCommands,
+  isSlashCommandAwaitingRequiredArgument,
+  replaceSlashTrigger,
+} from '../slash-commands/slash-command-input'
+import { SlashCommandPanel } from '../slash-commands/slash-command-panel'
 import type {
   ComposerActionContextOptions,
   ComposerSlashCommandActionContext,
@@ -36,19 +47,8 @@ import {
   ComposerAttachmentInput,
   ComposerAttachmentList,
 } from './composer-attachments'
-import { ContextUsageDetailPanel } from '../context/context-usage-detail-panel'
 import type { PromptEditorController, PromptEditorSnapshot, PromptEditorTriggerRange } from './prompt-editor'
 import { PromptEditor } from './prompt-editor'
-import {
-  CHAT_SLASH_COMMAND_LISTBOX_ID,
-  getActiveSlashCommand,
-  getSlashCommandPanelItems,
-  getSlashCommandPrefix,
-  getVisibleSlashCommands,
-  isSlashCommandAwaitingRequiredArgument,
-  replaceSlashTrigger,
-} from '../slash-commands/slash-command-input'
-import { SlashCommandPanel } from '../slash-commands/slash-command-panel'
 
 type ComposerSendResult = SendMessageResult | boolean
 
@@ -333,10 +333,82 @@ const INITIAL_COMPOSER_STATE: ComposerState = {
   selectedSlashCommand: null,
 }
 
+function areStringArraysEqual(left: readonly string[], right: readonly string[]): boolean {
+  return left.length === right.length && left.every((value, index) => value === right[index])
+}
+
+function areContextPartsEqual(left: ChatContextPart[], right: ChatContextPart[]): boolean {
+  if (left === right) {
+    return true
+  }
+  if (left.length !== right.length) {
+    return false
+  }
+
+  return left.every((leftPart, index) => {
+    const rightPart = right[index]
+    if (!rightPart || leftPart.type !== rightPart.type || leftPart.position !== rightPart.position) {
+      return false
+    }
+
+    if (leftPart.type === 'data-cradle-skill') {
+      return rightPart.type === 'data-cradle-skill'
+        && leftPart.name === rightPart.name
+        && leftPart.path === rightPart.path
+        && leftPart.scope === rightPart.scope
+        && leftPart.description === rightPart.description
+    }
+
+    if (rightPart.type !== 'data-cradle-plugin') {
+      return false
+    }
+
+    const leftNativeMention = leftPart.nativeMention ?? null
+    const rightNativeMention = rightPart.nativeMention ?? null
+    const nativeMentionEqual = leftNativeMention === rightNativeMention
+      || (
+        leftNativeMention !== null
+        && rightNativeMention !== null
+        && leftNativeMention.name === rightNativeMention.name
+        && leftNativeMention.path === rightNativeMention.path
+      )
+
+    return nativeMentionEqual
+      && leftPart.provider === rightPart.provider
+      && leftPart.pluginName === rightPart.pluginName
+      && leftPart.displayName === rightPart.displayName
+      && leftPart.description === rightPart.description
+      && leftPart.iconUrl === rightPart.iconUrl
+      && leftPart.routeSegment === rightPart.routeSegment
+      && areStringArraysEqual(leftPart.mcpServers, rightPart.mcpServers)
+      && leftPart.capabilities.length === rightPart.capabilities.length
+      && leftPart.capabilities.every((capability, capabilityIndex) => {
+        const rightCapability = rightPart.capabilities[capabilityIndex]
+        return Boolean(rightCapability)
+          && capability.id === rightCapability.id
+          && capability.type === rightCapability.type
+          && capability.layer === rightCapability.layer
+          && capability.label === rightCapability.label
+      })
+  })
+}
+
+function areComposerStatesEqual(left: ComposerState, right: ComposerState): boolean {
+  return left.inputValue === right.inputValue
+    && left.mentionActive === right.mentionActive
+    && left.mentionQuery === right.mentionQuery
+    && left.slashActive === right.slashActive
+    && left.slashQuery === right.slashQuery
+    && left.skillActive === right.skillActive
+    && left.skillQuery === right.skillQuery
+    && left.selectedSlashCommand === right.selectedSlashCommand
+    && areContextPartsEqual(left.contextParts, right.contextParts)
+}
+
 function composerReducer(state: ComposerState, action: ComposerAction): ComposerState {
   switch (action.type) {
     case 'input/changed':
-      return action.state
+      return areComposerStatesEqual(state, action.state) ? state : action.state
     case 'input/cleared':
       return { ...INITIAL_COMPOSER_STATE }
     case 'mention/closed':
@@ -457,24 +529,35 @@ function TokenProgress({
   )
 }
 
-function ComposerSendIcon({ isBangMode, isSending }: { isBangMode?: boolean, isSending?: boolean }) {
+function ComposerSendIcon({
+  isBangMode,
+  isPlanMode,
+  isSending,
+}: {
+  isBangMode?: boolean
+  isPlanMode?: boolean
+  isSending?: boolean
+}) {
   if (isSending) {
     return <LoaderCircleIcon className="size-3 animate-spin" aria-hidden="true" />
   }
 
+  const iconClassName = (active: boolean) => cn(
+    'absolute inset-0 size-3.5 transition-[opacity,transform,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none',
+    active ? 'scale-100 opacity-100 blur-0' : 'scale-[0.25] opacity-0 blur-[4px]',
+  )
+  const showPlanIcon = Boolean(!isBangMode && isPlanMode)
+
   return (
     <span className="relative size-3.5" aria-hidden="true">
       <SendHorizonalIcon
-        className={cn(
-          'absolute inset-0 size-3.5 transition-[opacity,transform,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none',
-          isBangMode ? 'scale-[0.25] opacity-0 blur-[4px]' : 'scale-100 opacity-100 blur-0',
-        )}
+        className={iconClassName(!isBangMode && !isPlanMode)}
+      />
+      <RouteIcon
+        className={iconClassName(showPlanIcon)}
       />
       <SquareTerminalIcon
-        className={cn(
-          'absolute inset-0 size-3.5 transition-[opacity,transform,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none',
-          isBangMode ? 'scale-100 opacity-100 blur-0' : 'scale-[0.25] opacity-0 blur-[4px]',
-        )}
+        className={iconClassName(Boolean(isBangMode))}
       />
     </span>
   )
@@ -488,6 +571,7 @@ function ComposerActions({
   disabled,
   hasDraft,
   isBangMode,
+  isPlanMode,
   isSending,
   isStreaming,
   onSend,
@@ -512,6 +596,7 @@ function ComposerActions({
   disabled?: boolean
   hasDraft: boolean
   isBangMode?: boolean
+  isPlanMode?: boolean
   isSending?: boolean
   isStreaming?: boolean
   onSend: () => void
@@ -529,6 +614,27 @@ function ComposerActions({
   compactState?: ChatRuntimeCompactUiSlotState | null
   sendButtonAriaLabel?: string
 }) {
+  const isPlanSendMode = Boolean(isPlanMode && !isBangMode)
+  const sendButtonSize = isPlanSendMode ? 'xs' : 'icon-xs'
+  const sendButtonLabel = isBangMode
+    ? 'Run shell command'
+    : isPlanSendMode
+      ? 'Send planning request'
+      : sendButtonAriaLabel
+  const continuationButtonLabel = isBangMode
+    ? 'Run shell command'
+    : isPlanSendMode
+      ? 'Send planning continuation'
+      : (sendButtonAriaLabel ?? 'Send continuation')
+  const sendButtonChrome = cn(
+    sendButtonClassName,
+    isPlanSendMode && [
+      'min-w-14 gap-1 bg-amber-500 px-2 text-amber-950 hover:bg-amber-400',
+      'focus-visible:border-amber-600 focus-visible:ring-amber-500/35',
+      'dark:bg-amber-400 dark:text-amber-950 dark:hover:bg-amber-300',
+    ],
+  )
+
   return (
     <div className={cn('flex items-center gap-1', actionsClassName)}>
       {contextBar}
@@ -551,14 +657,15 @@ function ComposerActions({
       {isStreaming && hasDraft && (
         <Button
           variant="outline"
-          size="icon-xs"
+          size={sendButtonSize}
           disabled={disabled || sendDisabled || sendBlocked}
           onClick={() => onSend()}
-          aria-label={sendButtonAriaLabel ?? (isBangMode ? 'Run shell command' : 'Send continuation')}
-          className={sendButtonClassName}
+          aria-label={continuationButtonLabel}
+          className={sendButtonChrome}
           data-testid={sendButtonTestId}
         >
-          <ComposerSendIcon isBangMode={isBangMode} isSending={isSending} />
+          <ComposerSendIcon isBangMode={isBangMode} isPlanMode={isPlanMode} isSending={isSending} />
+          {isPlanSendMode && <span className="text-[11px] font-semibold">Plan</span>}
         </Button>
       )}
       {isStreaming
@@ -577,14 +684,15 @@ function ComposerActions({
         : (
             <Button
               variant="default"
-              size="icon-xs"
+              size={sendButtonSize}
               disabled={disabled || sendDisabled || sendBlocked || !hasDraft}
               onClick={() => onSend()}
-              aria-label={sendButtonAriaLabel ?? (isBangMode ? 'Run shell command' : 'Send message')}
-              className={sendButtonClassName}
+              aria-label={sendButtonLabel ?? 'Send message'}
+              className={sendButtonChrome}
               data-testid={sendButtonTestId}
             >
-              <ComposerSendIcon isBangMode={isBangMode} isSending={isSending} />
+              <ComposerSendIcon isBangMode={isBangMode} isPlanMode={isPlanMode} isSending={isSending} />
+              {isPlanSendMode && <span className="text-[11px] font-semibold">Plan</span>}
             </Button>
           )}
     </div>
@@ -656,11 +764,15 @@ export function Composer({
     sendButtonAriaLabel,
   } = accessibility ?? {}
   const [state, dispatch] = useReducer(composerReducer, INITIAL_COMPOSER_STATE)
+  const stateRef = useRef(state)
+  stateRef.current = state
   const [activeSlashOptionId, setActiveSlashOptionId] = useState<string | undefined>(undefined)
   const attachmentController = useComposerAttachments({ supportsAttachments })
   const composerAttachments = attachmentController.attachments
   const appendComposerFileParts = attachmentController.appendFileParts
   const clearComposerAttachments = attachmentController.clearAttachments
+  const handleAttachmentFilesSelected = attachmentController.handleFilesSelected
+  const handleAttachmentPaste = attachmentController.handlePaste
   const promptEditorRef = useRef<PromptEditorController>(null)
   const actionTargetRef = useRef<HTMLDivElement>(null)
   const setActionTargetElement = useCallback((element: HTMLDivElement | null) => {
@@ -722,13 +834,15 @@ export function Composer({
     ? undefined
     : textareaRowsClasses[textareaRows] ?? textareaRowsClasses[3]
   const runtimeInteractionMode = runtimeSettings?.settings.interactionMode
+  const isPlanMode = runtimeInteractionMode === 'plan'
   const runtimeSettingsDisabled = runtimeSettings?.disabled ?? false
   const onRuntimeSettingsChange = runtimeSettings?.onChange
 
   const handleEditorChange = useCallback((snapshot: PromptEditorSnapshot) => {
+    const currentState = stateRef.current
     const selectedSlashCommand = snapshot.trigger?.kind === 'slash'
       ? snapshot.trigger.selectedCommand
-      : getActiveSlashCommand(snapshot.text, state.selectedSlashCommand, visibleSlashCommands)
+      : getActiveSlashCommand(snapshot.text, currentState.selectedSlashCommand, visibleSlashCommands)
 
     mentionRangeRef.current = snapshot.trigger?.kind === 'file' ? snapshot.trigger.range : null
     slashRangeRef.current = snapshot.trigger?.kind === 'slash' ? snapshot.trigger.range : null
@@ -737,7 +851,7 @@ export function Composer({
     dispatch({
       type: 'input/changed',
       state: {
-        ...state,
+        ...currentState,
         inputValue: snapshot.text,
         contextParts: snapshot.contextParts,
         mentionActive: snapshot.trigger?.kind === 'file',
@@ -749,7 +863,7 @@ export function Composer({
         selectedSlashCommand,
       },
     })
-  }, [state, visibleSlashCommands])
+  }, [visibleSlashCommands])
 
   const handleMentionSelect = useCallback((item: MentionPickerItem) => {
     const range = mentionRangeRef.current
@@ -783,11 +897,12 @@ export function Composer({
   }, [])
 
   const handleSlashCommandSelect = useCallback((command: ChatComposerSlashCommand) => {
-    const range = slashRangeRef.current ?? { from: 1, to: Math.max(1, state.inputValue.length + 1) }
-    const inputSnapshot = state.inputValue
+    const currentState = stateRef.current
+    const range = slashRangeRef.current ?? { from: 1, to: Math.max(1, currentState.inputValue.length + 1) }
+    const inputSnapshot = currentState.inputValue
 
     if (command.action.kind === 'uiAction') {
-      dispatch({ type: 'slash/selected', inputValue: state.inputValue, command: null })
+      dispatch({ type: 'slash/selected', inputValue: currentState.inputValue, command: null })
       void (async () => {
         if (!onSlashCommandAction) {
           return
@@ -817,13 +932,13 @@ export function Composer({
 
     if (command.action.kind === 'submitText') {
       const submitText = command.action.text
-      const hasComposerPayload = composerAttachments.length > 0 || state.contextParts.length > 0
+      const hasComposerPayload = composerAttachments.length > 0 || currentState.contextParts.length > 0
       if (disabled || isSending || sendDisabled || (command.action.requiresEmptyComposer && hasComposerPayload)) {
         requestAnimationFrame(() => promptEditorRef.current?.focus())
         return
       }
 
-      dispatch({ type: 'slash/selected', inputValue: state.inputValue, command: null })
+      dispatch({ type: 'slash/selected', inputValue: currentState.inputValue, command: null })
       submitAndClearDraft({
         appendFileParts: appendComposerFileParts,
         clearAttachments: clearComposerAttachments,
@@ -839,17 +954,27 @@ export function Composer({
     }
 
     const insertText = command.action.text
-    const next = replaceSlashTrigger(state.inputValue, range.to - 1, range.from - 1, insertText)
+    const next = replaceSlashTrigger(currentState.inputValue, range.to - 1, range.from - 1, insertText)
     dispatch({ type: 'slash/selected', inputValue: next.value, command })
     promptEditorRef.current?.replaceRangeWithText(range, insertText)
-  }, [appendComposerFileParts, clearComposerAttachments, composerAttachments.length, disabled, isSending, onSlashCommandAction, sendDisabled, state.contextParts.length, state.inputValue, submit])
+  }, [
+    appendComposerFileParts,
+    clearComposerAttachments,
+    composerAttachments,
+    disabled,
+    isSending,
+    onSlashCommandAction,
+    sendDisabled,
+    submit,
+  ])
 
   const handleSend = useCallback((
     options?: { invertContinuationMode?: boolean },
     submitHandler: ComposerSendHandler = submit,
   ) => {
-    const editorText = promptEditorRef.current?.getText() ?? state.inputValue
-    const contextParts = promptEditorRef.current?.getContextParts() ?? state.contextParts
+    const currentState = stateRef.current
+    const editorText = promptEditorRef.current?.getText() ?? currentState.inputValue
+    const contextParts = promptEditorRef.current?.getContextParts() ?? currentState.contextParts
     const text = editorText.trim()
     if (disabled || isSending || sendDisabled || sendBlocked) {
       return
@@ -880,7 +1005,18 @@ export function Composer({
       submit: submitHandler,
       text,
     })
-  }, [allowEmptySend, appendComposerFileParts, clearComposerAttachments, composerAttachments, disabled, isSending, onQuickQuestion, sendBlocked, sendDisabled, state.contextParts, state.inputValue, submit])
+  }, [
+    allowEmptySend,
+    appendComposerFileParts,
+    clearComposerAttachments,
+    composerAttachments,
+    disabled,
+    isSending,
+    onQuickQuestion,
+    sendBlocked,
+    sendDisabled,
+    submit,
+  ])
 
   const toggleRuntimeInteractionMode = useCallback(() => {
     if (!runtimeInteractionMode || runtimeSettingsDisabled || !onRuntimeSettingsChange) {
@@ -894,8 +1030,8 @@ export function Composer({
   }, [onRuntimeSettingsChange, runtimeInteractionMode, runtimeSettingsDisabled])
 
   const handlePaste = useCallback((event: ClipboardEvent) => {
-    attachmentController.handlePaste(event as unknown as React.ClipboardEvent<HTMLElement>)
-  }, [attachmentController])
+    handleAttachmentPaste(event as unknown as React.ClipboardEvent<HTMLElement>)
+  }, [handleAttachmentPaste])
 
   const handleKeyDown = useCallback((e: KeyboardEvent) => {
     // Don't interfere with IME composition (e.g. Chinese input)
@@ -912,7 +1048,10 @@ export function Composer({
     }
 
     // If a picker is active, let it handle Enter/Escape/arrows/Tab.
-    if (state.mentionActive || state.skillActive || (state.slashActive && slashPanelHasResults)) {
+    const currentState = stateRef.current
+    const currentSlashPanelHasResults = currentState.slashActive
+      && getSlashCommandPanelItems(visibleSlashCommands, currentState.slashQuery).length > 0
+    if (currentState.mentionActive || currentState.skillActive || currentSlashPanelHasResults) {
       if (['Enter', 'Escape', 'ArrowUp', 'ArrowDown', 'Tab'].includes(e.key)) {
         return
       }
@@ -932,7 +1071,7 @@ export function Composer({
       e.preventDefault()
       handleSend()
     }
-  }, [handleSend, slashPanelHasResults, state.mentionActive, state.skillActive, state.slashActive, submitInNewWindow, toggleRuntimeInteractionMode])
+  }, [handleSend, submitInNewWindow, toggleRuntimeInteractionMode, visibleSlashCommands])
 
   // Append externally-provided text (e.g. from DnD drop on parent container)
   useEffect(() => {
@@ -987,14 +1126,26 @@ export function Composer({
     if (isLocalMode() && event.dataTransfer?.files && event.dataTransfer.files.length > 0) {
       event.preventDefault()
       event.stopPropagation()
-      void attachmentController.handleFilesSelected({
+      void handleAttachmentFilesSelected({
         target: { files: event.dataTransfer.files, value: '' },
       } as ChangeEvent<HTMLInputElement>)
       return true
     }
 
     return false
-  }, [attachmentController])
+  }, [handleAttachmentFilesSelected])
+
+  const handleMentionClose = useCallback(() => {
+    dispatch({ type: 'mention/closed' })
+  }, [])
+
+  const handleSkillClose = useCallback(() => {
+    dispatch({ type: 'skill/closed' })
+  }, [])
+
+  const handleSlashClose = useCallback(() => {
+    dispatch({ type: 'slash/closed' })
+  }, [])
 
   return (
     <div className={cn('relative w-full', className)}>
@@ -1005,7 +1156,7 @@ export function Composer({
         searchItems={searchMentionItems}
         onSelect={handleMentionSelect}
         onTabComplete={handleMentionTabComplete}
-        onClose={() => dispatch({ type: 'mention/closed' })}
+        onClose={handleMentionClose}
         visible={state.mentionActive}
       />
       <SkillMentionPanel
@@ -1013,7 +1164,7 @@ export function Composer({
         query={state.skillQuery}
         searchItems={searchSkills}
         onSelect={handleSkillSelect}
-        onClose={() => dispatch({ type: 'skill/closed' })}
+        onClose={handleSkillClose}
         visible={state.skillActive}
       />
       <SlashCommandPanel
@@ -1022,7 +1173,7 @@ export function Composer({
         onActiveOptionIdChange={setActiveSlashOptionId}
         query={state.slashQuery}
         onSelect={handleSlashCommandSelect}
-        onClose={() => dispatch({ type: 'slash/closed' })}
+        onClose={handleSlashClose}
         visible={state.slashActive}
       />
 
@@ -1032,6 +1183,12 @@ export function Composer({
         className={cn(
           'rounded-xl bg-background shadow-md border border-border focus-within:ring-0 focus-within:border-ring/40 transition-[border-color,box-shadow] duration-150',
           cardClassName,
+          isPlanMode && [
+            'border-amber-400/70 shadow-[0_0_0_1px_rgba(251,191,36,0.18),0_18px_40px_-30px_rgba(245,158,11,0.72)]',
+            'focus-within:border-amber-400/90 focus-within:shadow-[0_0_0_1px_rgba(251,191,36,0.34),0_22px_44px_-32px_rgba(245,158,11,0.80)]',
+            'dark:border-amber-300/55 dark:shadow-[0_0_0_1px_rgba(252,211,77,0.16),0_18px_40px_-30px_rgba(251,191,36,0.48)]',
+            'dark:focus-within:border-amber-300/80 dark:focus-within:shadow-[0_0_0_1px_rgba(252,211,77,0.26),0_22px_44px_-32px_rgba(251,191,36,0.56)]',
+          ],
         )}
         data-testid={actionTargetTestId}
         data-composer-action-target
@@ -1049,7 +1206,7 @@ export function Composer({
               aria-hidden="true"
               className={cn(
                 'pointer-events-none absolute inset-0 overflow-hidden whitespace-pre-wrap break-words px-4 pt-3.5 pb-2 text-sm text-transparent',
-                textareaRowsClassName ?? 'min-h-16 max-h-60',
+                textareaRowsClassName ?? 'min-h-20 max-h-60',
               )}
               data-testid="slash-argument-hint"
             >
@@ -1085,7 +1242,12 @@ export function Composer({
         />
 
         {/* Action bar — subtle, blends with the card */}
-        <div className={cn('flex items-center justify-between gap-2 px-3 py-2', actionBarClassName)}>
+        <div
+          className={cn(
+            'flex items-center justify-between gap-2 px-3 py-2',
+            actionBarClassName,
+          )}
+        >
           {/* Left: custom toolbar from parent */}
           <div className={cn('min-w-0 flex-1', toolbarClassName)}>
             <div className="relative h-7 min-w-0 overflow-hidden">
@@ -1129,6 +1291,7 @@ export function Composer({
             disabled={effectiveDisabled}
             hasDraft={hasDraft}
             isBangMode={isBangMode}
+            isPlanMode={isPlanMode}
             isSending={isSending}
             isStreaming={isStreaming}
             attachmentController={attachmentController}

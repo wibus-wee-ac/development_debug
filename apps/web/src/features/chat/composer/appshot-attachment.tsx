@@ -1,4 +1,4 @@
-import { XIcon } from 'lucide-react'
+import { ImageIcon, Rows3Icon, XIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import { useState } from 'react'
@@ -19,6 +19,7 @@ const APPSHOT_CARD_WIDTH = 232
 const APPSHOT_THREAD_IMAGE_CANVAS_WIDTH = 256
 const APPSHOT_THREAD_IMAGE_INLINE_PADDING = 12
 const APPSHOT_FALLBACK_HEIGHT = 140
+const APPSHOT_COMPOSER_IDENTITY_HEIGHT = 21
 
 export function AppshotAttachmentCard({
   variant,
@@ -26,6 +27,7 @@ export function AppshotAttachmentCard({
   onRemove,
 }: AppshotAttachmentCardProps) {
   const title = metadata.windowTitle ?? metadata.appName ?? 'AppShot'
+  const appName = metadata.appName ?? 'AppShot'
   const accessibilityText = metadata.axTree.trim()
   const snapshotHeight = metadata.transitionSnapshotHeight ?? APPSHOT_FALLBACK_HEIGHT
   const composerImageDataUrl = metadata.transitionSnapshotDataUrl
@@ -60,7 +62,7 @@ export function AppshotAttachmentCard({
           onRemove ? 'hover:bg-muted/45' : 'hover:bg-muted/25',
           variant === 'thread' && 'rounded-2xl pb-2 pt-[10px]',
         )}
-        style={{ height: variant === 'composer' ? snapshotHeight : undefined }}
+        style={{ height: variant === 'composer' ? snapshotHeight + APPSHOT_COMPOSER_IDENTITY_HEIGHT : undefined }}
         role="button"
         tabIndex={0}
         aria-label={title}
@@ -75,7 +77,7 @@ export function AppshotAttachmentCard({
       >
         <AppshotImageFrame
           alt={title}
-          appIconDataUrl={variant === 'thread' ? metadata.appIconDataUrl : null}
+          appIconDataUrl={metadata.appIconDataUrl}
           imageDataUrl={variant === 'composer' ? composerImageDataUrl : metadata.imageDataUrl}
           imageHeight={APPSHOT_FALLBACK_HEIGHT}
           renderedImageHeight={variant === 'thread' ? threadImageHeight : snapshotHeight}
@@ -85,11 +87,14 @@ export function AppshotAttachmentCard({
           usesThreadTreatment={variant === 'thread'}
           onImageSize={setThreadImageSize}
         />
-        {variant === 'thread' && (
-          <div className="mt-1 h-[17px] w-full truncate text-center text-[13px] font-medium leading-[17px] text-foreground">
-            {title}
-          </div>
-        )}
+        <div
+          className={cn(
+            'mt-1 h-[17px] w-full truncate text-center font-medium leading-[17px] text-foreground',
+            variant === 'composer' ? 'px-2 text-[12px] text-muted-foreground' : 'text-[13px]',
+          )}
+        >
+          {variant === 'composer' ? appName : title}
+        </div>
         {onRemove && (
           <Button
             type="button"
@@ -107,23 +112,37 @@ export function AppshotAttachmentCard({
       </m.div>
       <Dialog open={previewOpen} onOpenChange={setPreviewOpen}>
         <DialogContent
-          className="grid h-[min(82vh,44rem)] w-[min(86vw,64rem)] max-w-full grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-[min(86vw,64rem)]"
+          className="grid h-[min(86vh,48rem)] w-[min(90vw,72rem)] max-w-full grid-rows-[auto_minmax(0,1fr)] gap-0 overflow-hidden p-0 sm:max-w-[min(90vw,72rem)]"
           showCloseButton
           data-testid="chat-appshot-preview-dialog"
         >
           <DialogHeader className="flex-row items-center justify-between gap-3 border-b border-border/60 px-4 py-3 pr-12">
             <DialogTitle className="min-w-0 truncate text-sm">{title}</DialogTitle>
-            {hasAccessibilityText && (
+            <div className="flex shrink-0 items-center gap-1 rounded-lg border border-border p-0.5">
               <Button
                 type="button"
-                variant="outline"
+                variant={previewMode === 'visual' ? 'secondary' : 'ghost'}
                 size="xs"
-                onClick={() => setPreviewMode(current => current === 'visual' ? 'text' : 'visual')}
+                onClick={() => setPreviewMode('visual')}
+                aria-pressed={previewMode === 'visual'}
+                data-testid="chat-appshot-preview-visual"
+              >
+                <ImageIcon className="size-3.5" aria-hidden="true" />
+                Screenshot
+              </Button>
+              <Button
+                type="button"
+                variant={previewMode === 'text' ? 'secondary' : 'ghost'}
+                size="xs"
+                onClick={() => setPreviewMode('text')}
+                disabled={!hasAccessibilityText}
+                aria-pressed={previewMode === 'text'}
                 data-testid="chat-appshot-preview-toggle"
               >
-                {previewMode === 'visual' ? 'View text' : 'Show screenshot'}
+                <Rows3Icon className="size-3.5" aria-hidden="true" />
+                AX Tree
               </Button>
-            )}
+            </div>
           </DialogHeader>
           {previewMode === 'text' && hasAccessibilityText
             ? (

@@ -59,6 +59,33 @@ export function MentionPanel({ items, query, searchItems, onSelect, onTabComplet
   const searchPanelItems = useCallback(async (searchQuery: string, signal?: AbortSignal) => {
     return searchItems ? (await searchItems(searchQuery, signal)).map(toMentionPanelItem) : []
   }, [searchItems])
+  const handleSelect = useCallback((item: MentionPanelItem) => {
+    onSelect(toMentionItem(item))
+  }, [onSelect])
+  const handleTabComplete = useMemo(() => {
+    if (!onTabComplete) {
+      return undefined
+    }
+    return (item: MentionPanelItem) => onTabComplete(toMentionItem(item))
+  }, [onTabComplete])
+  const readSectionLabel = useCallback((item: MentionPanelItem, previousItem: MentionPanelItem | null) => {
+    const section = mentionSection(item)
+    return previousItem && mentionSection(previousItem) === section ? null : section
+  }, [])
+  const readRankFields = useCallback((item: MentionPanelItem) => isPluginMentionItem(item)
+    ? [
+        { value: item.displayName, role: 'primary' as const },
+        { value: item.pluginName, role: 'path' as const },
+        { value: item.description ?? '', role: 'secondary' as const },
+      ]
+    : [
+        { value: item.name, role: 'primary' as const },
+        { value: item.path, role: 'path' as const },
+      ], [])
+  const renderMentionItem = useCallback(({ item, positions }: {
+    item: MentionPanelItem
+    positions: Set<number>
+  }) => <MentionPanelRow item={item} positions={positions} />, [])
 
   return (
     <>
@@ -67,27 +94,15 @@ export function MentionPanel({ items, query, searchItems, onSelect, onTabComplet
         items={panelItems}
         query={query}
         searchItems={searchItems ? searchPanelItems : undefined}
-        onSelect={item => onSelect(toMentionItem(item))}
-        onTabComplete={onTabComplete ? item => onTabComplete(toMentionItem(item)) : undefined}
+        onSelect={handleSelect}
+        onTabComplete={handleTabComplete}
         onClose={onClose}
         visible={visible}
         maxResults={MAX_RESULTS}
         emptyLogLabel="mentions"
-        sectionLabel={(item, previousItem) => {
-          const section = mentionSection(item)
-          return previousItem && mentionSection(previousItem) === section ? null : section
-        }}
-        rankFields={item => isPluginMentionItem(item)
-          ? [
-              { value: item.displayName, role: 'primary' },
-              { value: item.pluginName, role: 'path' },
-              { value: item.description ?? '', role: 'secondary' },
-            ]
-          : [
-              { value: item.name, role: 'primary' },
-              { value: item.path, role: 'path' },
-            ]}
-        renderItem={({ item, positions }) => <MentionPanelRow item={item} positions={positions} />}
+        sectionLabel={readSectionLabel}
+        rankFields={readRankFields}
+        renderItem={renderMentionItem}
       />
     </>
   )

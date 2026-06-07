@@ -1,7 +1,7 @@
 import type { UIMessage } from 'ai'
 import { ClipboardIcon, DownloadIcon, ImageDownIcon, LoaderCircleIcon, MessageCircleIcon } from 'lucide-react'
 import { domToPng } from 'modern-screenshot'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
@@ -144,19 +144,19 @@ export function ChatShareExport({ sessionId, disabled }: ChatShareExportProps) {
   const messageCount = useChatStore(chatSelectors.messageCount(sessionId ?? ''), (a, b) => a === b)
   const messages = useChatStore(open ? chatSelectors.messages(sessionId ?? '') : () => EMPTY_MESSAGES)
 
-  const exportMessages = useMemo(() => {
+  const exportMessages = (() => {
     if (scope === 'all') {
       return messages
     }
     return messages.filter(message => selectedMessageIds.has(message.id))
-  }, [messages, scope, selectedMessageIds])
+  })()
 
   const selectedCount = selectedMessageIds.size
   const canExport = exportMessages.length > 0 && !busyAction
   const selectedCountLabel = `${selectedCount} selected`
-  const exportTitle = useMemo(() => readExportTitle(exportMessages), [exportMessages])
+  const exportTitle = readExportTitle(exportMessages)
 
-  const toggleMessage = useCallback((messageId: string) => {
+  const toggleMessage = (messageId: string) => {
     setSelectedMessageIds((current) => {
       const next = new Set(current)
       if (next.has(messageId)) {
@@ -167,17 +167,17 @@ export function ChatShareExport({ sessionId, disabled }: ChatShareExportProps) {
       }
       return next
     })
-  }, [])
+  }
 
-  const selectAllMessages = useCallback(() => {
+  const selectAllMessages = () => {
     setSelectedMessageIds(new Set(messages.map(message => message.id)))
-  }, [messages])
+  }
 
-  const clearSelectedMessages = useCallback(() => {
+  const clearSelectedMessages = () => {
     setSelectedMessageIds(new Set())
-  }, [])
+  }
 
-  const renderPngDataUrl = useCallback(async () => {
+  const renderPngDataUrl = async () => {
     const node = exportSurfaceRef.current
     if (!node) {
       throw new Error('Export preview is not ready.')
@@ -193,9 +193,9 @@ export function ChatShareExport({ sessionId, disabled }: ChatShareExportProps) {
         requestInit: { cache: 'force-cache' },
       },
     })
-  }, [])
+  }
 
-  const handleDownload = useCallback(async () => {
+  const handleDownload = async () => {
     if (!canExport) {
       return
     }
@@ -220,9 +220,9 @@ export function ChatShareExport({ sessionId, disabled }: ChatShareExportProps) {
     finally {
       setBusyAction(null)
     }
-  }, [canExport, exportMessages.length, renderPngDataUrl, sessionId])
+  }
 
-  const handleCopy = useCallback(async () => {
+  const handleCopy = async () => {
     if (!canExport) {
       return
     }
@@ -247,7 +247,7 @@ export function ChatShareExport({ sessionId, disabled }: ChatShareExportProps) {
     finally {
       setBusyAction(null)
     }
-  }, [canExport, exportMessages.length, renderPngDataUrl])
+  }
 
   return (
     <>

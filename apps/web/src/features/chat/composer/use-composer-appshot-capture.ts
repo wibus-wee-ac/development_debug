@@ -32,10 +32,100 @@ interface ComposerAppshotCaptureOptions {
   tools?: ComposerSlashCommandActionTools
 }
 
+interface AppshotCaptureInstance {
+  id: number
+  active: boolean
+  supportsAttachments: boolean
+  capture: ComposerAppshotRuntime['capture'] | null
+  activationOrder: number
+}
+
 const APPSHOT_CAPTURE_ANIMATION_DURATION = 0.88
 const APPSHOT_NATIVE_HANDOFF_DELAY = 0
 const APPSHOT_ATTACHMENT_SLOT_HEIGHT = 140
 const PATH_SEGMENT_RE = /[\\/]/
+
+let nextAppshotCaptureInstanceId = 1
+let nextAppshotCaptureActivationOrder = 1
+let appshotHotkeyUnsubscribe: (() => void) | null = null
+
+const appshotCaptureInstances = new Map<number, AppshotCaptureInstance>()
+
+function createAppshotCaptureActivationOrder(): number {
+  return nextAppshotCaptureActivationOrder++
+}
+
+function updateAppshotCaptureInstance(
+  id: number,
+  update: (instance: AppshotCaptureInstance) => void,
+) {
+  const instance = appshotCaptureInstances.get(id)
+  if (!instance) {
+    return
+  }
+  update(instance)
+}
+
+function readAppshotHotkeyTarget(): AppshotCaptureInstance | null {
+  let target: AppshotCaptureInstance | null = null
+  for (const instance of appshotCaptureInstances.values()) {
+    if (!instance.active || !instance.supportsAttachments || !instance.capture) {
+      continue
+    }
+    if (
+      !target
+      || instance.activationOrder > target.activationOrder
+      || (instance.activationOrder === target.activationOrder && instance.id > target.id)
+    ) {
+      target = instance
+    }
+  }
+  return target
+}
+
+function handleAppshotHotkey(payload: unknown) {
+  const target = readAppshotHotkeyTarget()
+  if (!target || !nativeIpc) {
+    console.warn('[appshot] hotkey capture skipped:', {
+      hasActiveCaptureTarget: Boolean(target),
+      hasNativeIpc: Boolean(nativeIpc),
+      registeredCaptureTargets: appshotCaptureInstances.size,
+    })
+    return
+  }
+
+  const event = payload as MacAppshotHotkeyEvent | undefined
+  void (async () => {
+    try {
+      await target.capture?.({
+        targetWindow: event?.targetWindow,
+        bundleIdentifier: event?.bundleIdentifier ?? event?.context?.bundleIdentifier ?? undefined,
+      })
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: 'Appshot capture failed',
+        description: error instanceof Error ? error.message : 'Unknown Appshot capture error.',
+      })
+    }
+  })()
+}
+
+function ensureAppshotHotkeyListener() {
+  if (appshotHotkeyUnsubscribe) {
+    return
+  }
+  appshotHotkeyUnsubscribe = window.cradle?.ipc.on('capture:appshot-hotkey', handleAppshotHotkey) ?? null
+}
+
+function releaseAppshotHotkeyListenerIfIdle() {
+  if (appshotCaptureInstances.size > 0) {
+    return
+  }
+  appshotHotkeyUnsubscribe?.()
+  appshotHotkeyUnsubscribe = null
+}
 
 function readAppshotCaptureAsset(response: MacAppshotCaptureResponse) {
   return response.asset
@@ -133,14 +223,29 @@ export function useComposerAppshotCapture({
   const activeRef = useRef(active)
   const supportsAttachmentsRef = useRef(supportsAttachments)
   const captureRef = useRef<ComposerAppshotRuntime['capture'] | null>(null)
+  const [appshotCaptureInstanceId] = useState(() => nextAppshotCaptureInstanceId++)
 
   useEffect(() => {
+    const wasActive = activeRef.current
     activeRef.current = active
-  }, [active])
+    updateAppshotCaptureInstance(appshotCaptureInstanceId, (instance) => {
+      instance.active = active
+      if (active && !wasActive) {
+        instance.activationOrder = createAppshotCaptureActivationOrder()
+      }
+    })
+  }, [active, appshotCaptureInstanceId])
 
   useEffect(() => {
+    const previouslySupportedAttachments = supportsAttachmentsRef.current
     supportsAttachmentsRef.current = supportsAttachments
-  }, [supportsAttachments])
+    updateAppshotCaptureInstance(appshotCaptureInstanceId, (instance) => {
+      instance.supportsAttachments = supportsAttachments
+      if (activeRef.current && supportsAttachments && !previouslySupportedAttachments) {
+        instance.activationOrder = createAppshotCaptureActivationOrder()
+      }
+    })
+  }, [appshotCaptureInstanceId, supportsAttachments])
 
   const setActionTargetElement = useCallback((element: HTMLDivElement | null) => {
     actionTargetRef.current = element
@@ -292,39 +397,26 @@ export function useComposerAppshotCapture({
 
   useEffect(() => {
     captureRef.current = capture
-  }, [capture])
+    updateAppshotCaptureInstance(appshotCaptureInstanceId, (instance) => {
+      instance.capture = capture
+    })
+  }, [appshotCaptureInstanceId, capture])
 
   useEffect(() => {
-    return window.cradle?.ipc.on('capture:appshot-hotkey', (payload) => {
-      if (!activeRef.current) {
-        return
-      }
-      if (!nativeIpc || !supportsAttachmentsRef.current) {
-        console.warn('[appshot] hotkey capture skipped:', {
-          active: activeRef.current,
-          hasNativeIpc: Boolean(nativeIpc),
-          supportsAttachments: supportsAttachmentsRef.current,
-        })
-        return
-      }
-      const event = payload as MacAppshotHotkeyEvent | undefined
-      void (async () => {
-        try {
-          await captureRef.current?.({
-            targetWindow: event?.targetWindow,
-            bundleIdentifier: event?.bundleIdentifier ?? event?.context?.bundleIdentifier ?? undefined,
-          })
-        }
-        catch (error) {
-          toastManager.add({
-            type: 'error',
-            title: 'Appshot capture failed',
-            description: error instanceof Error ? error.message : 'Unknown Appshot capture error.',
-          })
-        }
-      })()
-    }) ?? (() => {})
-  }, [])
+    const id = appshotCaptureInstanceId
+    appshotCaptureInstances.set(id, {
+      id,
+      active: activeRef.current,
+      supportsAttachments: supportsAttachmentsRef.current,
+      capture: captureRef.current,
+      activationOrder: activeRef.current ? createAppshotCaptureActivationOrder() : 0,
+    })
+    ensureAppshotHotkeyListener()
+    return () => {
+      appshotCaptureInstances.delete(id)
+      releaseAppshotHotkeyListenerIfIdle()
+    }
+  }, [appshotCaptureInstanceId])
 
   return {
     hasNativeCapture: Boolean(nativeIpc),

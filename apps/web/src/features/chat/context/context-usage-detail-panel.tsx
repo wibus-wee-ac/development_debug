@@ -1,7 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
-import { useCallback, useMemo } from 'react'
 
 import { cn } from '~/lib/cn'
 import { clampPercent, formatTokenCount } from '~/lib/number-format'
@@ -110,17 +109,17 @@ export function ContextUsageDetailPanel({
     retry: false,
   })
   const usage = data?.usage ?? null
-  const aggregate = useMemo(() => readContextAggregate(usage, compactState), [compactState, usage])
-  const sections = useMemo(() => readContextSections(usage), [usage])
-  const sectionShareTotal = useMemo(() => readSectionShareTotal(sections), [sections])
-  const compactRows = useMemo(() => readCompactRows(compactState), [compactState])
-  const handleOpenReport = useCallback(() => {
+  const aggregate = readContextAggregate(usage, compactState)
+  const sections = readContextSections(usage)
+  const sectionShareTotal = readSectionShareTotal(sections)
+  const compactRows = readCompactRows(compactState)
+  const handleOpenReport = () => {
     if (!sessionId) {
       return
     }
     openContextUsageReportTab({ sessionId })
     onClose()
-  }, [onClose, openContextUsageReportTab, sessionId])
+  }
 
   if (!sessionId) {
     return null

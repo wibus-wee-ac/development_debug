@@ -25,7 +25,7 @@ import { annotateBangCommandMessage, annotateBangResultMessage } from '../comman
 import type { ChatContinuationMode, ChatQueueItem, ChatRuntimeSettingsPatch, ChatThinkingEffort } from '../commands/chat-response-command'
 import { cancelChatResponse, cancelChatSessionQueueItem, createSideChat, enqueueChatSessionQueueItem, executeBangCommand, listChatSessionQueue, readChatCommandErrorCode, reorderChatSessionQueue, resolvePlanImplementationApproval, steerChatSessionTurn, submitRuntimeUserInput } from '../commands/chat-response-command'
 import { getRuntimeSessionStatus } from '../commands/runtime-session-status-command'
-import { runtimeSettingsQueryKey } from '../commands/runtime-settings-command'
+import { runtimeSettingsQueryKey, updateSessionRuntimeSettings } from '../commands/runtime-settings-command'
 import type { ChatContextPart } from '../context/chat-context-parts'
 import { runtimeSessionStatusQueryKey, useRuntimeSessionStatus } from '../runtime/use-runtime-session-status'
 import { startChatResponseStream, subscribeChatSessionStreamForSession } from '../transport/chat-stream-transport'
@@ -1002,7 +1002,14 @@ export function useChatSession(chatSessionId: string | null) {
       )
       scheduleSnapshotRefresh(0)
       if (response.approved) {
-        await sendMessage(CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX)
+        await updateSessionRuntimeSettings({
+          sessionId: chatSessionId,
+          patch: { interactionMode: 'default' },
+        })
+        void queryClient.invalidateQueries({ queryKey: runtimeSettingsQueryKey(chatSessionId) })
+        await sendMessage(CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX, {
+          runtimeSettings: { interactionMode: 'default' },
+        })
       }
       return
     }

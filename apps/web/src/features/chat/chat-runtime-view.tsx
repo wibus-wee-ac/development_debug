@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { getSkills, patchSessionsById } from '~/api-gen/sdk.gen'
@@ -59,13 +59,13 @@ export function ChatRuntimeView({
   })
   const [pendingProviderTargetId, setPendingProviderTargetId] = useState<string | null>(null)
   const providerModelSaveStateRef = useRef<SessionProviderModelSaveState | null>(null)
-  const searchFiles = useCallback(async (query: string, signal?: AbortSignal): Promise<MentionItem[]> => {
+  const searchFiles = async (query: string, signal?: AbortSignal): Promise<MentionItem[]> => {
     if (!workspaceId) {
       return []
     }
     return searchWorkspaceFiles({ workspaceId, query, limit: 30, signal })
-  }, [workspaceId])
-  const searchSkills = useCallback(async (_query: string, signal?: AbortSignal): Promise<SkillMentionItem[]> => {
+  }
+  const searchSkills = async (_query: string, signal?: AbortSignal): Promise<SkillMentionItem[]> => {
     const { data } = await getSkills({
       query: {
         workspaceId: workspaceId ?? undefined,
@@ -86,8 +86,8 @@ export function ChatRuntimeView({
       })
     }
     return activeSkills
-  }, [agentId, workspaceId])
-  const searchPlugins = useCallback((query: string, signal?: AbortSignal) => {
+  }
+  const searchPlugins = (query: string, signal?: AbortSignal) => {
     return searchSessionPluginMentions({
       sessionId,
       runtimeKind,
@@ -96,12 +96,7 @@ export function ChatRuntimeView({
       query,
       signal,
     })
-  }, [
-    composerState.selection.modelId,
-    composerState.selection.profileId,
-    runtimeKind,
-    sessionId,
-  ])
+  }
 
   const sendOverridesRef = useRef({
     providerTargetId: undefined as string | undefined,
@@ -116,7 +111,7 @@ export function ChatRuntimeView({
     }
   }, [composerState.selection.modelId, composerState.selection.profileId, composerState.selection.thinkingEffort])
 
-  const persistSessionProviderModel = useCallback((body: SessionProviderModelPatch) => {
+  const persistSessionProviderModel = (body: SessionProviderModelPatch) => {
     const targetSessionId = sessionId
     const previousSessionKey = getSessionsByIdQueryKey({ path: { id: targetSessionId } })
     const previousSession = queryClient.getQueryData(previousSessionKey)
@@ -174,7 +169,7 @@ export function ChatRuntimeView({
 
     saveState.queue = saveTask.catch(() => undefined)
     return saveTask
-  }, [queryClient, sessionId])
+  }
 
   useEffect(() => {
     if (!pendingProviderTargetId) {
@@ -206,7 +201,7 @@ export function ChatRuntimeView({
     persistSessionProviderModel,
   ])
 
-  const sessionComposerState = useMemo(() => ({
+  const sessionComposerState = ({
     ...composerState,
     setProfileId: (id: string) => {
       composerState.setProfileId(id)
@@ -229,11 +224,11 @@ export function ChatRuntimeView({
         ? persistSessionProviderModel({ providerTargetId: resolvedProfileId, modelId: id })
         : persistSessionProviderModel({ modelId: id }))
     },
-  }), [composerState, persistSessionProviderModel])
+  })
 
-  const composerToolbar = useMemo(() => (
+  const composerToolbar = (
     <ComposerToolbar context="chat" state={sessionComposerState} />
-  ), [sessionComposerState])
+  )
 
   return (
     <Suspense fallback={null}>

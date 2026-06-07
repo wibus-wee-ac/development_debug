@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 
 import { DelayedSpinner } from '~/components/ui/spinner'
 import { cn } from '~/lib/cn'
@@ -105,7 +105,7 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
     if (!visible || !searchItems) {
       abortControllerRef.current?.abort()
       abortControllerRef.current = null
-      setRemoteItems([])
+      setRemoteItems(current => current.length === 0 ? current : [])
       setRemoteLoading(false)
       return
     }
@@ -200,9 +200,9 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
     return () => document.removeEventListener('keydown', handleDocumentKeyDown, true)
   }, [])
 
-  const handleOptionClick = useCallback((item: TItem) => {
+  const handleOptionClick = (item: TItem) => {
     onSelect(item)
-  }, [onSelect])
+  }
 
   if (!visible || (results.length === 0 && !remoteLoading)) {
     return null

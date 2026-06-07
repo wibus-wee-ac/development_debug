@@ -62,7 +62,7 @@ export function ComposerSlotStates({ slots, states, actions, plan, quickQuestion
     return state.kind === 'goal' && composerSlotIds.has(state.slotId)
   })
   const planState = states.find((state): state is ChatRuntimePlanUiSlotState => {
-    return state.kind === 'plan' && composerSlotIds.has(state.slotId)
+    return state.kind === 'plan' && composerSlotIds.has(state.slotId) && isComposerPlanReadyState(state)
   })
   const planKey = planState ? readPlanSlotKey(planState) : null
   const planKeyRef = useRef<string | null>(planKey)
@@ -184,4 +184,8 @@ function ComposerSlotMotionItem({ index, children }: { index: number, children: 
 
 function readPlanSlotKey(state: ChatRuntimePlanUiSlotState): string {
   return `${state.threadId}:${state.turnId ?? 'turn'}:${state.updatedAt}`
+}
+
+function isComposerPlanReadyState(state: ChatRuntimePlanUiSlotState): boolean {
+  return !!state.content?.trim()
 }

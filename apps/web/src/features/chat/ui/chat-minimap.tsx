@@ -1,7 +1,7 @@
 import type { UIMessage } from 'ai'
 import { clamp } from 'es-toolkit'
 import type { Ref } from 'react'
-import { memo, useCallback, useImperativeHandle, useReducer, useRef } from 'react'
+import { useImperativeHandle, useReducer, useRef } from 'react'
 
 import { cn } from '~/lib/cn'
 import { clampRatio } from '~/lib/number-format'
@@ -179,7 +179,7 @@ function ChatMinimapInner({
   const scrollable = Math.max(scrollHeight - viewportHeight, 1)
   const anchorCount = anchors.length
 
-  const setActiveMessageIndex = useCallback((messageIndex: number) => {
+  const setActiveMessageIndex = (messageIndex: number) => {
     if (anchorCount === 0) {
       activeAnchorRef.current = 0
       activeAnchorValueRef.current = null
@@ -208,37 +208,30 @@ function ChatMinimapInner({
       }
       bar.dataset.active = index === activeAnchor ? 'true' : 'false'
     }
-  }, [anchorCount, anchors])
+  }
 
-  const setAnchorNode = useCallback((index: number, node: HTMLSpanElement | null) => {
+  const setAnchorNode = (index: number, node: HTMLSpanElement | null) => {
     anchorNodesRef.current[index] = node
-  }, [])
+  }
 
   useImperativeHandle(ref, () => ({ setActiveMessageIndex }), [setActiveMessageIndex])
 
   // Map mouse Y to user-message anchor index.
-  const yToIndex = useCallback(
-    (y: number, height: number) => {
+  const yToIndex = (y: number, height: number) => {
       if (anchorCount === 0 || height === 0) {
         return 0
       }
       const ratio = clampRatio(y / height)
       return Math.min(Math.floor(ratio * anchorCount), anchorCount - 1)
-    },
-    [anchorCount],
-  )
+    }
 
   // Map mouse Y → scroll offset
-  const yToScroll = useCallback(
-    (y: number, height: number) => {
+  const yToScroll = (y: number, height: number) => {
       const ratio = clampRatio(y / height)
       return ratio * scrollable
-    },
-    [scrollable],
-  )
+    }
 
-  const handlePointerDown = useCallback(
-    (e: React.PointerEvent) => {
+  const handlePointerDown = (e: React.PointerEvent) => {
       e.preventDefault()
       e.currentTarget.setPointerCapture(e.pointerId)
       const rect = containerRef.current?.getBoundingClientRect()
@@ -249,12 +242,9 @@ function ChatMinimapInner({
           hoverIdx: yToIndex(y, rect.height),
         })
       }
-    },
-    [yToIndex],
-  )
+    }
 
-  const handlePointerMove = useCallback(
-    (e: React.PointerEvent) => {
+  const handlePointerMove = (e: React.PointerEvent) => {
       const rect = containerRef.current?.getBoundingClientRect()
       if (!rect) {
         return
@@ -267,24 +257,18 @@ function ChatMinimapInner({
       if (uiState.isDragging) {
         onScrollTo(yToScroll(y, rect.height))
       }
-    },
-    [onScrollTo, uiState.isDragging, yToIndex, yToScroll],
-  )
+    }
 
-  const handlePointerUp = useCallback(
-    (e: React.PointerEvent) => {
+  const handlePointerUp = (e: React.PointerEvent) => {
       dispatch({ type: 'pointer-end' })
       e.currentTarget.releasePointerCapture(e.pointerId)
-    },
-    [],
-  )
+    }
 
-  const handlePointerLeave = useCallback(() => {
+  const handlePointerLeave = () => {
     dispatch({ type: 'pointer-leave' })
-  }, [])
+  }
 
-  const scrollToEventMessage = useCallback(
-    (clientY: number) => {
+  const scrollToEventMessage = (clientY: number) => {
       const rect = containerRef.current?.getBoundingClientRect()
       if (!rect) {
         return
@@ -295,16 +279,14 @@ function ChatMinimapInner({
       if (anchor) {
         onScrollToIndex(anchor.messageIndex)
       }
-    },
-    [anchors, onScrollToIndex, yToIndex],
-  )
+    }
 
-  const scrollToKeyboardMessage = useCallback(() => {
+  const scrollToKeyboardMessage = () => {
     const anchor = anchors[uiState.hoverIdx ?? activeAnchorRef.current]
     if (anchor) {
       onScrollToIndex(anchor.messageIndex)
     }
-  }, [anchors, onScrollToIndex, uiState.hoverIdx])
+  }
 
   if (anchorCount === 0) {
     return null
@@ -418,7 +400,4 @@ function ChatMinimapHoverPreview({
   )
 }
 
-const ChatMinimapWithRef = memo(ChatMinimapInner)
-ChatMinimapWithRef.displayName = 'ChatMinimap'
-
-export { ChatMinimapWithRef as ChatMinimap }
+export { ChatMinimapInner as ChatMinimap }

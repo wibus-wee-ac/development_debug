@@ -2,7 +2,7 @@ import type { FileContents, MultiFileDiffProps } from '@pierre/diffs/react'
 import { MultiFileDiff } from '@pierre/diffs/react'
 import { ChevronRightIcon, Columns2Icon, FilePenLineIcon, Rows3Icon } from 'lucide-react'
 import { m } from 'motion/react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
@@ -51,32 +51,25 @@ export function EditFileBlock({ filePath, oldContent, newContent, defaultOpen = 
   const [open, setOpen] = useState(defaultOpen)
   const [layout, setLayout] = useState<DiffLayout>('split')
 
-  const stats = useMemo(() => computeChangeStats(oldContent, newContent), [oldContent, newContent])
+  const stats = computeChangeStats(oldContent, newContent)
 
   const segments = filePath.split('/')
   const fileName = segments.at(-1) ?? filePath
   const dirPath = segments.length > 1 ? `${segments.slice(0, -1).join('/')}/` : ''
 
-  const oldFile = useMemo<FileContents>(
-    () => ({
+  const oldFile: FileContents = ({
       name: filePath,
       contents: oldContent,
       cacheKey: diffCacheKey('old', filePath, oldContent),
-    }),
-    [filePath, oldContent],
-  )
+    })
 
-  const newFile = useMemo<FileContents>(
-    () => ({
+  const newFile: FileContents = ({
       name: filePath,
       contents: newContent,
       cacheKey: diffCacheKey('new', filePath, newContent),
-    }),
-    [filePath, newContent],
-  )
+    })
 
-  const diffOptions = useMemo<DiffOptions>(
-    () => ({
+  const diffOptions: DiffOptions = ({
       theme: DIFF_THEMES,
       themeType: 'system',
       diffStyle: layoutDiffStyles[layout],
@@ -87,9 +80,7 @@ export function EditFileBlock({ filePath, oldContent, newContent, defaultOpen = 
       lineDiffType: 'word' as const,
       overflow: 'scroll' as const,
       parseDiffOptions: { context: 3 },
-    }),
-    [layout],
-  )
+    })
 
   return (
     <m.div

@@ -1,5 +1,5 @@
 import type { ReactElement } from 'react'
-import { Activity, memo, useLayoutEffect, useMemo, useState } from 'react'
+import { Activity, useLayoutEffect, useState } from 'react'
 import { shallow } from 'zustand/shallow'
 
 import type { RuntimeKind } from '~/features/agent-runtime/types'
@@ -27,29 +27,14 @@ export function ChatSessionFrameHost({
   activeSession: ChatSessionFrameDescriptor
 }): ReactElement {
   const [retainedFrames, setRetainedFrames] = useState<ChatSessionFrameDescriptor[]>(() => [activeSession])
-  const candidateFrames = useMemo(
-    () => mergeActiveFrame(retainedFrames, activeSession),
-    [activeSession, retainedFrames],
-  )
-  const candidateSessionIds = useMemo(
-    () => candidateFrames.map(frame => frame.sessionId),
-    [candidateFrames],
-  )
+  const candidateFrames = mergeActiveFrame(retainedFrames, activeSession)
+  const candidateSessionIds = candidateFrames.map(frame => frame.sessionId)
   const streamingSessionIds = useChatStore(
-    useMemo(
-      () => (state: ChatStoreSnapshot) => candidateSessionIds.filter(sessionId => chatSelectors.isSessionStreaming(sessionId)(state)),
-      [candidateSessionIds],
-    ),
+    (state: ChatStoreSnapshot) => candidateSessionIds.filter(sessionId => chatSelectors.isSessionStreaming(sessionId)(state)),
     shallow,
   )
-  const streamingSessionIdSet = useMemo(
-    () => new Set(streamingSessionIds),
-    [streamingSessionIds],
-  )
-  const frameDescriptors = useMemo(
-    () => trimRetainedFrames(candidateFrames, activeSession, streamingSessionIdSet),
-    [activeSession, candidateFrames, streamingSessionIdSet],
-  )
+  const streamingSessionIdSet = new Set(streamingSessionIds)
+  const frameDescriptors = trimRetainedFrames(candidateFrames, activeSession, streamingSessionIdSet)
 
   useLayoutEffect(() => {
     setRetainedFrames((currentFrames) => {
@@ -83,13 +68,13 @@ export function ChatSessionFrameHost({
   )
 }
 
-const ChatSessionDriverMount = memo(({ sessionId }: { sessionId: string }) => {
+const ChatSessionDriverMount = ({ sessionId }: { sessionId: string }) => {
   useChatSessionDriver(sessionId)
   return null
-})
+}
 ChatSessionDriverMount.displayName = 'ChatSessionDriverMount'
 
-const ChatSessionFrame = memo(({
+const ChatSessionFrame = ({
   descriptor,
   visible,
 }: {
@@ -121,7 +106,7 @@ const ChatSessionFrame = memo(({
       />
     </div>
   )
-})
+}
 ChatSessionFrame.displayName = 'ChatSessionFrame'
 
 function mergeActiveFrame(

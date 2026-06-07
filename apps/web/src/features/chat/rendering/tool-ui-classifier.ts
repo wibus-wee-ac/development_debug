@@ -20,6 +20,7 @@ export type ToolUiKind
     | 'task-control'
     | 'todo'
     | 'plan'
+    | 'plan-implementation'
     | 'question'
     | 'mcp'
     | 'worktree'
@@ -894,6 +895,9 @@ export function classifyToolKind(toolName: string, input: ToolPayload, output: T
   if (isQuestionTool(toolName, input, output)) {
     return 'question'
   }
+  if (isPlanImplementationTool(toolName, input, output)) {
+    return 'plan-implementation'
+  }
   if (isPlanTool(toolName, input, output)) {
     return 'plan'
   }
@@ -953,7 +957,10 @@ function readToolTitle(kind: ToolUiKind, displayName: string, input: ToolPayload
     return 'Update todos'
   }
   if (kind === 'plan') {
-    return input.planContent || output.planContent ? 'Implement this plan?' : 'Plan'
+    return 'Plan'
+  }
+  if (kind === 'plan-implementation') {
+    return 'Implement this plan?'
   }
 
   const description = input.description
@@ -1010,10 +1017,9 @@ function readToolTarget(kind: ToolUiKind, input: ToolPayload, output: ToolPayloa
       const count = readTodoCount(input, output)
       return count === null ? null : `${count} item${count === 1 ? '' : 's'}`
     }
+    case 'plan-implementation':
+      return null
     case 'plan':
-      if (input.planContent || output.planContent) {
-        return null
-      }
       return input.mode === 'plan' || output.mode === 'plan'
         ? 'plan'
         : output.filePath
@@ -1050,10 +1056,9 @@ function readToolSummary(kind: ToolUiKind, input: ToolPayload, output: ToolPaylo
       return output.message
     case 'todo':
       return readTodoSummary(input, output)
+    case 'plan-implementation':
+      return 'Awaiting implementation decision'
     case 'plan':
-      if (input.planContent || output.planContent) {
-        return readFirstLine(input.planContent ?? output.planContent)
-      }
       return output.filePath
         ? 'Plan saved'
         : output.plan || output.text || input.plan || input.text || output.rawText
@@ -1178,15 +1183,18 @@ function isTodoTool(toolName: string, input: ToolPayload, output: ToolPayload): 
 
 function isPlanTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
   return toolName === 'plan'
-    || toolName === 'plan_implementation'
     || toolName === 'exitplanmode'
     || toolName === 'exit_plan_mode'
     || input.mode === 'plan'
     || output.mode === 'plan'
     || output.plan !== null
+    || input.allowedPrompts.length > 0
+}
+
+function isPlanImplementationTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
+  return toolName === 'plan_implementation'
     || input.planContent !== null
     || output.planContent !== null
-    || input.allowedPrompts.length > 0
 }
 
 function isQuestionTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {

@@ -1,5 +1,4 @@
 import type { AnchorHTMLAttributes } from 'react'
-import { useCallback } from 'react'
 
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
@@ -20,7 +19,7 @@ export function MarkdownFileLink({ href, sessionId, children, ...props }: Markdo
   const workspaceId = useSessionLayoutStore(state =>
     sessionId ? state.sessions[sessionId]?.workspaceId ?? null : null)
 
-  const handleClick = useCallback((event: React.MouseEvent<HTMLAnchorElement>) => {
+  const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
     if (!href || !workspaceId) {
       return
     }
@@ -37,7 +36,7 @@ export function MarkdownFileLink({ href, sessionId, children, ...props }: Markdo
       })
       setBrowserPanelOpen(true)
     }
-  }, [href, workspaceId, openWorkspaceFileTab, setBrowserPanelOpen])
+  }
 
   return (
     <a href={href} onClick={handleClick} {...props}>

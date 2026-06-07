@@ -28,7 +28,7 @@ export interface ChatComposerRuntime {
     text: string,
     files: FileUIPart[],
     contextParts: ChatContextPart[],
-    options?: { invertContinuationMode?: boolean },
+    options?: { invertContinuationMode?: boolean, runtimeSettings?: SendMessageOptions['runtimeSettings'] },
   ) => SendMessageResult | Promise<SendMessageResult>
   stop: () => void
   slashCommands: ChatComposerSlashCommand[]
@@ -204,7 +204,7 @@ export function useChatComposerRuntime({
   }, [compactSlotState])
 
   const send = useCallback(
-    (text: string, files: FileUIPart[], contextParts: ChatContextPart[], options?: { invertContinuationMode?: boolean }) => {
+    (text: string, files: FileUIPart[], contextParts: ChatContextPart[], options?: { invertContinuationMode?: boolean, runtimeSettings?: SendMessageOptions['runtimeSettings'] }) => {
       if (!isReady || (!text.trim() && files.length === 0 && contextParts.length === 0)) {
         return
       }
@@ -214,7 +214,13 @@ export function useChatComposerRuntime({
       const continuationMode = options?.invertContinuationMode
         ? invertContinuationMode(defaultContinuationMode)
         : defaultContinuationMode
-      return sendMessage(text, { ...overrides, runtimeSettings, continuationMode }, files, contextParts)
+      return sendMessage(text, {
+        ...overrides,
+        runtimeSettings: options?.runtimeSettings
+          ? { ...runtimeSettings, ...options.runtimeSettings }
+          : runtimeSettings,
+        continuationMode,
+      }, files, contextParts)
     },
     [chatPreferences?.continuationBehavior, isReady, runtimeSettings, sendMessage, sendOverridesRef],
   )

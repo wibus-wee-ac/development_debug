@@ -1,4 +1,4 @@
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 
 export interface UseQuickQuestionOptions {
   sessionId: string
@@ -18,14 +18,14 @@ export function useQuickQuestion({ sessionId, apiBaseUrl }: UseQuickQuestionOpti
   const [open, setOpen] = useState(false)
   const [question, setQuestion] = useState('')
 
-  const openQuickQuestion = useCallback((q: string) => {
+  const openQuickQuestion = (q: string) => {
     setQuestion(q)
     setOpen(true)
-  }, [])
+  }
 
-  const closeQuickQuestion = useCallback(() => {
+  const closeQuickQuestion = () => {
     setOpen(false)
-  }, [])
+  }
 
   return {
     open,

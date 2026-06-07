@@ -3,7 +3,7 @@ import type { UIMessage } from 'ai'
 import { ActivityIcon, CheckIcon, CopyIcon, FileIcon, HashIcon, ImageIcon, TargetIcon, TimerIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import type { AnchorHTMLAttributes } from 'react'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -177,10 +177,9 @@ function PluginContextBlock({ part }: { part: ChatPluginContextMessagePart }) {
     return null
   }
   return (
-    <span className="mx-1 inline-flex max-w-full items-center gap-1 rounded-md bg-primary/10 px-1.5 py-0.5 align-baseline text-[0.8125em] font-medium leading-none text-primary ring-1 ring-primary/15">
+    <span className="mx-0.5 inline-flex items-center gap-0.5 align-baseline text-[0.8125em] font-medium text-sky-600 dark:text-sky-400">
       <PluginMentionIcon iconUrl={plugin.iconUrl} className="size-3" />
-      @
-      {readPluginContextLabel(plugin)}
+      @{readPluginContextLabel(plugin)}
     </span>
   )
 }
@@ -903,7 +902,7 @@ function GroupedToolCallBlockByPartIndexes({
   return <GroupedToolCallBlockFromParts items={parts} uiKind={uiKind} sessionId={sessionId} />
 }
 
-const MessageTextPartById = memo(({
+const MessageTextPartById = ({
   sessionId,
   messageId,
   partIndex,
@@ -937,10 +936,10 @@ const MessageTextPartById = memo(({
       }}
     />
   )
-})
+}
 MessageTextPartById.displayName = 'MessageTextPartById'
 
-const MessageReasoningPartById = memo(({
+const MessageReasoningPartById = ({
   sessionId,
   messageId,
   partIndex,
@@ -958,10 +957,10 @@ const MessageReasoningPartById = memo(({
   const state = isActiveStreamingSegment && part.state === 'streaming' ? 'streaming' : 'done'
 
   return <ReasoningBlock text={part.text} state={state} />
-})
+}
 MessageReasoningPartById.displayName = 'MessageReasoningPartById'
 
-const MessageFilePartById = memo(({
+const MessageFilePartById = ({
   sessionId,
   messageId,
   partIndex,
@@ -977,10 +976,10 @@ const MessageFilePartById = memo(({
     return null
   }
   return <FileAttachmentBlock part={part} onClick={onImageClick} />
-})
+}
 MessageFilePartById.displayName = 'MessageFilePartById'
 
-const MessageSkillContextPartById = memo(({
+const MessageSkillContextPartById = ({
   sessionId,
   messageId,
   partIndex,
@@ -994,10 +993,10 @@ const MessageSkillContextPartById = memo(({
     return null
   }
   return <SkillContextBlock part={part} />
-})
+}
 MessageSkillContextPartById.displayName = 'MessageSkillContextPartById'
 
-const MessagePluginContextPartById = memo(({
+const MessagePluginContextPartById = ({
   sessionId,
   messageId,
   partIndex,
@@ -1011,10 +1010,10 @@ const MessagePluginContextPartById = memo(({
     return null
   }
   return <PluginContextBlock part={part} />
-})
+}
 MessagePluginContextPartById.displayName = 'MessagePluginContextPartById'
 
-const MessageThinkingPlaceholderById = memo(({
+const MessageThinkingPlaceholderById = ({
   sessionId,
   messageId,
   isAssistant,
@@ -1040,10 +1039,10 @@ const MessageThinkingPlaceholderById = memo(({
   }
 
   return <ThinkingPlaceholder />
-})
+}
 MessageThinkingPlaceholderById.displayName = 'MessageThinkingPlaceholderById'
 
-const MessageCopyActionById = memo(({
+const MessageCopyActionById = ({
   sessionId,
   messageId,
   isUser,
@@ -1064,7 +1063,7 @@ const MessageCopyActionById = memo(({
     }
   }, [])
 
-  const handleCopy = useCallback(async () => {
+  const handleCopy = async () => {
     const plainText = readPlainTextFromState(useChatStore.getState(), sessionId, messageId)
     await navigator.clipboard.writeText(plainText)
     setCopied(true)
@@ -1077,7 +1076,7 @@ const MessageCopyActionById = memo(({
       setCopied(false)
       copyFeedbackTimerRef.current = null
     }, 1500)
-  }, [messageId, sessionId])
+  }
 
   if (!hasPlainText) {
     return null
@@ -1103,10 +1102,10 @@ const MessageCopyActionById = memo(({
       </Button>
     </div>
   )
-})
+}
 MessageCopyActionById.displayName = 'MessageCopyActionById'
 
-const MessageSegmentView = memo(({
+const MessageSegmentView = ({
   segment,
   sessionId,
   isUser,
@@ -1183,10 +1182,10 @@ const MessageSegmentView = memo(({
     default:
       return null
   }
-})
+}
 MessageSegmentView.displayName = 'MessageSegmentView'
 
-const MessageBubbleSegmentsView = memo(({
+const MessageBubbleSegmentsView = ({
   sessionId,
   frame,
   segments,
@@ -1205,15 +1204,12 @@ const MessageBubbleSegmentsView = memo(({
   const isAssistant = frame.role === 'assistant'
   const isFirstAppearance = trackSeenMessageId(frame.id)
   const activeStreamingSegmentKey = isStreaming ? readActiveStreamingSegmentKey(segments) : null
-  const executionPhaseSplit = useMemo(
-    () => isStreaming ? null : splitSegmentExecutionPhase(segments),
-    [segments, isStreaming],
-  )
+  const executionPhaseSplit = isStreaming ? null : splitSegmentExecutionPhase(segments)
 
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxIndex, setLightboxIndex] = useState(0)
 
-  const imageSegments = useMemo(() => {
+  const imageSegments = (() => {
     return segments
       .map((segment, index) => ({ segment, index }))
       .filter(({ segment }) => {
@@ -1221,9 +1217,9 @@ const MessageBubbleSegmentsView = memo(({
         const part = readFilePartFromState(useChatStore.getState(), sessionId, segment.messageId, segment.partIndex)
         return part?.mediaType.startsWith('image/')
       })
-  }, [segments, sessionId])
+  })()
 
-  const lightboxImages = useMemo(() => {
+  const lightboxImages = (() => {
     return imageSegments.map(({ segment }) => {
       if (segment.kind !== 'file-attachment') { return { url: '', alt: '' } }
       const part = readFilePartFromState(useChatStore.getState(), sessionId, segment.messageId, segment.partIndex)
@@ -1232,15 +1228,15 @@ const MessageBubbleSegmentsView = memo(({
         alt: part?.filename ?? part?.mediaType ?? 'Image',
       }
     })
-  }, [imageSegments, sessionId])
+  })()
 
-  const handleImageClick = useCallback((segmentIndex: number) => {
+  const handleImageClick = (segmentIndex: number) => {
     const imageIndex = imageSegments.findIndex(({ index }) => index === segmentIndex)
     if (imageIndex !== -1) {
       setLightboxIndex(imageIndex)
       setLightboxOpen(true)
     }
-  }, [imageSegments])
+  }
 
   function renderSegment(segment: ChatRenderSegment, index: number) {
     return (
@@ -1394,10 +1390,10 @@ const MessageBubbleSegmentsView = memo(({
       )}
     </>
   )
-})
+}
 MessageBubbleSegmentsView.displayName = 'MessageBubbleSegmentsView'
 
-export const MessageBubbleById = memo(({
+export const MessageBubbleById = ({
   sessionId,
   messageId,
   onToolApprovalResponse,
@@ -1436,7 +1432,7 @@ export const MessageBubbleById = memo(({
       onRuntimeUserInputSubmit={onRuntimeUserInputSubmit}
     />
   )
-})
+}
 MessageBubbleById.displayName = 'MessageBubbleById'
 
 function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen = false, presentation = 'thread', sessionId, onToolApprovalResponse, onRuntimeUserInputSubmit }: MessageBubbleProps) {
@@ -1453,25 +1449,17 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
 
   const isFirstAppearance = trackSeenMessageId(message.id)
 
-  const plainText = useMemo(() => readMessageDisplayText(message), [message])
-  const plainTextLength = useMemo(() => {
-    return plainText.length
-  }, [plainText.length])
+  const plainText = readMessageDisplayText(message)
+  const plainTextLength = plainText.length
   const streamTextIdle = useTextStreamIdle(isAssistant && isStreaming, plainTextLength)
 
-  const groupedItems = useMemo(
-    () => groupMessageParts({
+  const groupedItems = groupMessageParts({
       parts: message.parts,
       messageId: message.id,
       describeToolKind: part => describeToolCall(part).kind,
-    }),
-    [message.parts, message.id],
-  )
+    })
 
-  const executionPhaseSplit = useMemo(
-    () => isStreaming ? null : splitExecutionPhase(groupedItems),
-    [groupedItems, isStreaming],
-  )
+  const executionPhaseSplit = isStreaming ? null : splitExecutionPhase(groupedItems)
   const hasActiveProgress = hasActiveNonTextProgress(groupedItems)
   const showThinkingPlaceholder = isAssistant
     && isStreaming
@@ -1486,7 +1474,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
     }
   }, [])
 
-  const handleCopy = useCallback(async () => {
+  const handleCopy = async () => {
     await navigator.clipboard.writeText(plainText)
     setCopied(true)
 
@@ -1498,7 +1486,7 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
       setCopied(false)
       copyFeedbackTimerRef.current = null
     }, 1500)
-  }, [plainText])
+  }
 
   /* ─── Render items ─── */
   function renderItem(item: ChatRenderItem) {
@@ -1652,14 +1640,4 @@ function MessageBubbleView({ message, isStreaming, executionDetailsDefaultOpen =
   )
 }
 
-export const MessageBubble = memo(
-  MessageBubbleView,
-  (prevProps, nextProps) =>
-    prevProps.message === nextProps.message
-    && prevProps.isStreaming === nextProps.isStreaming
-    && prevProps.executionDetailsDefaultOpen === nextProps.executionDetailsDefaultOpen
-    && prevProps.presentation === nextProps.presentation
-    && prevProps.sessionId === nextProps.sessionId
-    && prevProps.onToolApprovalResponse === nextProps.onToolApprovalResponse
-    && prevProps.onRuntimeUserInputSubmit === nextProps.onRuntimeUserInputSubmit,
-)
+export const MessageBubble = MessageBubbleView

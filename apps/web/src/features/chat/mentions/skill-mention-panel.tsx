@@ -33,40 +33,45 @@ export function SkillMentionPanel({ items, query, searchItems, onSelect, onClose
   const searchPanelItems = useCallback(async (searchQuery: string, signal?: AbortSignal) => {
     return searchItems ? (await searchItems(searchQuery, signal)).map(toSkillMentionPanelItem) : []
   }, [searchItems])
+  const readRankFields = useCallback((item: SkillMentionPanelItem) => [
+    { value: item.name, role: 'primary' as const },
+    { value: item.description, role: 'secondary' as const },
+    { value: item.skillDir, role: 'secondary' as const },
+  ], [])
+  const renderSkillItem = useCallback(({ item, positions }: {
+    item: SkillMentionPanelItem
+    positions: Set<number>
+  }) => (
+    <>
+      <PackageIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+      <span className="min-w-0 flex-1 truncate">
+        <span className="font-medium">
+          <HighlightedAutocompleteText text={item.name} positions={positions} />
+        </span>
+        {item.description && (
+          <span className="ml-2 text-muted-foreground">
+            {item.description}
+          </span>
+        )}
+      </span>
+      <span className="shrink-0 text-[11px] text-muted-foreground">
+        {formatScope(item.scope)}
+      </span>
+    </>
+  ), [])
 
   return (
     <AutocompletePanel
       items={panelItems}
       query={query}
       searchItems={searchItems ? searchPanelItems : undefined}
-      onSelect={item => onSelect(item)}
+      onSelect={onSelect}
       onClose={onClose}
       visible={visible}
       maxResults={MAX_RESULTS}
       emptyLogLabel="skills"
-      rankFields={item => [
-        { value: item.name, role: 'primary' },
-        { value: item.description, role: 'secondary' },
-        { value: item.skillDir, role: 'secondary' },
-      ]}
-      renderItem={({ item, positions }) => (
-        <>
-          <PackageIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
-          <span className="min-w-0 flex-1 truncate">
-            <span className="font-medium">
-              <HighlightedAutocompleteText text={item.name} positions={positions} />
-            </span>
-            {item.description && (
-              <span className="ml-2 text-muted-foreground">
-                {item.description}
-              </span>
-            )}
-          </span>
-          <span className="shrink-0 text-[11px] text-muted-foreground">
-            {formatScope(item.scope)}
-          </span>
-        </>
-      )}
+      rankFields={readRankFields}
+      renderItem={renderSkillItem}
     />
   )
 }

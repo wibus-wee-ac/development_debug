@@ -264,6 +264,7 @@ export const PromptEditor = forwardRef((
   const viewRef = useRef<EditorView | null>(null)
   const lastDocRef = useRef(createPromptDoc(''))
   const initialPlaceholderRef = useRef(placeholder)
+  const activePlaceholderRef = useRef(placeholder)
   const propsRef = useRef({
     disabled,
     onChange,
@@ -391,6 +392,10 @@ export const PromptEditor = forwardRef((
       if (!view) {
         return
       }
+      const currentPlaceholder = PLACEHOLDER_PLUGIN_KEY.getState(view.state)?.placeholder
+      if (currentPlaceholder === nextPlaceholder) {
+        return
+      }
       view.dispatch(view.state.tr.setMeta(PLACEHOLDER_PLUGIN_KEY, { placeholder: nextPlaceholder }))
     },
     setText(text) {
@@ -439,6 +444,10 @@ export const PromptEditor = forwardRef((
   }, [])
 
   useEffect(() => {
+    if (activePlaceholderRef.current === placeholder) {
+      return
+    }
+    activePlaceholderRef.current = placeholder
     controller.setPlaceholder(placeholder)
   }, [controller, placeholder])
 
@@ -514,7 +523,9 @@ function createEditorProps({
       const nextState = view.state.apply(transaction)
       view.updateState(nextState)
       onStateUpdate(nextState)
-      propsRef.current.onChange(readSnapshot(nextState, propsRef.current.slashCommands, propsRef.current.selectedSlashCommand))
+      if (transaction.docChanged || transaction.selectionSet) {
+        propsRef.current.onChange(readSnapshot(nextState, propsRef.current.slashCommands, propsRef.current.selectedSlashCommand))
+      }
     },
     handleDOMEvents: {
       blur() {

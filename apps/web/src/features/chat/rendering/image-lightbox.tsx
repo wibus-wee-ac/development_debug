@@ -1,6 +1,6 @@
 import { ChevronLeftIcon, ChevronRightIcon, XIcon } from 'lucide-react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
@@ -19,13 +19,13 @@ export function ImageLightbox({ images, initialIndex, open, onOpenChange }: Imag
     setCurrentIndex(initialIndex)
   }, [initialIndex, open])
 
-  const handlePrevious = useCallback(() => {
+  const handlePrevious = () => {
     setCurrentIndex(prev => (prev > 0 ? prev - 1 : images.length - 1))
-  }, [images.length])
+  }
 
-  const handleNext = useCallback(() => {
+  const handleNext = () => {
     setCurrentIndex(prev => (prev < images.length - 1 ? prev + 1 : 0))
-  }, [images.length])
+  }
 
   useEffect(() => {
     if (!open) { return }
