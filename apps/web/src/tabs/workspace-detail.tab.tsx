@@ -22,6 +22,8 @@ function WorkspaceDetailLayoutSlots({
   workspaceId: string
   workspacePath: string | null
 }) {
+  'use no memo'
+
   const hasWorkspace = !!workspacePath
   const panel = useMemo(
     () => (

@@ -38,6 +38,8 @@ function ChatTabLayoutSlots({
   workspaceId: string | null
   workspacePath: string | null
 }) {
+  'use no memo'
+
   const hasWorkspace = !!(workspaceId && workspacePath)
 
   const panel = useMemo(
@@ -51,7 +53,7 @@ function ChatTabLayoutSlots({
           </Suspense>
         )
       : undefined,
-    [hasWorkspace, workspacePath, sessionId],
+    [hasWorkspace, sessionId, workspacePath],
   )
 
   useRegisterLayoutSlots(sessionId, useMemo(() => ({

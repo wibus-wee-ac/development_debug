@@ -24,7 +24,8 @@ export const zPutPreferencesCodexBody = z.object({
 });
 
 export const zPutPreferencesDesktopBody = z.object({
-    requireDoubleCommandQToQuit: z.boolean().default(true)
+    requireDoubleCommandQToQuit: z.boolean().default(true),
+    appshotHotkeyEnabled: z.boolean().default(true)
 });
 
 export const zPutPreferencesJarvisBody = z.object({

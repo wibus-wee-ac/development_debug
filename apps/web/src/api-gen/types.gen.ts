@@ -145,6 +145,7 @@ export type GetPreferencesDesktopResponses = {
      */
     200: {
         requireDoubleCommandQToQuit: boolean;
+        appshotHotkeyEnabled: boolean;
     };
 };
 
@@ -153,6 +154,7 @@ export type GetPreferencesDesktopResponse = GetPreferencesDesktopResponses[keyof
 export type PutPreferencesDesktopData = {
     body: {
         requireDoubleCommandQToQuit: boolean;
+        appshotHotkeyEnabled: boolean;
     };
     path?: never;
     query?: never;

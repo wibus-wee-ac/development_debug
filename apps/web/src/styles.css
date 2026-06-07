@@ -46,6 +46,64 @@ body {
   50% { opacity: 0.3; }
 }
 
+@keyframes browser-annotation-popup-enter {
+  from {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+  }
+
+  to {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+}
+
+@keyframes browser-annotation-popup-exit {
+  from {
+    opacity: 1;
+    transform: scale(1) translateY(0);
+  }
+
+  to {
+    opacity: 0;
+    transform: scale(0.95) translateY(4px);
+  }
+}
+
+@keyframes browser-annotation-popup-shake {
+  0%, 100% {
+    transform: scale(1) translateX(0);
+  }
+
+  20% {
+    transform: scale(1) translateX(-3px);
+  }
+
+  40% {
+    transform: scale(1) translateX(3px);
+  }
+
+  60% {
+    transform: scale(1) translateX(-2px);
+  }
+
+  80% {
+    transform: scale(1) translateX(2px);
+  }
+}
+
+@keyframes browser-annotation-marker-in {
+  from {
+    opacity: 0;
+    transform: translate(-50%, -50%) scale(0.3);
+  }
+
+  to {
+    opacity: 1;
+    transform: translate(-50%, -50%) scale(1);
+  }
+}
+
 /* Agent session glow animation */
 @keyframes agentGlow {
 
