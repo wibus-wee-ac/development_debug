@@ -1,6 +1,6 @@
 import type { Node as ProseMirrorNode } from '@tiptap/pm/model'
 import { NodeViewContent, NodeViewWrapper } from '@tiptap/react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 import type { IconType } from 'react-icons'
 import { FaCode, FaFileCode } from 'react-icons/fa'
 import {
@@ -132,7 +132,7 @@ export function CodeBlockView({ node, updateAttributes }: {
   const selected = getLanguageOption(language)
   const [open, setOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const filteredOptions = useMemo(() => {
+  const filteredOptions = (() => {
     const normalizedQuery = query.trim().toLowerCase()
     if (!normalizedQuery) {
       return ALL_LANGUAGE_OPTIONS
@@ -140,7 +140,7 @@ export function CodeBlockView({ node, updateAttributes }: {
     return ALL_LANGUAGE_OPTIONS.filter(option =>
       option.label.toLowerCase().includes(normalizedQuery)
       || option.value.toLowerCase().includes(normalizedQuery))
-  }, [query])
+  })()
 
   function setPickerOpen(nextOpen: boolean) {
     setOpen(nextOpen)

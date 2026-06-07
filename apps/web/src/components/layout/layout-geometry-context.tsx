@@ -66,13 +66,14 @@ export function LayoutGeometryProvider({ children }: { children: React.ReactNode
   const [footerRect, setFooterRect] = React.useState<LayoutRect | null>(null)
 
   const rafIdRef = React.useRef(0)
+  const scheduleMeasureRef = React.useRef<() => void>(() => {})
 
-  const measure = React.useCallback(() => {
+  const measure = () => {
     setCenterColumnRect(toLayoutRect(centerColumnElement))
     setFooterRect(toLayoutRect(footerElement))
-  }, [centerColumnElement, footerElement])
+  }
 
-  const scheduleMeasure = React.useCallback(() => {
+  const scheduleMeasure = () => {
     if (rafIdRef.current !== 0) {
       return
     }
@@ -80,11 +81,17 @@ export function LayoutGeometryProvider({ children }: { children: React.ReactNode
       rafIdRef.current = 0
       measure()
     })
-  }, [measure])
+  }
 
   React.useEffect(() => {
-    scheduleMeasure()
-    const observer = new ResizeObserver(scheduleMeasure)
+    scheduleMeasureRef.current = scheduleMeasure
+  })
+
+  React.useEffect(() => {
+    const handleMeasure = () => scheduleMeasureRef.current()
+
+    handleMeasure()
+    const observer = new ResizeObserver(handleMeasure)
     if (centerColumnElement) {
       observer.observe(centerColumnElement)
     }
@@ -92,27 +99,24 @@ export function LayoutGeometryProvider({ children }: { children: React.ReactNode
       observer.observe(footerElement)
     }
 
-    window.addEventListener('resize', scheduleMeasure)
+    window.addEventListener('resize', handleMeasure)
 
     return () => {
       observer.disconnect()
-      window.removeEventListener('resize', scheduleMeasure)
+      window.removeEventListener('resize', handleMeasure)
       if (rafIdRef.current !== 0) {
         cancelAnimationFrame(rafIdRef.current)
         rafIdRef.current = 0
       }
     }
-  }, [centerColumnElement, footerElement, scheduleMeasure])
+  }, [centerColumnElement, footerElement])
 
-  const value = React.useMemo<LayoutGeometryContextValue>(
-    () => ({
+  const value = ({
       centerColumnRect,
       footerRect,
       registerCenterColumn: setCenterColumnElement,
       registerFooter: setFooterElement,
-    }),
-    [centerColumnRect, footerRect],
-  )
+    })
 
   return <LayoutGeometryContext.Provider value={value}>{children}</LayoutGeometryContext.Provider>
 }

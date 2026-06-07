@@ -6,7 +6,7 @@ import {
   GitPullRequestIcon,
   MessageSquareIcon,
 } from 'lucide-react'
-import { useCallback, useEffect, useImperativeHandle, useMemo, useRef, useState } from 'react'
+import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
 
@@ -82,7 +82,7 @@ export function SmartMentionList({ items, command, ref }: SmartMentionListProps 
   const [selectedIndex, setSelectedIndex] = useState(0)
   const selectedRef = useRef(0)
   const listRef = useRef<HTMLDivElement>(null)
-  const { groups, orderedItems } = useMemo(() => groupedItemsWithIndex(items), [items])
+  const { groups, orderedItems } = groupedItemsWithIndex(items)
 
   useEffect(() => {
     setSelectedIndex(0)
@@ -95,15 +95,12 @@ export function SmartMentionList({ items, command, ref }: SmartMentionListProps 
     selected?.scrollIntoView?.({ block: 'nearest' })
   }, [selectedIndex])
 
-  const selectItem = useCallback(
-    (index: number) => {
+  const selectItem = (index: number) => {
       const item = orderedItems[index]
       if (item) {
         command(item)
       }
-    },
-    [command, orderedItems],
-  )
+    }
 
   useImperativeHandle(ref, () => ({
     onKeyDown: ({ event }) => {

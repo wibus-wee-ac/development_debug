@@ -1,4 +1,4 @@
-import { memo, useState } from 'react'
+import { useState } from 'react'
 
 import { cn } from '~/lib/cn'
 
@@ -29,7 +29,7 @@ function readResizeValue(value: ResizeValue): number {
   return typeof value === 'function' ? value() : value
 }
 
-export const ResizeHandle = memo(({
+export const ResizeHandle = ({
   direction,
   value,
   onChange,
@@ -95,5 +95,5 @@ export const ResizeHandle = memo(({
       />
     </div>
   )
-})
+}
 ResizeHandle.displayName = 'ResizeHandle'

@@ -728,8 +728,17 @@ interface DitheredGradientDecorationProps {
   trackGlobal?: boolean
   /** Whether the decoration animation should run. @default true */
   active?: boolean
+  /** Visual tone. @default 'neutral' */
+  tone?: 'neutral' | 'plan'
   className?: string
   style?: React.CSSProperties
+}
+
+function getDitheredCellFillStyle(lightness: number, tone: 'neutral' | 'plan'): string {
+  if (tone === 'plan') {
+    return `oklch(${lightness.toFixed(3)} 0.135 72)`
+  }
+  return `oklch(${lightness.toFixed(3)} 0 0)`
 }
 
 /**
@@ -748,6 +757,7 @@ export function DitheredGradientDecoration({
   fadeBottom = true,
   trackGlobal = false,
   active = true,
+  tone = 'neutral',
   className,
   style,
 }: DitheredGradientDecorationProps = {}) {
@@ -755,8 +765,14 @@ export function DitheredGradientDecoration({
   const mouseRef = useRef({ x: -9999, y: -9999 })
   const targetMouseRef = useRef({ x: -9999, y: -9999 })
   const requestPaintRef = useRef<(() => void) | null>(null)
+  const toneRef = useRef(tone)
 
   const step = cellSize + gap
+
+  useEffect(() => {
+    toneRef.current = tone
+    requestPaintRef.current?.()
+  }, [tone])
 
   useEffect(() => {
     if (!active) {
@@ -851,7 +867,7 @@ export function DitheredGradientDecoration({
             : Math.max(0.05, l - glow * 0.35)
 
           ctx.globalAlpha = 1
-          ctx.fillStyle = `oklch(${finalL.toFixed(3)} 0 0)`
+          ctx.fillStyle = getDitheredCellFillStyle(finalL, toneRef.current)
           ctx.beginPath()
           ctx.roundRect(col * step, row * step, cellSize, cellSize, radius)
           ctx.fill()

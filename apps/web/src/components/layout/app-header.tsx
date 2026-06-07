@@ -115,7 +115,7 @@ export function AppHeader({
           })
           .catch(() => {
             releaseTearoffSession(sessionId)
-          })
+        })
       }
     }
   }, [])

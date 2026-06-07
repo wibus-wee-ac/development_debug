@@ -2,7 +2,7 @@ import type { i18n as I18nInstance } from 'i18next'
 import { createInstance } from 'i18next'
 import resourcesToBackend from 'i18next-resources-to-backend'
 import type { ReactNode } from 'react'
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { I18nextProvider, initReactI18next } from 'react-i18next'
 
 import enUS, { allNamespaces } from '~/locales/default'
@@ -65,7 +65,7 @@ export function I18nProvider({
   children: ReactNode
   initialLocale: SupportedLocale
 }) {
-  const runtime = useMemo(() => createI18nInstance(initialLocale), [initialLocale])
+  const runtime = createI18nInstance(initialLocale)
   const { i18n, readyPromise } = runtime
   const [isReady, setIsReady] = useState(() => i18n.isInitialized)
 
@@ -87,8 +87,7 @@ export function I18nProvider({
     }
   }, [i18n, readyPromise])
 
-  const value = useMemo<I18nContextValue>(() => {
-    return {
+  const value = {
       i18n,
       async switchLang(locale: string) {
         const normalizedLocale = normalizeLocale(locale)
@@ -97,7 +96,6 @@ export function I18nProvider({
         applyDocumentLocale(normalizedLocale)
       },
     }
-  }, [i18n])
 
   if (!isReady) {
     return null

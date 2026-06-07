@@ -3,6 +3,7 @@ import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { useLayoutGeometry } from '~/components/layout/layout-geometry-context'
+import { JarvisHistoryPicker } from '~/features/system-agent/jarvis-history-picker'
 import { JarvisPopover } from '~/features/system-agent/jarvis-popover'
 import { useJarvisUiStore } from '~/features/system-agent/jarvis-ui-store'
 import { useShortcut } from '~/hooks/use-shortcut'
@@ -17,9 +18,10 @@ export function AppFooter({ className }: { className?: string }) {
   const sessions = useJarvisUiStore(s => s.sessions)
   const activeSessionId = useJarvisUiStore(s => s.activeSessionId)
   const setActiveSessionId = useJarvisUiStore(s => s.setActiveSessionId)
-  const removeSession = useJarvisUiStore(s => s.removeSession)
+  const closeSessionTab = useJarvisUiStore(s => s.closeSessionTab)
 
   useShortcut('toggle-jarvis', { meta: true, key: 'j' }, () => setJarvisOpen(prev => !prev))
+  const handleHistorySessionSelected = () => setJarvisOpen(true)
 
   // "Ask Jarvis" is the active tab when no session is selected
   const isNewSessionActive = !activeSessionId
@@ -57,8 +59,8 @@ export function AppFooter({ className }: { className?: string }) {
             </button>
             <button
               type="button"
-              onClick={() => removeSession(sess.id)}
-              aria-label={`Close Jarvis session ${sess.title || 'Untitled'}`}
+              onClick={() => closeSessionTab(sess.id)}
+              aria-label={`Close Jarvis tab ${sess.title || 'Untitled'}`}
               className="flex size-5 shrink-0 items-center justify-center rounded-r-full opacity-0 transition-opacity hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
             >
               <XIcon className="size-2.5" aria-hidden="true" />
@@ -85,6 +87,8 @@ export function AppFooter({ className }: { className?: string }) {
           <MousePointer2Icon className="size-3" aria-hidden="true" />
           <span>{t('footer.action.askJarvis')}</span>
         </button>
+
+        <JarvisHistoryPicker onSelectSession={handleHistorySessionSelected} />
       </div>
 
       <JarvisPopover

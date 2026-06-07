@@ -10,13 +10,7 @@ import {
   QuoteIcon,
   TextIcon,
 } from 'lucide-react'
-import {
-  useCallback,
-  useEffect,
-  useImperativeHandle,
-  useRef,
-  useState,
-} from 'react'
+import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
 
@@ -64,15 +58,12 @@ export function SlashCommandList({ items, command, ref }: SlashCommandListProps 
       }
     }, [selectedIndex])
 
-    const selectItem = useCallback(
-      (index: number) => {
+    const selectItem = (index: number) => {
         const item = items[index]
         if (item) {
           command(item)
         }
-      },
-      [items, command],
-    )
+      }
 
     useImperativeHandle(ref, () => ({
       onKeyDown: ({ event }) => {

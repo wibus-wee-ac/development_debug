@@ -65,7 +65,7 @@ export function ChromeSideSheet({
       window.removeEventListener('pointerdown', handlePointerDown, { capture: true })
       window.removeEventListener('keydown', handleKeyDown)
     }
-  }, [onOpenChange, open])
+  }, [onOpenChange, open, side])
 
   if (typeof document === 'undefined') {
     return null

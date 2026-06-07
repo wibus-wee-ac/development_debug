@@ -1,5 +1,5 @@
 import { SearchIcon, XIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
 import type { IconCatalogEntry } from '~/lib/lobe-icons'
@@ -56,24 +56,24 @@ export function IconPicker({ value, onChange, children, disabled, renderIcon }: 
   const [query, setQuery] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const filtered = useMemo(() => {
+  const filtered = (() => {
     if (!query.trim()) {
       return iconCatalog
     }
     return searchIcons(query)
-  }, [query])
+  })()
 
-  const handleSelect = useCallback((entry: IconCatalogEntry) => {
+  const handleSelect = (entry: IconCatalogEntry) => {
     onChange(entry.slug)
     setOpen(false)
     setQuery('')
-  }, [onChange])
+  }
 
-  const handleRemove = useCallback(() => {
+  const handleRemove = () => {
     onChange(null)
     setOpen(false)
     setQuery('')
-  }, [onChange])
+  }
 
   useEffect(() => {
     if (!open) {
@@ -102,6 +102,7 @@ export function IconPicker({ value, onChange, children, disabled, renderIcon }: 
             ref={inputRef}
             type="text"
             value={query}
+            aria-label="Search icons"
             onChange={e => setQuery(e.target.value)}
             placeholder="Search icons..."
             className="flex-1 bg-transparent text-sm text-foreground outline-none placeholder:text-muted-foreground/50"
@@ -110,6 +111,7 @@ export function IconPicker({ value, onChange, children, disabled, renderIcon }: 
             <button
               type="button"
               onClick={() => setQuery('')}
+              aria-label="Clear icon search"
               className="text-muted-foreground/60 hover:text-foreground"
             >
               <XIcon className="size-3" />

@@ -7,16 +7,13 @@ import { matchesShortcut } from './shortcut-utils'
 export function ShortcutProvider({ children }: { children: React.ReactNode }) {
   const entriesRef = React.useRef<Map<string, ShortcutEntry>>(new Map())
 
-  const register = React.useCallback(
-    (id: string, shortcut: ShortcutDefinition, handler: () => void, enabled = true) => {
+  const register = (id: string, shortcut: ShortcutDefinition, handler: () => void, enabled = true) => {
       entriesRef.current.set(id, { id, shortcut, handler, enabled })
-    },
-    [],
-  )
+    }
 
-  const unregister = React.useCallback((id: string) => {
+  const unregister = (id: string) => {
     entriesRef.current.delete(id)
-  }, [])
+  }
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
@@ -48,7 +45,7 @@ export function ShortcutProvider({ children }: { children: React.ReactNode }) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  const value = React.useMemo(() => ({ register, unregister }), [register, unregister])
+  const value = ({ register, unregister })
 
   return (
     <ShortcutContext.Provider value={value}>

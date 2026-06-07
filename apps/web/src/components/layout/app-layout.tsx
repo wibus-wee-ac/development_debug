@@ -1,6 +1,7 @@
-import { m } from 'motion/react'
+import type { AnimationPlaybackControls, Transition } from 'motion/react'
+import { animate, m, useMotionValue } from 'motion/react'
 import type { ReactNode } from 'react'
-import { Activity, memo, useCallback, useEffect, useRef, useState } from 'react'
+import { Activity, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -47,6 +48,36 @@ type BrowserBridgeCleanup = () => void
 
 const MemoizedRightAside = memo(RightAside)
 MemoizedRightAside.displayName = 'MemoizedRightAside'
+
+function useAnimatedSize(initialSize: number) {
+  const size = useMotionValue(initialSize)
+  const animationRef = useRef<AnimationPlaybackControls | null>(null)
+
+  const stopAnimation = useCallback(() => {
+    animationRef.current?.stop()
+    animationRef.current = null
+  }, [])
+
+  const setSize = useCallback((nextSize: number) => {
+    stopAnimation()
+    size.set(nextSize)
+  }, [size, stopAnimation])
+
+  const animateSize = useCallback((nextSize: number, transition: Transition) => {
+    stopAnimation()
+    animationRef.current = animate(size, nextSize, transition)
+    return animationRef.current
+  }, [size, stopAnimation])
+
+  useEffect(
+    () => () => {
+      stopAnimation()
+    },
+    [stopAnimation],
+  )
+
+  return useMemo(() => ({ size, setSize, animateSize, stopAnimation }), [animateSize, setSize, size, stopAnimation])
+}
 
 function parseBrowserTabRequest(payload: unknown): string | undefined {
   return typeof payload === 'object'
@@ -229,10 +260,11 @@ function AppLayoutContent({
   const [rightAsideSheetOpen, setRightAsideSheetOpen] = useState(false)
   const [browserNativeBoundsPaused, setBrowserNativeBoundsPaused] = useState(false)
   const [browserPanelClosing, setBrowserPanelClosing] = useState(false)
-  const [previousBrowserPanelVisible, setPreviousBrowserPanelVisible] = useState(false)
   const mainElementRef = useRef<HTMLElement | null>(null)
-  const browserPanelElementRef = useRef<HTMLDivElement | null>(null)
+  const previousBrowserPanelVisibleRef = useRef(false)
   const browserNativeBoundsResumeTimerRef = useRef<number | null>(null)
+  const browserPanelWidthAnimationIdRef = useRef(0)
+  const browserPanelWidthAnimatingRef = useRef(false)
   const mainRef = useCallback((el: HTMLElement | null) => {
     mainElementRef.current = el
   }, [])
@@ -320,22 +352,29 @@ function AppLayoutContent({
   const resolvedBrowserPanelOpen = !isSettings && !!resolvedHasBrowserPanel && browserPanelOpen
   const browserPanelMounted = isElectron
   const browserPanelVisible = browserPanelMounted && resolvedBrowserPanelOpen
-  if (previousBrowserPanelVisible !== browserPanelVisible) {
-    setPreviousBrowserPanelVisible(browserPanelVisible)
-    setBrowserPanelClosing(browserPanelMounted && previousBrowserPanelVisible && !browserPanelVisible)
-  }
+  const browserPanelWidth = useAnimatedSize(browserPanelVisible ? browserPanelRatio * readMainWidth() : 0)
+  useLayoutEffect(() => {
+    const previousBrowserPanelVisible = previousBrowserPanelVisibleRef.current
+    previousBrowserPanelVisibleRef.current = browserPanelVisible
+
+    if (browserPanelMounted && previousBrowserPanelVisible && !browserPanelVisible) {
+      setBrowserPanelClosing(true)
+      return
+    }
+
+    if (browserPanelVisible) {
+      setBrowserPanelClosing(false)
+    }
+  }, [browserPanelMounted, browserPanelVisible])
   const readBrowserTabSource = useCallback((): BrowserTabSource => {
     return {
       sessionId: activeSessionId,
       sessionTitle: activeSessionTitle,
     }
   }, [activeSessionId, activeSessionTitle])
-  const handleCloseLastBrowserPanelTab = useCallback(
-    (ownerId: string) => {
-      setBrowserPanelOpen(false, ownerId)
-    },
-    [setBrowserPanelOpen],
-  )
+  const handleCloseLastBrowserPanelTab = useCallback((ownerId: string) => {
+    setBrowserPanelOpen(false, ownerId)
+  }, [setBrowserPanelOpen])
   const clearBrowserNativeBoundsResumeTimer = useCallback(() => {
     if (browserNativeBoundsResumeTimerRef.current === null) {
       return
@@ -366,27 +405,23 @@ function AppLayoutContent({
     }, BROWSER_NATIVE_BOUNDS_SETTLE_MS)
   }, [browserPanelVisible, clearBrowserNativeBoundsResumeTimer])
   const handleBrowserPanelResize = useCallback((px: number) => {
-    const panel = browserPanelElementRef.current
-    if (panel) {
-      panel.style.width = `${px}px`
-    }
-  }, [])
-  const handleBrowserPanelResizeEnd = useCallback(
-    (px: number) => {
-      const mainWidth = readMainWidth()
-      const ratio = Math.max(0.2, Math.min(0.7, px / mainWidth))
-      const panel = browserPanelElementRef.current
-      if (panel) {
-        panel.style.width = `${ratio * 100}%`
-      }
-      setBrowserPanelRatio(ratio)
-      updateDragging(null)
-    },
-    [readMainWidth, setBrowserPanelRatio, updateDragging],
-  )
+    browserPanelWidth.setSize(px)
+  }, [browserPanelWidth])
+  const handleBrowserPanelResizeEnd = useCallback((px: number) => {
+    const mainWidth = readMainWidth()
+    const ratio = Math.max(0.2, Math.min(0.7, px / mainWidth))
+    browserPanelWidthAnimationIdRef.current += 1
+    browserPanelWidthAnimatingRef.current = false
+    browserPanelWidth.setSize(px)
+    setBrowserPanelRatio(ratio)
+    updateDragging(null)
+  }, [browserPanelWidth, readMainWidth, setBrowserPanelRatio, updateDragging])
   const handleBrowserPanelDragStart = useCallback(() => {
+    browserPanelWidthAnimationIdRef.current += 1
+    browserPanelWidthAnimatingRef.current = false
+    browserPanelWidth.setSize(browserPanelWidth.size.get())
     updateDragging('browser')
-  }, [updateDragging])
+  }, [browserPanelWidth, updateDragging])
   const handleBottomPanelDragStart = useCallback(() => {
     updateDragging('panel')
     pauseBrowserNativeBounds()
@@ -395,21 +430,6 @@ function AppLayoutContent({
     updateDragging(null)
     resumeBrowserNativeBounds()
   }, [resumeBrowserNativeBounds, updateDragging])
-  const handleBrowserPanelAnimationStart = useCallback(() => {
-    if (dragging === 'browser') {
-      return
-    }
-    pauseBrowserNativeBoundsForLayout(true)
-  }, [dragging, pauseBrowserNativeBoundsForLayout])
-  const handleBrowserPanelAnimationComplete = useCallback(() => {
-    if (dragging === 'browser') {
-      return
-    }
-    if (!browserPanelVisible) {
-      setBrowserPanelClosing(false)
-    }
-    resumeBrowserNativeBounds()
-  }, [browserPanelVisible, dragging, resumeBrowserNativeBounds])
 
   useEffect(
     () => () => {
@@ -417,6 +437,67 @@ function AppLayoutContent({
     },
     [clearBrowserNativeBoundsResumeTimer],
   )
+
+  useEffect(() => {
+    if (dragging === 'browser') {
+      return
+    }
+    const nextWidth = browserPanelVisible ? browserPanelRatio * readMainWidth() : 0
+    if (Math.abs(browserPanelWidth.size.get() - nextWidth) < 0.5) {
+      if (!browserPanelVisible) {
+        setBrowserPanelClosing(false)
+      }
+      return
+    }
+
+    const animationId = browserPanelWidthAnimationIdRef.current + 1
+    browserPanelWidthAnimationIdRef.current = animationId
+    browserPanelWidthAnimatingRef.current = true
+    pauseBrowserNativeBoundsForLayout(true)
+
+    const controls = browserPanelWidth.animateSize(nextWidth, SPRING)
+    void controls.finished.then(() => {
+      if (browserPanelWidthAnimationIdRef.current !== animationId) {
+        return
+      }
+      browserPanelWidthAnimatingRef.current = false
+      if (!browserPanelVisible) {
+        setBrowserPanelClosing(false)
+      }
+      resumeBrowserNativeBounds()
+    }).catch(() => { })
+  }, [
+    browserPanelRatio,
+    browserPanelVisible,
+    browserPanelWidth,
+    dragging,
+    pauseBrowserNativeBoundsForLayout,
+    readMainWidth,
+    resumeBrowserNativeBounds,
+  ])
+
+  useEffect(() => {
+    const element = mainElementRef.current
+    if (!element || typeof ResizeObserver === 'undefined') {
+      return
+    }
+
+    const syncBrowserPanelWidth = () => {
+      if (dragging === 'browser' || browserPanelWidthAnimatingRef.current) {
+        return
+      }
+      browserPanelWidth.setSize(browserPanelVisible ? browserPanelRatio * readMainWidth() : 0)
+    }
+
+    const resizeObserver = new ResizeObserver(syncBrowserPanelWidth)
+    resizeObserver.observe(element)
+    window.addEventListener('resize', syncBrowserPanelWidth)
+
+    return () => {
+      resizeObserver.disconnect()
+      window.removeEventListener('resize', syncBrowserPanelWidth)
+    }
+  }, [browserPanelRatio, browserPanelVisible, browserPanelWidth, dragging, readMainWidth])
 
   useEffect(() => {
     if (browserPanelVisible || browserPanelClosing || browserNativeBoundsPaused) {
@@ -544,7 +625,7 @@ function AppLayoutContent({
             {browserPanelVisible && (
               <ResizeHandle
                 direction="horizontal"
-                value={() => browserPanelRatio * readMainWidth()}
+                value={() => browserPanelWidth.size.get()}
                 onChange={handleBrowserPanelResize}
                 onDragStart={handleBrowserPanelDragStart}
                 onChangeEnd={handleBrowserPanelResizeEnd}
@@ -555,12 +636,8 @@ function AppLayoutContent({
               />
             )}
             <m.div
-              ref={browserPanelElementRef}
               initial={false}
-              animate={{ width: browserPanelVisible ? `${browserPanelRatio * 100}%` : '0%' }}
-              transition={dragging === 'browser' ? INSTANT : SPRING}
-              onAnimationStart={handleBrowserPanelAnimationStart}
-              onAnimationComplete={handleBrowserPanelAnimationComplete}
+              style={{ width: browserPanelWidth.size }}
               className={cn(
                 'flex shrink-0 flex-col overflow-hidden',
                 browserPanelActivityVisible && 'border-l border-border/50',
@@ -667,59 +744,48 @@ interface AppRightAsideProps {
   onResizeEnd?: () => void
 }
 
-function AppRightAside({
+const AppRightAside = memo(({
   sessionId,
   workspaceId,
   workspaceName,
   workspacePath,
   onResizeStart,
   onResizeEnd,
-}: AppRightAsideProps) {
-  const [dragging, setDragging] = useState<string | null>(null)
-  const asideElementRef = useRef<HTMLElement | null>(null)
-  const asideContentElementRef = useRef<HTMLDivElement | null>(null)
+}: AppRightAsideProps) => {
   const asideWidth = useLayoutStore(state => state.asideWidth)
   const setAsideWidth = useLayoutStore(state => state.setAsideWidth)
   const asideOpen = useLayoutStore(state => state.asideOpen)
+  const asideMotionWidth = useAnimatedSize(asideOpen ? asideWidth : 0)
 
   const handleAsideResize = useCallback((width: number) => {
-    const aside = asideElementRef.current
-    const content = asideContentElementRef.current
-    if (aside) {
-      aside.style.width = `${width}px`
+    asideMotionWidth.setSize(width)
+  }, [asideMotionWidth])
+  const handleAsideResizeStart = useCallback(() => {
+    asideMotionWidth.setSize(asideMotionWidth.size.get())
+    onResizeStart?.()
+  }, [asideMotionWidth, onResizeStart])
+  const handleAsideResizeEnd = useCallback((width: number) => {
+    asideMotionWidth.setSize(width)
+    setAsideWidth(width)
+    onResizeEnd?.()
+  }, [asideMotionWidth, onResizeEnd, setAsideWidth])
+
+  useEffect(() => {
+    const nextWidth = asideOpen ? asideWidth : 0
+    if (Math.abs(asideMotionWidth.size.get() - nextWidth) < 0.5) {
+      return
     }
-    if (content) {
-      content.style.width = `${width}px`
-    }
-  }, [])
-  const handleAsideResizeEnd = useCallback(
-    (width: number) => {
-      const aside = asideElementRef.current
-      const content = asideContentElementRef.current
-      if (aside) {
-        aside.style.width = `${width}px`
-      }
-      if (content) {
-        content.style.width = `${width}px`
-      }
-      setAsideWidth(width)
-      setDragging(null)
-      onResizeEnd?.()
-    },
-    [onResizeEnd, setAsideWidth],
-  )
+    asideMotionWidth.animateSize(nextWidth, SPRING)
+  }, [asideMotionWidth, asideOpen, asideWidth])
 
   return (
     <>
       {asideOpen && (
         <ResizeHandle
           direction="horizontal"
-          value={asideWidth}
+          value={() => asideMotionWidth.size.get()}
           onChange={handleAsideResize}
-          onDragStart={() => {
-            setDragging('aside')
-            onResizeStart?.()
-          }}
+          onDragStart={handleAsideResizeStart}
           onChangeEnd={handleAsideResizeEnd}
           min={ASIDE.min}
           max={ASIDE.max}
@@ -727,24 +793,17 @@ function AppRightAside({
         />
       )}
       <m.aside
-        ref={asideElementRef}
-        initial={{
-          width: asideOpen ? asideWidth : 0,
-          opacity: asideOpen ? 1 : 0,
-        }}
-        animate={{
-          width: asideOpen ? asideWidth : 0,
-          opacity: asideOpen ? 1 : 0,
-        }}
-        transition={dragging === 'aside' ? INSTANT : SPRING}
+        initial={false}
+        animate={{ opacity: asideOpen ? 1 : 0 }}
+        transition={SPRING}
+        style={{ width: asideMotionWidth.size }}
         className="flex shrink-0 overflow-hidden bg-sidebar"
         data-testid="app-layout-right-aside"
         data-aside-open={asideOpen ? 'true' : 'false'}
       >
-        <div
-          ref={asideContentElementRef}
+        <m.div
           className="flex flex-col flex-1 overflow-hidden"
-          style={{ width: asideWidth }}
+          style={{ width: asideMotionWidth.size }}
         >
           <MemoizedRightAside
             sessionId={sessionId}
@@ -752,8 +811,9 @@ function AppRightAside({
             workspaceName={workspaceName}
             workspacePath={workspacePath}
           />
-        </div>
+        </m.div>
       </m.aside>
     </>
   )
-}
+})
+AppRightAside.displayName = 'AppRightAside'

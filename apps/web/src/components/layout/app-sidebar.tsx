@@ -1,4 +1,4 @@
-import { AnimatePresence, m } from 'motion/react'
+import { m } from 'motion/react'
 import { memo, useCallback, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -50,37 +50,34 @@ const AppSidebarContent = memo(({
         className="relative flex flex-col flex-1 overflow-hidden"
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
-        <AnimatePresence mode="popLayout" initial={false}>
-          {isSettings
-            ? (
-              <m.div
-                key="settings-nav"
-                className="flex flex-1 flex-col overflow-hidden"
-                initial={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
-                animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
-                exit={{ x: 20, opacity: 0, filter: 'blur(4px)' }}
-                transition={DRILL_TRANSITION}
-              >
-                <SettingsSidebar
-                  activeSection={settingsSection}
-                  onSetSection={onSetSettingsSection}
-                  onClose={onCloseSettings}
-                />
-              </m.div>
-            )
-            : (
-              <m.div
-                key="main-nav"
-                className="flex flex-1 flex-col overflow-hidden"
-                initial={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
-                animate={{ x: 0, opacity: 1, filter: 'blur(0px)' }}
-                exit={{ x: -20, opacity: 0, filter: 'blur(4px)' }}
-                transition={DRILL_TRANSITION}
-              >
-                <WorkspaceSidebar collapsed={collapsed} />
-              </m.div>
-            )}
-        </AnimatePresence>
+        <m.div
+          className="absolute inset-0 flex flex-col overflow-hidden"
+          initial={false}
+          animate={isSettings
+            ? { x: 0, opacity: 1, filter: 'blur(0px)' }
+            : { x: 20, opacity: 0, filter: 'blur(4px)' }}
+          transition={DRILL_TRANSITION}
+          aria-hidden={isSettings ? undefined : 'true'}
+          inert={isSettings ? undefined : true}
+        >
+          <SettingsSidebar
+            activeSection={settingsSection}
+            onSetSection={onSetSettingsSection}
+            onClose={onCloseSettings}
+          />
+        </m.div>
+        <m.div
+          className="absolute inset-0 flex flex-col overflow-hidden"
+          initial={false}
+          animate={isSettings
+            ? { x: -20, opacity: 0, filter: 'blur(4px)' }
+            : { x: 0, opacity: 1, filter: 'blur(0px)' }}
+          transition={DRILL_TRANSITION}
+          aria-hidden={isSettings ? 'true' : undefined}
+          inert={isSettings ? true : undefined}
+        >
+          <WorkspaceSidebar collapsed={collapsed} />
+        </m.div>
       </div>
     </>
   )
@@ -105,7 +102,7 @@ function useAppSidebarContentController() {
         openSettings(id)
       }
     }
-  }, [isSettings, closeSettings, openSettings])
+  }, [closeSettings, isSettings, openSettings])
 
   useShortcut('toggle-settings', { meta: true, key: ',' }, handleToggleSettings)
   useShortcut('exit-settings', { meta: true, key: 'Escape' }, closeSettings, isSettings)
@@ -134,7 +131,7 @@ export function AppSidebar() {
 
   useShortcut('toggle-sidebar', { meta: true, key: 'b' }, toggleSidebar)
 
-  // Settings drill-in forces sidebar open; main mode respects user's collapse preference
+  // Settings drill-in forces sidebar open; main mode respects user's collapse preference.
   const collapsed = sidebarCollapsed && !isSettings
   const currentWidth = collapsed ? CHROME_COLLAPSED_SIDEBAR_WIDTH : dragWidth ?? sidebarWidth
 

@@ -209,6 +209,7 @@ export interface DesktopCliStatus {
 
 export interface DesktopPreferences {
   requireDoubleCommandQToQuit: boolean
+  appshotHotkeyEnabled: boolean
 }
 
 interface WindowServiceMethods {

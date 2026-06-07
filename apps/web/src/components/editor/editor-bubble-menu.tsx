@@ -7,7 +7,7 @@ import {
   LinkIcon,
   StrikethroughIcon,
 } from 'lucide-react'
-import { useCallback, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
 
@@ -20,7 +20,7 @@ export function EditorBubbleMenu({ editor }: EditorBubbleMenuProps) {
   const [linkUrl, setLinkUrl] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
 
-  const handleLinkClick = useCallback(() => {
+  const handleLinkClick = () => {
     if (editor.isActive('link')) {
       editor.chain().focus().unsetLink().run()
     }
@@ -29,15 +29,15 @@ export function EditorBubbleMenu({ editor }: EditorBubbleMenuProps) {
       setLinkUrl('')
       setTimeout(() => inputRef.current?.focus(), 0)
     }
-  }, [editor])
+  }
 
-  const applyLink = useCallback(() => {
+  const applyLink = () => {
     if (linkUrl.trim()) {
       editor.chain().focus().setLink({ href: linkUrl.trim() }).run()
     }
     setLinkInput(false)
     setLinkUrl('')
-  }, [editor, linkUrl])
+  }
 
   return (
     <BubbleMenu
@@ -54,6 +54,7 @@ export function EditorBubbleMenu({ editor }: EditorBubbleMenuProps) {
             <input
               ref={inputRef}
               value={linkUrl}
+              aria-label="Link URL"
               onChange={e => setLinkUrl(e.target.value)}
               onKeyDown={(e) => {
                 if (e.key === 'Enter') {
