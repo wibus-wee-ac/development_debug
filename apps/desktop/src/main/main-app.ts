@@ -458,16 +458,6 @@ export async function startDesktopApp(): Promise<void> {
     windowManager = new WindowManager(serverUrl)
     appBadgeManager.initialize()
 
-    mainWindow = await createMainWindow(serverUrl)
-    setMainWindow(mainWindow)
-
-    notificationCenterManager = new NotificationCenterManager({
-      serverUrl,
-      chatStreamBroker,
-      getMainWindow: () => mainWindow,
-    })
-    notificationCenterManager.start()
-
     trayManager = new TrayManager({
       serverUrl,
       getMainWindow: () => mainWindow,
@@ -486,6 +476,16 @@ export async function startDesktopApp(): Promise<void> {
       },
     })
     trayManager.initialize()
+
+    mainWindow = await createMainWindow(serverUrl)
+    setMainWindow(mainWindow)
+
+    notificationCenterManager = new NotificationCenterManager({
+      serverUrl,
+      chatStreamBroker,
+      getMainWindow: () => mainWindow,
+    })
+    notificationCenterManager.start()
 
     updateManager?.startBackgroundChecks()
     processPendingPluginInstallUrls()

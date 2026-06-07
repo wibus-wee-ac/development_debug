@@ -227,6 +227,7 @@ const ABOUT_BLANK_URL = 'about:blank'
 const BROWSER_SESSION_PARTITION = 'persist:cradle-browser'
 const BROWSER_ERROR_ABORTED = -3
 const SEARCH_URL_PREFIX = 'https://www.google.com/search?q='
+const HIDDEN_BROWSER_BOUNDS: BrowserPanelBounds = { x: -10000, y: -10000, width: 1, height: 1 }
 const LOCAL_SERVER_DISCOVERY_TIMEOUT_MS = 650
 const LOCAL_SERVER_DISCOVERY_LIMIT = 12
 const LOCAL_SERVER_CANDIDATE_PORTS = [
@@ -1771,6 +1772,7 @@ export class DesktopBrowserManager {
     const runtime = this.runtimes.get(this.attachedRuntimeKey)
     if (runtime) {
       this.setRuntimeViewHidden(runtime, true)
+      runtime.view.setBounds(HIDDEN_BROWSER_BOUNDS)
       this.window.contentView.removeChildView(runtime.view)
     }
     this.attachedRuntimeKey = null

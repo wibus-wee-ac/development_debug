@@ -1,8 +1,9 @@
 import type { ChildProcess } from 'node:child_process'
-import { fork } from 'node:child_process'
+import { execFile, fork } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
 import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { delimiter, dirname, join, resolve } from 'node:path'
+import { homedir } from 'node:os'
+import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
 
 import { app, dialog } from 'electron'
 import getPort from 'get-port'
@@ -20,6 +21,9 @@ const MAX_RESTARTS = 3
 const SERVER_STARTUP_TIMEOUT_MS = 90_000
 const SERVER_RESTART_READY_TIMEOUT_MS = 60_000
 const SERVER_OUTPUT_LINE_LIMIT = 200
+const LOGIN_SHELL_PATH_TIMEOUT_MS = 1500
+const SHELL_PATH_MARKER_START = '__CRADLE_SHELL_PATH_START__'
+const SHELL_PATH_MARKER_END = '__CRADLE_SHELL_PATH_END__'
 const CREDENTIAL_SECRET_FILE = 'credential-secret'
 const SAFE_STORAGE_PREFIX = 'v1-safe:'
 const PLAIN_STORAGE_PREFIX = 'v1-plain:'
@@ -170,6 +174,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
     NODE_ENV: isDev ? 'development' : 'production',
     FORCE_COLOR: '1',
   }
+  serverEnv.PATH = await resolveDesktopServerPath(serverEnv)
   delete serverEnv.NO_COLOR
 
   serverProcess = fork(serverEntry, [], {
@@ -287,6 +292,94 @@ function resolveDevNodeExecPath(): string {
     return candidate
   }
   return 'node'
+}
+
+async function resolveDesktopServerPath(env: NodeJS.ProcessEnv): Promise<string> {
+  const shellPath = process.platform === 'darwin' ? await readLoginShellPath(env) : null
+  return joinPathSegments([
+    ...splitPath(shellPath),
+    ...splitPath(env.PATH),
+    ...readDesktopCommandPathFallbackSegments(env),
+  ])
+}
+
+function readLoginShellPath(env: NodeJS.ProcessEnv): Promise<string | null> {
+  return new Promise((resolve) => {
+    const shell = resolveLoginShell(env)
+    const command = `printf '${SHELL_PATH_MARKER_START}%s${SHELL_PATH_MARKER_END}' "$PATH"`
+    execFile(
+      shell,
+      ['-ilc', command],
+      {
+        env,
+        encoding: 'utf8',
+        maxBuffer: 64 * 1024,
+        timeout: LOGIN_SHELL_PATH_TIMEOUT_MS,
+      },
+      (_error, stdout) => resolve(readMarkedShellPath(stdout)),
+    )
+  })
+}
+
+function resolveLoginShell(env: NodeJS.ProcessEnv): string {
+  const shell = env.SHELL?.trim()
+  return shell && isAbsolute(shell) ? shell : '/bin/zsh'
+}
+
+function readMarkedShellPath(output: string): string | null {
+  const start = output.lastIndexOf(SHELL_PATH_MARKER_START)
+  if (start < 0) {
+    return null
+  }
+
+  const valueStart = start + SHELL_PATH_MARKER_START.length
+  const end = output.indexOf(SHELL_PATH_MARKER_END, valueStart)
+  if (end < 0) {
+    return null
+  }
+
+  const value = output.slice(valueStart, end)
+  return value ? value : null
+}
+
+function splitPath(value: string | null | undefined): string[] {
+  return value?.split(delimiter).filter(Boolean) ?? []
+}
+
+function joinPathSegments(segments: string[]): string {
+  const seen = new Set<string>()
+  const uniqueSegments: string[] = []
+  for (const segment of segments) {
+    if (seen.has(segment)) {
+      continue
+    }
+    seen.add(segment)
+    uniqueSegments.push(segment)
+  }
+  return uniqueSegments.join(delimiter)
+}
+
+function readDesktopCommandPathFallbackSegments(env: NodeJS.ProcessEnv): string[] {
+  const home = env.HOME?.trim() || homedir()
+  return [
+    join(home, '.local/bin'),
+    join(home, 'bin'),
+    join(home, 'Library/pnpm'),
+    join(home, '.npm-global/bin'),
+    join(home, '.bun/bin'),
+    join(home, '.deno/bin'),
+    join(home, '.cargo/bin'),
+    join(home, 'go/bin'),
+    join(home, '.vite-plus/bin'),
+    '/opt/homebrew/bin',
+    '/opt/homebrew/sbin',
+    '/usr/local/bin',
+    '/usr/local/sbin',
+    '/usr/bin',
+    '/bin',
+    '/usr/sbin',
+    '/sbin',
+  ].filter(path => existsSync(path))
 }
 
 function resolveDesktopCredentialSecret(dataDir: string): string {
