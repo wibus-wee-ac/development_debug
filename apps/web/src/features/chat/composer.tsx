@@ -848,11 +848,13 @@ export function Composer({
     options?: { invertContinuationMode?: boolean },
     submitHandler: ComposerSendHandler = submit,
   ) => {
-    const text = state.inputValue.trim()
+    const editorText = promptEditorRef.current?.getText() ?? state.inputValue
+    const contextParts = promptEditorRef.current?.getContextParts() ?? state.contextParts
+    const text = editorText.trim()
     if (disabled || isSending || sendDisabled || sendBlocked) {
       return
     }
-    if (!allowEmptySend && !text && composerAttachments.length === 0 && state.contextParts.length === 0) {
+    if (!allowEmptySend && !text && composerAttachments.length === 0 && contextParts.length === 0) {
       return
     }
 
@@ -870,7 +872,7 @@ export function Composer({
     submitAndClearDraft({
       appendFileParts: appendComposerFileParts,
       clearAttachments: clearComposerAttachments,
-      contextParts: state.contextParts,
+      contextParts,
       dispatch,
       files: composerAttachments,
       options,
