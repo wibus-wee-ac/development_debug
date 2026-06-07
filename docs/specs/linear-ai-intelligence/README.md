@@ -45,7 +45,8 @@ Cradle 应该把 Linear AI 相关能力拆成三个 owner，而不是塞进现�
 Cradle 当前证据入口：
 
 - `packages/db/src/schema/issue.ts`
-- `packages/db/src/schema/issue-agent.ts`
+- `packages/db/src/schema/agent-interaction.ts`
+- `apps/server/src/modules/agent-interaction-runtime/service.ts`
 - `apps/server/src/modules/issue-agent/service.ts`
 - `apps/server/src/modules/search/README.md`
 - `apps/server/src/modules/workspace/README.md`

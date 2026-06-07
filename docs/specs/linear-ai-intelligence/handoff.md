@@ -56,7 +56,8 @@ https://linear.app/developers/oauth-2-0-authentication
 
 ```text
 packages/db/src/schema/issue.ts
-packages/db/src/schema/issue-agent.ts
+packages/db/src/schema/agent-interaction.ts
+apps/server/src/modules/agent-interaction-runtime/service.ts
 apps/server/src/modules/issue-agent/service.ts
 apps/server/src/modules/search/README.md
 apps/server/src/modules/workspace/README.md
@@ -94,7 +95,8 @@ Read:
 - docs/specs/linear-ai-intelligence/agent-interaction-runtime.md
 - docs/specs/linear-ai-intelligence/handoff.md
 - packages/db/src/schema/issue.ts
-- packages/db/src/schema/issue-agent.ts
+- packages/db/src/schema/agent-interaction.ts
+- apps/server/src/modules/agent-interaction-runtime/service.ts
 - apps/server/src/modules/issue-agent/service.ts
 - apps/web/src/features/context/context-items.ts
 

@@ -22,7 +22,7 @@ Linear 官方文档呈现的 agent 体系：
 
 ## Current Cradle Gap
 
-当前 `packages/db/src/schema/issue-agent.ts` 已有：
+当前 `packages/db/src/schema/agent-interaction.ts` 已有：
 
 - `agent_sessions`
 - `agent_activities`
@@ -40,7 +40,7 @@ Linear 官方文档呈现的 agent 体系：
 - guidance snapshot。
 - agent identity disclosure contract。
 
-当前 `apps/server/src/modules/issue-agent/service.ts` 仍以 issue prompt + ChatRuntime run 为核心。它可以作为 migration evidence，但不应继续拥有完整 agent 交互语义。
+当前 `apps/server/src/modules/agent-interaction-runtime/service.ts` 已经拥有 session/activity 的基础 CRUD 与状态写入；`apps/server/src/modules/issue-agent/service.ts` 仍以 issue prompt + ChatRuntime run 为核心。Issue Agent 可以作为 migration evidence，但不应继续拥有完整 agent 交互语义。
 
 ## Owner Boundary
 

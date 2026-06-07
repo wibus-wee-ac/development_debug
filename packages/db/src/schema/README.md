@@ -22,7 +22,7 @@
 - **issue.ts**: Workspace-scoped Issue、状态、里程碑、due date、评论、source chat session provenance、field-change audit history、关联相关表；当前 SQLite 物理表名仍沿用 `kanban_*`
 - **kanban.ts**: Kanban board/view configuration 相关表
 - **model-registry.ts**: 全局 model registry mappings 表，保存 Cradle-owned provider model ID 到 models.dev/manual registry entry 的映射，供所有 provider target 与 custom model enrichment 共享
-- **issue-agent.ts**: Issue Agent session / activity 相关表
+- **agent-interaction.ts**: Agent Interaction Runtime session / activity 相关表；物理表名为 `agent_sessions` 与 `agent_activities`，由交互运行时拥有，Issue Agent 只通过服务层引用
 - **observability.ts**: local observability append-only events 与 dedupe incident 相关表；session/run/message 删除后保留取证记录并将 FK 置空
 - **plugin.ts**: Cradle plugin host 拥有的 plugin-scoped persistent storage 表；按 plugin package identity 和 key 隔离，不写入其他产品 namespace
 - **session-await.ts**: Session Await durable wait 表、GitHub API cache 与 bypass rules；await records 保存恢复文本、source/delivery failure 分类、GitHub filter JSON、timer/fire/expiry 时间和 bypass check 投影

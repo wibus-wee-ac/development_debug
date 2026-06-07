@@ -31,8 +31,6 @@ export class CradleWorld extends World {
   context!: BrowserContext
   page!: Page
   skillWorkspaceDir?: string
-  skillImportSourceDir?: string
-  skillExportDir?: string
   skillAgentIds: Record<string, string> = {}
   scenarioArtifacts: ScenarioArtifactPaths | null = null
   scenarioName = ''

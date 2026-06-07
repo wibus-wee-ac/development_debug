@@ -1,4 +1,4 @@
-import { mkdirSync, writeFileSync } from 'node:fs'
+import { mkdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -9,7 +9,6 @@ import { MockLlmServer } from '../support/mock-llm-server'
 import type { CradleWorld } from '../support/world'
 
 const DEFAULT_PROVIDER_MODEL = 'skills-mock-model'
-const IMPORTED_DEMO_RE = /^imported-demo\b/
 const NON_SLUG_CHAR_RE = /[^a-z0-9]+/g
 const EDGE_DASH_RE = /^-+|-+$/g
 const CRLF_RE = /\r\n/g
@@ -31,15 +30,6 @@ function escapeRegExp(value: string): string {
 
 function normalizeMultiline(value: string): string {
   return value.replace(CRLF_RE, '\n').trim()
-}
-
-function createSkillPackage(dir: string, skillName: string, description: string, body: string): void {
-  mkdirSync(dir, { recursive: true })
-  writeFileSync(
-    join(dir, 'SKILL.md'),
-    `---\nname: ${skillName}\ndescription: ${description}\n---\n\n${body}`,
-    'utf8',
-  )
 }
 
 function skillButton(world: CradleWorld, skillName: string) {
@@ -234,67 +224,6 @@ async function ensureSkillEditDialogOpen(world: CradleWorld): Promise<void> {
 function currentSkillDetailDialog(world: CradleWorld) {
   return world.page.getByRole('dialog').filter({ hasText: 'Skill Detail' }).first()
 }
-
-When('我点击"Skills"导航项', async function (this: CradleWorld) {
-  const navItem = this.page.locator('[data-testid="settings-nav-skills"]')
-  await expect(navItem).toBeVisible({ timeout: 5000 })
-  await navItem.click()
-})
-
-Given('我已进入全局 Skills 页面', async function (this: CradleWorld) {
-  await openSettingsSection(this, 'settings-nav-skills', '[data-testid="global-skills-page"]')
-})
-
-Then('我应该看到全局 Skills 页面', async function (this: CradleWorld) {
-  await expect(this.page.locator('[data-testid="global-skills-page"]')).toBeVisible({ timeout: 5000 })
-})
-
-When('我新建一个全局 Skill', async function (this: CradleWorld) {
-  await this.page.locator('[data-testid="new-skill-btn"]').click()
-  await this.page.locator('[data-testid="skill-name-input"]').fill('global-demo')
-  await this.page.locator('[data-testid="skill-desc-input"]').fill('Global demo skill')
-  await this.page.locator('[data-testid="skill-body-editor"]').fill('# Global Demo\n\nUse this skill carefully.')
-  await this.page.locator('[data-testid="skill-save-btn"]').click()
-})
-
-Then('我应该看到全局 Skill {string}', async function (this: CradleWorld, skillName: string) {
-  await expect(this.page.getByRole('button', { name: new RegExp(`^${skillName}\\b`) })).toBeVisible({ timeout: 5000 })
-})
-
-Given('我准备了一个待导入的 Skill 目录', async function (this: CradleWorld) {
-  const rootDir = createTempDir('cradle-import-skill')
-  const skillDir = join(rootDir, 'imported-demo')
-  createSkillPackage(skillDir, 'imported-demo', 'Imported demo skill', '# Imported Demo')
-  this.skillImportSourceDir = skillDir
-  this.skillExportDir = createTempDir('cradle-export-skill')
-})
-
-When('我导入这个全局 Skill', async function (this: CradleWorld) {
-  await this.page.locator('[data-testid="skill-import-btn"]').click()
-
-  const dialog = this.page.locator('[data-testid="skill-import-dialog"]')
-  await expect(dialog).toBeVisible({ timeout: 5000 })
-
-  const sourceInput = dialog.locator('[data-testid="skill-import-source-input"]')
-  await expect(sourceInput).toBeVisible({ timeout: 5000 })
-  await sourceInput.fill(this.skillImportSourceDir!)
-
-  const fetchButton = dialog.locator('[data-testid="skill-import-fetch-btn"]')
-  await expect(fetchButton).toBeEnabled({ timeout: 5000 })
-  await fetchButton.click()
-
-  const installButton = dialog.locator('[data-testid="skill-import-install-btn"]')
-  await expect(installButton).toBeVisible({ timeout: 10000 })
-  await expect(installButton).toBeEnabled({ timeout: 10000 })
-  await installButton.click()
-
-  const doneButton = dialog.locator('[data-testid="skill-import-done-btn"]')
-  await expect(doneButton).toBeVisible({ timeout: 10000 })
-  await doneButton.click()
-
-  await expect(dialog).toHaveCount(0, { timeout: 5000 })
-  await expect(this.page.getByRole('button', { name: IMPORTED_DEMO_RE })).toBeVisible({ timeout: 10000 })
-})
 
 Given('我已打开一个工作区详情页', async function (this: CradleWorld) {
   const suffix = Math.random().toString(36).slice(2, 8)
