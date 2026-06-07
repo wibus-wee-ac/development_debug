@@ -1,17 +1,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import { createAutomation, listAutomationDefinitions, runAutomationNow } from './api-client'
+import { createAutomation, listAutomationDefinitions, runAutomationNow, updateAutomation } from './api-client'
 
 export const automationQueryKeys = {
-  definitions: ['automations', 'definitions'] as const,
+  definitions: (workspaceId?: string | null) => workspaceId ? ['automations', 'definitions', { workspaceId }] as const : ['automations', 'definitions'] as const,
   runs: (automationId: string) => ['automations', automationId, 'runs'] as const,
   artifacts: (automationId: string) => ['automations', automationId, 'artifacts'] as const,
 }
 
-export function useAutomationDefinitions() {
+export function useAutomationDefinitions(workspaceId?: string | null) {
   return useQuery({
-    queryKey: automationQueryKeys.definitions,
-    queryFn: listAutomationDefinitions,
+    queryKey: automationQueryKeys.definitions(workspaceId),
+    queryFn: () => listAutomationDefinitions(workspaceId),
     staleTime: 15_000,
     retry: 1,
   })
@@ -23,7 +23,18 @@ export function useCreateAutomation() {
   return useMutation({
     mutationFn: createAutomation,
     onSuccess: async () => {
-      await queryClient.invalidateQueries({ queryKey: automationQueryKeys.definitions })
+      await queryClient.invalidateQueries({ queryKey: ['automations', 'definitions'] })
+    },
+  })
+}
+
+export function useUpdateAutomation() {
+  const queryClient = useQueryClient()
+
+  return useMutation({
+    mutationFn: ({ id, input }: { id: string, input: Parameters<typeof updateAutomation>[1] }) => updateAutomation(id, input),
+    onSuccess: async () => {
+      await queryClient.invalidateQueries({ queryKey: ['automations', 'definitions'] })
     },
   })
 }
@@ -35,7 +46,7 @@ export function useRunAutomationNow() {
     mutationFn: runAutomationNow,
     onSuccess: async (_run, automationId) => {
       await Promise.all([
-        queryClient.invalidateQueries({ queryKey: automationQueryKeys.definitions }),
+        queryClient.invalidateQueries({ queryKey: ['automations', 'definitions'] }),
         queryClient.invalidateQueries({ queryKey: automationQueryKeys.runs(automationId) }),
         queryClient.invalidateQueries({ queryKey: automationQueryKeys.artifacts(automationId) }),
       ])

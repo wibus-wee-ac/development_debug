@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import { getServerUrl } from '~/lib/electron'
 
-import type { AutomationArtifact, AutomationDefinition, AutomationDefinitionSummary, AutomationRun, CreateAutomationInput } from './types'
+import type { AutomationArtifact, AutomationDefinition, AutomationDefinitionSummary, AutomationRun, CreateAutomationInput, UpdateAutomationInput } from './types'
 
 const AutomationTriggerSchema = z.object({
   type: z.literal('rrule'),
@@ -156,8 +156,9 @@ async function attachLatestRun(definition: AutomationDefinition): Promise<Automa
   return { ...definition, latestRun: runs[0] ?? null }
 }
 
-export async function listAutomationDefinitions(): Promise<AutomationDefinitionSummary[]> {
-  const definitions = AutomationDefinitionCollectionSchema.parse(await requestAutomationJson('/automations')) satisfies AutomationDefinition[]
+export async function listAutomationDefinitions(workspaceId?: string | null): Promise<AutomationDefinitionSummary[]> {
+  const query = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : ''
+  const definitions = AutomationDefinitionCollectionSchema.parse(await requestAutomationJson(`/automations${query}`)) satisfies AutomationDefinition[]
   return Promise.all(definitions.map(attachLatestRun))
 }
 
@@ -165,6 +166,13 @@ export async function createAutomation(input: CreateAutomationInput): Promise<Au
   return CreateAutomationResponseSchema.parse(await requestAutomationJson(
     '/automations',
     { method: 'POST', body: JSON.stringify(input) },
+  )) satisfies AutomationDefinition
+}
+
+export async function updateAutomation(id: string, input: UpdateAutomationInput): Promise<AutomationDefinition> {
+  return CreateAutomationResponseSchema.parse(await requestAutomationJson(
+    `/automations/${encodeURIComponent(id)}`,
+    { method: 'PATCH', body: JSON.stringify(input) },
   )) satisfies AutomationDefinition
 }
 

@@ -7,8 +7,10 @@ import {
   CheckIcon,
   ExternalLinkIcon,
   FileTextIcon,
+  FolderIcon,
   HashIcon,
   Loader2Icon,
+  PencilIcon,
   PlayIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -54,12 +56,13 @@ import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_E
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
 import { RuntimeSelector } from '~/features/composer-toolbar/runtime-selector'
 import type { ThinkingEffort } from '~/features/composer-toolbar/types'
+import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
 import type { ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
 
 import { listAutomationArtifacts, listAutomationRuns } from './api-client'
 import type { AutomationArtifact, AutomationDefinition, AutomationInput, AutomationRecipe, AutomationRun, AutomationRunStatus, AutomationTrigger, CreateAutomationInput } from './types'
-import { automationQueryKeys, useAutomationDefinitions, useCreateAutomation, useRunAutomationNow } from './use-automations'
+import { automationQueryKeys, useAutomationDefinitions, useCreateAutomation, useRunAutomationNow, useUpdateAutomation } from './use-automations'
 
 interface AutomationDashboardProps {
   onBack?: () => void
@@ -121,6 +124,7 @@ const RunTimeSortKeySchema = z.union([
 interface CreateAutomationDraft {
   title: string
   description: string
+  workspaceId: string | null
   enabled: boolean
   schedule: ScheduleDraft
   timezone: string
@@ -133,10 +137,11 @@ interface CreateAutomationDraft {
   artifactName: string
 }
 
-function createDefaultDraft(providerTargetId = ''): CreateAutomationDraft {
+function createDefaultDraft(providerTargetId = '', workspaceId: string | null = null): CreateAutomationDraft {
   return {
     title: '',
     description: '',
+    workspaceId,
     enabled: true,
     schedule: DEFAULT_SCHEDULE,
     timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
@@ -179,6 +184,7 @@ function toCreateAutomationInput(draft: CreateAutomationDraft, t: TFunction<'aut
   return {
     title,
     description: draft.description.trim(),
+    workspaceId: draft.workspaceId,
     enabled: draft.enabled,
     trigger: {
       type: 'rrule',
@@ -215,6 +221,24 @@ function parseScheduleTime(time: string): { hour: number, minute: number } {
   return {
     hour: clampNumber(Number(hourInput), 0, 23),
     minute: clampNumber(Number(minuteInput), 0, 59),
+  }
+}
+
+function parseRruleToSchedule(rrule: string): ScheduleDraft {
+  const parts = Object.fromEntries(rrule.split(';').map(p => p.split('=')))
+  const freq = parts.FREQ ?? 'WEEKLY'
+  const frequency: ScheduleFrequency = freq === 'DAILY' ? 'daily' : freq === 'MONTHLY' ? 'monthly' : 'weekly'
+  const interval = clampNumber(Number(parts.INTERVAL ?? 1), 1, 99)
+  const weekdays = parts.BYDAY ? parts.BYDAY.split(',') as Weekday[] : DEFAULT_SCHEDULE.weekdays
+  const monthDay = clampNumber(Number(parts.BYMONTHDAY ?? 1), 1, 31)
+  const hour = clampNumber(Number(parts.BYHOUR ?? 9), 0, 23)
+  const minute = clampNumber(Number(parts.BYMINUTE ?? 0), 0, 59)
+  return {
+    frequency,
+    interval,
+    weekdays,
+    monthDay,
+    time: `${String(hour).padStart(2, '0')}:${String(minute).padStart(2, '0')}`,
   }
 }
 
@@ -320,11 +344,13 @@ function DefinitionListItem({
   definition,
   active,
   latestRun,
+  workspaceName,
   onSelect,
 }: {
   definition: AutomationDefinition
   active: boolean
   latestRun: AutomationRun | null
+  workspaceName?: string | null
   onSelect: () => void
 }) {
   const { t } = useTranslation('automation')
@@ -352,7 +378,16 @@ function DefinitionListItem({
         </div>
       </div>
       <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <span className="truncate font-mono">{trigger?.rrule ?? t('trigger.noRrule')}</span>
+        <div className="flex min-w-0 items-center gap-1.5">
+          {workspaceName
+            ? (
+              <span className="inline-flex items-center gap-1 truncate">
+                <FolderIcon className="size-3 shrink-0" />
+                {workspaceName}
+              </span>
+            )
+            : <span className="truncate font-mono">{trigger?.rrule ?? t('trigger.noRrule')}</span>}
+        </div>
         {latestRun ? <StatusBadge status={latestRun.status} /> : <Badge variant="outline">{t('runs.noneShort')}</Badge>}
       </div>
     </button>
@@ -638,6 +673,7 @@ function CreateAutomationPanel({
   saving,
   error,
   canSave,
+  editingId,
   onChange,
   onCancel,
   onSave,
@@ -646,11 +682,13 @@ function CreateAutomationPanel({
   saving: boolean
   error: string | null
   canSave: boolean
+  editingId?: string | null
   onChange: (draft: CreateAutomationDraft) => void
   onCancel: () => void
   onSave: () => void
 }) {
   const { t } = useTranslation('automation')
+  const { workspaces } = useWorkspaces()
   const { providerOptions, isLoading } = useProviderTargets()
   const { runtimes } = useRuntimeCatalog()
   const runtimeOptions = useMemo(
@@ -799,10 +837,10 @@ function CreateAutomationPanel({
             <span className="flex size-7 items-center justify-center rounded-lg border border-dashed border-foreground/15 text-muted-foreground">
               <SparklesIcon className="size-3.5" />
             </span>
-            <h2 className="text-base font-semibold text-foreground text-balance">{t('create.title')}</h2>
+            <h2 className="text-base font-semibold text-foreground text-balance">{editingId ? t('edit.title') : t('create.title')}</h2>
           </div>
           <p className="mt-1 max-w-2xl text-[12.5px] leading-relaxed text-muted-foreground text-pretty">
-            {t('create.description')}
+            {editingId ? t('edit.description') : t('create.description')}
           </p>
         </div>
         <Button type="button" variant="ghost" size="icon-sm" onClick={onCancel} aria-label={t('create.cancelAria')}>
@@ -852,6 +890,22 @@ function CreateAutomationPanel({
                 />
               </FormField>
             </div>
+            <FormField label={t('definition.workspaceLabel')} description={t('definition.workspaceDescription')}>
+              <Select
+                value={draft.workspaceId ?? ''}
+                onValueChange={value => onChange({ ...draft, workspaceId: value || null })}
+              >
+                <SelectTrigger className="w-full">
+                  <SelectValue placeholder={t('definition.workspacePlaceholder')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">{t('definition.workspaceNone')}</SelectItem>
+                  {workspaces.map(workspace => (
+                    <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </FormField>
           </section>
 
           <div className="border-t border-foreground/5" />
@@ -945,14 +999,14 @@ function CreateAutomationPanel({
       </div>
 
       <footer className="flex shrink-0 items-center justify-between gap-3 border-t border-border/40 px-5 py-3">
-        <p className="text-[11px] text-muted-foreground">{t('create.footer')}</p>
+        <p className="text-[11px] text-muted-foreground">{editingId ? t('edit.footer') : t('create.footer')}</p>
         <div className="flex items-center gap-2">
           <Button type="button" variant="outline" size="sm" onClick={onCancel} disabled={saving}>
             {t('action.cancel')}
           </Button>
           <Button type="button" size="sm" onClick={onSave} disabled={saving || !saveEnabled}>
             {saving ? <Loader2Icon className="size-3.5 animate-spin" /> : <CheckIcon className="size-3.5" />}
-            {t('action.createAutomation')}
+            {editingId ? t('action.saveChanges') : t('action.createAutomation')}
           </Button>
         </div>
       </footer>
@@ -962,11 +1016,15 @@ function CreateAutomationPanel({
 
 export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
   const { i18n, t } = useTranslation('automation')
-  const definitionsQuery = useAutomationDefinitions()
+  const { workspaces } = useWorkspaces()
+  const [workspaceFilter, setWorkspaceFilter] = useState<string | null>(null)
+  const definitionsQuery = useAutomationDefinitions(workspaceFilter)
   const definitions = definitionsQuery.data ?? []
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [draft, setDraft] = useState<CreateAutomationDraft | null>(null)
+  const [editingId, setEditingId] = useState<string | null>(null)
   const [draftError, setDraftError] = useState<string | null>(null)
+  const workspaceMap = useMemo(() => Object.fromEntries(workspaces.map(w => [w.id, w.name])), [workspaces])
   const selectedDefinition = draft
     ? null
     : selectedId
@@ -988,6 +1046,7 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
     retry: 1,
   })
   const createAutomationMutation = useCreateAutomation()
+  const updateAutomationMutation = useUpdateAutomation()
   const runNowMutation = useRunAutomationNow()
   const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null)
 
@@ -1003,14 +1062,38 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
   const locale = i18n.resolvedLanguage ?? i18n.language
 
   const startDraft = useCallback((): void => {
-    setDraft(createDefaultDraft())
+    setDraft(createDefaultDraft('', workspaceFilter))
     setDraftError(null)
     setSelectedId(null)
+    setSelectedArtifactId(null)
+  }, [workspaceFilter])
+
+  const startEdit = useCallback((definition: AutomationDefinition): void => {
+    const trigger = getTrigger(definition)
+    const recipe = getRecipe(definition)
+    setDraft({
+      title: definition.title ?? '',
+      description: definition.description ?? '',
+      workspaceId: definition.workspaceId ?? null,
+      enabled: definition.enabled !== false,
+      schedule: trigger ? parseRruleToSchedule(trigger.rrule) : DEFAULT_SCHEDULE,
+      timezone: trigger?.timezone || Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC',
+      misfirePolicy: trigger?.misfirePolicy ?? 'run_latest',
+      providerTargetId: recipe?.providerTargetId ?? '',
+      runtimeKind: (recipe?.runtimeKind as AutomationRuntimeKind) ?? 'codex',
+      modelId: recipe?.modelId ?? null,
+      thinkingEffort: recipe?.thinkingEffort ?? null,
+      prompt: recipe?.prompt ?? '',
+      artifactName: recipe?.artifactRequests?.[0]?.name ?? 'automation-run.md',
+    })
+    setEditingId(definition.id)
+    setDraftError(null)
     setSelectedArtifactId(null)
   }, [])
 
   const cancelDraft = useCallback((): void => {
     setDraft(null)
+    setEditingId(null)
     setDraftError(null)
   }, [])
 
@@ -1029,18 +1112,36 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
     }
     try {
       setDraftError(null)
-      const created = await createAutomationMutation.mutateAsync(toCreateAutomationInput(draft, t))
-      setDraft(null)
-      setSelectedId(created.id)
-      setSelectedArtifactId(null)
-      toastManager.add({ type: 'success', title: t('toast.created') })
+      if (editingId) {
+        const input = toCreateAutomationInput(draft, t)
+        const updated = await updateAutomationMutation.mutateAsync({
+          id: editingId,
+          input: {
+            title: input.title,
+            description: input.description,
+            trigger: input.trigger,
+            recipe: input.recipe,
+          },
+        })
+        setDraft(null)
+        setEditingId(null)
+        setSelectedId(updated.id)
+        toastManager.add({ type: 'success', title: t('toast.updated') })
+      }
+      else {
+        const created = await createAutomationMutation.mutateAsync(toCreateAutomationInput(draft, t))
+        setDraft(null)
+        setSelectedId(created.id)
+        setSelectedArtifactId(null)
+        toastManager.add({ type: 'success', title: t('toast.created') })
+      }
     }
     catch (error) {
       const message = error instanceof Error ? error.message : String(error)
       setDraftError(message)
-      toastManager.add({ type: 'error', title: t('toast.createFailed'), description: message })
+      toastManager.add({ type: 'error', title: editingId ? t('toast.updateFailed') : t('toast.createFailed'), description: message })
     }
-  }, [createAutomationMutation, draft, t])
+  }, [createAutomationMutation, draft, editingId, t, updateAutomationMutation])
 
   return (
     <div
@@ -1097,9 +1198,25 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
 
       <div className="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] divide-x divide-border/40 overflow-hidden">
         <aside className="flex min-h-0 flex-col overflow-hidden">
-          <div className="flex items-center justify-between px-4 py-3">
+          <div className="flex items-center justify-between gap-2 px-4 py-3">
             <span className="text-xs font-medium text-muted-foreground">{t('definitions.title')}</span>
-            <Badge variant="secondary">{definitions.length}</Badge>
+            <div className="flex items-center gap-2">
+              <Select
+                value={workspaceFilter ?? ''}
+                onValueChange={value => setWorkspaceFilter(value || null)}
+              >
+                <SelectTrigger className="h-6 max-w-32 text-[11px]">
+                  <SelectValue placeholder={t('definitions.filterAllWorkspaces')} />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="">{t('definitions.filterAllWorkspaces')}</SelectItem>
+                  {workspaces.map(workspace => (
+                    <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Badge variant="secondary">{definitions.length}</Badge>
+            </div>
           </div>
           <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3">
             {draft
@@ -1145,6 +1262,7 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
                 definition={definition}
                 active={definition.id === selectedAutomationId}
                 latestRun={definition.id === selectedAutomationId ? latestRun : definition.latestRun ?? null}
+                workspaceName={definition.workspaceId ? workspaceMap[definition.workspaceId] ?? null : null}
                 onSelect={() => {
                   setSelectedId(definition.id)
                   setSelectedArtifactId(null)
@@ -1159,9 +1277,10 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
 ? (
             <CreateAutomationPanel
               draft={draft}
-              saving={createAutomationMutation.isPending}
+              saving={createAutomationMutation.isPending || updateAutomationMutation.isPending}
               error={draftError}
-              canSave={!createAutomationMutation.isPending}
+              canSave={!createAutomationMutation.isPending && !updateAutomationMutation.isPending}
+              editingId={editingId}
               onChange={updateDraft}
               onCancel={cancelDraft}
               onSave={() => void saveDraft()}
@@ -1176,11 +1295,16 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
                     <h2 className="truncate text-lg font-semibold text-foreground">{selectedDefinition.title}</h2>
                     <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{selectedDefinition.description || t('definition.noDescription')}</p>
                   </div>
-                  {latestRun ? <StatusBadge status={latestRun.status} /> : <Badge variant="outline">{t('runs.noneShort')}</Badge>}
+                  <div className="flex items-center gap-2">
+                    {latestRun ? <StatusBadge status={latestRun.status} /> : <Badge variant="outline">{t('runs.noneShort')}</Badge>}
+                    <Button type="button" variant="outline" size="icon-sm" onClick={() => startEdit(selectedDefinition)} aria-label={t('action.edit')}>
+                      <PencilIcon className="size-3.5" />
+                    </Button>
+                  </div>
                 </div>
                 <div className="grid grid-cols-4 gap-2">
+                  <DetailField label={t('detail.workspace')} value={selectedDefinition.workspaceId ? workspaceMap[selectedDefinition.workspaceId] ?? t('common.unknown') : t('definition.workspaceNone')} />
                   <DetailField label={t('detail.rrule')} value={trigger?.rrule ?? t('trigger.noTrigger')} mono />
-                  <DetailField label={t('detail.timezone')} value={trigger?.timezone ?? t('common.unknown')} />
                   <DetailField label={t('detail.nextRun')} value={formatDateTime(selectedDefinition.nextRunAt, locale, t)} />
                   <DetailField label={t('detail.updated')} value={formatDateTime(selectedDefinition.updatedAt ?? selectedDefinition.createdAt, locale, t)} />
                 </div>

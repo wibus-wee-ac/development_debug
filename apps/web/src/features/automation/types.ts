@@ -37,6 +37,7 @@ export interface AutomationRecipe {
 
 export interface AutomationDefinition {
   id: string
+  workspaceId?: string | null
   title: string
   description?: string | null
   enabled?: boolean
@@ -55,6 +56,7 @@ export interface AutomationRun {
   id: string
   automationId?: string
   definitionId?: string
+  workspaceId?: string | null
   status: AutomationRunStatus | string
   reason?: string | null
   errorText?: string | null
@@ -88,6 +90,7 @@ export interface AutomationDefinitionSummary extends AutomationDefinition {
 export interface CreateAutomationInput {
   title: string
   description?: string
+  workspaceId?: string | null
   enabled?: boolean
   trigger: AutomationTrigger
   recipe: {
@@ -101,6 +104,15 @@ export interface CreateAutomationInput {
     modelId?: string
     thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh'
   }
+  createdByKind?: 'agent' | 'user' | 'system'
+  createdById?: string | null
+}
+
+export interface UpdateAutomationInput {
+  title?: string
+  description?: string
+  trigger?: AutomationTrigger
+  recipe?: CreateAutomationInput['recipe']
   createdByKind?: 'agent' | 'user' | 'system'
   createdById?: string | null
 }

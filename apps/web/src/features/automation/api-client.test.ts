@@ -80,6 +80,24 @@ describe('listAutomationDefinitions', () => {
       }),
     )
   })
+
+  it('passes workspaceId as query parameter when provided', async () => {
+    const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input)
+      if (url.includes('/automations?')) {
+        return jsonResponse([])
+      }
+      return new Response('not found', { status: 404 })
+    })
+
+    vi.stubGlobal('fetch', fetchMock)
+
+    await listAutomationDefinitions('ws-123')
+    expect(fetchMock).toHaveBeenCalledWith(
+      'http://127.0.0.1:21423/automations?workspaceId=ws-123',
+      expect.anything(),
+    )
+  })
 })
 
 describe('listAutomationRuns', () => {
