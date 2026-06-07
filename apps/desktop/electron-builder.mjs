@@ -2,6 +2,8 @@ import fs from 'node:fs/promises'
 import path from 'node:path'
 import { fileURLToPath } from 'node:url'
 
+import { copyCodexRuntimeToPackagedResources } from './scripts/sync-codex-runtime.mjs'
+
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const updateServerUrl = process.env.CRADLE_DESKTOP_UPDATE_URL?.trim()
@@ -75,6 +77,11 @@ async function removeUnusedMacFrameworkLocales(context) {
   )
 }
 
+async function afterPack(context) {
+  await copyCodexRuntimeToPackagedResources(context)
+  await removeUnusedMacFrameworkLocales(context)
+}
+
 /**
  * @type {import('electron-builder').Configuration}
  * @see https://www.electron.build/configuration/configuration
@@ -83,7 +90,7 @@ const config = {
   appId: 'com.cradle.app',
   productName: 'Cradle',
 
-  afterPack: removeUnusedMacFrameworkLocales,
+  afterPack,
 
   asar: true,
   asarUnpack: [

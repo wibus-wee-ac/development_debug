@@ -25,6 +25,7 @@ const LOGIN_SHELL_PATH_TIMEOUT_MS = 1500
 const SHELL_PATH_MARKER_START = '__CRADLE_SHELL_PATH_START__'
 const SHELL_PATH_MARKER_END = '__CRADLE_SHELL_PATH_END__'
 const CREDENTIAL_SECRET_FILE = 'credential-secret'
+const CODEX_APP_SERVER_PATH_ENV = 'CRADLE_CODEX_APP_SERVER_PATH'
 const SAFE_STORAGE_PREFIX = 'v1-safe:'
 const PLAIN_STORAGE_PREFIX = 'v1-plain:'
 const KEYCHAIN_BACKUP_SUFFIX = '.keychain-backup'
@@ -151,6 +152,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
   const configuredMigrationsDir = process.env.CRADLE_MIGRATIONS_DIR?.trim()
   const migrationsDir = configuredMigrationsDir || (isDev ? undefined : join(process.resourcesPath, 'drizzle'))
   const builtinSkillsDir = isDev ? undefined : join(process.resourcesPath, 'resources/skills')
+  const codexAppServerPath = resolveDesktopCodexAppServerPath({ isDev, moduleDir: __dirname })
   const installedPluginsDir = resolveDesktopInstalledPluginsDir(app.getPath('userData'))
   const externalPluginsDirs = [
     installedPluginsDir,
@@ -169,6 +171,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
     CRADLE_PLUGINS_SOURCE_KIND: pluginsSourceKind,
     CRADLE_EXTERNAL_PLUGINS_DIRS: externalPluginsDirList,
     CRADLE_MARKETPLACE_PLUGINS_DIR: installedPluginsDir,
+    ...(codexAppServerPath ? { [CODEX_APP_SERVER_PATH_ENV]: codexAppServerPath } : {}),
     ...(migrationsDir ? { CRADLE_MIGRATIONS_DIR: migrationsDir } : {}),
     ...(builtinSkillsDir ? { CRADLE_BUILTIN_SKILLS_DIR: builtinSkillsDir } : {}),
     NODE_ENV: isDev ? 'development' : 'production',
@@ -357,6 +360,32 @@ function joinPathSegments(segments: string[]): string {
     uniqueSegments.push(segment)
   }
   return uniqueSegments.join(delimiter)
+}
+
+function resolveDesktopCodexAppServerPath(input: { isDev: boolean, moduleDir: string }): string | undefined {
+  const configuredPath = process.env[CODEX_APP_SERVER_PATH_ENV]?.trim()
+  if (configuredPath) {
+    return configuredPath
+  }
+
+  const executableName = getCodexExecutableName()
+  if (!input.isDev) {
+    const bundledPath = join(process.resourcesPath, executableName)
+    if (!existsSync(bundledPath)) {
+      throw new Error(`Bundled Codex app-server runtime is missing at ${bundledPath}`)
+    }
+    return bundledPath
+  }
+
+  return [
+    resolve(input.moduleDir, '../../resources/codex', `${process.platform}-${process.arch}`, executableName),
+    resolve(process.cwd(), 'resources/codex', `${process.platform}-${process.arch}`, executableName),
+    resolve(process.cwd(), 'apps/desktop/resources/codex', `${process.platform}-${process.arch}`, executableName),
+  ].find(candidate => existsSync(candidate))
+}
+
+function getCodexExecutableName(): string {
+  return process.platform === 'win32' ? 'codex.exe' : 'codex'
 }
 
 function readDesktopCommandPathFallbackSegments(env: NodeJS.ProcessEnv): string[] {
