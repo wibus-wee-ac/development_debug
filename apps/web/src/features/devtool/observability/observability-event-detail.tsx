@@ -1,4 +1,3 @@
-import { useMemo } from 'react'
 
 import { useObservabilityDevtoolStore } from './use-observability-events'
 
@@ -7,10 +6,7 @@ export function ObservabilityEventDetail() {
   const selectedIndex = useObservabilityDevtoolStore(s => s.selectedIndex)
   const clear = useObservabilityDevtoolStore(s => s.clear)
 
-  const entry = useMemo(
-    () => (selectedIndex === null ? null : entries[selectedIndex] ?? null),
-    [entries, selectedIndex],
-  )
+  const entry = (selectedIndex === null ? null : entries[selectedIndex] ?? null)
 
   return (
     <div className="h-full overflow-auto p-3 font-mono text-[11px]">

@@ -2,13 +2,10 @@ import { useQuery } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import {
   ArrowLeftIcon,
-  BotIcon,
   CalendarClockIcon,
   CheckIcon,
-  ExternalLinkIcon,
+  ClockIcon,
   FileTextIcon,
-  FolderIcon,
-  HashIcon,
   Loader2Icon,
   PencilIcon,
   PlayIcon,
@@ -18,6 +15,7 @@ import {
   TriangleAlertIcon,
   XIcon,
 } from 'lucide-react'
+import { m } from 'motion/react'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -26,6 +24,12 @@ import { z } from 'zod'
 import { BetaNotice } from '~/components/common/beta-notice'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
+import {
+  Card,
+  CardContent,
+  CardHeader,
+  CardTitle,
+} from '~/components/ui/card'
 import {
   Empty,
   EmptyContent,
@@ -62,8 +66,10 @@ import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
 
 import { listAutomationArtifacts, listAutomationRuns } from './api-client'
-import type { AutomationArtifact, AutomationDefinition, AutomationInput, AutomationRecipe, AutomationRun, AutomationRunStatus, AutomationTrigger, CreateAutomationInput } from './types'
+import type { AutomationArtifact, AutomationDefinition, AutomationRecipe, AutomationRun, AutomationRunStatus, AutomationTrigger, CreateAutomationInput } from './types'
 import { automationQueryKeys, useAutomationDefinitions, useCreateAutomation, useRunAutomationNow, useUpdateAutomation } from './use-automations'
+
+// ── Types & Constants ────────────────────────────────────────────────────────
 
 interface AutomationDashboardProps {
   onBack?: () => void
@@ -72,6 +78,7 @@ interface AutomationDashboardProps {
 type AutomationRuntimeKind = RuntimeKind
 type ScheduleFrequency = 'daily' | 'weekly' | 'monthly'
 type Weekday = 'MO' | 'TU' | 'WE' | 'TH' | 'FR' | 'SA' | 'SU'
+type DetailTab = 'overview' | 'runs' | 'artifacts'
 
 interface ScheduleDraft {
   frequency: ScheduleFrequency
@@ -96,14 +103,26 @@ const DEFAULT_SCHEDULE: ScheduleDraft = {
   time: '09:00',
 }
 
-const STATUS_STYLES: Record<AutomationRunStatus, string> = {
-  queued: 'border-sky-500/30 bg-sky-500/10 text-sky-700 dark:text-sky-300',
-  running: 'border-amber-500/30 bg-amber-500/10 text-amber-700 dark:text-amber-300',
-  complete: 'border-emerald-500/30 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300',
-  failed: 'border-red-500/30 bg-red-500/10 text-red-700 dark:text-red-300',
-  cancelled: 'border-muted-foreground/20 bg-muted/60 text-muted-foreground',
-  skipped: 'border-muted-foreground/20 bg-muted/60 text-muted-foreground',
+// Status dot — tiny colored circle
+const STATUS_DOT_COLORS: Record<AutomationRunStatus, string> = {
+  queued: 'bg-sky-400',
+  running: 'bg-amber-400',
+  complete: 'bg-emerald-400',
+  failed: 'bg-red-400',
+  cancelled: 'bg-muted-foreground/40',
+  skipped: 'bg-muted-foreground/40',
 }
+
+const STATUS_TEXT_COLORS: Record<AutomationRunStatus, string> = {
+  queued: 'text-sky-500',
+  running: 'text-amber-500',
+  complete: 'text-emerald-500',
+  failed: 'text-red-500',
+  cancelled: 'text-muted-foreground',
+  skipped: 'text-muted-foreground',
+}
+
+// ── Zod Schemas ──────────────────────────────────────────────────────────────
 
 const UnixSecondsValueSchema = z.union([
   z.number().finite().transform(value => value > 10_000_000_000 ? Math.floor(value / 1000) : value),
@@ -121,6 +140,8 @@ const RunTimeSortKeySchema = z.union([
   z.null().transform(() => 0),
   z.undefined().transform(() => 0),
 ])
+
+// ── Draft Types ──────────────────────────────────────────────────────────────
 
 interface CreateAutomationDraft {
   title: string
@@ -155,6 +176,8 @@ function createDefaultDraft(providerTargetId = '', workspaceId: string | null = 
     artifactName: 'automation-run.md',
   }
 }
+
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
 function toCreateAutomationInput(draft: CreateAutomationDraft, t: TFunction<'automation'>): CreateAutomationInput {
   const title = draft.title.trim()
@@ -319,161 +342,6 @@ function getLatestRun(definition: AutomationDefinition, runs: AutomationRun[] | 
   return [...runs].sort((a, b) => getRunTime(b) - getRunTime(a))[0] ?? null
 }
 
-function getInputKey(input: AutomationInput): string {
-  return [
-    input.type,
-    input.name ?? '',
-    input.path ?? '',
-    input.url ?? '',
-    input.content?.slice(0, 48) ?? '',
-  ].join(':')
-}
-
-function StatusBadge({ status }: { status: string | null | undefined }) {
-  const { t } = useTranslation('automation')
-  const normalized = (status ?? 'queued') as AutomationRunStatus
-  const className = STATUS_STYLES[normalized] ?? STATUS_STYLES.queued
-
-  return (
-    <Badge variant="outline" className={className}>
-      {t(`status.${status ?? 'unknown'}`, { defaultValue: status ?? t('status.unknown') })}
-    </Badge>
-  )
-}
-
-function DefinitionListItem({
-  definition,
-  active,
-  latestRun,
-  workspaceName,
-  onSelect,
-}: {
-  definition: AutomationDefinition
-  active: boolean
-  latestRun: AutomationRun | null
-  workspaceName?: string | null
-  onSelect: () => void
-}) {
-  const { t } = useTranslation('automation')
-  const trigger = getTrigger(definition)
-
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={cn(
-        'flex w-full flex-col gap-2 rounded-lg border px-3 py-3 text-left transition-colors',
-        active ? 'border-primary/40 bg-primary/5' : 'border-border/50 hover:border-border hover:bg-accent/40',
-      )}
-    >
-      <div className="flex items-start gap-2">
-        <div className="flex size-8 shrink-0 items-center justify-center rounded-md bg-muted text-muted-foreground">
-          <CalendarClockIcon className="size-4" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <div className="flex items-center gap-2">
-            <span className="truncate text-sm font-medium text-foreground">{definition.title}</span>
-            {definition.enabled === false ? <Badge variant="secondary">{t('state.disabled')}</Badge> : null}
-          </div>
-          <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">{definition.description || t('definition.noDescription')}</p>
-        </div>
-      </div>
-      <div className="flex items-center justify-between gap-2 text-[11px] text-muted-foreground">
-        <div className="flex min-w-0 items-center gap-1.5">
-          {workspaceName
-            ? (
-              <span className="inline-flex items-center gap-1 truncate">
-                <FolderIcon className="size-3 shrink-0" />
-                {workspaceName}
-              </span>
-            )
-            : <span className="truncate font-mono">{trigger?.rrule ?? t('trigger.noRrule')}</span>}
-        </div>
-        {latestRun ? <StatusBadge status={latestRun.status} /> : <Badge variant="outline">{t('runs.noneShort')}</Badge>}
-      </div>
-    </button>
-  )
-}
-
-function DetailField({ label, value, mono }: { label: string, value: string, mono?: boolean }) {
-  return (
-    <div className="min-w-0 rounded-md border border-border/40 bg-muted/20 px-3 py-2">
-      <div className="text-[11px] text-muted-foreground">{label}</div>
-      <div className={cn('mt-1 truncate text-xs text-foreground', mono && 'font-mono')}>{value}</div>
-    </div>
-  )
-}
-
-function RunRow({ run }: { run: AutomationRun }) {
-  const { i18n, t } = useTranslation('automation')
-  return (
-    <div className="grid grid-cols-[112px_minmax(0,1fr)_minmax(0,1fr)_96px] items-center gap-3 rounded-md px-2 py-2 text-xs hover:bg-accent/40">
-      <StatusBadge status={run.status} />
-      <div className="min-w-0">
-        <div className="truncate font-mono text-[11px] text-foreground">{run.id}</div>
-        <div className="text-[11px] text-muted-foreground">{formatDateTime(run.startedAt ?? run.createdAt ?? run.scheduledFor, i18n.resolvedLanguage ?? i18n.language, t)}</div>
-      </div>
-      <div className="min-w-0 space-y-1 text-[11px] text-muted-foreground">
-        <div className="flex min-w-0 items-center gap-1.5">
-          <ExternalLinkIcon className="size-3 shrink-0" />
-          <span className="truncate font-mono">{run.chatSessionId ?? t('runs.noChatSession')}</span>
-        </div>
-        <div className="flex min-w-0 items-center gap-1.5">
-          <HashIcon className="size-3 shrink-0" />
-          <span className="truncate font-mono">{run.backendRunId ?? t('runs.noBackendRun')}</span>
-        </div>
-      </div>
-      <div className="truncate text-right text-[11px] text-muted-foreground">{run.errorText ?? run.reason ?? formatRelative(run.finishedAt ?? run.startedAt ?? run.createdAt, t)}</div>
-    </div>
-  )
-}
-
-function ArtifactRow({
-  artifact,
-  active,
-  onSelect,
-}: {
-  artifact: AutomationArtifact
-  active: boolean
-  onSelect: () => void
-}) {
-  const { t } = useTranslation('automation')
-  return (
-    <button
-      type="button"
-      onClick={onSelect}
-      className={cn(
-        'flex w-full items-center gap-2 rounded-md px-2 py-2 text-left text-xs transition-colors',
-        active ? 'bg-accent text-foreground' : 'hover:bg-accent/40',
-      )}
-    >
-      <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate">{artifact.title ?? artifact.name ?? artifact.id}</span>
-      <span className="shrink-0 text-[11px] text-muted-foreground">{artifact.kind ?? artifact.mediaType ?? t('artifact.fallbackKind')}</span>
-    </button>
-  )
-}
-
-function FormField({
-  label,
-  description,
-  htmlFor,
-  children,
-}: {
-  label: string
-  description?: string
-  htmlFor?: string
-  children: ReactNode
-}) {
-  return (
-    <div className="grid gap-1.5">
-      <Label htmlFor={htmlFor} className="text-[12px] text-foreground">{label}</Label>
-      {children}
-      {description ? <p className="text-[11px] leading-relaxed text-muted-foreground">{description}</p> : null}
-    </div>
-  )
-}
-
 function formatScheduleSummary(schedule: ScheduleDraft, t: TFunction<'automation'>): string {
   const interval = clampNumber(schedule.interval, 1, 99)
   const time = schedule.time
@@ -497,6 +365,408 @@ function formatScheduleSummary(schedule: ScheduleDraft, t: TFunction<'automation
     ? t('schedule.summary.monthly', { day: clampNumber(schedule.monthDay, 1, 31), time })
     : t('schedule.summary.monthlyInterval', { count: interval, day: clampNumber(schedule.monthDay, 1, 31), time })
 }
+
+// ── Shared UI ────────────────────────────────────────────────────────────────
+
+function SectionLabel({ label, count }: { label: string, count?: number }) {
+  return (
+    <div className="flex items-center gap-2 px-2 pb-1.5">
+      <span className="text-[11px] font-medium text-muted-foreground">{label}</span>
+      {count !== undefined && (
+        <span className="rounded-full bg-muted/60 px-1.5 py-px text-[10px] tabular-nums text-muted-foreground">
+          {count}
+        </span>
+      )}
+      <div className="flex-1 h-px bg-border/40" />
+    </div>
+  )
+}
+
+function StatusDot({ status }: { status: string | null | undefined }) {
+  const normalized = (status ?? 'queued') as AutomationRunStatus
+  return (
+    <span
+      className={cn(
+        'inline-block size-1.5 shrink-0 rounded-full',
+        STATUS_DOT_COLORS[normalized] ?? STATUS_DOT_COLORS.queued,
+      )}
+    />
+  )
+}
+
+function StatusText({ status }: { status: string | null | undefined }) {
+  const { t } = useTranslation('automation')
+  const normalized = (status ?? 'queued') as AutomationRunStatus
+  return (
+    <span className={cn('text-[11px]', STATUS_TEXT_COLORS[normalized] ?? STATUS_TEXT_COLORS.queued)}>
+      {t(`status.${status ?? 'unknown'}`, { defaultValue: status ?? t('status.unknown') })}
+    </span>
+  )
+}
+
+// ── Left sidebar: definition list ────────────────────────────────────────────
+
+function DefinitionRow({
+  definition,
+  active,
+  latestRun,
+  workspaceName: _workspaceName,
+  onSelect,
+}: {
+  definition: AutomationDefinition
+  active: boolean
+  latestRun: AutomationRun | null
+  workspaceName?: string | null
+  onSelect: () => void
+}) {
+  const { t } = useTranslation('automation')
+  const trigger = getTrigger(definition)
+  const schedule = trigger ? parseRruleToSchedule(trigger.rrule) : null
+  const summary = schedule ? formatScheduleSummary(schedule, t) : null
+
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        'group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
+        active ? 'bg-accent text-foreground' : 'hover:bg-accent/50',
+      )}
+    >
+      <StatusDot status={latestRun?.status} />
+      <span className="min-w-0 flex-1">
+        <span className="block truncate font-medium text-foreground">{definition.title}</span>
+        <span className="block truncate text-[10px] text-muted-foreground">
+          {summary ?? trigger?.rrule ?? t('trigger.noTrigger')}
+        </span>
+      </span>
+      {definition.enabled === false && (
+        <Badge variant="secondary" className="h-4 px-1 text-[10px]">{t('state.disabled')}</Badge>
+      )}
+    </button>
+  )
+}
+
+// ── Right panel: detail view with animated tabs ──────────────────────────────
+
+function DetailView({
+  definition,
+  latestRun,
+  runsQuery,
+  artifactsQuery,
+  workspaceMap,
+  locale,
+  onEdit,
+  onRunNow,
+  runNowPending,
+}: {
+  definition: AutomationDefinition
+  latestRun: AutomationRun | null
+  runsQuery: { data: AutomationRun[] | undefined, isLoading: boolean }
+  artifactsQuery: { data: AutomationArtifact[] | undefined, isLoading: boolean }
+  workspaceMap: Record<string, string>
+  locale: string
+  onEdit: () => void
+  onRunNow: () => void
+  runNowPending: boolean
+}) {
+  const { t } = useTranslation('automation')
+  const [activeTab, setActiveTab] = useState<DetailTab>('overview')
+  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null)
+
+  const trigger = getTrigger(definition)
+  const recipe = getRecipe(definition)
+  const schedule = trigger ? parseRruleToSchedule(trigger.rrule) : null
+  const summary = schedule ? formatScheduleSummary(schedule, t) : null
+
+  const artifactsData = artifactsQuery.data
+  const selectedArtifact = useMemo(() => {
+    const artifacts = artifactsData ?? []
+    return artifacts.find(a => a.id === selectedArtifactId) ?? artifacts[0] ?? null
+  }, [artifactsData, selectedArtifactId])
+
+  // Sort runs by time descending for timeline
+  const sortedRuns = useMemo(() => {
+    return [...(runsQuery.data ?? [])].sort((a, b) => getRunTime(b) - getRunTime(a))
+  }, [runsQuery.data])
+
+  const TABS: { id: DetailTab, label: string }[] = [
+    { id: 'overview', label: t('tab.overview') },
+    { id: 'runs', label: t('tab.runs') },
+    { id: 'artifacts', label: t('tab.artifacts') },
+  ]
+
+  return (
+    <div className="flex h-full flex-col overflow-hidden">
+      {/* Detail header */}
+      <div className="flex shrink-0 items-start justify-between gap-3 border-b border-border/40 px-4 py-3">
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-foreground">{definition.title}</h2>
+          <div className="mt-1 flex items-center gap-2 text-[11px] text-muted-foreground">
+            {summary && <span>{summary}</span>}
+            {summary && definition.workspaceId && <span className="text-muted-foreground/40">·</span>}
+            {definition.workspaceId && <span>{workspaceMap[definition.workspaceId] ?? t('common.unknown')}</span>}
+          </div>
+        </div>
+        <div className="flex items-center gap-1.5">
+          {latestRun && (
+            <div className="flex items-center gap-1.5">
+              <StatusDot status={latestRun.status} />
+              <StatusText status={latestRun.status} />
+            </div>
+          )}
+          <Button type="button" variant="ghost" size="icon-sm" onClick={onEdit} aria-label={t('action.edit')}>
+            <PencilIcon className="size-3.5" />
+          </Button>
+          <Button type="button" variant="ghost" size="icon-sm" onClick={onRunNow} disabled={runNowPending} aria-label={t('action.runNow')}>
+            {runNowPending ? <Loader2Icon className="size-3.5 animate-spin" /> : <PlayIcon className="size-3.5" />}
+          </Button>
+        </div>
+      </div>
+
+      {/* Animated tabs */}
+      <div className="flex shrink-0 items-center gap-0.5 overflow-x-auto border-b border-border/30 px-4 py-1 scrollbar-none">
+        {TABS.map(({ id, label }) => (
+          <button
+            key={id}
+            type="button"
+            onClick={() => setActiveTab(id)}
+            className={cn(
+              'relative z-10 flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[13px] whitespace-nowrap transition-colors select-none',
+              activeTab === id
+                ? 'text-foreground'
+                : 'text-muted-foreground hover:text-foreground',
+            )}
+          >
+            {activeTab === id && (
+              <m.span
+                layoutId="automation-detail-tab-pill"
+                className="absolute inset-0 rounded-md bg-accent"
+                transition={{ type: 'spring', stiffness: 600, damping: 40 }}
+                style={{ zIndex: -1 }}
+              />
+            )}
+            <span className="relative">{label}</span>
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <div className="flex-1 overflow-y-auto min-h-0 px-4 py-4">
+        {activeTab === 'overview' && (
+          <m.div
+            key="overview"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.15 }}
+            className="flex flex-col gap-3"
+          >
+            <Card size="sm">
+              <CardHeader>
+                <CardTitle className="text-[13px]">{t('schedule.section')}</CardTitle>
+              </CardHeader>
+              <CardContent className="grid gap-2">
+                <KVRow label={t('detail.rrule')} value={trigger?.rrule ?? t('trigger.noTrigger')} mono />
+                <KVRow label={t('detail.timezone')} value={trigger?.timezone ?? 'UTC'} mono />
+                <KVRow label={t('detail.nextRun')} value={formatDateTime(definition.nextRunAt, locale, t)} />
+                <KVRow label={t('detail.workspace')} value={definition.workspaceId ? workspaceMap[definition.workspaceId] ?? t('common.unknown') : t('definition.workspaceNone')} />
+                <KVRow label={t('detail.updated')} value={formatDateTime(definition.updatedAt ?? definition.createdAt, locale, t)} />
+              </CardContent>
+            </Card>
+
+            <Card size="sm">
+              <CardHeader>
+                <div className="flex items-center justify-between">
+                  <CardTitle className="text-[13px]">{t('recipe.section')}</CardTitle>
+                  <Badge variant="outline" className="h-4 px-1.5 text-[10px]">{recipe?.kind ?? t('common.unknown')}</Badge>
+                </div>
+              </CardHeader>
+              <CardContent>
+                <pre className="max-h-48 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">{recipe?.prompt ?? t('recipe.noPromptSnapshot')}</pre>
+              </CardContent>
+            </Card>
+          </m.div>
+        )}
+
+        {activeTab === 'runs' && (
+          <m.div
+            key="runs"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.15 }}
+          >
+            <SectionLabel label={t('runs.history')} count={runsQuery.data?.length ?? 0} />
+            {runsQuery.isLoading && (
+              <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
+                <Loader2Icon className="size-3.5 animate-spin" />
+                {t('runs.loading')}
+              </div>
+            )}
+            {!runsQuery.isLoading && sortedRuns.length === 0 && (
+              <div className="px-2 py-4 text-xs text-muted-foreground">{t('runs.empty')}</div>
+            )}
+            {/* Timeline layout for runs */}
+            <div className="relative flex flex-col">
+              {/* Vertical timeline line */}
+              {sortedRuns.length > 1 && (
+                <div className="absolute left-[5px] top-3 bottom-3 w-px bg-border/40" />
+              )}
+              {sortedRuns.map(run => (
+                <TimelineRunRow key={run.id} run={run} locale={locale} />
+              ))}
+            </div>
+          </m.div>
+        )}
+
+        {activeTab === 'artifacts' && (
+          <m.div
+            key="artifacts"
+            initial={{ opacity: 0, y: 4 }}
+            animate={{ opacity: 1, y: 0 }}
+            transition={{ duration: 0.15 }}
+            className="grid grid-cols-[minmax(0,1fr)_minmax(0,1.5fr)] gap-3"
+          >
+            <div>
+              <SectionLabel label={t('artifact.title')} count={artifactsQuery.data?.length ?? 0} />
+              <div className="flex flex-col gap-0.5">
+                {artifactsQuery.isLoading && (
+                  <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
+                    <Loader2Icon className="size-3.5 animate-spin" />
+                    {t('artifact.loading')}
+                  </div>
+                )}
+                {!artifactsQuery.isLoading && (artifactsQuery.data ?? []).length === 0 && (
+                  <div className="px-2 py-4 text-xs text-muted-foreground">{t('artifact.empty')}</div>
+                )}
+                {(artifactsData ?? []).map(artifact => (
+                  <ArtifactRow
+                    key={artifact.id}
+                    artifact={artifact}
+                    active={artifact.id === selectedArtifact?.id}
+                    onSelect={() => setSelectedArtifactId(artifact.id)}
+                  />
+                ))}
+              </div>
+            </div>
+            <div className="min-w-0">
+              <Card size="sm" className="h-full">
+                <CardHeader>
+                  <CardTitle className="text-[12px] font-mono">
+                    {selectedArtifact ? selectedArtifact.title ?? selectedArtifact.name ?? selectedArtifact.id : t('artifact.preview')}
+                  </CardTitle>
+                </CardHeader>
+                <CardContent>
+                  <pre className="max-h-80 overflow-auto whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">
+                    {selectedArtifact?.content ?? JSON.stringify(selectedArtifact?.metadata ?? {}, null, 2)}
+                  </pre>
+                </CardContent>
+              </Card>
+            </div>
+          </m.div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Timeline run row with dot connector ──────────────────────────────────────
+
+function TimelineRunRow({ run, locale }: { run: AutomationRun, locale: string }) {
+  const { t } = useTranslation('automation')
+  const normalized = (run.status ?? 'queued') as AutomationRunStatus
+  const dotColor = STATUS_DOT_COLORS[normalized] ?? STATUS_DOT_COLORS.queued
+
+  return (
+    <div className="group relative flex items-start gap-3 py-2 pl-1">
+      {/* Timeline dot */}
+      <span
+        className={cn(
+          'relative z-10 mt-1.5 inline-block size-2 shrink-0 rounded-full ring-2 ring-background',
+          dotColor,
+        )}
+      />
+      {/* Content */}
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <StatusText status={run.status} />
+          <span className="truncate font-mono text-[11px] text-foreground">{run.id}</span>
+        </div>
+        <div className="mt-0.5 flex items-center gap-2 text-[11px] text-muted-foreground">
+          <ClockIcon className="size-3 shrink-0" />
+          <span className="tabular-nums">{formatDateTime(run.startedAt ?? run.createdAt ?? run.scheduledFor, locale, t)}</span>
+          <span className="text-muted-foreground/40">·</span>
+          <span>{formatRelative(run.finishedAt ?? run.startedAt ?? run.createdAt, t)}</span>
+        </div>
+        {run.errorText && (
+          <div className="mt-1 truncate text-[11px] text-red-500">{run.errorText}</div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+// ── Artifact row ─────────────────────────────────────────────────────────────
+
+function ArtifactRow({
+  artifact,
+  active,
+  onSelect,
+}: {
+  artifact: AutomationArtifact
+  active: boolean
+  onSelect: () => void
+}) {
+  const { t } = useTranslation('automation')
+  return (
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        'group flex w-full items-center gap-2.5 rounded-md px-2 py-1.5 text-left text-xs transition-colors',
+        active ? 'bg-accent text-foreground' : 'hover:bg-accent/50',
+      )}
+    >
+      <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate text-foreground">{artifact.title ?? artifact.name ?? artifact.id}</span>
+      <span className="shrink-0 text-[10px] text-muted-foreground">{artifact.kind ?? artifact.mediaType ?? t('artifact.fallbackKind')}</span>
+    </button>
+  )
+}
+
+// ── KV row for overview card ─────────────────────────────────────────────────
+
+function KVRow({ label, value, mono }: { label: string, value: string, mono?: boolean }) {
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className="text-[11px] text-muted-foreground shrink-0">{label}</span>
+      <span className={cn('text-xs text-foreground text-right truncate', mono && 'font-mono')}>{value}</span>
+    </div>
+  )
+}
+
+// ── Form Field ───────────────────────────────────────────────────────────────
+
+function FormField({
+  label,
+  description,
+  htmlFor,
+  children,
+}: {
+  label: string
+  description?: string
+  htmlFor?: string
+  children: ReactNode
+}) {
+  return (
+    <div className="grid gap-1.5">
+      <Label htmlFor={htmlFor} className="text-[12px] text-foreground">{label}</Label>
+      {children}
+      {description ? <p className="text-[11px] leading-relaxed text-muted-foreground">{description}</p> : null}
+    </div>
+  )
+}
+
+// ── Schedule Builder ─────────────────────────────────────────────────────────
 
 function ScheduleBuilder({
   schedule,
@@ -668,6 +938,8 @@ function ScheduleBuilder({
     </TooltipProvider>
   )
 }
+
+// ── Create / Edit Panel ──────────────────────────────────────────────────────
 
 function CreateAutomationPanel({
   draft,
@@ -1015,6 +1287,8 @@ function CreateAutomationPanel({
   )
 }
 
+// ── Main Dashboard ───────────────────────────────────────────────────────────
+
 export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
   const { i18n, t } = useTranslation('automation')
   const { workspaces } = useWorkspaces()
@@ -1049,15 +1323,8 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
   const createAutomationMutation = useCreateAutomation()
   const updateAutomationMutation = useUpdateAutomation()
   const runNowMutation = useRunAutomationNow()
-  const [selectedArtifactId, setSelectedArtifactId] = useState<string | null>(null)
 
   const latestRun = selectedDefinition ? getLatestRun(selectedDefinition, runsQuery.data) : null
-  const trigger = selectedDefinition ? getTrigger(selectedDefinition) : null
-  const recipe = selectedDefinition ? getRecipe(selectedDefinition) : null
-  const selectedArtifact = useMemo(() => {
-    const artifacts = artifactsQuery.data ?? []
-    return artifacts.find(artifact => artifact.id === selectedArtifactId) ?? artifacts[0] ?? null
-  }, [artifactsQuery.data, selectedArtifactId])
   const automationReady = definitionsQuery.isSuccess
     && (!selectedAutomationId || (runsQuery.isSuccess && artifactsQuery.isSuccess))
   const locale = i18n.resolvedLanguage ?? i18n.language
@@ -1066,7 +1333,6 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
     setDraft(createDefaultDraft('', workspaceFilter))
     setDraftError(null)
     setSelectedId(null)
-    setSelectedArtifactId(null)
   }, [workspaceFilter])
 
   const startEdit = useCallback((definition: AutomationDefinition): void => {
@@ -1089,7 +1355,6 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
     })
     setEditingId(definition.id)
     setDraftError(null)
-    setSelectedArtifactId(null)
   }, [])
 
   const cancelDraft = useCallback((): void => {
@@ -1133,7 +1398,6 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
         const created = await createAutomationMutation.mutateAsync(toCreateAutomationInput(draft, t))
         setDraft(null)
         setSelectedId(created.id)
-        setSelectedArtifactId(null)
         toastManager.add({ type: 'success', title: t('toast.created') })
       }
     }
@@ -1150,26 +1414,26 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
       data-testid="automation-dashboard"
       data-automation-ready={automationReady ? 'true' : 'false'}
     >
+      {/* Beta notice — kept at top */}
       <BetaNotice
         title={t('beta.title')}
         description={t('beta.description')}
       />
 
+      {/* Header */}
       <div className="flex shrink-0 items-center justify-between border-b border-border/50 px-4 py-3">
         <div className="flex items-center gap-3">
-          {onBack
-? (
+          {onBack && (
             <Button type="button" variant="ghost" size="icon-sm" onClick={onBack} aria-label={t('action.backToHome')}>
               <ArrowLeftIcon className="size-4" />
             </Button>
-          )
-: null}
+          )}
           <div>
             <h1 className="text-sm font-semibold text-foreground">{t('page.title')}</h1>
             <p className="text-xs text-muted-foreground">{t('page.description')}</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-1.5">
           <Button type="button" size="sm" onClick={startDraft} disabled={!!draft}>
             <PlusIcon className="size-3.5" />
             {t('action.create')}
@@ -1190,8 +1454,8 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
         </div>
       </div>
 
-      {definitionsQuery.isError
-? (
+      {/* Error state */}
+      {definitionsQuery.isError && (
         <div className="m-4 flex items-start gap-2 rounded-lg border border-destructive/30 bg-destructive/10 p-3 text-sm text-destructive">
           <TriangleAlertIcon className="mt-0.5 size-4 shrink-0" />
           <div>
@@ -1199,86 +1463,69 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
             <div className="mt-1 text-xs opacity-80">{definitionsQuery.error.message}</div>
           </div>
         </div>
-      )
-: null}
+      )}
 
-      <div className="grid min-h-0 flex-1 grid-cols-[320px_minmax(0,1fr)] divide-x divide-border/40 overflow-hidden">
+      {/* Left-right layout */}
+      <div className="grid min-h-0 flex-1 grid-cols-[280px_minmax(0,1fr)] divide-x divide-border/40 overflow-hidden">
+        {/* Left sidebar — definition list */}
         <aside className="flex min-h-0 flex-col overflow-hidden">
-          <div className="flex items-center justify-between gap-2 px-4 py-3">
-            <span className="text-xs font-medium text-muted-foreground">{t('definitions.title')}</span>
-            <div className="flex items-center gap-2">
-              <Select
-                value={workspaceFilter ?? ''}
-                onValueChange={value => setWorkspaceFilter(value || null)}
-              >
-                <SelectTrigger className="h-6 max-w-32 text-[11px]">
-                  <SelectValue placeholder={t('definitions.filterAllWorkspaces')} />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="">{t('definitions.filterAllWorkspaces')}</SelectItem>
-                  {workspaces.map(workspace => (
-                    <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <Badge variant="secondary">{definitions.length}</Badge>
-            </div>
+          <div className="flex items-center justify-between gap-2 px-3 py-2.5">
+            <SectionLabel label={t('definitions.title')} count={definitions.length} />
+            <Select
+              value={workspaceFilter ?? ''}
+              onValueChange={value => setWorkspaceFilter(value || null)}
+            >
+              <SelectTrigger className="h-6 max-w-28 text-[11px]">
+                <SelectValue placeholder={t('definitions.filterAllWorkspaces')} />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="">{t('definitions.filterAllWorkspaces')}</SelectItem>
+                {workspaces.map(workspace => (
+                  <SelectItem key={workspace.id} value={workspace.id}>{workspace.name}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           </div>
-          <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto px-3 pb-3">
-            {draft
-? (
+          <div className="flex min-h-0 flex-1 flex-col gap-0.5 overflow-y-auto px-2 pb-3">
+            {/* Create draft row */}
+            {draft && (
               <button
                 type="button"
                 onClick={() => {
                   setSelectedId(null)
-                  setSelectedArtifactId(null)
                 }}
-                className="flex w-full items-start gap-2 rounded-lg border border-dashed border-primary/35 bg-primary/5 px-3 py-3 text-left transition-[background-color,border-color] duration-150 hover:border-primary/50 hover:bg-primary/10"
+                className="flex w-full items-center gap-2.5 rounded-md border border-dashed border-primary/30 bg-primary/5 px-2 py-1.5 text-left text-xs transition-colors hover:border-primary/50 hover:bg-primary/10"
               >
-                <div className="flex size-8 shrink-0 items-center justify-center rounded-md border border-dashed border-primary/30 text-primary">
-                  <SparklesIcon className="size-4" />
-                </div>
-                <div className="min-w-0 flex-1">
-                  <div className="text-sm font-medium text-foreground">{t('create.title')}</div>
-                  <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
-                    {t('create.listDescription')}
-                  </p>
-                </div>
+                <span className="flex size-4 shrink-0 items-center justify-center rounded border border-dashed border-primary/30 text-primary">
+                  <SparklesIcon className="size-2.5" />
+                </span>
+                <span className="min-w-0 flex-1 truncate font-medium text-foreground">{t('create.title')}</span>
               </button>
-            )
-: null}
-            {definitionsQuery.isLoading
-? (
+            )}
+            {definitionsQuery.isLoading && (
               <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
                 <Loader2Icon className="size-3.5 animate-spin" />
                 {t('loading.automations')}
               </div>
-            )
-: null}
-            {!definitionsQuery.isLoading && definitions.length === 0
-? (
-              <div className="rounded-lg border border-dashed border-border/60 px-3 py-5 text-center text-xs text-muted-foreground">
-                {t('definitions.empty')}
-              </div>
-            )
-: null}
+            )}
+            {!definitionsQuery.isLoading && definitions.length === 0 && (
+              <div className="px-2 py-4 text-xs text-muted-foreground">{t('definitions.empty')}</div>
+            )}
             {definitions.map(definition => (
-              <DefinitionListItem
+              <DefinitionRow
                 key={definition.id}
                 definition={definition}
                 active={definition.id === selectedAutomationId}
                 latestRun={definition.id === selectedAutomationId ? latestRun : definition.latestRun ?? null}
                 workspaceName={definition.workspaceId ? workspaceMap[definition.workspaceId] ?? null : null}
-                onSelect={() => {
-                  setSelectedId(definition.id)
-                  setSelectedArtifactId(null)
-                }}
+                onSelect={() => setSelectedId(definition.id)}
               />
             ))}
           </div>
         </aside>
 
-        <main className="min-h-0 overflow-y-auto">
+        {/* Right panel — detail or create/edit */}
+        <main className="min-h-0 overflow-hidden">
           {draft
 ? (
             <CreateAutomationPanel
@@ -1294,131 +1541,25 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
           )
 : selectedDefinition
 ? (
-            <div className="flex flex-col gap-5 p-5">
-              <section className="space-y-3">
-                <div className="flex items-start justify-between gap-4">
-                  <div className="min-w-0">
-                    <h2 className="truncate text-lg font-semibold text-foreground">{selectedDefinition.title}</h2>
-                    <p className="mt-1 max-w-3xl text-sm text-muted-foreground">{selectedDefinition.description || t('definition.noDescription')}</p>
-                  </div>
-                  <div className="flex items-center gap-2">
-                    {latestRun ? <StatusBadge status={latestRun.status} /> : <Badge variant="outline">{t('runs.noneShort')}</Badge>}
-                    <Button type="button" variant="outline" size="icon-sm" onClick={() => startEdit(selectedDefinition)} aria-label={t('action.edit')}>
-                      <PencilIcon className="size-3.5" />
-                    </Button>
-                  </div>
-                </div>
-                <div className="grid grid-cols-4 gap-2">
-                  <DetailField label={t('detail.workspace')} value={selectedDefinition.workspaceId ? workspaceMap[selectedDefinition.workspaceId] ?? t('common.unknown') : t('definition.workspaceNone')} />
-                  <DetailField label={t('detail.rrule')} value={trigger?.rrule ?? t('trigger.noTrigger')} mono />
-                  <DetailField label={t('detail.nextRun')} value={formatDateTime(selectedDefinition.nextRunAt, locale, t)} />
-                  <DetailField label={t('detail.updated')} value={formatDateTime(selectedDefinition.updatedAt ?? selectedDefinition.createdAt, locale, t)} />
-                </div>
-              </section>
-
-              <section className="grid grid-cols-[minmax(0,1fr)_280px] gap-4">
-                <div className="rounded-lg border border-border/50">
-                  <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
-                    <div className="flex items-center gap-2 text-xs font-medium text-foreground">
-                      <BotIcon className="size-3.5 text-muted-foreground" />
-                      {t('recipe.section')}
-                    </div>
-                    <Badge variant="outline">{recipe?.kind ?? t('common.unknown')}</Badge>
-                  </div>
-                  <pre className="max-h-72 overflow-auto whitespace-pre-wrap p-3 text-xs leading-relaxed text-muted-foreground">{recipe?.prompt ?? t('recipe.noPromptSnapshot')}</pre>
-                </div>
-                <div className="rounded-lg border border-border/50">
-                  <div className="border-b border-border/40 px-3 py-2 text-xs font-medium text-foreground">{t('recipe.inputsAndArtifacts')}</div>
-                  <div className="space-y-3 p-3 text-xs text-muted-foreground">
-                    <div>
-                      <div className="mb-1 font-medium text-foreground">{t('inputs.title')}</div>
-                      {(recipe?.inputs ?? []).length === 0 ? <div>{t('inputs.empty')}</div> : null}
-                      {(recipe?.inputs ?? []).map(input => (
-                        <div key={getInputKey(input)} className="truncate rounded bg-muted/40 px-2 py-1">
-                          {input.type}
-                          {input.name ? ` · ${input.name}` : ''}
-                          {input.path ? ` · ${input.path}` : ''}
-                          {input.url ? ` · ${input.url}` : ''}
-                        </div>
-                      ))}
-                    </div>
-                    <div>
-                      <div className="mb-1 font-medium text-foreground">{t('artifact.requestsTitle')}</div>
-                      {(recipe?.artifactRequests ?? []).length === 0 ? <div>{t('artifact.noRequests')}</div> : null}
-                      {(recipe?.artifactRequests ?? []).map(request => (
-                        <div key={request.name} className="truncate rounded bg-muted/40 px-2 py-1">
-                          {request.name}
-                          {request.kind ? ` · ${request.kind}` : ''}
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                </div>
-              </section>
-
-              <section className="rounded-lg border border-border/50">
-                <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
-                  <span className="text-xs font-medium text-foreground">{t('runs.history')}</span>
-                  <Badge variant="secondary">{runsQuery.data?.length ?? 0}</Badge>
-                </div>
-                <div className="divide-y divide-border/30 p-1">
-                  {runsQuery.isLoading
-? (
-                    <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
-                      <Loader2Icon className="size-3.5 animate-spin" />
-                      {t('runs.loading')}
-                    </div>
-                  )
-: null}
-                  {!runsQuery.isLoading && (runsQuery.data ?? []).length === 0
-? (
-                    <div className="px-2 py-4 text-xs text-muted-foreground">{t('runs.empty')}</div>
-                  )
-: null}
-                  {(runsQuery.data ?? []).map(run => <RunRow key={run.id} run={run} />)}
-                </div>
-              </section>
-
-              <section className="grid grid-cols-[320px_minmax(0,1fr)] gap-4">
-                <div className="rounded-lg border border-border/50">
-                  <div className="flex items-center justify-between border-b border-border/40 px-3 py-2">
-                    <span className="text-xs font-medium text-foreground">{t('artifact.title')}</span>
-                    <Badge variant="secondary">{artifactsQuery.data?.length ?? 0}</Badge>
-                  </div>
-                  <div className="p-1">
-                    {artifactsQuery.isLoading
-? (
-                      <div className="flex items-center gap-2 px-2 py-3 text-xs text-muted-foreground">
-                        <Loader2Icon className="size-3.5 animate-spin" />
-                        {t('artifact.loading')}
-                      </div>
-                    )
-: null}
-                    {!artifactsQuery.isLoading && (artifactsQuery.data ?? []).length === 0
-? (
-                      <div className="px-2 py-4 text-xs text-muted-foreground">{t('artifact.empty')}</div>
-                    )
-: null}
-                    {(artifactsQuery.data ?? []).map(artifact => (
-                      <ArtifactRow
-                        key={artifact.id}
-                        artifact={artifact}
-                        active={artifact.id === selectedArtifact?.id}
-                        onSelect={() => setSelectedArtifactId(artifact.id)}
-                      />
-                    ))}
-                  </div>
-                </div>
-                <div className="min-w-0 rounded-lg border border-border/50">
-                  <div className="border-b border-border/40 px-3 py-2 text-xs font-medium text-foreground">
-                    {selectedArtifact ? selectedArtifact.title ?? selectedArtifact.name ?? selectedArtifact.id : t('artifact.preview')}
-                  </div>
-                  <pre className="max-h-96 overflow-auto whitespace-pre-wrap p-3 text-xs leading-relaxed text-muted-foreground">
-                    {selectedArtifact?.content ?? JSON.stringify(selectedArtifact?.metadata ?? {}, null, 2)}
-                  </pre>
-                </div>
-              </section>
-            </div>
+            <m.div
+              key={selectedDefinition.id}
+              initial={{ opacity: 0, x: 8 }}
+              animate={{ opacity: 1, x: 0 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+              className="h-full"
+            >
+              <DetailView
+                definition={selectedDefinition}
+                latestRun={latestRun}
+                runsQuery={runsQuery}
+                artifactsQuery={artifactsQuery}
+                workspaceMap={workspaceMap}
+                locale={locale}
+                onEdit={() => startEdit(selectedDefinition)}
+                onRunNow={() => selectedAutomationId && runNowMutation.mutate(selectedAutomationId)}
+                runNowPending={runNowMutation.isPending}
+              />
+            </m.div>
           )
 : (
             <div className="flex h-full items-center justify-center">

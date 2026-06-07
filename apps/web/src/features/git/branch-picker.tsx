@@ -6,7 +6,7 @@ import {
   RefreshCwIcon,
   XIcon,
 } from 'lucide-react'
-import { useCallback, useDeferredValue, useEffect, useMemo, useReducer, useRef } from 'react'
+import { useDeferredValue, useEffect, useReducer, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -315,12 +315,12 @@ export function BranchPicker({
   const queryClient = useQueryClient()
   const { data: branches } = useGitBranches(workspaceId)
 
-  const invalidateAll = useCallback(() => {
+  const invalidateAll = () => {
     void queryClient.invalidateQueries({ queryKey: gitStatusQueryKey({ path: { id: workspaceId } }) })
     void queryClient.invalidateQueries({ queryKey: gitBranchesQueryKey({ path: { id: workspaceId } }) })
     // Omit query.limit to fuzzy-match all limit variants for this workspace
     void queryClient.invalidateQueries({ queryKey: gitGraphQueryKey({ path: { id: workspaceId } }) })
-  }, [queryClient, workspaceId])
+  }
 
   const checkoutMutation = useMutation({
     ...postWorkspacesByIdGitCheckoutMutation(),
@@ -337,7 +337,7 @@ export function BranchPicker({
     onSuccess: () => invalidateAll(),
   })
 
-  const handleCheckout = useCallback(async (branch: string) => {
+  const handleCheckout = async (branch: string) => {
     dispatch({ type: 'set-open', open: false })
     try {
       await checkoutMutation.mutateAsync({
@@ -348,9 +348,9 @@ export function BranchPicker({
     catch (err) {
       toastManager.add({ type: 'error', title: t('branch.checkout.error'), description: cleanGitError(err) })
     }
-  }, [checkoutMutation.mutateAsync, workspaceId, t])
+  }
 
-  const handleFetch = useCallback(async () => {
+  const handleFetch = async () => {
     dispatch({ type: 'set-fetching', fetching: true })
     try {
       await fetchMutation.mutateAsync({ path: { id: workspaceId } })
@@ -358,17 +358,17 @@ export function BranchPicker({
     finally {
       dispatch({ type: 'set-fetching', fetching: false })
     }
-  }, [fetchMutation.mutateAsync, workspaceId])
+  }
 
-  const startCreating = useCallback(() => {
+  const startCreating = () => {
     dispatch({ type: 'start-creating' })
-  }, [])
+  }
 
-  const cancelCreating = useCallback(() => {
+  const cancelCreating = () => {
     dispatch({ type: 'cancel-creating' })
-  }, [])
+  }
 
-  const handleCreate = useCallback(async () => {
+  const handleCreate = async () => {
     const name = state.newName.trim()
     if (!name) {
       return
@@ -388,7 +388,7 @@ export function BranchPicker({
     finally {
       dispatch({ type: 'set-create-loading', loading: false })
     }
-  }, [createBranchMutation.mutateAsync, state.newName, workspaceId])
+  }
 
   useEffect(() => {
     if (!state.open) {
@@ -406,14 +406,8 @@ export function BranchPicker({
 
   const q = state.search.toLowerCase()
   const deferredQ = useDeferredValue(q)
-  const localFiltered = useMemo(
-    () => (branches?.local ?? []).filter(b => b.name.toLowerCase().includes(deferredQ)),
-    [branches, deferredQ],
-  )
-  const remoteFiltered = useMemo(
-    () => (branches?.remote ?? []).filter(b => b.name.toLowerCase().includes(deferredQ)),
-    [branches, deferredQ],
-  )
+  const localFiltered = (branches?.local ?? []).filter(b => b.name.toLowerCase().includes(deferredQ))
+  const remoteFiltered = (branches?.remote ?? []).filter(b => b.name.toLowerCase().includes(deferredQ))
 
   return (
     <Popover

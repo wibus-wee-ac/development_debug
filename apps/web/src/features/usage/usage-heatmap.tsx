@@ -1,4 +1,3 @@
-import { memo, useMemo } from 'react'
 
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 
@@ -86,7 +85,7 @@ function cellColor(intensity: number): string {
 }
 
 function UsageHeatmapInner({ data }: UsageHeatmapProps) {
-  const { weeks, monthLabels, maxTokens } = useMemo(() => buildGrid(data), [data])
+  const { weeks, monthLabels, maxTokens } = buildGrid(data)
 
   const cellStep = CELL_SIZE + CELL_GAP
   const leftPad = 32
@@ -169,4 +168,4 @@ function UsageHeatmapInner({ data }: UsageHeatmapProps) {
   )
 }
 
-export const UsageHeatmap = memo(UsageHeatmapInner)
+export const UsageHeatmap = UsageHeatmapInner

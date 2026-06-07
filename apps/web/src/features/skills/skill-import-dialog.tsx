@@ -5,7 +5,7 @@ import {
   XIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
-import { useCallback, useEffect, useReducer, useRef, useState } from 'react'
+import { useEffect, useReducer, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
@@ -283,13 +283,13 @@ function InputForm({
     return () => clearTimeout(t)
   }, [])
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = () => {
     const trimmed = value.trim()
     if (!trimmed || isFetching) {
       return
     }
     onFetch(trimmed)
-  }, [value, isFetching, onFetch])
+  }
 
   return (
     <div className="flex h-full flex-col gap-8 p-8">
@@ -555,14 +555,14 @@ export function SkillImportDialog({
     prevOpenRef.current = open
   }, [open])
 
-  const handleClose = useCallback(() => {
+  const handleClose = () => {
     if (state.fetchResult?.sessionId && state.step !== 'done') {
       cancelFetch.mutate(state.fetchResult.sessionId)
     }
     onOpenChange(false)
-  }, [state.fetchResult, state.step, cancelFetch, onOpenChange])
+  }
 
-  const handleFetch = useCallback(async (source: string) => {
+  const handleFetch = async (source: string) => {
     dispatch({ type: 'fetch-start', source })
     try {
       const result = await fetchSource.mutateAsync(source)
@@ -580,13 +580,13 @@ export function SkillImportDialog({
     catch (err) {
       dispatch({ type: 'fetch-error', error: err instanceof Error ? err.message : String(err) })
     }
-  }, [fetchSource])
+  }
 
-  const handleToggle = useCallback((skillDir: string) => {
+  const handleToggle = (skillDir: string) => {
     dispatch({ type: 'toggle-skill', skillDir })
-  }, [])
+  }
 
-  const handleToggleAll = useCallback(() => {
+  const handleToggleAll = () => {
     if (!state.fetchResult) {
       return
     }
@@ -594,9 +594,9 @@ export function SkillImportDialog({
       type: 'toggle-all',
       skillDirs: state.fetchResult.skills.map(skill => skill.skillDir),
     })
-  }, [state.fetchResult])
+  }
 
-  const handleInstall = useCallback(async () => {
+  const handleInstall = async () => {
     if (!state.fetchResult || state.selected.size === 0) {
       return
     }
@@ -613,7 +613,7 @@ export function SkillImportDialog({
     catch (err) {
       dispatch({ type: 'install-error', error: err instanceof Error ? err.message : String(err) })
     }
-  }, [state.fetchResult, state.selected, importFromFetch, editableScope])
+  }
 
   return (
     <Dialog

@@ -14,6 +14,6 @@ export const useGlobalSearchStore = create<GlobalSearchState>(set => ({
   initialQuery: '>',
   setOpen: open => set({ open }),
   openPalette: (initialQuery = '>') => set({ initialQuery, open: true }),
-  openSearch: () => set({ initialQuery: '>', open: true }),
+  openSearch: () => set({ initialQuery: '', open: true }),
   closeSearch: () => set({ open: false }),
 }))

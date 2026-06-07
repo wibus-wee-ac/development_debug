@@ -1,3 +1,4 @@
+import { useQuery } from '@tanstack/react-query'
 import {
   ActivityIcon,
   CircleAlertIcon,
@@ -10,14 +11,19 @@ import {
   SquareTerminalIcon,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { z } from 'zod'
 
+import {
+  getChronicleDaemonResourcesOptions,
+  getChronicleStatusOptions,
+  getHealthOptions,
+  getTerminalSessionsResourcesOptions,
+} from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { Progress } from '~/components/ui/progress'
 import { cn } from '~/lib/cn'
-import { getServerUrl } from '~/lib/electron'
 import {
   bytesToMegabytes,
   formatCpuPercent,
@@ -26,11 +32,10 @@ import {
   formatUptimeSeconds,
 } from '~/lib/number-format'
 
-const SERVER_BASE = getServerUrl()
 const REFRESH_INTERVAL_MS = 3000
 const PATH_SEGMENT_SEPARATOR_PATTERN = /[\\/]/
 
-const ServerHealthSchema = z.object({
+const ServerHealthSchema = z.looseObject({
   memory: z.object({
     heapUsed: z.number(),
     heapTotal: z.number(),
@@ -43,7 +48,7 @@ const ServerHealthSchema = z.object({
     systemMicros: z.number(),
   }).optional(),
   uptime: z.number(),
-}).passthrough()
+})
 
 const PtyResourceItemSchema = z.object({
   id: z.string(),
@@ -126,6 +131,10 @@ interface ChronicleResources {
   cpuPercent: number | null
 }
 
+interface ChronicleStatus {
+  running: boolean
+}
+
 interface RendererMemory {
   heapUsed: number
   heapTotal: number
@@ -161,6 +170,7 @@ interface ResourceSnapshotInput {
   server: ServerHealth | null
   pty: PtyResources | null
   chronicle: ChronicleResources | null
+  chronicleWarning: string | null
   timestamp: number
 }
 
@@ -195,6 +205,7 @@ function createResourceSnapshot({
   server,
   pty,
   chronicle,
+  chronicleWarning,
   timestamp,
 }: ResourceSnapshotInput): ResourceSnapshot {
   const mbToBytes = (mb: number) => mb * 1024 * 1024
@@ -205,6 +216,9 @@ function createResourceSnapshot({
   }
   if (!pty) {
     warnings.push('Terminal resource metrics unavailable')
+  }
+  if (chronicleWarning) {
+    warnings.push(chronicleWarning)
   }
 
   return {
@@ -329,61 +343,145 @@ function ResourceGroup({
   )
 }
 
-async function requestResourceJson(url: string): Promise<unknown> {
-  const response = await fetch(url)
-  if (!response.ok) {
-    throw new Error(`${response.status} ${response.statusText}`)
-  }
-  return response.json()
+const CHRONICLE_OFF_RESOURCES: ChronicleResources = {
+  running: false,
+  pid: null,
+  rssMB: null,
+  cpuPercent: null,
+}
+
+function parseServerHealth(data: unknown): ServerHealth {
+  return ServerHealthSchema.parse(data)
+}
+
+function parsePtyResources(data: unknown): PtyResources {
+  return PtyResourcesSchema.parse(data)
+}
+
+function selectChronicleStatus(data: ChronicleStatus): ChronicleStatus {
+  return { running: data.running }
+}
+
+function parseChronicleResources(data: unknown): ChronicleResources {
+  return ChronicleResourcesSchema.parse(data)
 }
 
 function useResourceSnapshot() {
-  const [snap, setSnap] = useState<ResourceSnapshot | null>(null)
-  const [loading, setLoading] = useState(false)
-  const [resourcesReady, setResourcesReady] = useState(false)
-  const requestRef = useRef(0)
+  const [renderer, setRenderer] = useState(readRendererMemory)
+  const [timestamp, setTimestamp] = useState(Date.now)
 
-  const refresh = useCallback(async () => {
-    const requestId = ++requestRef.current
-    setLoading(true)
-    try {
-      const [healthRes, ptyRes, chronicleRes] = await Promise.allSettled([
-        requestResourceJson(`${SERVER_BASE}/health`).then(data => ServerHealthSchema.parse(data) satisfies ServerHealth),
-        requestResourceJson(`${SERVER_BASE}/terminal-sessions/resources`).then(data => PtyResourcesSchema.parse(data) satisfies PtyResources),
-        requestResourceJson(`${SERVER_BASE}/chronicle/daemon/resources`).then(data => ChronicleResourcesSchema.parse(data) satisfies ChronicleResources),
-      ])
-
-      if (requestId === requestRef.current) {
-        const server = healthRes.status === 'fulfilled' ? healthRes.value : null
-        const pty = ptyRes.status === 'fulfilled' ? ptyRes.value : null
-        const chronicle = chronicleRes.status === 'fulfilled' ? chronicleRes.value : null
-        const renderer = readRendererMemory()
-        const allResourcesReady = healthRes.status === 'fulfilled'
-          && ptyRes.status === 'fulfilled'
-          && chronicleRes.status === 'fulfilled'
-
-        setSnap(createResourceSnapshot({
-          renderer,
-          server,
-          pty,
-          chronicle,
-          timestamp: Date.now(),
-        }))
-        setResourcesReady(allResourcesReady)
-      }
-    }
-    finally {
-      if (requestId === requestRef.current) {
-        setLoading(false)
-      }
-    }
-  }, [])
+  const {
+    data: server,
+    isFetched: healthFetched,
+    isFetching: healthFetching,
+    isSuccess: healthSuccess,
+    refetch: refetchHealth,
+  } = useQuery({
+    ...getHealthOptions(),
+    select: parseServerHealth,
+    refetchInterval: REFRESH_INTERVAL_MS,
+  })
+  const {
+    data: pty,
+    isFetched: ptyFetched,
+    isFetching: ptyFetching,
+    isSuccess: ptySuccess,
+    refetch: refetchPty,
+  } = useQuery({
+    ...getTerminalSessionsResourcesOptions(),
+    select: parsePtyResources,
+    refetchInterval: REFRESH_INTERVAL_MS,
+  })
+  const {
+    data: chronicleStatus,
+    isError: chronicleStatusError,
+    isFetched: chronicleStatusFetched,
+    isFetching: chronicleStatusFetching,
+    isSuccess: chronicleStatusSuccess,
+    refetch: refetchChronicleStatus,
+  } = useQuery({
+    ...getChronicleStatusOptions(),
+    select: selectChronicleStatus,
+    refetchInterval: query =>
+      query.state.status === 'error' ? false : REFRESH_INTERVAL_MS,
+    retry: false,
+  })
+  const chronicleResourcesEnabled = chronicleStatus?.running === true
+  const {
+    data: chronicleResources,
+    isError: chronicleResourcesError,
+    isFetched: chronicleResourcesFetched,
+    isFetching: chronicleResourcesFetching,
+    isSuccess: chronicleResourcesSuccess,
+    refetch: refetchChronicleResources,
+  } = useQuery({
+    ...getChronicleDaemonResourcesOptions(),
+    select: parseChronicleResources,
+    enabled: chronicleResourcesEnabled,
+    refetchInterval: query =>
+      chronicleResourcesEnabled && query.state.status !== 'error'
+        ? REFRESH_INTERVAL_MS
+        : false,
+    retry: false,
+  })
 
   useEffect(() => {
-    void refresh()
-    const intervalId = setInterval(() => void refresh(), REFRESH_INTERVAL_MS)
+    const refreshRenderer = () => {
+      setRenderer(readRendererMemory())
+      setTimestamp(Date.now())
+    }
+    const intervalId = setInterval(refreshRenderer, REFRESH_INTERVAL_MS)
     return () => clearInterval(intervalId)
-  }, [refresh])
+  }, [])
+
+  const refresh = async () => {
+    setRenderer(readRendererMemory())
+    setTimestamp(Date.now())
+    const refetches: Array<Promise<unknown>> = [
+      refetchHealth(),
+      refetchPty(),
+      refetchChronicleStatus(),
+    ]
+
+    if (chronicleResourcesEnabled) {
+      refetches.push(refetchChronicleResources())
+    }
+
+    await Promise.all(refetches)
+  }
+
+  const hasSnapshot = healthFetched
+    || ptyFetched
+    || chronicleStatusFetched
+    || chronicleResourcesFetched
+
+  const chronicleWarning = chronicleStatusError
+    ? 'Chronicle status unavailable'
+    : chronicleResourcesEnabled && chronicleResourcesError
+      ? 'Chronicle daemon metrics unavailable'
+      : null
+  const chronicle = chronicleResourcesEnabled
+    ? chronicleResources ?? null
+    : CHRONICLE_OFF_RESOURCES
+  const snap = hasSnapshot
+    ? createResourceSnapshot({
+        renderer,
+        server: server ?? null,
+        pty: pty ?? null,
+        chronicle,
+        chronicleWarning,
+        timestamp,
+      })
+    : null
+
+  const loading = healthFetching
+    || ptyFetching
+    || chronicleStatusFetching
+    || (chronicleResourcesEnabled && chronicleResourcesFetching)
+  const resourcesReady = healthSuccess
+    && ptySuccess
+    && chronicleStatusSuccess
+    && (!chronicleResourcesEnabled || chronicleResourcesSuccess)
 
   return { snap, loading, refresh, resourcesReady }
 }
@@ -392,15 +490,12 @@ export function ResourcesPopover() {
   const { snap, loading, refresh, resourcesReady } = useResourceSnapshot()
   const [open, setOpen] = useState(false)
 
-  const handleOpenChange = useCallback((nextOpen: boolean) => {
+  const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen)
-  }, [])
-
-  useEffect(() => {
-    if (open) {
+    if (nextOpen) {
       void refresh()
     }
-  }, [open, refresh])
+  }
 
   const totalRendererMB = snap ? bytesToMegabytes(snap.rendererHeapUsed) : 0
   const totalServerMB = snap ? bytesToMegabytes(snap.serverRss) : 0

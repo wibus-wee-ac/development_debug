@@ -12,7 +12,7 @@ import {
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import type { FormEvent } from 'react'
-import { useEffect, useId, useMemo, useRef, useState } from 'react'
+import { useEffect, useId, useRef, useState } from 'react'
 
 import {
   getSessionAwaitsByIdLiveStatusOptions,
@@ -990,8 +990,8 @@ function SourceCard({ awaitRow, sessionId }: { awaitRow: AwaitRow, sessionId: st
 }
 
 function GitHubCICard({ ci, awaitId, sessionId }: { ci: LiveCIStatus, awaitId: string, sessionId: string | null }) {
-  const tree = useMemo(() => buildRunTree(ci.checkRuns, ci.workflowRuns), [ci.checkRuns, ci.workflowRuns])
-  const defaultExpandedNodeIds = useMemo(() => collectExpandableNodeIds(tree), [tree])
+  const tree = buildRunTree(ci.checkRuns, ci.workflowRuns)
+  const defaultExpandedNodeIds = collectExpandableNodeIds(tree)
   const initializedExpandedNodeIdsRef = useRef(new Set(defaultExpandedNodeIds))
   const [expandedNodeIds, setExpandedNodeIds] = useState<Set<string>>(() => new Set(defaultExpandedNodeIds))
 
@@ -1210,8 +1210,8 @@ function GitHubAwaitComposer({
 }) {
   const { data: remotes, isLoading: remotesLoading, isError: remotesError } = useGitRemotes(workspaceId)
   const { data: status } = useGitStatus(workspaceId)
-  const detectedRepo = useMemo(() => selectGitHubRepository(normalizeGitRemotes(remotes)), [remotes])
-  const detectedPrNumber = useMemo(() => derivePullRequestNumberFromStatus(normalizeGitStatus(status)), [status])
+  const detectedRepo = selectGitHubRepository(normalizeGitRemotes(remotes))
+  const detectedPrNumber = derivePullRequestNumberFromStatus(normalizeGitStatus(status))
   const [repoInput, setRepoInput] = useState('')
   const [targetInput, setTargetInput] = useState('')
   const [sourceKind, setSourceKind] = useState<GitHubAwaitSourceKind>('github-ci')

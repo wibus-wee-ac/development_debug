@@ -4,9 +4,10 @@
 
 Global search UI — VS Code-style command palette and quick-open surface.
 The app hosts one palette instance from `App`, while sidebar, home, desktop tray,
-and keyboard shortcuts send open intents through the search-owned store. `⌘K` /
-`Ctrl+K` and `⌘⇧P` / `Ctrl+Shift+P` open command mode (`>`), while `⌘P` /
-`Ctrl+P` opens file quick-open mode for the active workspace.
+and keyboard shortcuts send open intents through the search-owned store. Search
+entry points and `⌘P` / `Ctrl+P` open quick-open mode for files, issues, and
+chat sessions, while `⌘K` / `Ctrl+K` and `⌘⇧P` / `Ctrl+Shift+P` open command
+mode (`>`).
 
 ## Files
 

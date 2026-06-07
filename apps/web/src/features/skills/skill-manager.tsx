@@ -9,7 +9,7 @@ import {
   Trash2Icon,
   UploadIcon,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useReducer } from 'react'
+import { useEffect, useReducer } from 'react'
 
 import { Button } from '~/components/ui/button'
 import {
@@ -37,28 +37,34 @@ import { useSkillDocument, useSkills } from './use-skills'
 interface SkillManagerProps {
   workspaceId?: string | null
   agentId?: string | null
-  editableScope: 'global' | 'workspace' | 'agent'
+  editableScope: EditableSkillScope
   pageTestId: string
   title: string
   description: string
 }
+
+type EditableSkillScope = 'workspace' | 'agent'
 
 interface SelectedSkillRef {
   scope: SkillScope
   name: string
 }
 
-const GROUP_ORDER: Record<'global' | 'workspace' | 'agent', SkillScope[]> = {
-  global: ['global', 'legacy', 'builtin'],
-  workspace: ['workspace', 'repository', 'global', 'legacy', 'builtin'],
-  agent: ['agent', 'global', 'legacy', 'builtin'],
+const FILTER_ORDER: Record<EditableSkillScope, SkillScope[]> = {
+  workspace: ['workspace', 'legacy', 'builtin'],
+  agent: ['agent', 'legacy', 'builtin'],
+}
+
+const VISIBLE_SCOPE_ORDER: Record<EditableSkillScope, SkillScope[]> = {
+  workspace: ['workspace', 'repository', 'legacy', 'builtin'],
+  agent: ['agent', 'legacy', 'builtin'],
 }
 
 const GROUP_LABELS: Record<SkillScope, string> = {
   builtin: 'Built-in',
   legacy: 'Standard',
-  global: 'Cradle only',
-  repository: 'Repository',
+  global: 'Global',
+  repository: 'Workspace',
   workspace: 'Workspace',
   agent: 'Agent',
 }
@@ -76,9 +82,54 @@ const SCOPE_ACCENT: Record<SkillScope, string> = {
   builtin: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
   legacy: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
   global: 'bg-sky-500/10 text-sky-600 dark:text-sky-400',
-  repository: 'bg-teal-500/10 text-teal-600 dark:text-teal-400',
+  repository: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
   workspace: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
   agent: 'bg-rose-500/10 text-rose-600 dark:text-rose-400',
+}
+
+const SORT_ORDER: Record<SkillScope, number> = {
+  agent: 0,
+  workspace: 1,
+  repository: 1,
+  legacy: 2,
+  builtin: 3,
+  global: 99,
+}
+
+const SCOPE_PRIORITY: Record<SkillScope, number> = {
+  builtin: 0,
+  legacy: 1,
+  global: 2,
+  repository: 3,
+  workspace: 4,
+  agent: 5,
+}
+
+function matchesScopeFilter(entryScope: SkillScope, filter: SkillScope | 'all') {
+  if (filter === 'all') {
+    return true
+  }
+  if (filter === 'workspace') {
+    return entryScope === 'workspace' || entryScope === 'repository'
+  }
+  return entryScope === filter
+}
+
+function selectVisibleInventory(inventory: SkillInventoryEntry[], visibleScopes: ReadonlySet<SkillScope>) {
+  const activeScopeByName = new Map<string, SkillScope>()
+
+  for (const entry of inventory) {
+    if (!visibleScopes.has(entry.scope)) {
+      continue
+    }
+    const currentScope = activeScopeByName.get(entry.name)
+    if (!currentScope || SCOPE_PRIORITY[entry.scope] >= SCOPE_PRIORITY[currentScope]) {
+      activeScopeByName.set(entry.name, entry.scope)
+    }
+  }
+
+  return inventory.filter(entry =>
+    visibleScopes.has(entry.scope) && activeScopeByName.get(entry.name) === entry.scope)
 }
 
 const EMPTY_BODY = '# Overview\n\nDescribe when the agent should use this skill.\n'
@@ -221,7 +272,7 @@ function SkillEditDialog({
   entry: SelectedSkillRef | null
   workspaceId?: string | null
   agentId?: string | null
-  editableScope: 'global' | 'workspace' | 'agent'
+  editableScope: EditableSkillScope
   onSaved: (scope: SkillScope, name: string) => void
   createSkill: ReturnType<typeof useSkills>['createSkill']
   updateSkill: ReturnType<typeof useSkills>['updateSkill']
@@ -388,7 +439,7 @@ function SkillDetail({
   entry: SkillInventoryEntry
   workspaceId?: string | null
   agentId?: string | null
-  editableScope: 'global' | 'workspace' | 'agent'
+  editableScope: EditableSkillScope
   onEdit: () => void
   onExport: () => void
   onDelete: () => void
@@ -474,60 +525,59 @@ export function SkillManager({
   const { selectDirectory } = useDirectoryPicker()
   const [uiState, dispatch] = useReducer(skillManagerUiReducer, initialSkillManagerUiState)
 
-  const activeInventory = useMemo(() => inventory.filter(entry => entry.active), [inventory])
+  const visibleScopes = new Set(VISIBLE_SCOPE_ORDER[editableScope])
+  const visibleInventory = selectVisibleInventory(inventory, visibleScopes)
+  const scopes = FILTER_ORDER[editableScope]
 
-  const scopes = useMemo(() => GROUP_ORDER[editableScope], [editableScope])
-
-  const filteredInventory = useMemo(() => {
-    let entries = activeInventory
+  const filteredInventory = (() => {
+    let entries = visibleInventory
     if (uiState.scopeFilter !== 'all') {
-      entries = entries.filter(e => e.scope === uiState.scopeFilter)
+      entries = entries.filter(e => matchesScopeFilter(e.scope, uiState.scopeFilter))
     }
     if (uiState.searchQuery.trim()) {
       const q = uiState.searchQuery.toLowerCase()
       entries = entries.filter(e =>
         e.name.toLowerCase().includes(q) || e.description.toLowerCase().includes(q))
     }
-    const order = { agent: 0, workspace: 1, repository: 2, global: 3, legacy: 4, builtin: 5 } as const
     return entries.toSorted((a, b) => {
-      const aDist = a.scope === editableScope ? -1 : order[a.scope]
-      const bDist = b.scope === editableScope ? -1 : order[b.scope]
+      const aDist = a.scope === editableScope ? -1 : SORT_ORDER[a.scope]
+      const bDist = b.scope === editableScope ? -1 : SORT_ORDER[b.scope]
       if (aDist !== bDist) {
         return aDist - bDist
       }
       return a.name.localeCompare(b.name)
     })
-  }, [activeInventory, uiState.scopeFilter, uiState.searchQuery, editableScope])
+  })()
 
-  const selectedEntry = useMemo(() => {
+  const selectedEntry = (() => {
     const selectedSkill = uiState.selectedSkill
     if (!selectedSkill) {
       return null
     }
-    return activeInventory.find(e => e.scope === selectedSkill.scope && e.name === selectedSkill.name) ?? null
-  }, [activeInventory, uiState.selectedSkill])
+    return visibleInventory.find(e => e.scope === selectedSkill.scope && e.name === selectedSkill.name) ?? null
+  })()
 
-  const beginDraft = useCallback(() => {
+  const beginDraft = () => {
     dispatch({ type: 'open-draft', scope: editableScope })
-  }, [editableScope])
+  }
 
-  const handleSaved = useCallback((scope: SkillScope, name: string) => {
+  const handleSaved = (scope: SkillScope, name: string) => {
     dispatch({ type: 'skill-saved', value: { scope, name } })
-  }, [])
+  }
 
-  const handleDelete = useCallback(async () => {
+  const handleDelete = async () => {
     if (!selectedEntry || selectedEntry.scope !== editableScope) {
       return
     }
     await deleteSkill.mutateAsync({ scope: selectedEntry.scope, name: selectedEntry.name })
     dispatch({ type: 'set-selected-skill', value: null })
-  }, [deleteSkill, editableScope, selectedEntry])
+  }
 
-  const handleImport = useCallback(async () => {
+  const handleImport = async () => {
     dispatch({ type: 'open-import', value: true })
-  }, [])
+  }
 
-  const handleExport = useCallback(async () => {
+  const handleExport = async () => {
     if (!selectedEntry) {
       return
     }
@@ -546,13 +596,12 @@ export function SkillManager({
     catch (error) {
       dispatch({ type: 'set-error', value: error instanceof Error ? error.message : String(error) })
     }
-  }, [exportSkill, selectedEntry, selectDirectory])
+  }
 
   return (
     <div
       className="flex flex-col gap-1"
       data-testid={pageTestId}
-      data-settings-skills-ready={editableScope === 'global' && skillsReady ? 'true' : 'false'}
       data-workspace-skills-ready={editableScope === 'workspace' && skillsReady ? 'true' : 'false'}
     >
       {/* Header */}

@@ -1,5 +1,4 @@
 import { CpuIcon } from 'lucide-react'
-import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ProviderIcon } from '~/components/common/provider-icons'
@@ -70,7 +69,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
 }: ProviderModelPickerProps<TThinking>) {
   const { t } = useTranslation('common')
   const selectedProviderTarget = providerTargets.find(target => target.id === selectedProviderTargetId) ?? null
-  const effectiveLoadingProviderTargetIds = useMemo(() => {
+  const effectiveLoadingProviderTargetIds = (() => {
     if (!selectedProviderTargetId || !isLoadingSelectedModels || loadingProviderTargetIds.has(selectedProviderTargetId)) {
       return loadingProviderTargetIds
     }
@@ -78,7 +77,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
     const next = new Set(loadingProviderTargetIds)
     next.add(selectedProviderTargetId)
     return next
-  }, [isLoadingSelectedModels, loadingProviderTargetIds, selectedProviderTargetId])
+  })()
 
   const triggerThinkingOptions = getThinkingOptionsForModel
     ? getThinkingOptionsForModel(selectedModel)

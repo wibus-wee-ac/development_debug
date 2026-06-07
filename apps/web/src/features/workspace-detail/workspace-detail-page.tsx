@@ -1,41 +1,32 @@
-import { Link } from '@cradle/tabs-next'
+import { useTabFrameActive } from '@cradle/tabs-next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { FileUIPart } from 'ai'
-import type { TFunction } from 'i18next'
 import {
-  ExternalLinkIcon,
   FileTextIcon,
-  FolderOpenIcon,
   Loader2Icon,
-  MessageSquareIcon,
-  MessageSquarePlusIcon,
   PencilIcon,
   ScrollTextIcon,
 } from 'lucide-react'
 import { m } from 'motion/react'
 import type { CSSProperties } from 'react'
-import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
   getWorkflowRulesByWorkspaceIdOptions,
-  getWorkspacesByIdGitStatusOptions,
   getWorkspacesByIdOptions,
   patchWorkspacesByIdMutation,
   postSessionsMutation,
 } from '~/api-gen/@tanstack/react-query.gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
-import { Button } from '~/components/ui/button'
 import { toastManager } from '~/components/ui/toast'
 import type { ChatContextPart } from '~/features/chat/context/chat-context-parts'
 import type { DraftChatComposerSubmitOptions } from '~/features/chat/composer/draft-chat-composer'
 import { DraftChatComposer } from '~/features/chat/composer/draft-chat-composer'
 import { startOptimisticChatResponse } from '~/features/chat/session/optimistic-chat-turn'
-import { sessionsQueryKey, updateSessionInSessionLists, useWorkspaceSessions } from '~/features/workspace/use-session'
+import { sessionsQueryKey, updateSessionInSessionLists } from '~/features/workspace/use-session'
 import { WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
-import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
-import { isElectron, nativeIpc } from '~/lib/electron'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { useCradleTabStore } from '~/tabs/registry'
 import { openTearoffSessionWindow } from '~/tabs/tearoff-tabs'
@@ -73,34 +64,7 @@ interface TocLayout {
   items: TocHeadingLayout[]
 }
 
-type WorkspaceTranslation = TFunction<'workspace'>
-
 /* ─── Helpers ────────────────────────────────────────────── */
-
-function timeAgo(ts: number, nowMs: number, t: WorkspaceTranslation): string {
-  const diff = Math.floor(nowMs / 1000) - ts
-  if (diff < 60) {
-    return t('session.relative.now')
-  }
-  if (diff < 3600) {
-    return t('session.relative.minutes', { count: Math.floor(diff / 60) })
-  }
-  if (diff < 86400) {
-    return t('session.relative.hours', { count: Math.floor(diff / 3600) })
-  }
-  if (diff < 2592000) {
-    return t('session.relative.days', { count: Math.floor(diff / 86400) })
-  }
-  return t('session.relative.months', { count: Math.floor(diff / 2592000) })
-}
-
-function formatDate(ts: number, locale: string): string {
-  return new Date(ts * 1000).toLocaleDateString(locale, {
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-  })
-}
 
 const HEADING_RE = /^(#{1,6})\s+(\S.*)$/gm
 const RE_NON_WORD = /[^\w\u4E00-\u9FFF]+/g
@@ -208,7 +172,7 @@ function InlineEditTitleEditor({
     })
   }, [])
 
-  const commit = useCallback(async () => {
+  const commit = async () => {
     const trimmed = inputRef.current?.value.trim() ?? ''
     if (trimmed && trimmed !== initialValue) {
       try {
@@ -219,7 +183,7 @@ function InlineEditTitleEditor({
       }
     }
     onCancel()
-  }, [initialValue, onCancel, onCommit])
+  }
 
   return (
     <input
@@ -290,9 +254,9 @@ function DocumentSection({
   placeholder: string
 }) {
   const { t } = useTranslation('workspace')
-  const saveDraft = useCallback((nextDraft: string) => {
+  const saveDraft = (nextDraft: string) => {
     void file.save(nextDraft)
-  }, [file])
+  }
 
   if (file.loading) {
     return (
@@ -461,7 +425,6 @@ function useWorkspaceDetailOwner(workspaceId: string) {
   const queryClient = useQueryClient()
   const { openTab } = useCradleNavigation()
   const scrollRef = useRef<HTMLDivElement>(null)
-  const now = useNow()
   const [activeSlug, setActiveSlug] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'overview' | 'workflow-rules' | 'skills'>('overview')
   const [selectedWorkflowAgentId, setSelectedWorkflowAgentId] = useState<string | null>(null)
@@ -484,14 +447,6 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     })
   }, [workspace])
 
-  const { data: gitStatus } = useQuery({
-    ...getWorkspacesByIdGitStatusOptions({ path: { id: workspaceId } }),
-    enabled: !!workspaceId,
-    refetchInterval: 10_000,
-  })
-
-  const { sessions } = useWorkspaceSessions(workspaceId)
-
   const agents = useWorkspaceFile(workspaceId, 'AGENTS.md')
   const { data: workflowRule } = useQuery({
     ...getWorkflowRulesByWorkspaceIdOptions({
@@ -504,11 +459,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     ? (workflowRule?.agentSpecific ?? null)
     : (workflowRule?.global ?? null)
 
-  const recentSessions = useMemo(() => {
-    return sessions.slice(0, 10)
-  }, [sessions])
-
-  const headings = useMemo(() => {
+  const headings = (() => {
     if (activeTab === 'overview') {
       return parseHeadings(agents.content, 'AGENTS.md')
     }
@@ -516,7 +467,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
       return parseHeadings(workflowContent, t('detail.toc.workflowRules'))
     }
     return []
-  }, [activeTab, agents.content, t, workflowContent])
+  })()
 
   const renameWorkspaceMutation = useMutation({
     ...patchWorkspacesByIdMutation(),
@@ -538,49 +489,12 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     },
   })
 
-  const handleRename = useCallback(async (newName: string) => {
+  const handleRename = async (newName: string) => {
     await renameWorkspaceMutation.mutateAsync({ path: { id: workspaceId }, body: { name: newName } })
-  }, [renameWorkspaceMutation, workspaceId])
+  }
 
-  const handleOpenInFinder = useCallback(async () => {
-    if (!workspace || !isElectron || !nativeIpc) {
-      return
-    }
 
-    try {
-      await nativeIpc.native.openPath(workspace.path)
-    }
-    catch (error) {
-      toastManager.add({
-        type: 'error',
-        title: t('detail.toast.openInFinderFailed'),
-        description: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }, [t, workspace])
-
-  const handleOpenInApp = useCallback(async () => {
-    if (!workspace || !isElectron || !nativeIpc) {
-      return
-    }
-
-    try {
-      await nativeIpc.native.openPathInEditor(workspace.path)
-    }
-    catch (error) {
-      toastManager.add({
-        type: 'error',
-        title: t('detail.toast.openInEditorFailed'),
-        description: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }, [t, workspace])
-
-  const handleNewChat = useCallback(() => {
-    openTab('new-chat')
-  }, [openTab])
-
-  const openCreatedWorkspaceSession = useCallback(async (sessionId: string, target: 'tab' | 'window') => {
+  const openCreatedWorkspaceSession = async (sessionId: string, target: 'tab' | 'window') => {
     if (target === 'window') {
       const openedWindow = await openTearoffSessionWindow(useCradleTabStore, sessionId)
       if (openedWindow) {
@@ -588,9 +502,9 @@ function useWorkspaceDetailOwner(workspaceId: string) {
       }
     }
     openTab('chat', { sessionId })
-  }, [openTab])
+  }
 
-  const handleDraftComposerSendToTarget = useCallback(async (
+  const handleDraftComposerSendToTarget = async (
     text: string,
     files: FileUIPart[],
     contextParts: ChatContextPart[],
@@ -704,33 +618,33 @@ function useWorkspaceDetailOwner(workspaceId: string) {
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
     ])
     return true
-  }, [createSessionMutation, openCreatedWorkspaceSession, queryClient, t, workspace, workspaceId])
+  }
 
-  const handleDraftComposerSend = useCallback((
+  const handleDraftComposerSend = (
     text: string,
     files: FileUIPart[],
     contextParts: ChatContextPart[],
     opts: DraftChatComposerSubmitOptions,
   ) => {
     return handleDraftComposerSendToTarget(text, files, contextParts, opts, 'tab')
-  }, [handleDraftComposerSendToTarget])
+  }
 
-  const handleDraftComposerSendInNewWindow = useCallback((
+  const handleDraftComposerSendInNewWindow = (
     text: string,
     files: FileUIPart[],
     contextParts: ChatContextPart[],
     opts: DraftChatComposerSubmitOptions,
   ) => {
     return handleDraftComposerSendToTarget(text, files, contextParts, opts, 'window')
-  }, [handleDraftComposerSendToTarget])
+  }
 
-  const handleTocNavigate = useCallback((slug: string) => {
+  const handleTocNavigate = (slug: string) => {
     const el = document.getElementById(slug)
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'start' })
       setActiveSlug(slug)
     }
-  }, [])
+  }
 
   useEffect(() => {
     const container = scrollRef.current
@@ -789,22 +703,13 @@ function useWorkspaceDetailOwner(workspaceId: string) {
     activeSlug,
     activeTab,
     agents,
-    gitStatus,
     handleDraftComposerSend,
     handleDraftComposerSendInNewWindow,
-    handleNewChat,
-    handleOpenInApp,
-    handleOpenInFinder,
     handleRename,
     handleTocNavigate,
     headings,
-    now,
-    openTab,
-    queryClient,
-    recentSessions,
     scrollRef,
     selectedWorkflowAgentId,
-    sessions,
     setActiveTab,
     setSelectedWorkflowAgentId,
     tocLayout,
@@ -813,7 +718,7 @@ function useWorkspaceDetailOwner(workspaceId: string) {
   }
 }
 
-function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWorkspaceDetailOwner> }) {
+function WorkspaceDetailMainColumn({ active, owner }: { active: boolean, owner: ReturnType<typeof useWorkspaceDetailOwner> }) {
   const { t } = useTranslation('workspace')
   const { activeTab, agents, handleDraftComposerSend, handleDraftComposerSendInNewWindow, handleRename, scrollRef, selectedWorkflowAgentId, setActiveTab, setSelectedWorkflowAgentId, workspace, workspaceId } = owner
 
@@ -824,7 +729,7 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
   return (
     <div className="relative min-w-0 flex-1">
       <div ref={scrollRef} className="h-full overflow-y-auto [&::-webkit-scrollbar]:hidden">
-        <m.div className="mx-auto max-w-3xl px-8 py-6">
+        <m.div className="mx-auto max-w-5xl px-8 py-6">
           <div className="mb-6">
             <InlineEditTitle value={workspace.name} onSave={handleRename} />
             <p data-testid="workspace-detail-path" className="mt-1 truncate font-mono text-[12px] text-muted-foreground">
@@ -912,6 +817,7 @@ function WorkspaceDetailMainColumn({ owner }: { owner: ReturnType<typeof useWork
         <div className="pointer-events-auto mx-auto max-w-160">
           <DraftChatComposer
             workspaceId={workspaceId}
+            active={active}
             onSend={handleDraftComposerSend}
             onSendInNewWindow={handleDraftComposerSendInNewWindow}
             testIdPrefix="workspace-detail"
@@ -936,98 +842,11 @@ function WorkspacePaneLoading({ label, testId }: { label: string, testId: string
   )
 }
 
-function WorkspaceDetailSidebar({ owner }: { owner: ReturnType<typeof useWorkspaceDetailOwner> }) {
-  const { i18n, t } = useTranslation('workspace')
-  const { gitStatus, handleNewChat, handleOpenInApp, handleOpenInFinder, now, openTab: _openTab, recentSessions, sessions, workspace } = owner
-
-  if (!workspace) {
-    return null
-  }
-
-  return (
-    <div className="w-62 shrink-0 overflow-y-auto border-l border-border">
-      <div className="space-y-1 px-3 pt-3 pb-2">
-        <button
-          type="button"
-          onClick={handleOpenInFinder}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-        >
-          <FolderOpenIcon className="size-3.5" />
-          {t('detail.action.openInFinder')}
-        </button>
-        <button
-          type="button"
-          onClick={() => void handleOpenInApp()}
-          className="flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-[12px] text-muted-foreground transition-colors hover:bg-accent/50 hover:text-foreground"
-        >
-          <ExternalLinkIcon className="size-3.5" />
-          {t('detail.action.openInEditor')}
-        </button>
-      </div>
-
-      <div className="mx-3 h-px bg-border/30" />
-
-      <div className="space-y-2.5 p-3">
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-muted-foreground">{t('detail.metadata.branch')}</span>
-          <span className="max-w-28 truncate font-mono text-[12px] text-muted-foreground">{(gitStatus as { branch?: string } | null)?.branch ?? '—'}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-muted-foreground">{t('detail.metadata.sessions')}</span>
-          <span className="text-[12px] text-muted-foreground">{sessions.length}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-muted-foreground">{t('detail.metadata.created')}</span>
-          <span className="text-[12px] text-muted-foreground">{formatDate(workspace.createdAt, i18n.language)}</span>
-        </div>
-        <div className="flex items-center justify-between">
-          <span className="text-[11px] text-muted-foreground">{t('detail.metadata.updated')}</span>
-          <span className="text-[12px] text-muted-foreground">{formatDate(workspace.updatedAt, i18n.language)}</span>
-        </div>
-      </div>
-
-      <div className="mx-3 h-px bg-border/30" />
-
-      <div className="px-3 pt-3">
-        <div className="mb-2 flex items-center justify-between">
-          <span className="select-none text-[11px] text-muted-foreground">{t('detail.recentSessions.title')}</span>
-          <Button variant="ghost" size="icon-xs" onClick={handleNewChat} aria-label={t('detail.action.newChat')}>
-            <MessageSquarePlusIcon className="size-3" />
-          </Button>
-        </div>
-
-        {recentSessions.length === 0
-          ? (
-            <p className="py-4 text-center text-[11px] text-muted-foreground">{t('detail.recentSessions.empty')}</p>
-          )
-          : (
-            <div className="flex flex-col gap-0.5 pb-3">
-              {recentSessions.map(session => (
-                <Link
-                  key={session.id}
-                  to="chat"
-                  params={{ sessionId: session.id }}
-                  className="group flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-[11px] transition-colors hover:bg-accent/50"
-                  data-testid={`workspace-detail-recent-session-${session.id}`}
-                >
-                  <MessageSquareIcon className="size-2.5 shrink-0 text-muted-foreground/35" />
-                  <span className="flex-1 truncate text-foreground">{session.title || t('detail.session.fallbackTitle')}</span>
-                  <time className="shrink-0 tabular-nums text-[10px] text-muted-foreground" suppressHydrationWarning>
-                    {timeAgo(session.listActivityAt, now, t)}
-                  </time>
-                </Link>
-              ))}
-            </div>
-          )}
-      </div>
-    </div>
-  )
-}
-
 /* ─── Main ───────────────────────────────────────────────── */
 
 export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   const owner = useWorkspaceDetailOwner(workspaceId)
+  const isActive = useTabFrameActive()
 
   if (!owner.workspace) {
     return (
@@ -1039,7 +858,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
 
   return (
     <div className="@container/workspace-detail flex h-full overflow-hidden bg-background" data-testid="workspace-detail-page">
-      <WorkspaceDetailMainColumn owner={owner} />
+      <WorkspaceDetailMainColumn active={isActive} owner={owner} />
 
       <div className="hidden w-58 shrink-0 @6xl/workspace-detail:block">
         {owner.headings.length > 0 && (
@@ -1050,10 +869,6 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
             onNavigate={owner.handleTocNavigate}
           />
         )}
-      </div>
-
-      <div className="hidden shrink-0 @7xl/workspace-detail:block">
-        <WorkspaceDetailSidebar owner={owner} />
       </div>
     </div>
   )

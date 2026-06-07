@@ -11,7 +11,7 @@ import {
   Loader2Icon,
   MonitorIcon,
 } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -106,28 +106,28 @@ export function DirectoryBrowserDialog({
     }
   }, [currentDirectory])
 
-  const navigateTo = useCallback((path: string) => {
+  const navigateTo = (path: string) => {
     setCurrentPath(path)
     setSelectedEntry(null)
     localStorage.setItem(LAST_PATH_KEY, path)
-  }, [])
+  }
 
-  const handleConfirm = useCallback(() => {
+  const handleConfirm = () => {
     const chosen = selectedEntry ?? currentDirectory
     if (chosen) {
       onSelect(chosen)
       onOpenChange(false)
     }
-  }, [selectedEntry, currentDirectory, onSelect, onOpenChange])
+  }
 
-  const handleDoubleClick = useCallback((path: string) => {
+  const handleDoubleClick = (path: string) => {
     navigateTo(path)
-  }, [navigateTo])
+  }
 
   const directories = data?.entries.filter(e => e.type === 'directory') ?? []
   const files = data?.entries.filter(e => e.type === 'file') ?? []
 
-  const handleListingKeyDown = useCallback((event: React.KeyboardEvent) => {
+  const handleListingKeyDown = (event: React.KeyboardEvent) => {
     if (event.target !== event.currentTarget) {
       return
     }
@@ -165,9 +165,9 @@ export function DirectoryBrowserDialog({
     }
 
     navigateTo(target)
-  }, [directories, navigateTo, onOpenChange, onSelect, selectedEntry])
+  }
 
-  const handleDirectoryKeyDown = useCallback((path: string, event: React.KeyboardEvent) => {
+  const handleDirectoryKeyDown = (path: string, event: React.KeyboardEvent) => {
     if (event.key !== 'Enter') {
       return
     }
@@ -180,7 +180,7 @@ export function DirectoryBrowserDialog({
     }
 
     navigateTo(path)
-  }, [navigateTo, onOpenChange, onSelect])
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -349,35 +349,35 @@ function PathBar({
     })
   }, [editing])
 
-  const startEditing = useCallback(() => {
+  const startEditing = () => {
     setEditValue(currentPath)
     setEditing(true)
     setShowSuggestions(true)
     setSelectedSuggestion(-1)
-  }, [currentPath])
+  }
 
-  const commitEdit = useCallback(() => {
+  const commitEdit = () => {
     setEditing(false)
     setShowSuggestions(false)
     const trimmed = editValue.trim()
     if (trimmed && trimmed !== currentPath) {
       onNavigate(trimmed)
     }
-  }, [editValue, currentPath, onNavigate])
+  }
 
-  const cancelEdit = useCallback(() => {
+  const cancelEdit = () => {
     setEditing(false)
     setShowSuggestions(false)
-  }, [])
+  }
 
-  const applySuggestion = useCallback((path: string) => {
+  const applySuggestion = (path: string) => {
     setEditValue(path)
     setShowSuggestions(false)
     onNavigate(path)
     setEditing(false)
-  }, [onNavigate])
+  }
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       if (selectedSuggestion >= 0 && suggestions[selectedSuggestion]) {
         applySuggestion(suggestions[selectedSuggestion].path)
@@ -405,7 +405,7 @@ function PathBar({
         setSelectedSuggestion(-1)
       }
     }
-  }, [commitEdit, cancelEdit, applySuggestion, suggestions, selectedSuggestion])
+  }
 
   if (editing) {
     return (
@@ -414,6 +414,7 @@ function PathBar({
           <input
             ref={inputRef}
             value={editValue}
+            aria-label="Directory path"
             onChange={(e) => {
               setEditValue(e.target.value)
               setShowSuggestions(true)

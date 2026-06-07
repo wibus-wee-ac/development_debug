@@ -7,7 +7,7 @@
  */
 import { useQueryClient } from '@tanstack/react-query'
 import { SearchIcon, SlidersHorizontalIcon } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -424,7 +424,7 @@ export function ModelRegistryMappingDialog({
     open ? searchQuery : '',
   )
 
-  const close = useCallback(() => {
+  const close = () => {
     onOpenChange(false)
     setStep(initialMode)
     setEditableModelId(initialModelId)
@@ -437,17 +437,9 @@ export function ModelRegistryMappingDialog({
       }),
     )
     setSaving(false)
-  }, [
-    initialMode,
-    initialModelId,
-    initialRegistryModel,
-    initialSearchQuery,
-    modelLabel,
-    onOpenChange,
-  ])
+  }
 
-  const saveMapping = useCallback(
-    async (
+  const saveMapping = async (
       result: SearchResult,
       matchType: 'alias' | 'manual',
       model?: ReturnType<typeof buildManualModelsDevModel>,
@@ -475,16 +467,11 @@ export function ModelRegistryMappingDialog({
         })
         setSaving(false)
       }
-    },
-    [modelId, queryClient, onSaved, close],
-  )
+    }
 
-  const handleSelectResult = useCallback(
-    (result: SearchResult) => void saveMapping(result, 'alias'),
-    [saveMapping],
-  )
+  const handleSelectResult = (result: SearchResult) => void saveMapping(result, 'alias')
 
-  const handleSaveManual = useCallback(() => {
+  const handleSaveManual = () => {
     if (!manualDraft.id.trim()) { return }
     const manualModel = buildManualModelsDevModel(manualDraft)
     void saveMapping(
@@ -496,12 +483,12 @@ export function ModelRegistryMappingDialog({
       'manual',
       manualModel,
     )
-  }, [manualDraft, saveMapping])
+  }
 
-  const openManual = useCallback(() => {
+  const openManual = () => {
     setManualDraft(createManualDraft(modelId, modelLabel ?? '', {}, searchQuery))
     setStep('manual')
-  }, [modelId, modelLabel, searchQuery])
+  }
 
   // ── Search step ──────────────────────────────────────────────────────────
 

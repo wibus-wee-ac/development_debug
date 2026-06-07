@@ -21,12 +21,12 @@ import { useLayoutGeometry } from '~/components/layout/layout-geometry-context'
 import { CENTER_COLUMN_EXPANDED_SCALE, CENTER_COLUMN_EXPANDED_Y } from '~/components/layout/layout-motion'
 import { Button } from '~/components/ui/button'
 import { ScrollArea } from '~/components/ui/scroll-area'
-import { MessageBubble } from '../chat/rendering/message-bubble'
-
 import { cn } from '~/lib/cn'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useCradleTabStore } from '~/tabs/registry'
 
+import { MessageBubble } from '../chat/rendering/message-bubble'
+import { useChatSession } from '../chat/session/use-chat-session'
 import { projectJarvisMessageForDisplay } from './display-context'
 import {
   addCurrentTextSelectionAttachment,
@@ -40,7 +40,6 @@ import { useJarvisUiStore } from './jarvis-ui-store'
 import { installSystemAgentContextProvider } from './system-context-provider'
 import { collectContextEnvelope } from './use-context-snapshot'
 import { useJarvisPreferences } from './use-jarvis-preferences'
-import { useChatSession } from '../chat/session/use-chat-session'
 
 const FALLBACK_EXPANDED_BOUNDS = { top: 44, left: 268, width: 800, height: 600 }
 const PANEL_MIN_WIDTH = 320
@@ -152,10 +151,7 @@ export function JarvisPopover({
   const messages = useChatStore(chatSelectors.messages(activeSessionId ?? ''))
   const isStreaming = status === 'streaming'
   const jarvisReady = preferencesReady && (!activeSessionId || chatReady)
-  const displayMessages = React.useMemo(
-    () => messages.map(projectJarvisMessageForDisplay),
-    [messages],
-  )
+  const displayMessages = messages.map(projectJarvisMessageForDisplay)
 
   // Collapse when popover closes
   React.useEffect(() => {
@@ -240,7 +236,7 @@ export function JarvisPopover({
 
   const [sendError, setSendError] = React.useState<string | null>(null)
 
-  const handleSend = React.useCallback(async () => {
+  const handleSend = async () => {
     const text = input.trim()
     if (!text || isBusy || !prefs?.profileId || creating) {
       return
@@ -302,20 +298,9 @@ export function JarvisPopover({
 
     await sendMessage(fullText)
     clearExplicitContextAttachments()
-  }, [
-    input,
-    isBusy,
-    prefs,
-    creating,
-    activeSessionId,
-    sendMessage,
-    addSession,
-    setActiveSessionId,
-    includeContext,
-    t,
-  ])
+  }
 
-  const handleAttachSelection = React.useCallback(() => {
+  const handleAttachSelection = () => {
     const attachment = addCurrentTextSelectionAttachment()
     if (!attachment) {
       setSendError(t('error.noTextSelection'))
@@ -323,11 +308,11 @@ export function JarvisPopover({
     else {
       setSendError(null)
     }
-  }, [t])
+  }
 
-  const handleIncludeContextToggle = React.useCallback(() => {
+  const handleIncludeContextToggle = () => {
     setIncludeContext(!includeContext)
-  }, [includeContext, setIncludeContext])
+  }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
     if (e.nativeEvent.isComposing) {
@@ -344,8 +329,7 @@ export function JarvisPopover({
   const resizeStartRef = React.useRef({ x: 0, y: 0, w: 0, h: 0 })
   const [isResizing, setIsResizing] = React.useState(false)
 
-  const handleResizeStart = React.useCallback(
-    (e: React.PointerEvent) => {
+  const handleResizeStart = (e: React.PointerEvent) => {
       e.preventDefault()
       resizingRef.current = true
       setIsResizing(true)
@@ -371,12 +355,10 @@ export function JarvisPopover({
 
       document.addEventListener('pointermove', handleMove)
       document.addEventListener('pointerup', handleUp)
-    },
-    [panelWidth, panelHeight, setPanelSize],
-  )
+    }
 
   // Calculate expanded bounds
-  const expandedBounds = React.useMemo(() => {
+  const expandedBounds = (() => {
     if (!centerColumnRect) {
       return FALLBACK_EXPANDED_BOUNDS
     }
@@ -387,10 +369,10 @@ export function JarvisPopover({
       width: expandedCenterRect.width + 16,
       height: expandedCenterRect.height + 4,
     }
-  }, [centerColumnRect])
+  })()
 
   // Calculate popover bounds
-  const popoverBounds = React.useMemo(() => {
+  const popoverBounds = (() => {
     if (!footerRect) {
       return { top: 0, left: 0, width: panelWidth, height: panelHeight }
     }
@@ -404,19 +386,19 @@ export function JarvisPopover({
       width: panelWidth,
       height: panelHeight,
     }
-  }, [footerRect, panelWidth, panelHeight, anchorBounds])
+  })()
 
   const targetBounds = jarvisExpanded ? expandedBounds : popoverBounds
 
   // Determine which messages are streaming (only the last assistant one)
-  const lastAssistantId = React.useMemo(() => {
+  const lastAssistantId = (() => {
     for (let i = displayMessages.length - 1; i >= 0; i--) {
       if (displayMessages[i].role === 'assistant') {
         return displayMessages[i].id
       }
     }
     return null
-  }, [displayMessages])
+  })()
 
   const emptyState = (
     <div className="flex flex-col items-center justify-center h-full min-h-72 px-8">

@@ -121,9 +121,9 @@ export const useWorkspaceSidebarUiStore = create<WorkspaceSidebarUiState>()(
         return collapsedWorkspaceIds === state.collapsedWorkspaceIds ? state : { collapsedWorkspaceIds }
       }),
       toggleWorkspaceExpanded: workspaceId => set((state) => {
-        const expanded = state.collapsedWorkspaceIds[workspaceId] === true
+        const expanded = state.collapsedWorkspaceIds[workspaceId] !== true
         return {
-          collapsedWorkspaceIds: setFlag(state.collapsedWorkspaceIds, workspaceId, !expanded),
+          collapsedWorkspaceIds: setFlag(state.collapsedWorkspaceIds, workspaceId, expanded),
         }
       }),
       setWorkspaceSessionListExpanded: (workspaceId, expanded) => set((state) => {

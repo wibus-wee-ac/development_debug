@@ -13,7 +13,7 @@ import {
   XIcon,
 } from 'lucide-react'
 import { AnimatePresence, m, useMotionValue, useSpring, useTransform } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
@@ -153,23 +153,20 @@ export function OnboardingPage() {
   const isFirst = step === 0
   const activeLocale = normalizeLocale(i18n.language)
 
-  const handleNext = useCallback(() => {
+  const handleNext = () => {
     setDirection(1)
     if (isLast) { complete() }
     else { nextStep() }
-  }, [isLast, complete, nextStep])
+  }
 
-  const handlePrev = useCallback(() => {
+  const handlePrev = () => {
     setDirection(-1)
     prevStep()
-  }, [prevStep])
+  }
 
-  const handleLangChange = useCallback(
-    (lang: string) => { void switchLang(normalizeLocale(lang)) },
-    [switchLang],
-  )
+  const handleLangChange = (lang: string) => { void switchLang(normalizeLocale(lang)) }
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (isSelectKeyboardEventTarget(e.target)) {
       return
     }
@@ -177,7 +174,7 @@ export function OnboardingPage() {
     if (e.key === 'ArrowRight' || e.key === 'Enter') { handleNext() }
     else if (e.key === 'ArrowLeft' && !isFirst) { handlePrev() }
     else if (e.key === 'Escape') { complete() }
-  }, [handleNext, isFirst, handlePrev, complete])
+  }
 
   return (
     <div
@@ -900,10 +897,10 @@ function StepDone({ t, onComplete }: { t: (key: OnboardingKey) => string, onComp
     { icon: Settings2Icon, titleKey: 'step.done.action.settings' as const, descKey: 'step.done.action.settings.description' as const, angle: 15 },
   ]
 
-  const handleActionClick = useCallback(() => {
+  const handleActionClick = () => {
     // Small delay for visual feedback before dismissing
     setTimeout(onComplete, 200)
-  }, [onComplete])
+  }
 
   return (
     <div className="flex w-full flex-col items-center text-center">
@@ -1043,17 +1040,17 @@ function TiltCard({ children, index, initialRotate = 0, onClick }: {
   const srx = useSpring(rx, { stiffness: 300, damping: 20 })
   const sry = useSpring(ry, { stiffness: 300, damping: 20 })
 
-  const handleMouseMove = useCallback((e: React.MouseEvent) => {
+  const handleMouseMove = (e: React.MouseEvent) => {
     if (!ref.current) { return }
     const rect = ref.current.getBoundingClientRect()
     rx.set((e.clientY - rect.top - rect.height / 2) / 14)
     ry.set((e.clientX - rect.left - rect.width / 2) / -14)
-  }, [rx, ry])
+  }
 
-  const handleMouseLeave = useCallback(() => {
+  const handleMouseLeave = () => {
     rx.set(0)
     ry.set(0)
-  }, [rx, ry])
+  }
 
   return (
     <m.div

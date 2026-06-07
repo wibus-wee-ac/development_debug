@@ -15,7 +15,6 @@ import {
   MessageSquareIcon,
   RefreshCwIcon,
   SearchIcon,
-  ShieldIcon,
   TriangleAlertIcon,
   UserRoundIcon,
 } from 'lucide-react'
@@ -31,9 +30,11 @@ import { Input } from '~/components/ui/input'
 import { Switch } from '~/components/ui/switch'
 import { Textarea } from '~/components/ui/textarea'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
-import { useAgentModelMap } from '~/features/agent-runtime/use-agent-models'
-import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
+import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
+import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
+import type { ProviderModelOption } from '~/features/composer-toolbar/types'
+import { SettingsDivider, SettingsRow, SettingsSectionHeader } from '~/features/settings/settings-row'
 import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
 import { formatPercentFromRatio, formatShortDurationMs } from '~/lib/number-format'
@@ -195,16 +196,16 @@ interface ChronicleSetupNotice {
 
 function getChronicleSetupNotice({
   t,
-  config,
+  hasConfiguredModel,
   profileCount,
   loadingProfiles,
 }: {
   t: ChronicleTranslate
-  config: ChronicleConfig | null
+  hasConfiguredModel: boolean
   profileCount: number
   loadingProfiles: boolean
 }): ChronicleSetupNotice | null {
-  if (config?.profileId && config.modelId) {
+  if (hasConfiguredModel) {
     return null
   }
   if (loadingProfiles) {
@@ -259,6 +260,10 @@ function prependFocusedItem<T extends { id: string }>(items: T[], focusedItem: T
   ]
 }
 
+// ---------------------------------------------------------------------------
+// Main component
+// ---------------------------------------------------------------------------
+
 export function ChronicleSettings() {
   const { t } = useTranslation('chronicle')
   const { config, loading: configLoading, saving, updateConfig } = useChronicleConfig()
@@ -283,7 +288,7 @@ export function ChronicleSettings() {
     searching: searchingMemories,
   } = useChronicleMemorySearch(searchQuery, MEMORY_SEARCH_LIMIT)
   const refreshChronicle = useRefreshChronicleQueries()
-  const { profiles, isLoading: profilesLoading } = useAgentProfiles()
+  const { providerOptions, isLoading: providerTargetsLoading } = useProviderTargets()
   const setSettingsSection = useSettingsOverlayStore(state => state.setSettingsSection)
   const chronicleFocusTarget = useSettingsOverlayStore(state => state.chronicleFocusTarget)
   const clearChronicleFocusTarget = useSettingsOverlayStore(state => state.clearChronicleFocusTarget)
@@ -296,12 +301,21 @@ export function ChronicleSettings() {
   const memorySectionRef = useRef<HTMLDivElement>(null)
   const knowledgeSectionRef = useRef<HTMLDivElement>(null)
 
+  const profiles = useMemo(
+    () => providerOptions.filter(profile => profile.enabled),
+    [providerOptions],
+  )
   const selectedProfile = useMemo(
     () => profiles.find(profile => profile.id === config?.profileId) ?? null,
     [config?.profileId, profiles],
   )
   const initialModelProfileIds = useMemo(() => [config?.profileId ?? null], [config?.profileId])
-  const { modelsByProfileId, loadingProfileIds, successfulProfileIds, requestProfileModels } = useAgentModelMap(
+  const {
+    modelsByProviderTargetId: modelsByProfileId,
+    loadingProviderTargetIds: loadingProfileIds,
+    successfulProviderTargetIds: successfulProfileIds,
+    requestProviderTargetModels: requestProfileModels,
+  } = useProviderTargetModelMap(
     profiles,
     initialModelProfileIds,
   )
@@ -321,13 +335,13 @@ export function ChronicleSettings() {
   const focusedKnowledgeVisible = chronicleFocusTarget?.type === 'knowledge'
     && visibleKnowledgeCards.some(card => card.id === chronicleFocusTarget.id)
   const modelLabel = status?.configuredModel ?? selectedModel?.id ?? config?.modelId ?? null
-  const canEnable = Boolean(config?.profileId && config?.modelId)
+  const canEnable = Boolean(selectedProfile && config?.modelId)
   const disabledRootReason = canEnable ? t('control.reason.enableCaptureFirst') : t('control.reason.selectModelAndEnableCapture')
   const setupNotice = getChronicleSetupNotice({
     t,
-    config,
+    hasConfiguredModel: canEnable,
     profileCount: profiles.length,
-    loadingProfiles: loadingProfileIds.size > 0,
+    loadingProfiles: providerTargetsLoading || loadingProfileIds.size > 0,
   })
   const captureDisabledReason = getControlDisabledReason({
     t,
@@ -374,11 +388,34 @@ export function ChronicleSettings() {
     && !dreamRunsLoading
     && !timelineLoading
     && !memoriesLoading
-    && !profilesLoading
+    && !providerTargetsLoading
     && loadingProfileIds.size === 0
     && !focusedMemoryLoading
     && !focusedKnowledgeLoading
     && !searchingMemories
+
+  const localizedCaptureStatus = !canEnable
+    ? t('control.status.waitingForModel')
+    : config?.enabled
+      ? t('common.status.enabled')
+      : t('common.status.notEnabled')
+  const localizedActivityStatus = !config?.enabled
+    ? t('control.status.waitingForCapture')
+    : config?.activityPipelineEnabled ?? false
+      ? t('common.status.enabled')
+      : t('common.status.disabled')
+  const localizedDreamStatus = !config?.enabled
+    ? t('control.status.waitingForCapture')
+    : config?.dreamSchedulerEnabled ?? false
+      ? config?.dreamSchedulerApplyMerge
+        ? t('control.status.autoMerge')
+        : t('control.status.previewOnly')
+      : t('common.status.disabled')
+  const localizedAudioStatus = !config?.enabled
+    ? t('control.status.waitingForCapture')
+    : config?.audioCaptureEnabled
+      ? t('common.status.enabled')
+      : t('common.status.notEnabled')
 
   useEffect(() => {
     if (!chronicleFocusTarget) {
@@ -402,39 +439,59 @@ export function ChronicleSettings() {
 
   return (
     <div
-      className="flex flex-col gap-6 pb-8"
+      className="flex flex-col gap-0"
       data-testid="chronicle-settings"
       data-settings-chronicle-ready={settingsChronicleReady ? 'true' : 'false'}
     >
-      <ChronicleHero
-        running={status?.running ?? false}
-        available={status?.available ?? false}
-        enabled={config?.enabled ?? false}
-        lastSummaryAt={status?.lastSummaryAt ?? null}
-        totalSummaries={status?.totalSummaries ?? 0}
-        totalActivitySegments={status?.totalActivitySegments ?? 0}
-        totalKnowledgeCards={status?.totalKnowledgeCards ?? 0}
-        onRefresh={refreshChronicle}
+      {/* ── Section: Chronicle ── */}
+      <SettingsSectionHeader
+        title={t('page.title')}
+        description={t('page.description')}
+        action={
+          <div className="flex items-center gap-2">
+            <StatusBadge running={status?.running ?? false} available={status?.available ?? false} />
+            <Button type="button" variant="outline" size="xs" onClick={refreshChronicle} className="active:scale-[0.96] transition-transform">
+              <RefreshCwIcon className="size-3" />
+              {t('common.action.refresh')}
+            </Button>
+          </div>
+        }
       />
 
+      {/* Setup notice */}
       {setupNotice && (
-        <SetupNoticeCard
-          notice={setupNotice}
-          saving={saving}
-          onAction={() => {
-            if (setupNotice.actionKind === 'open-providers') {
-              setSettingsSection('providers')
-              return
-            }
-            const trigger = document.querySelector<HTMLElement>('[data-testid="chronicle-provider-model-selector"]')
-            trigger?.focus()
-            trigger?.click()
-          }}
-        />
+        <Alert className="border-amber-500/20 bg-amber-500/5 text-amber-800 dark:text-amber-300 mt-2">
+          <TriangleAlertIcon className="size-4" aria-hidden="true" />
+          <AlertTitle>{setupNotice.title}</AlertTitle>
+          <AlertDescription className="flex flex-col gap-3 text-[12px] leading-5 md:flex-row md:items-center md:justify-between">
+            <span>{setupNotice.description}</span>
+            {setupNotice.actionLabel && (
+              <Button
+                type="button"
+                variant="outline"
+                size="sm"
+                className="w-fit border-amber-500/30 bg-background/70 text-amber-800 hover:bg-amber-500/10 active:scale-[0.96] transition-transform dark:text-amber-200"
+                disabled={saving}
+                onClick={() => {
+                  if (setupNotice.actionKind === 'open-providers') {
+                    setSettingsSection('providers')
+                    return
+                  }
+                  const trigger = document.querySelector<HTMLElement>('[data-testid="chronicle-provider-model-selector"]')
+                  trigger?.focus()
+                  trigger?.click()
+                }}
+              >
+                {setupNotice.actionLabel}
+              </Button>
+            )}
+          </AlertDescription>
+        </Alert>
       )}
 
+      {/* Dependency notice */}
       {dependencyNotice && (
-        <Alert className="border-border bg-muted/30">
+        <Alert className="border-border bg-muted/30 mt-2">
           <TriangleAlertIcon className="size-4 text-muted-foreground" aria-hidden="true" />
           <AlertTitle>{dependencyNotice.title}</AlertTitle>
           <AlertDescription className="text-[12px] leading-5">
@@ -443,110 +500,249 @@ export function ChronicleSettings() {
         </Alert>
       )}
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <ChronicleControlPanel
-          config={config}
-          saving={saving}
-          canEnable={canEnable}
-          captureDisabledReason={captureDisabledReason}
-          activityDisabledReason={activityDisabledReason}
-          audioDisabledReason={audioDisabledReason}
-          audioSourceDisabledReason={audioSourceDisabledReason}
-          profiles={profiles}
-          selectedProfileId={config?.profileId ?? null}
-          selectedModelId={config?.modelId ?? null}
-          selectedModel={selectedModel}
-          modelsByProfileId={modelsByProfileId}
-          loadingProfileIds={loadingProfileIds}
-          successfulProfileIds={successfulProfileIds}
-          requestProfileModels={requestProfileModels}
-          onUpdateConfig={updateConfig}
+      {/* ── Controls ── */}
+      <SettingsRow
+        label={t('control.capture.title')}
+        description={canEnable ? t('control.capture.description.enabled') : t('control.capture.description.blocked')}
+        labelAccessory={
+          <StatusBadgeInline tone={config?.enabled ? 'enabled' : captureDisabledReason ? 'warning' : 'disabled'}>
+            {localizedCaptureStatus}
+          </StatusBadgeInline>
+        }
+      >
+        <Switch
+          checked={config?.enabled ?? false}
+          onCheckedChange={(enabled) => {
+            void updateConfig(enabled
+              ? { enabled, activityPipelineEnabled: false, dreamSchedulerEnabled: false }
+              : { enabled })
+          }}
+          disabled={saving || !canEnable}
         />
-        <CaptureSourceOverview
-          screenCount={status?.totalAccessibilitySnapshots ?? 0}
-          messageCount={status?.totalMessages ?? 0}
-          audioCount={status?.totalAudioTranscripts ?? 0}
-          audioEnabled={config?.audioCaptureEnabled ?? false}
-          slackConnected={messageSources.length > 0}
+      </SettingsRow>
+      <SettingsDivider />
+
+      <ChronicleModelRow
+        saving={saving}
+        profiles={profiles}
+        selectedProfileId={config?.profileId ?? null}
+        selectedModelId={config?.modelId ?? null}
+        selectedModel={selectedModel}
+        modelsByProfileId={modelsByProfileId}
+        loadingProfileIds={loadingProfileIds}
+        successfulProfileIds={successfulProfileIds}
+        requestProfileModels={requestProfileModels}
+        onUpdateConfig={updateConfig}
+      />
+      <SettingsDivider />
+
+      <SettingsRow
+        label={t('control.activity.title')}
+        description={config?.enabled ? t('control.activity.description.enabled') : t('control.activity.description.blocked')}
+        labelAccessory={
+          <StatusBadgeInline tone={config?.enabled && (config?.activityPipelineEnabled ?? false) ? 'enabled' : activityDisabledReason ? 'warning' : 'disabled'}>
+            {localizedActivityStatus}
+          </StatusBadgeInline>
+        }
+      >
+        <Switch
+          checked={config?.activityPipelineEnabled ?? false}
+          onCheckedChange={activityPipelineEnabled => void updateConfig({ activityPipelineEnabled })}
+          disabled={saving || !config?.enabled}
         />
-      </section>
+      </SettingsRow>
+      <SettingsDivider />
 
-      <ChronicleJourney />
+      <SettingsRow
+        label={t('control.dream.title')}
+        description={config?.enabled ? t('control.dream.description.enabled') : t('control.dream.description.blocked')}
+        labelAccessory={
+          <StatusBadgeInline tone={config?.enabled && (config?.dreamSchedulerEnabled ?? false) ? 'enabled' : activityDisabledReason ? 'warning' : 'disabled'}>
+            {localizedDreamStatus}
+          </StatusBadgeInline>
+        }
+      >
+        <Switch
+          checked={config?.dreamSchedulerEnabled ?? false}
+          onCheckedChange={dreamSchedulerEnabled => void updateConfig({ dreamSchedulerEnabled })}
+          disabled={saving || !config?.enabled}
+        />
+      </SettingsRow>
+      <SettingsDivider />
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1.1fr)_minmax(320px,0.9fr)]">
-        <UserSection
-          title={t('recentActivity.title')}
-          description={t('recentActivity.description')}
-        >
-          {timelineLoading
-            ? <EmptyState icon={<ImageIcon className="size-4" />} title={t('recentActivity.loading')} />
-            : timelineEntries.length === 0
-              ? <EmptyState icon={<ImageIcon className="size-4" />} title={t('recentActivity.empty')} />
-              : <TimelineScrubber entries={timelineEntries} />}
-        </UserSection>
-
-        <div ref={memorySectionRef}>
-          <UserSection
-            title={t('memorySearch.title')}
-            description={t('memorySearch.description')}
+      <SettingsRow
+        label={t('control.audio.title')}
+        description={config?.enabled ? t('control.audio.description.enabled') : t('control.audio.description.blocked')}
+        labelAccessory={
+          <StatusBadgeInline tone={config?.enabled && config?.audioCaptureEnabled ? 'enabled' : audioDisabledReason || audioSourceDisabledReason ? 'warning' : 'disabled'}>
+            {localizedAudioStatus}
+          </StatusBadgeInline>
+        }
+      >
+        <div className="flex items-center gap-2">
+          <select
+            className="h-8 max-w-40 rounded-md border border-border bg-background px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+            value={config?.audioSource ?? 'microphone'}
+            onChange={event => void updateConfig({ audioSource: event.target.value as ChronicleConfig['audioSource'] })}
+            disabled={saving || !config?.enabled || !config?.audioCaptureEnabled}
           >
-            <div className="flex flex-col gap-3">
-              <div className="relative">
-                <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
-                <Input
-                  value={searchQuery}
-                  onChange={event => setSearchQuery(event.target.value)}
-                  placeholder={t('memorySearch.placeholder')}
-                  className="h-9 pl-8 text-[13px]"
-                />
-              </div>
-              {memoriesLoading || searchingMemories || focusedMemoryLoading
-                ? <EmptyState icon={<BrainIcon className="size-4" />} title={t('memorySearch.loading')} />
-                : visibleMemoryEntries.length === 0
-                  ? (
-                      <EmptyState
-                        icon={<BrainIcon className="size-4" />}
-                        title={hasSearchQuery ? t('memorySearch.noMatches') : t('memorySearch.empty')}
-                      />
-                    )
-                  : (
-                      <MemoryList
-                        entries={visibleMemoryEntries}
-                        focusTarget={chronicleFocusTarget}
-                      />
-                    )}
+            <option value="microphone">{t('control.audio.source.microphone')}</option>
+            <option value="system">{t('control.audio.source.system')}</option>
+            <option value="mixed">{t('control.audio.source.mixed')}</option>
+          </select>
+          <Switch
+            checked={config?.audioCaptureEnabled ?? false}
+            onCheckedChange={audioCaptureEnabled => void updateConfig({ audioCaptureEnabled })}
+            disabled={saving || !config?.enabled}
+          />
+        </div>
+      </SettingsRow>
+      <SettingsDivider />
+
+      {/* ── Section: Data Sources ── */}
+      <SettingsSectionHeader
+        title={t('sources.title')}
+        description={t('sources.description')}
+        action={
+          <div className="flex items-center gap-1.5">
+            <Badge variant="secondary" className="text-[11px] tabular-nums">
+              {t('sources.metric.total', {
+                screen: status?.totalAccessibilitySnapshots ?? 0,
+                messages: status?.totalMessages ?? 0,
+                audio: status?.totalAudioTranscripts ?? 0,
+              })}
+            </Badge>
+          </div>
+        }
+      />
+      <SettingsDivider />
+
+      <SettingsRow
+        label={t('sources.screen.title')}
+        description={t('sources.screen.description')}
+        labelAccessory={<Badge variant="outline" className="text-[11px] tabular-nums">{status?.totalAccessibilitySnapshots ?? 0}</Badge>}
+      >
+        <Badge variant="outline" className="text-[11px]">{t('sources.screen.active')}</Badge>
+      </SettingsRow>
+      <SettingsDivider />
+
+      <SettingsRow
+        label={t('sources.slack.title')}
+        description={t('sources.slack.description')}
+        labelAccessory={<Badge variant="outline" className="text-[11px] tabular-nums">{status?.totalMessages ?? 0}</Badge>}
+      >
+        <Badge variant={messageSources.length > 0 ? 'secondary' : 'outline'} className="text-[11px]">
+          {messageSources.length > 0 ? t('common.status.enabled') : t('common.status.disconnected')}
+        </Badge>
+      </SettingsRow>
+      <SettingsDivider />
+
+      <SettingsRow
+        label={t('sources.audio.title')}
+        description={t('sources.audio.description')}
+        labelAccessory={<Badge variant="outline" className="text-[11px] tabular-nums">{status?.totalAudioTranscripts ?? 0}</Badge>}
+      >
+        <Badge variant={config?.audioCaptureEnabled ? 'secondary' : 'outline'} className="text-[11px]">
+          {config?.audioCaptureEnabled ? t('common.status.enabled') : t('common.status.notEnabled')}
+        </Badge>
+      </SettingsRow>
+      <SettingsDivider />
+
+      {/* ── Section: Memory & Knowledge ── */}
+      <SettingsSectionHeader
+        title={t('memorySection.title')}
+        description={t('memorySection.description')}
+        action={
+          <div className="flex items-center gap-1.5">
+            <Badge variant="secondary" className="text-[11px] tabular-nums">
+              {t('hero.metric.memories')}
+              {' '}
+              {status?.totalSummaries ?? 0}
+            </Badge>
+            <Badge variant="secondary" className="text-[11px] tabular-nums">
+              {t('hero.metric.knowledgeCards')}
+              {' '}
+              {status?.totalKnowledgeCards ?? 0}
+            </Badge>
+          </div>
+        }
+      />
+      <SettingsDivider />
+
+      <SettingsRow label={t('recentActivity.title')} description={t('recentActivity.description')} vertical>
+        {timelineLoading
+          ? <EmptyState icon={<ImageIcon className="size-4" />} title={t('recentActivity.loading')} />
+          : timelineEntries.length === 0
+            ? <EmptyState icon={<ImageIcon className="size-4" />} title={t('recentActivity.empty')} />
+            : <TimelineScrubber entries={timelineEntries} />}
+      </SettingsRow>
+      <SettingsDivider />
+
+      <div ref={memorySectionRef}>
+        <SettingsRow label={t('memorySearch.title')} description={t('memorySearch.description')} vertical>
+          <div className="flex flex-col gap-3">
+            <div className="relative">
+              <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+              <Input
+                value={searchQuery}
+                onChange={event => setSearchQuery(event.target.value)}
+                placeholder={t('memorySearch.placeholder')}
+                className="h-9 pl-8 text-[13px]"
+              />
             </div>
-          </UserSection>
-        </div>
-      </section>
+            {memoriesLoading || searchingMemories || focusedMemoryLoading
+              ? <EmptyState icon={<BrainIcon className="size-4" />} title={t('memorySearch.loading')} />
+              : visibleMemoryEntries.length === 0
+                ? (
+                    <EmptyState
+                      icon={<BrainIcon className="size-4" />}
+                      title={hasSearchQuery ? t('memorySearch.noMatches') : t('memorySearch.empty')}
+                    />
+                  )
+                : (
+                    <MemoryList
+                      entries={visibleMemoryEntries}
+                      focusTarget={chronicleFocusTarget}
+                    />
+                  )}
+          </div>
+        </SettingsRow>
+      </div>
+      <SettingsDivider />
 
-      <section className="grid grid-cols-1 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-        <div ref={knowledgeSectionRef}>
-          <UserSection
-            title={t('knowledge.title')}
-            description={t('knowledge.description')}
-          >
-            {knowledgeCardsLoading || focusedKnowledgeLoading
-              ? <EmptyState icon={<BrainIcon className="size-4" />} title={t('knowledge.loading')} />
-              : visibleKnowledgeCards.length === 0
-                ? <EmptyState icon={<BrainIcon className="size-4" />} title={t('knowledge.empty')} />
-                : <KnowledgeCardList cards={visibleKnowledgeCards} focusTarget={chronicleFocusTarget} />}
-          </UserSection>
-        </div>
+      <div ref={knowledgeSectionRef}>
+        <SettingsRow label={t('knowledge.title')} description={t('knowledge.description')} vertical>
+          {knowledgeCardsLoading || focusedKnowledgeLoading
+            ? <EmptyState icon={<BrainIcon className="size-4" />} title={t('knowledge.loading')} />
+            : visibleKnowledgeCards.length === 0
+              ? <EmptyState icon={<BrainIcon className="size-4" />} title={t('knowledge.empty')} />
+              : <KnowledgeCardList cards={visibleKnowledgeCards} focusTarget={chronicleFocusTarget} />}
+        </SettingsRow>
+      </div>
+      <SettingsDivider />
 
-        <UserSection
-          title={t('speakers.title')}
-          description={t('speakers.description')}
-        >
-          {speakerProfilesLoading
-            ? <EmptyState icon={<UserRoundIcon className="size-4" />} title={t('speakers.loading')} />
-            : speakerProfiles.length === 0
-              ? <EmptyState icon={<UserRoundIcon className="size-4" />} title={t('speakers.empty')} />
-              : <SpeakerProfileList profiles={speakerProfiles} />}
-        </UserSection>
-      </section>
+      <SettingsRow label={t('speakers.title')} description={t('speakers.description')} vertical>
+        {speakerProfilesLoading
+          ? <EmptyState icon={<UserRoundIcon className="size-4" />} title={t('speakers.loading')} />
+          : speakerProfiles.length === 0
+            ? <EmptyState icon={<UserRoundIcon className="size-4" />} title={t('speakers.empty')} />
+            : <SpeakerProfileList profiles={speakerProfiles} />}
+      </SettingsRow>
+      <SettingsDivider />
 
-      <details className="group rounded-lg bg-muted/20 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
+      {/* ── Section: Privacy ── */}
+      <SettingsSectionHeader title={t('privacySection.title')} description={t('privacySection.description')} />
+      <SettingsDivider />
+
+      <PrivacyRulesPanel
+        config={config}
+        saving={saving}
+        onUpdateConfig={updateConfig}
+      />
+      <SettingsDivider />
+
+      {/* ── Section: Advanced & Diagnostics ── */}
+      <details className="group mt-2 rounded-lg bg-muted/20 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
         <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-[13px] font-medium text-foreground">
           {t('advanced.summary.title')}
           <span className="text-[12px] font-normal text-muted-foreground">{t('advanced.summary.description')}</span>
@@ -576,11 +772,11 @@ export function ChronicleSettings() {
               totalPipelineRuns={status?.totalPipelineRuns ?? 0}
               totalKnowledgeCards={status?.totalKnowledgeCards ?? 0}
               totalDreamRuns={status?.totalDreamRuns ?? 0}
-              activityPipelineEnabled={status?.activityPipelineEnabled ?? config?.activityPipelineEnabled ?? true}
+              activityPipelineEnabled={status?.activityPipelineEnabled ?? config?.activityPipelineEnabled ?? false}
               activityPipelineRunning={status?.activityPipelineRunning ?? false}
               activityPipelineIntervalMs={status?.activityPipelineIntervalMs ?? config?.activityPipelineIntervalMs ?? 120_000}
               activityPipelineBatchSize={status?.activityPipelineBatchSize ?? config?.activityPipelineBatchSize ?? 3}
-              dreamSchedulerEnabled={status?.dreamSchedulerEnabled ?? config?.dreamSchedulerEnabled ?? true}
+              dreamSchedulerEnabled={status?.dreamSchedulerEnabled ?? config?.dreamSchedulerEnabled ?? false}
               dreamSchedulerRunning={status?.dreamSchedulerRunning ?? false}
               dreamSchedulerIntervalMs={status?.dreamSchedulerIntervalMs ?? config?.dreamSchedulerIntervalMs ?? 86_400_000}
               dreamSchedulerApplyMerge={status?.dreamSchedulerApplyMerge ?? config?.dreamSchedulerApplyMerge ?? false}
@@ -591,245 +787,128 @@ export function ChronicleSettings() {
             />
           </section>
 
-          <AdvancedSection title={t('advanced.messageSources.title')} description={t('advanced.messageSources.description')}>
+          <SettingsRow label={t('advanced.messageSources.title')} description={t('advanced.messageSources.description')} vertical>
             <SlackSourcePanel loading={messageSourcesLoading} sources={messageSources} />
-          </AdvancedSection>
+          </SettingsRow>
+          <SettingsDivider />
 
-          <AdvancedSection title={t('advanced.privacy.title')} description={t('advanced.privacy.description')}>
-            <PrivacyRulesPanel
-              config={config}
-              saving={saving}
-              onUpdateConfig={updateConfig}
-            />
-          </AdvancedSection>
-
-          <AdvancedSection title={t('advanced.resources.title')} description={t('advanced.resources.description')}>
+          <AdvancedDiagnosticSection title={t('advanced.resources.title')} description={t('advanced.resources.description')}>
             <ResourceGrid loading={resourcesLoading} resources={resources} />
-          </AdvancedSection>
+          </AdvancedDiagnosticSection>
+          <SettingsDivider />
 
-          <AdvancedSection title={t('advanced.accessibilitySnapshots.title')} description={t('advanced.accessibilitySnapshots.description')}>
+          <SettingsRow label={t('advanced.accessibilitySnapshots.title')} description={t('advanced.accessibilitySnapshots.description')} vertical>
             {accessibilitySnapshotsLoading
               ? <EmptyState icon={<EyeIcon className="size-4" />} title={t('advanced.accessibilitySnapshots.loading')} />
               : accessibilitySnapshots.length === 0
                 ? <EmptyState icon={<EyeIcon className="size-4" />} title={t('advanced.accessibilitySnapshots.empty')} />
                 : <AccessibilitySnapshotList snapshots={accessibilitySnapshots} />}
-          </AdvancedSection>
+          </SettingsRow>
+          <SettingsDivider />
 
-          <AdvancedSection title={t('advanced.accessibilityEvents.title')} description={t('advanced.accessibilityEvents.description')}>
+          <SettingsRow label={t('advanced.accessibilityEvents.title')} description={t('advanced.accessibilityEvents.description')} vertical>
             {accessibilityEventsLoading
               ? <EmptyState icon={<ActivityIcon className="size-4" />} title={t('advanced.accessibilityEvents.loading')} />
               : accessibilityEvents.length === 0
                 ? <EmptyState icon={<ActivityIcon className="size-4" />} title={t('advanced.accessibilityEvents.empty')} />
                 : <AccessibilityEventList events={accessibilityEvents} />}
-          </AdvancedSection>
+          </SettingsRow>
+          <SettingsDivider />
 
-          <AdvancedSection title={t('advanced.audioSegments.title')} description={t('advanced.audioSegments.description')}>
+          <SettingsRow label={t('advanced.audioSegments.title')} description={t('advanced.audioSegments.description')} vertical>
             {audioRawSegmentsLoading
               ? <EmptyState icon={<FileAudioIcon className="size-4" />} title={t('advanced.audioSegments.loading')} />
               : audioRawSegments.length === 0
                 ? <EmptyState icon={<FileAudioIcon className="size-4" />} title={t('advanced.audioSegments.empty')} />
                 : <AudioRawSegmentList segments={audioRawSegments} />}
-          </AdvancedSection>
+          </SettingsRow>
+          <SettingsDivider />
 
-          <AdvancedSection title={t('advanced.transcripts.title')} description={t('advanced.transcripts.description')}>
+          <SettingsRow label={t('advanced.transcripts.title')} description={t('advanced.transcripts.description')} vertical>
             {audioTranscriptsLoading
               ? <EmptyState icon={<FileAudioIcon className="size-4" />} title={t('advanced.transcripts.loading')} />
               : audioTranscripts.length === 0
                 ? <EmptyState icon={<FileAudioIcon className="size-4" />} title={t('advanced.transcripts.empty')} />
                 : <AudioTranscriptList transcripts={audioTranscripts} />}
-          </AdvancedSection>
+          </SettingsRow>
+          <SettingsDivider />
 
-          <AdvancedSection title={t('advanced.activitySegments.title')} description={t('advanced.activitySegments.description')}>
+          <AdvancedDiagnosticSection title={t('advanced.activitySegments.title')} description={t('advanced.activitySegments.description')}>
             {activitySegmentsLoading || pipelineRunsLoading
               ? <EmptyState icon={<ActivityIcon className="size-4" />} title={t('advanced.activitySegments.loading')} />
               : activitySegments.length === 0
                 ? <EmptyState icon={<ActivityIcon className="size-4" />} title={t('advanced.activitySegments.empty')} />
                 : <ActivityPipelinePanel segments={activitySegments} runs={pipelineRuns} />}
-          </AdvancedSection>
+          </AdvancedDiagnosticSection>
+          <SettingsDivider />
 
-          <AdvancedSection title={t('advanced.dreamRuns.title')} description={t('advanced.dreamRuns.description')}>
+          <SettingsRow label={t('advanced.dreamRuns.title')} description={t('advanced.dreamRuns.description')} vertical>
             <DreamRunPanel loading={dreamRunsLoading} runs={dreamRuns} />
-          </AdvancedSection>
+          </SettingsRow>
         </div>
       </details>
     </div>
   )
 }
 
-function ChronicleHero({
-  running,
-  available,
-  enabled,
-  lastSummaryAt,
-  totalSummaries,
-  totalActivitySegments,
-  totalKnowledgeCards,
-  onRefresh,
-}: {
-  running: boolean
-  available: boolean
-  enabled: boolean
-  lastSummaryAt: string | number | null
-  totalSummaries: number
-  totalActivitySegments: number
-  totalKnowledgeCards: number
-  onRefresh: () => void
-}) {
-  const { t } = useTranslation('chronicle')
+// ---------------------------------------------------------------------------
+// Sub-components
+// ---------------------------------------------------------------------------
 
+function StatusBadgeInline({ tone, children }: { tone: 'enabled' | 'disabled' | 'warning' | 'muted', children: ReactNode }) {
   return (
-    <section className="rounded-lg bg-background p-5 shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_8px_30px_rgba(0,0,0,0.04)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
-      <div className="flex flex-col gap-5 lg:flex-row lg:items-start lg:justify-between">
-        <div className="max-w-2xl">
-          <div className="mb-3 flex flex-wrap items-center gap-2">
-            <span className="flex size-8 items-center justify-center rounded-lg bg-foreground text-background">
-              <ActivityIcon className="size-4" />
-            </span>
-            <StatusBadge running={running} available={available} />
-          </div>
-          <h2 className="text-2xl font-semibold leading-tight text-foreground text-balance">{t('hero.title')}</h2>
-          <p className="mt-2 max-w-xl text-[13px] leading-6 text-muted-foreground text-pretty">
-            {t('hero.description')}
-          </p>
-        </div>
-        <div className="flex flex-col items-start gap-3 lg:items-end">
-          <Button type="button" variant="outline" size="sm" onClick={onRefresh} className="active:scale-[0.96] transition-transform">
-            <RefreshCwIcon className="size-3.5" />
-            {t('common.action.refresh')}
-          </Button>
-          <span className="text-[12px] text-muted-foreground">
-            {enabled
-              ? t('hero.lastMemory', { time: formatRelativeTime(t, lastSummaryAt) })
-              : t('hero.disabledHint')}
-          </span>
-        </div>
-      </div>
+    <Badge
+      variant={tone === 'enabled' ? 'secondary' : 'outline'}
+      className={cn(
+        'text-[11px]',
+        {
+          'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300': tone === 'enabled',
+          'border-amber-500/20 bg-amber-500/10 text-amber-800 dark:text-amber-200': tone === 'warning',
+          'text-muted-foreground': tone === 'disabled' || tone === 'muted',
+        },
+      )}
+    >
+      {children}
+    </Badge>
+  )
+}
 
-      <div className="mt-5 grid grid-cols-1 gap-2 sm:grid-cols-3">
-        <HeroMetric icon={<BrainIcon className="size-3.5" />} label={t('hero.metric.memories')} value={String(totalSummaries)} />
-        <HeroMetric icon={<ActivityIcon className="size-3.5" />} label={t('hero.metric.activitySegments')} value={String(totalActivitySegments)} />
-        <HeroMetric icon={<CheckCircle2Icon className="size-3.5" />} label={t('hero.metric.knowledgeCards')} value={String(totalKnowledgeCards)} />
+function AdvancedDiagnosticSection({
+  title,
+  description,
+  children,
+}: {
+  title: string
+  description?: string
+  children: ReactNode
+}) {
+  return (
+    <section className="py-3">
+      <div className="mb-3 min-w-0">
+        <h3 className="text-[13px] font-medium text-foreground">{title}</h3>
+        {description && (
+          <p className="mt-0.5 max-w-3xl text-[12px] text-muted-foreground">{description}</p>
+        )}
       </div>
+      {children}
     </section>
   )
 }
 
-function HeroMetric({ icon, label, value }: { icon: ReactNode, label: string, value: string }) {
-  return (
-    <div className="min-w-0 rounded-md bg-muted/40 px-3 py-2.5">
-      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-        {icon}
-        <span>{label}</span>
-      </div>
-      <span className="mt-1 block text-[18px] font-semibold tabular-nums text-foreground">{value}</span>
-    </div>
-  )
-}
+function StatusBadge({ running, available }: { running: boolean, available: boolean }) {
+  const { t } = useTranslation('chronicle')
 
-function SetupNoticeCard({
-  notice,
-  saving,
-  onAction,
-}: {
-  notice: ChronicleSetupNotice
-  saving: boolean
-  onAction: () => void
-}) {
-  return (
-    <Alert className="border-amber-500/20 bg-amber-500/5 text-amber-800 dark:text-amber-300">
-      <TriangleAlertIcon className="size-4" aria-hidden="true" />
-      <AlertTitle>{notice.title}</AlertTitle>
-      <AlertDescription className="flex flex-col gap-3 text-[12px] leading-5 md:flex-row md:items-center md:justify-between">
-        <span>{notice.description}</span>
-        {notice.actionLabel && (
-          <Button
-            type="button"
-            variant="outline"
-            size="sm"
-            className="w-fit border-amber-500/30 bg-background/70 text-amber-800 hover:bg-amber-500/10 active:scale-[0.96] transition-transform dark:text-amber-200"
-            disabled={saving}
-            onClick={onAction}
-          >
-            {notice.actionLabel}
-          </Button>
-        )}
-      </AlertDescription>
-    </Alert>
-  )
-}
-
-function ControlUnavailableReason({ reason }: { reason: string | null }) {
-  if (!reason) {
-    return null
+  if (running) {
+    return <Badge className="bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">{t('common.status.running')}</Badge>
   }
-
-  return (
-    <div className="mt-2 flex items-start gap-1.5 rounded-md bg-amber-500/10 px-2 py-1.5 text-amber-800 dark:text-amber-200">
-      <TriangleAlertIcon className="mt-0.5 size-3 shrink-0" aria-hidden="true" />
-      <span className="text-[11px] leading-4 text-pretty">{reason}</span>
-    </div>
-  )
+  if (available) {
+    return <Badge variant="secondary">{t('common.status.ready')}</Badge>
+  }
+  return <Badge variant="outline">{t('common.status.notConfigured')}</Badge>
 }
 
-function ControlRow({
-  icon,
-  title,
-  description,
-  status,
-  statusTone = 'muted',
-  reason,
-  children,
-}: {
-  icon: ReactNode
-  title: string
-  description: string
-  status: string
-  statusTone?: 'enabled' | 'disabled' | 'warning' | 'muted'
-  reason?: string | null
-  children: ReactNode
-}) {
-  return (
-    <div className="rounded-md bg-muted/25 px-3 py-3 shadow-[0_0_0_1px_rgba(0,0,0,0.04)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)]">
-      <div className="flex items-start justify-between gap-4">
-        <div className="flex min-w-0 items-start gap-3">
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground shadow-[0_0_0_1px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
-            {icon}
-          </span>
-          <div className="min-w-0">
-            <h4 className="text-[13px] font-medium text-foreground text-balance">{title}</h4>
-            <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground text-pretty">{description}</p>
-          </div>
-        </div>
-        <div className="flex shrink-0 flex-col items-end gap-2">
-          <Badge
-            variant={statusTone === 'enabled' ? 'secondary' : 'outline'}
-            className={cn(
-              'text-[11px]',
-              {
-                'border-emerald-500/20 bg-emerald-500/10 text-emerald-700 dark:text-emerald-300': statusTone === 'enabled',
-                'border-amber-500/20 bg-amber-500/10 text-amber-800 dark:text-amber-200': statusTone === 'warning',
-                'text-muted-foreground': statusTone === 'disabled' || statusTone === 'muted',
-              },
-            )}
-          >
-            {status}
-          </Badge>
-          {children}
-        </div>
-      </div>
-      <ControlUnavailableReason reason={reason ?? null} />
-    </div>
-  )
-}
-
-function ChronicleControlPanel({
-  config,
+function ChronicleModelRow({
   saving,
-  canEnable,
-  captureDisabledReason,
-  activityDisabledReason,
-  audioDisabledReason,
-  audioSourceDisabledReason,
   profiles,
   selectedProfileId,
   selectedModelId,
@@ -840,53 +919,23 @@ function ChronicleControlPanel({
   requestProfileModels,
   onUpdateConfig,
 }: {
-  config: ChronicleConfig | null
   saving: boolean
-  canEnable: boolean
-  captureDisabledReason: string | null
-  activityDisabledReason: string | null
-  audioDisabledReason: string | null
-  audioSourceDisabledReason: string | null
-  profiles: ReturnType<typeof useAgentProfiles>['profiles']
+  profiles: ProviderModelOption[]
   selectedProfileId: string | null
   selectedModelId: string | null
   selectedModel: Parameters<typeof ProviderModelPicker>[0]['selectedModel']
-  modelsByProfileId: ReturnType<typeof useAgentModelMap>['modelsByProfileId']
-  loadingProfileIds: ReturnType<typeof useAgentModelMap>['loadingProfileIds']
-  successfulProfileIds: ReturnType<typeof useAgentModelMap>['successfulProfileIds']
-  requestProfileModels: ReturnType<typeof useAgentModelMap>['requestProfileModels']
+  modelsByProfileId: ReturnType<typeof useProviderTargetModelMap>['modelsByProviderTargetId']
+  loadingProfileIds: ReturnType<typeof useProviderTargetModelMap>['loadingProviderTargetIds']
+  successfulProfileIds: ReturnType<typeof useProviderTargetModelMap>['successfulProviderTargetIds']
+  requestProfileModels: ReturnType<typeof useProviderTargetModelMap>['requestProviderTargetModels']
   onUpdateConfig: (updates: Partial<ChronicleConfig>) => Promise<ChronicleConfig | null>
 }) {
   const { t } = useTranslation('chronicle')
   const [pendingProfileId, setPendingProfileId] = useState<string | null>(null)
   const displayProfileId = pendingProfileId ?? selectedProfileId
   const displayModelId = pendingProfileId ? null : selectedModelId
-  const displaySelectedModel = pendingProfileId
-    ? null
-    : selectedModel
+  const displaySelectedModel = pendingProfileId ? null : selectedModel
   const isLoadingDisplayModels = displayProfileId ? loadingProfileIds.has(displayProfileId) : false
-  const localizedCaptureStatus = !canEnable
-    ? t('control.status.waitingForModel')
-    : config?.enabled
-      ? t('common.status.enabled')
-      : t('common.status.notEnabled')
-  const localizedActivityStatus = !config?.enabled
-    ? t('control.status.waitingForCapture')
-    : config?.activityPipelineEnabled ?? true
-      ? t('common.status.enabled')
-      : t('common.status.disabled')
-  const localizedDreamStatus = !config?.enabled
-    ? t('control.status.waitingForCapture')
-    : config?.dreamSchedulerEnabled ?? true
-      ? config?.dreamSchedulerApplyMerge
-        ? t('control.status.autoMerge')
-        : t('control.status.previewOnly')
-      : t('common.status.disabled')
-  const localizedAudioStatus = !config?.enabled
-    ? t('control.status.waitingForCapture')
-    : config?.audioCaptureEnabled
-      ? t('common.status.enabled')
-      : t('common.status.notEnabled')
   const modelStatus = displayModelId ? t('control.status.selected') : t('control.status.notSelected')
 
   useEffect(() => {
@@ -912,470 +961,53 @@ function ChronicleControlPanel({
   }, [modelsByProfileId, onUpdateConfig, pendingProfileId, profiles, saving, successfulProfileIds])
 
   return (
-    <UserSection title={t('control.title')} description={t('control.description')}>
-      <div className="grid gap-2">
-        <ControlRow
-          icon={<ActivityIcon className="size-3.5" />}
-          title={t('control.capture.title')}
-          description={canEnable ? t('control.capture.description.enabled') : t('control.capture.description.blocked')}
-          status={localizedCaptureStatus}
-          statusTone={config?.enabled ? 'enabled' : captureDisabledReason ? 'warning' : 'disabled'}
-          reason={captureDisabledReason}
-        >
-          <Switch
-            checked={config?.enabled ?? false}
-            onCheckedChange={enabled => void onUpdateConfig({ enabled })}
-            disabled={saving || !canEnable}
-          />
-        </ControlRow>
-
-        <ControlRow
-          icon={<BrainIcon className="size-3.5" />}
-          title={t('control.activity.title')}
-          description={config?.enabled ? t('control.activity.description.enabled') : t('control.activity.description.blocked')}
-          status={localizedActivityStatus}
-          statusTone={config?.enabled && (config?.activityPipelineEnabled ?? true) ? 'enabled' : activityDisabledReason ? 'warning' : 'disabled'}
-          reason={activityDisabledReason}
-        >
-          <Switch
-            checked={config?.activityPipelineEnabled ?? true}
-            onCheckedChange={activityPipelineEnabled => void onUpdateConfig({ activityPipelineEnabled })}
-            disabled={saving || !config?.enabled}
-          />
-        </ControlRow>
-
-        <ControlRow
-          icon={<LayersIcon className="size-3.5" />}
-          title={t('control.dream.title')}
-          description={config?.enabled ? t('control.dream.description.enabled') : t('control.dream.description.blocked')}
-          status={localizedDreamStatus}
-          statusTone={config?.enabled && (config?.dreamSchedulerEnabled ?? true) ? 'enabled' : activityDisabledReason ? 'warning' : 'disabled'}
-          reason={activityDisabledReason}
-        >
-          <Switch
-            checked={config?.dreamSchedulerEnabled ?? true}
-            onCheckedChange={dreamSchedulerEnabled => void onUpdateConfig({ dreamSchedulerEnabled })}
-            disabled={saving || !config?.enabled}
-          />
-        </ControlRow>
-
-        <ControlRow
-          icon={<FileAudioIcon className="size-3.5" />}
-          title={t('control.audio.title')}
-          description={config?.enabled ? t('control.audio.description.enabled') : t('control.audio.description.blocked')}
-          status={localizedAudioStatus}
-          statusTone={config?.enabled && config?.audioCaptureEnabled ? 'enabled' : audioDisabledReason || audioSourceDisabledReason ? 'warning' : 'disabled'}
-          reason={audioDisabledReason ?? audioSourceDisabledReason}
-        >
-          <div className="flex flex-col items-end gap-2 sm:flex-row sm:items-center">
-            <select
-              className="h-8 max-w-40 rounded-md border border-border bg-background px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-              value={config?.audioSource ?? 'microphone'}
-              onChange={event => void onUpdateConfig({ audioSource: event.target.value as ChronicleConfig['audioSource'] })}
-              disabled={saving || !config?.enabled || !config?.audioCaptureEnabled}
-            >
-              <option value="microphone">{t('control.audio.source.microphone')}</option>
-              <option value="system">{t('control.audio.source.system')}</option>
-              <option value="mixed">{t('control.audio.source.mixed')}</option>
-            </select>
-            <Switch
-              checked={config?.audioCaptureEnabled ?? false}
-              onCheckedChange={audioCaptureEnabled => void onUpdateConfig({ audioCaptureEnabled })}
-              disabled={saving || !config?.enabled}
-            />
-          </div>
-        </ControlRow>
-
-        <ControlRow
-          icon={<CpuIcon className="size-3.5" />}
-          title={t('control.model.title')}
-          description={t('control.model.description')}
-          status={modelStatus}
-          statusTone={displayModelId ? 'enabled' : 'warning'}
-          reason={saving ? t('common.status.savingSettings') : null}
-        >
-          <ProviderModelPicker
-            providerTargets={profiles}
-            selectedProviderTargetId={displayProfileId}
-            selectedModelId={displayModelId}
-            selectedModel={displaySelectedModel}
-            modelsByProviderTargetId={modelsByProfileId}
-            loadingProviderTargetIds={loadingProfileIds}
-            thinkingValue={null}
-            thinkingOptions={[]}
-            isLoadingSelectedModels={isLoadingDisplayModels}
-            emptyProviderTargetsLabel={t('control.model.emptyProfiles')}
-            emptySelectionLabel={t('control.model.emptySelection')}
-            menuSide="bottom"
-            menuAlign="end"
-            triggerTestId="chronicle-provider-model-selector"
-            disabled={saving}
-            onRequestProviderTargetModels={requestProfileModels}
-            onSelectProviderTarget={(profileId) => {
-              requestProfileModels(profileId)
-              const nextModel = (modelsByProfileId[profileId] ?? [])[0] ?? null
-              if (!nextModel) {
-                setPendingProfileId(profileId)
-                return
-              }
-              setPendingProfileId(null)
-              void onUpdateConfig({ profileId, modelId: nextModel.id })
-            }}
-            onSelectModel={(model, profileId) => {
-              if (!model) {
-                return
-              }
-              setPendingProfileId(null)
-              void onUpdateConfig({ profileId, modelId: model })
-            }}
-            onSelectThinking={() => {}}
-          />
-        </ControlRow>
-      </div>
-    </UserSection>
+    <SettingsRow
+      label={t('control.model.title')}
+      description={t('control.model.description')}
+      labelAccessory={
+        <StatusBadgeInline tone={displayModelId ? 'enabled' : 'warning'}>
+          {modelStatus}
+        </StatusBadgeInline>
+      }
+    >
+      <ProviderModelPicker
+        providerTargets={profiles}
+        selectedProviderTargetId={displayProfileId}
+        selectedModelId={displayModelId}
+        selectedModel={displaySelectedModel}
+        modelsByProviderTargetId={modelsByProfileId}
+        loadingProviderTargetIds={loadingProfileIds}
+        thinkingValue={null}
+        thinkingOptions={[]}
+        isLoadingSelectedModels={isLoadingDisplayModels}
+        emptyProviderTargetsLabel={t('control.model.emptyProfiles')}
+        emptySelectionLabel={t('control.model.emptySelection')}
+        menuSide="bottom"
+        menuAlign="end"
+        triggerTestId="chronicle-provider-model-selector"
+        disabled={saving}
+        onRequestProviderTargetModels={requestProfileModels}
+        onSelectProviderTarget={(profileId) => {
+          requestProfileModels(profileId)
+          const nextModel = (modelsByProfileId[profileId] ?? [])[0] ?? null
+          if (!nextModel) {
+            setPendingProfileId(profileId)
+            return
+          }
+          setPendingProfileId(null)
+          void onUpdateConfig({ profileId, modelId: nextModel.id })
+        }}
+        onSelectModel={(model, profileId) => {
+          if (!model) {
+            return
+          }
+          setPendingProfileId(null)
+          void onUpdateConfig({ profileId, modelId: model })
+        }}
+        onSelectThinking={() => {}}
+      />
+    </SettingsRow>
   )
-}
-
-function CaptureSourceOverview({
-  screenCount,
-  messageCount,
-  audioCount,
-  audioEnabled,
-  slackConnected,
-}: {
-  screenCount: number
-  messageCount: number
-  audioCount: number
-  audioEnabled: boolean
-  slackConnected: boolean
-}) {
-  const { t } = useTranslation('chronicle')
-
-  return (
-    <UserSection title={t('sourceOverview.title')} description={t('sourceOverview.description')}>
-      <div className="grid gap-2">
-        <SourceOverviewItem
-          icon={<EyeIcon className="size-3.5" />}
-          title={t('sourceOverview.screen.title')}
-          value={t('sourceOverview.screen.count', { count: screenCount })}
-          detail={t('sourceOverview.screen.detail')}
-        />
-        <SourceOverviewItem
-          icon={<MessageSquareIcon className="size-3.5" />}
-          title={t('sourceOverview.slack.title')}
-          value={slackConnected ? t('sourceOverview.slack.count', { count: messageCount }) : t('common.status.disconnected')}
-          detail={t('sourceOverview.slack.detail')}
-        />
-        <SourceOverviewItem
-          icon={<FileAudioIcon className="size-3.5" />}
-          title={t('sourceOverview.audio.title')}
-          value={audioEnabled ? t('sourceOverview.audio.count', { count: audioCount }) : t('common.status.notEnabled')}
-          detail={t('sourceOverview.audio.detail')}
-        />
-      </div>
-    </UserSection>
-  )
-}
-
-function SourceOverviewItem({ icon, title, value, detail }: { icon: ReactNode, title: string, value: string, detail: string }) {
-  return (
-    <div className="flex min-w-0 items-start gap-3 rounded-md bg-muted/35 px-3 py-2.5">
-      <span className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-md bg-background text-muted-foreground shadow-[0_0_0_1px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
-        {icon}
-      </span>
-      <div className="min-w-0 flex-1">
-        <div className="flex min-w-0 items-center gap-2">
-          <span className="truncate text-[13px] font-medium text-foreground">{title}</span>
-          <span className="ml-auto shrink-0 text-[11px] tabular-nums text-muted-foreground">{value}</span>
-        </div>
-        <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground text-pretty">{detail}</p>
-      </div>
-    </div>
-  )
-}
-
-function ChronicleJourney() {
-  const { t } = useTranslation('chronicle')
-
-  return (
-    <section className="grid grid-cols-1 gap-2 md:grid-cols-3">
-      <JourneyStep icon={<EyeIcon className="size-3.5" />} title={t('journey.clues.title')} description={t('journey.clues.description')} />
-      <JourneyStep icon={<ActivityIcon className="size-3.5" />} title={t('journey.segments.title')} description={t('journey.segments.description')} />
-      <JourneyStep icon={<BrainIcon className="size-3.5" />} title={t('journey.memories.title')} description={t('journey.memories.description')} />
-    </section>
-  )
-}
-
-function JourneyStep({ icon, title, description }: { icon: ReactNode, title: string, description: string }) {
-  return (
-    <div className="rounded-lg bg-muted/25 p-3 shadow-[0_0_0_1px_rgba(0,0,0,0.05)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.05)]">
-      <div className="mb-2 flex items-center gap-2">
-        <span className="flex size-7 items-center justify-center rounded-md bg-background text-muted-foreground">
-          {icon}
-        </span>
-        <span className="text-[13px] font-medium text-foreground">{title}</span>
-      </div>
-      <p className="text-[12px] leading-5 text-muted-foreground text-pretty">{description}</p>
-    </div>
-  )
-}
-
-function UserSection({ title, description, children }: { title: string, description: string, children: ReactNode }) {
-  return (
-    <section className="rounded-lg bg-background p-4 shadow-[0_0_0_1px_rgba(0,0,0,0.06),0_4px_16px_rgba(0,0,0,0.03)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
-      <div className="mb-3">
-        <h3 className="text-[15px] font-semibold text-foreground text-balance">{title}</h3>
-        <p className="mt-1 text-[12px] leading-5 text-muted-foreground text-pretty">{description}</p>
-      </div>
-      {children}
-    </section>
-  )
-}
-
-function AdvancedSection({ title, description, children }: { title: string, description: string, children: ReactNode }) {
-  return (
-    <section className="border-t border-foreground/5 py-4 first:border-t-0 first:pt-0">
-      <div className="mb-3">
-        <h3 className="text-[14px] font-semibold text-foreground text-balance">{title}</h3>
-        <p className="mt-1 text-[12px] leading-5 text-muted-foreground text-pretty">{description}</p>
-      </div>
-      {children}
-    </section>
-  )
-}
-
-interface StatusPanelProps {
-  loading: boolean
-  running: boolean
-  available: boolean
-  pid: number | null
-  lastSummaryAt: string | number | null
-  lastExitAt: string | number | null
-  lastExitCode: number | null
-  totalSummaries: number
-  totalMessages: number
-  lastMessageAt: string | number | null
-  totalAccessibilitySnapshots: number
-  lastAccessibilitySnapshotAt: string | number | null
-  totalAccessibilityEvents: number
-  lastAccessibilityEventAt: string | number | null
-  totalAudioTranscripts: number
-  lastAudioTranscriptAt: string | number | null
-  totalAudioRawSegments: number
-  lastAudioRawSegmentAt: string | number | null
-  totalActivitySegments: number
-  totalPipelineRuns: number
-  totalKnowledgeCards: number
-  totalDreamRuns: number
-  activityPipelineEnabled: boolean
-  activityPipelineRunning: boolean
-  activityPipelineIntervalMs: number
-  activityPipelineBatchSize: number
-  dreamSchedulerEnabled: boolean
-  dreamSchedulerRunning: boolean
-  dreamSchedulerIntervalMs: number
-  dreamSchedulerApplyMerge: boolean
-  audioCaptureEnabled: boolean
-  audioRuntimeStatus: ChronicleStatus['audioRuntimeStatus']
-  modelLabel: string | null
-  storageRoot: string | null
-}
-
-function StatusPanel({
-  loading,
-  running,
-  available,
-  pid,
-  lastSummaryAt,
-  lastExitAt,
-  lastExitCode,
-  totalSummaries,
-  totalMessages,
-  lastMessageAt,
-  totalAccessibilitySnapshots,
-  lastAccessibilitySnapshotAt,
-  totalAccessibilityEvents,
-  lastAccessibilityEventAt,
-  totalAudioTranscripts,
-  lastAudioTranscriptAt,
-  totalAudioRawSegments,
-  lastAudioRawSegmentAt,
-  totalActivitySegments,
-  totalPipelineRuns,
-  totalKnowledgeCards,
-  totalDreamRuns,
-  activityPipelineEnabled,
-  activityPipelineRunning,
-  activityPipelineIntervalMs,
-  activityPipelineBatchSize,
-  dreamSchedulerEnabled,
-  dreamSchedulerRunning,
-  dreamSchedulerIntervalMs,
-  dreamSchedulerApplyMerge,
-  audioCaptureEnabled,
-  audioRuntimeStatus,
-  modelLabel,
-  storageRoot,
-}: StatusPanelProps) {
-  const { t } = useTranslation('chronicle')
-
-  if (loading) {
-    return <EmptyState icon={<ActivityIcon className="size-4" />} title={t('status.loading')} />
-  }
-
-  return (
-    <div className="rounded-lg border border-foreground/5 bg-background p-4 shadow-sm">
-      <div className="mb-3 flex items-center gap-2">
-        <ActivityIcon className="size-3.5 text-muted-foreground" />
-        <span className="text-[13px] font-medium text-foreground">{t('status.title')}</span>
-        <StatusBadge running={running} available={available} />
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-10 xl:grid-cols-12">
-        <StatusItem
-          icon={<EyeIcon className="size-3.5" />}
-          label={t('status.item.service')}
-          value={running ? t('status.service.running', { pid: pid ?? t('common.status.unknown') }) : t('common.status.stopped')}
-        />
-        <StatusItem
-          icon={<ClockIcon className="size-3.5" />}
-          label={t('status.item.lastMemory')}
-          value={formatRelativeTime(t, lastSummaryAt)}
-          detail={formatDateTime(t, lastSummaryAt)}
-        />
-        <StatusItem
-          icon={<BrainIcon className="size-3.5" />}
-          label={t('status.item.memories')}
-          value={String(totalSummaries)}
-        />
-        <StatusItem
-          icon={<MessageSquareIcon className="size-3.5" />}
-          label="Slack"
-          value={String(totalMessages)}
-          detail={formatRelativeTime(t, lastMessageAt)}
-        />
-        <StatusItem
-          icon={<EyeIcon className="size-3.5" />}
-          label={t('status.item.windows')}
-          value={String(totalAccessibilitySnapshots)}
-          detail={formatRelativeTime(t, lastAccessibilitySnapshotAt)}
-        />
-        <StatusItem
-          icon={<ActivityIcon className="size-3.5" />}
-          label={t('status.item.events')}
-          value={String(totalAccessibilityEvents)}
-          detail={formatRelativeTime(t, lastAccessibilityEventAt)}
-        />
-        <StatusItem
-          icon={<FileAudioIcon className="size-3.5" />}
-          label={t('status.item.transcripts')}
-          value={String(totalAudioTranscripts)}
-          detail={formatRelativeTime(t, lastAudioTranscriptAt)}
-        />
-        <StatusItem
-          icon={<FileAudioIcon className="size-3.5" />}
-          label={t('status.item.audio')}
-          value={String(totalAudioRawSegments)}
-          detail={audioCaptureEnabled ? formatRelativeTime(t, lastAudioRawSegmentAt) : formatAudioRuntimeStatus(t, audioRuntimeStatus)}
-        />
-        <StatusItem
-          icon={<ActivityIcon className="size-3.5" />}
-          label={t('status.item.activities')}
-          value={String(totalActivitySegments)}
-        />
-        <StatusItem
-          icon={<CpuIcon className="size-3.5" />}
-          label={t('status.item.pipeline')}
-          value={String(totalPipelineRuns)}
-        />
-        <StatusItem
-          icon={<BrainIcon className="size-3.5" />}
-          label={t('status.item.knowledge')}
-          value={String(totalKnowledgeCards)}
-        />
-        <StatusItem
-          icon={<ClockIcon className="size-3.5" />}
-          label={t('status.item.preview')}
-          value={String(totalDreamRuns)}
-        />
-      </div>
-
-      <div className="mt-3 grid gap-2 border-t border-foreground/5 pt-3 text-[12px] text-muted-foreground md:grid-cols-2">
-        <div className="flex min-w-0 items-center gap-2">
-          <HardDriveIcon className="size-3.5 shrink-0" />
-          <span className="truncate">{storageRoot ?? t('status.storageUnavailable')}</span>
-        </div>
-        <div className="flex min-w-0 items-center gap-2 md:justify-end">
-          <CpuIcon className="size-3.5 shrink-0" />
-          <span className="truncate">
-            {activityPipelineEnabled
-              ? t('status.pipelineSummary', {
-                  state: activityPipelineRunning ? t('common.status.running') : t('common.status.ready'),
-                  seconds: Math.round(activityPipelineIntervalMs / 1000),
-                  count: activityPipelineBatchSize,
-                })
-              : t('status.pipelineDisabled')}
-          </span>
-        </div>
-        <div className="flex min-w-0 items-center gap-2">
-          <LayersIcon className="size-3.5 shrink-0" />
-          <span className="truncate">
-            {dreamSchedulerEnabled
-              ? t('status.dreamSummary', {
-                  state: dreamSchedulerRunning ? t('common.status.running') : t('common.status.ready'),
-                  mode: dreamSchedulerApplyMerge ? t('control.status.autoMerge') : t('control.status.previewOnly'),
-                  hours: Math.round(dreamSchedulerIntervalMs / 3_600_000),
-                })
-              : t('status.dreamDisabled')}
-          </span>
-        </div>
-        <div className="flex min-w-0 items-center gap-2 md:justify-end">
-          <CpuIcon className="size-3.5 shrink-0" />
-          <span className="truncate">{modelLabel ?? t('status.noModel')}</span>
-        </div>
-        <div className="flex min-w-0 items-center gap-2">
-          <TriangleAlertIcon className="size-3.5 shrink-0" />
-          <span className="truncate">
-            {lastExitCode === null
-              ? t('status.noExitRecord')
-              : t('status.lastExit', { code: lastExitCode, time: formatDateTime(t, lastExitAt) })}
-          </span>
-        </div>
-      </div>
-    </div>
-  )
-}
-
-function formatAudioRuntimeStatus(t: ChronicleTranslate, status: ChronicleStatus['audioRuntimeStatus']): string {
-  if (status === 'armed') {
-    return t('common.status.armed')
-  }
-  if (status === 'unavailable') {
-    return t('common.status.unavailable')
-  }
-  return t('common.status.disabled')
-}
-
-function formatSlackRealtimeMode(t: ChronicleTranslate, mode: ChronicleMessageSource['realtimeMode']): string {
-  if (mode === 'events-api') {
-    return 'Events API'
-  }
-  if (mode === 'socket-mode') {
-    return 'Socket Mode'
-  }
-  return t('slack.mode.polling')
-}
-
-function StatusBadge({ running, available }: { running: boolean, available: boolean }) {
-  const { t } = useTranslation('chronicle')
-
-  if (running) {
-    return <Badge className="ml-auto bg-emerald-500/10 text-emerald-700 dark:text-emerald-300">{t('common.status.running')}</Badge>
-  }
-  if (available) {
-    return <Badge variant="secondary" className="ml-auto">{t('common.status.ready')}</Badge>
-  }
-  return <Badge variant="outline" className="ml-auto">{t('common.status.notConfigured')}</Badge>
 }
 
 export function PrivacyRulesPanel({
@@ -1422,97 +1054,86 @@ export function PrivacyRulesPanel({
     : false
 
   return (
-    <div className="rounded-lg border border-foreground/5 bg-background p-4 shadow-sm">
-      <div className="mb-3 flex min-w-0 items-center gap-2">
-        <ShieldIcon className="size-3.5 shrink-0 text-muted-foreground" />
-        <span className="truncate text-[13px] font-medium text-foreground">{t('privacy.title')}</span>
-        <Badge variant="outline" className="ml-auto text-[11px]">
-          {ruleCount === 0 ? t('common.status.notConfigured') : t('privacy.ruleCount', { count: ruleCount })}
-        </Badge>
-      </div>
-
-      <div className="mb-4 rounded-md bg-muted/35 p-3 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.04)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.06)]">
-        <div className="flex flex-col gap-3 md:flex-row md:items-center">
-          <div className="min-w-0 flex-1">
-            <div className="flex min-w-0 items-center gap-2">
-              <EyeIcon className="size-3.5 shrink-0 text-muted-foreground" />
-              <span className="truncate text-[12px] font-medium text-foreground">{t('privacy.closedEyes.title')}</span>
-              <Badge variant={closedEyesEnabled ? 'secondary' : 'outline'} className="text-[11px]">
-                {closedEyesEnabled ? t('common.status.enabled') : t('common.status.disabled')}
-              </Badge>
-            </div>
-            <p className="mt-1 text-[12px] leading-5 text-muted-foreground text-pretty">
-              {t('privacy.closedEyes.description')}
-            </p>
-          </div>
-          <div className="flex shrink-0 flex-col gap-2 sm:flex-row sm:items-center">
-            <ToggleGroup
-              type="single"
-              value={closedEyesMode}
-              onValueChange={(value) => {
-                if (value) {
-                  void onUpdateConfig({ closedEyesMode: value as ChronicleConfig['closedEyesMode'] })
-                }
-              }}
-              disabled={!config || saving || !closedEyesEnabled}
-              className="rounded-md bg-background p-0.5 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.06)] dark:shadow-[inset_0_0_0_1px_rgba(255,255,255,0.08)]"
-              size="sm"
-            >
-              <ToggleGroupItem value="auto" aria-label={t('privacy.closedEyes.mode.auto.ariaLabel')} className="h-8 px-2 text-[12px]">
-                {t('privacy.closedEyes.mode.auto')}
-              </ToggleGroupItem>
-              <ToggleGroupItem value="always-record" aria-label={t('privacy.closedEyes.mode.alwaysRecord.ariaLabel')} className="h-8 px-2 text-[12px]">
-                {t('privacy.closedEyes.mode.alwaysRecord')}
-              </ToggleGroupItem>
-              <ToggleGroupItem value="always-pause" aria-label={t('privacy.closedEyes.mode.alwaysPause.ariaLabel')} className="h-8 px-2 text-[12px]">
-                {t('privacy.closedEyes.mode.alwaysPause')}
-              </ToggleGroupItem>
-            </ToggleGroup>
-            <Switch
-              aria-label={t('privacy.closedEyes.toggle')}
-              checked={closedEyesEnabled}
-              onCheckedChange={closedEyesDiscardEnabled => void onUpdateConfig({ closedEyesDiscardEnabled })}
-              disabled={saving || !config}
-            />
-          </div>
+    <div className="flex flex-col gap-0">
+      <SettingsRow
+        label={t('privacy.closedEyes.title')}
+        description={t('privacy.closedEyes.description')}
+        labelAccessory={
+          <Badge variant={closedEyesEnabled ? 'secondary' : 'outline'} className="text-[11px]">
+            {closedEyesEnabled ? t('common.status.enabled') : t('common.status.disabled')}
+          </Badge>
+        }
+      >
+        <div className="flex items-center gap-2">
+          <ToggleGroup
+            type="single"
+            value={closedEyesMode}
+            onValueChange={(value) => {
+              if (value) {
+                void onUpdateConfig({ closedEyesMode: value as ChronicleConfig['closedEyesMode'] })
+              }
+            }}
+            disabled={!config || saving || !closedEyesEnabled}
+            variant="outline"
+            size="sm"
+          >
+            <ToggleGroupItem value="auto" aria-label={t('privacy.closedEyes.mode.auto.ariaLabel')} className="h-7 px-2 text-[11px]">
+              {t('privacy.closedEyes.mode.auto')}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="always-record" aria-label={t('privacy.closedEyes.mode.alwaysRecord.ariaLabel')} className="h-7 px-2 text-[11px]">
+              {t('privacy.closedEyes.mode.alwaysRecord')}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="always-pause" aria-label={t('privacy.closedEyes.mode.alwaysPause.ariaLabel')} className="h-7 px-2 text-[11px]">
+              {t('privacy.closedEyes.mode.alwaysPause')}
+            </ToggleGroupItem>
+          </ToggleGroup>
+          <Switch
+            aria-label={t('privacy.closedEyes.toggle')}
+            checked={closedEyesEnabled}
+            onCheckedChange={closedEyesDiscardEnabled => void onUpdateConfig({ closedEyesDiscardEnabled })}
+            disabled={saving || !config}
+          />
         </div>
-      </div>
+      </SettingsRow>
+      <SettingsDivider />
 
-      <div className="grid gap-3 lg:grid-cols-3">
-        <PrivacyRuleTextarea
-          label="App bundle id"
-          placeholder={t('privacy.appBundle.placeholder')}
-          value={draft.appBundleText}
-          onChange={appBundleText => setDraft(current => ({ ...current, appBundleText }))}
-          disabled={saving || !config}
-        />
-        <PrivacyRuleTextarea
-          label={t('privacy.titlePattern.label')}
-          placeholder={t('privacy.titlePattern.placeholder')}
-          value={draft.titlePatternText}
-          onChange={titlePatternText => setDraft(current => ({ ...current, titlePatternText }))}
-          disabled={saving || !config}
-        />
-        <PrivacyRuleTextarea
-          label={t('privacy.urlPattern.label')}
-          placeholder={t('privacy.urlPattern.placeholder')}
-          value={draft.urlPatternText}
-          onChange={urlPatternText => setDraft(current => ({ ...current, urlPatternText }))}
-          disabled={saving || !config}
-        />
-      </div>
-
-      <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
-        <p className="text-[12px] leading-5 text-muted-foreground text-pretty">
-          {t('privacy.help')}
-        </p>
-        <div className="flex shrink-0 items-center gap-2 sm:ml-auto">
+      <SettingsRow
+        label={t('privacy.title')}
+        description={t('privacy.help')}
+        labelAccessory={<Badge variant="outline" className="text-[11px]">{ruleCount === 0 ? t('common.status.notConfigured') : t('privacy.ruleCount', { count: ruleCount })}</Badge>}
+        vertical
+      >
+        <div className="grid gap-3 lg:grid-cols-3">
+          <PrivacyRuleTextarea
+            label="App bundle id"
+            placeholder={t('privacy.appBundle.placeholder')}
+            value={draft.appBundleText}
+            onChange={appBundleText => setDraft(current => ({ ...current, appBundleText }))}
+            disabled={saving || !config}
+          />
+          <PrivacyRuleTextarea
+            label={t('privacy.titlePattern.label')}
+            placeholder={t('privacy.titlePattern.placeholder')}
+            value={draft.titlePatternText}
+            onChange={titlePatternText => setDraft(current => ({ ...current, titlePatternText }))}
+            disabled={saving || !config}
+          />
+          <PrivacyRuleTextarea
+            label={t('privacy.urlPattern.label')}
+            placeholder={t('privacy.urlPattern.placeholder')}
+            value={draft.urlPatternText}
+            onChange={urlPatternText => setDraft(current => ({ ...current, urlPatternText }))}
+            disabled={saving || !config}
+          />
+        </div>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row sm:items-center">
           {saveError && <span className="text-[12px] text-destructive">{saveError}</span>}
           {!saveError && saved && <span className="text-[12px] text-muted-foreground">{t('common.status.saved')}</span>}
           <Button
             type="button"
             variant="outline"
             size="sm"
+            className="sm:ml-auto"
             disabled={!config || saving || !hasChanges}
             onClick={() => {
               setSaveError(null)
@@ -1535,7 +1156,7 @@ export function PrivacyRulesPanel({
             {t('privacy.saveRules')}
           </Button>
         </div>
-      </div>
+      </SettingsRow>
     </div>
   )
 }
@@ -1791,22 +1412,24 @@ function ResourceGrid({ loading, resources }: { loading: boolean, resources: Chr
   const busy = reconciling || installingAll || verifying || installing
 
   return (
-    <div className="space-y-2">
-      <div className="flex justify-end gap-1.5">
+    <div className="space-y-3">
+      <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-end">
         <Button
           type="button"
           variant="default"
-          size="sm"
+          size="default"
+          className="w-full sm:w-auto"
           disabled={busy}
           onClick={() => void installAllResources()}
         >
-          <DownloadIcon className="size-3.5" />
+          <DownloadIcon className="size-4" />
           {t('resources.installAll')}
         </Button>
         <Button
           type="button"
           variant="outline"
           size="sm"
+          className="w-full sm:w-auto"
           disabled={busy}
           onClick={() => void reconcileResources()}
         >
@@ -2136,8 +1759,8 @@ function ActivityPipelinePanel({
   const busy = triaging || summarizing || crystallizing || ticking
 
   return (
-    <div className="grid grid-cols-1 gap-3 xl:grid-cols-[minmax(0,1fr)_360px]">
-      <div className="grid grid-cols-1 gap-2 md:grid-cols-2">
+    <div className="grid grid-cols-1 gap-3 2xl:grid-cols-[minmax(0,1fr)_minmax(320px,420px)]">
+      <div className="grid grid-cols-1 gap-2 lg:grid-cols-2">
         {segments.map(segment => (
           <ActivitySegmentCard
             key={segment.id}
@@ -2150,14 +1773,17 @@ function ActivityPipelinePanel({
         ))}
       </div>
       <div className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
-        <div className="mb-2 flex min-w-0 items-center gap-2">
-          <CpuIcon className="size-3.5 shrink-0 text-muted-foreground" />
-          <span className="truncate text-[13px] font-medium text-foreground">{t('pipeline.runs.title')}</span>
-          <Badge variant="outline" className="ml-auto text-[11px]">{runs.length}</Badge>
+        <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
+          <div className="flex min-w-0 items-center gap-2">
+            <CpuIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            <span className="truncate text-[13px] font-medium text-foreground">{t('pipeline.runs.title')}</span>
+            <Badge variant="outline" className="text-[11px]">{runs.length}</Badge>
+          </div>
           <Button
             type="button"
             variant="outline"
             size="sm"
+            className="w-full sm:ml-auto sm:w-auto"
             disabled={busy}
             onClick={() => void runPipelineTick()}
           >
@@ -2298,108 +1924,54 @@ function ActivitySourceBadge({ label, value }: { label: string, value: number })
 }
 
 function formatActivitySegmentType(t: ChronicleTranslate, type: ChronicleActivitySegment['segmentType']): string {
-  if (type === 'meeting') {
-    return t('activitySegment.type.meeting')
-  }
-  if (type === 'browsing') {
-    return t('activitySegment.type.browsing')
-  }
-  if (type === 'chat') {
-    return t('activitySegment.type.chat')
-  }
-  if (type === 'audio') {
-    return t('activitySegment.type.audio')
-  }
-  if (type === 'idle') {
-    return t('activitySegment.type.idle')
-  }
-  if (type === 'work') {
-    return t('activitySegment.type.work')
-  }
+  if (type === 'meeting') return t('activitySegment.type.meeting')
+  if (type === 'browsing') return t('activitySegment.type.browsing')
+  if (type === 'chat') return t('activitySegment.type.chat')
+  if (type === 'audio') return t('activitySegment.type.audio')
+  if (type === 'idle') return t('activitySegment.type.idle')
+  if (type === 'work') return t('activitySegment.type.work')
   return t('common.status.unknown')
 }
 
 function formatActivityPipelineStatus(t: ChronicleTranslate, status: ChronicleActivitySegment['pipelineStatus']): string {
-  if (status === 'triaged') {
-    return t('activitySegment.pipelineStatus.triaged')
-  }
-  if (status === 'summarized') {
-    return t('activitySegment.pipelineStatus.summarized')
-  }
-  if (status === 'crystallized') {
-    return t('activitySegment.pipelineStatus.crystallized')
-  }
-  if (status === 'error') {
-    return t('common.status.error')
-  }
+  if (status === 'triaged') return t('activitySegment.pipelineStatus.triaged')
+  if (status === 'summarized') return t('activitySegment.pipelineStatus.summarized')
+  if (status === 'crystallized') return t('activitySegment.pipelineStatus.crystallized')
+  if (status === 'error') return t('common.status.error')
   return t('activitySegment.pipelineStatus.collecting')
 }
 
 function formatPipelineTrigger(t: ChronicleTranslate, trigger: ChroniclePipelineRun['trigger']): string {
-  if (trigger === 'audio-raw') {
-    return t('pipeline.trigger.audioRaw')
-  }
-  if (trigger === 'audio-transcript') {
-    return t('pipeline.trigger.audioTranscript')
-  }
-  if (trigger === 'message') {
-    return t('pipeline.trigger.message')
-  }
-  if (trigger === 'memory') {
-    return t('pipeline.trigger.memory')
-  }
-  if (trigger === 'summarize') {
-    return t('pipeline.trigger.summarize')
-  }
-  if (trigger === 'manual') {
-    return t('pipeline.trigger.manual')
-  }
+  if (trigger === 'audio-raw') return t('pipeline.trigger.audioRaw')
+  if (trigger === 'audio-transcript') return t('pipeline.trigger.audioTranscript')
+  if (trigger === 'message') return t('pipeline.trigger.message')
+  if (trigger === 'memory') return t('pipeline.trigger.memory')
+  if (trigger === 'summarize') return t('pipeline.trigger.summarize')
+  if (trigger === 'manual') return t('pipeline.trigger.manual')
   return t('pipeline.trigger.snapshot')
 }
 
 function formatPipelineStage(t: ChronicleTranslate, stage: ChroniclePipelineRun['stage']): string {
-  if (stage === 'collection') {
-    return t('pipeline.stage.collection')
-  }
-  if (stage === 'triage') {
-    return t('pipeline.stage.triage')
-  }
-  if (stage === 'summarization') {
-    return t('pipeline.stage.summarization')
-  }
-  if (stage === 'crystallization') {
-    return t('pipeline.stage.crystallization')
-  }
+  if (stage === 'collection') return t('pipeline.stage.collection')
+  if (stage === 'triage') return t('pipeline.stage.triage')
+  if (stage === 'summarization') return t('pipeline.stage.summarization')
+  if (stage === 'crystallization') return t('pipeline.stage.crystallization')
   return t('pipeline.stage.segmentation')
 }
 
 function formatPipelineRunStatus(t: ChronicleTranslate, status: ChroniclePipelineRun['status']): string {
-  if (status === 'success') {
-    return t('common.status.completed')
-  }
-  if (status === 'error') {
-    return t('common.status.error')
-  }
-  if (status === 'queued') {
-    return t('common.status.queued')
-  }
-  if (status === 'running') {
-    return t('common.status.running')
-  }
-  if (status === 'skipped') {
-    return t('common.status.skipped')
-  }
+  if (status === 'success') return t('common.status.completed')
+  if (status === 'error') return t('common.status.error')
+  if (status === 'queued') return t('common.status.queued')
+  if (status === 'running') return t('common.status.running')
+  if (status === 'skipped') return t('common.status.skipped')
   return t('common.status.unknown')
 }
 
 function formatDurationSeconds(t: ChronicleTranslate, value: number): string {
-  if (value < 60) {
-    return t('duration.seconds', { count: Math.max(0, Math.floor(value)) })
-  }
+  if (value < 60) return t('duration.seconds', { count: Math.max(0, Math.floor(value)) })
   const minutes = Math.floor(value / 60)
-  if (minutes < 60) {
-    return t('duration.minutes', { count: minutes })
-  }
+  if (minutes < 60) return t('duration.minutes', { count: minutes })
   const hours = Math.floor(minutes / 60)
   const remainder = minutes % 60
   return remainder === 0
@@ -2408,94 +1980,118 @@ function formatDurationSeconds(t: ChronicleTranslate, value: number): string {
 }
 
 function formatKnowledgeCardType(t: ChronicleTranslate, type: ChronicleKnowledgeCard['cardType']): string {
-  if (type === 'insight') {
-    return t('knowledgeCard.type.insight')
-  }
-  if (type === 'decision') {
-    return t('knowledgeCard.type.decision')
-  }
-  if (type === 'task') {
-    return t('knowledgeCard.type.task')
-  }
-  if (type === 'pattern') {
-    return t('knowledgeCard.type.pattern')
-  }
+  if (type === 'insight') return t('knowledgeCard.type.insight')
+  if (type === 'decision') return t('knowledgeCard.type.decision')
+  if (type === 'task') return t('knowledgeCard.type.task')
+  if (type === 'pattern') return t('knowledgeCard.type.pattern')
   return t('knowledgeCard.type.fact')
 }
 
 function formatKnowledgeDimension(t: ChronicleTranslate, dimension: ChronicleKnowledgeCard['dimension']): string {
-  if (dimension === 'technical') {
-    return t('knowledgeCard.dimension.technical')
-  }
-  if (dimension === 'business') {
-    return t('knowledgeCard.dimension.business')
-  }
-  if (dimension === 'personal') {
-    return t('knowledgeCard.dimension.personal')
-  }
-  if (dimension === 'project') {
-    return t('knowledgeCard.dimension.project')
-  }
+  if (dimension === 'technical') return t('knowledgeCard.dimension.technical')
+  if (dimension === 'business') return t('knowledgeCard.dimension.business')
+  if (dimension === 'personal') return t('knowledgeCard.dimension.personal')
+  if (dimension === 'project') return t('knowledgeCard.dimension.project')
   return t('knowledgeCard.dimension.general')
 }
 
 function formatDreamRunType(t: ChronicleTranslate, type: ChronicleDreamRun['runType']): string {
-  if (type === 'merge') {
-    return t('dreamRun.type.merge')
-  }
-  if (type === 'archive') {
-    return t('dreamRun.type.archive')
-  }
-  if (type === 'prune') {
-    return t('dreamRun.type.prune')
-  }
-  if (type === 'restore') {
-    return t('dreamRun.type.restore')
-  }
+  if (type === 'merge') return t('dreamRun.type.merge')
+  if (type === 'archive') return t('dreamRun.type.archive')
+  if (type === 'prune') return t('dreamRun.type.prune')
+  if (type === 'restore') return t('dreamRun.type.restore')
   return t('dreamRun.type.dryRun')
 }
 
 function formatDreamRunStatus(t: ChronicleTranslate, status: ChronicleDreamRun['status']): string {
-  if (status === 'completed') {
-    return t('common.status.completed')
-  }
-  if (status === 'failed') {
-    return t('common.status.error')
-  }
-  if (status === 'running') {
-    return t('common.status.running')
-  }
+  if (status === 'completed') return t('common.status.completed')
+  if (status === 'failed') return t('common.status.error')
+  if (status === 'running') return t('common.status.running')
   return t('common.status.queued')
 }
 
 function formatKnowledgeCardStatus(t: ChronicleTranslate, status: ChronicleKnowledgeCard['status']): string {
-  if (status === 'active') {
-    return t('knowledgeCard.status.active')
-  }
-  if (status === 'merged') {
-    return t('knowledgeCard.status.merged')
-  }
-  if (status === 'archived') {
-    return t('knowledgeCard.status.archived')
-  }
-  if (status === 'deleted') {
-    return t('knowledgeCard.status.deleted')
-  }
+  if (status === 'active') return t('knowledgeCard.status.active')
+  if (status === 'merged') return t('knowledgeCard.status.merged')
+  if (status === 'archived') return t('knowledgeCard.status.archived')
+  if (status === 'deleted') return t('knowledgeCard.status.deleted')
   return status
 }
 
 function formatTranscriptStatus(t: ChronicleTranslate, status: ChronicleAudioTranscript['status']): string {
-  if (status === 'recording') {
-    return t('common.status.recording')
-  }
-  if (status === 'completed') {
-    return t('common.status.completed')
-  }
-  if (status === 'imported') {
-    return t('common.status.imported')
-  }
+  if (status === 'recording') return t('common.status.recording')
+  if (status === 'completed') return t('common.status.completed')
+  if (status === 'imported') return t('common.status.imported')
   return t('common.status.error')
 }
+
+function formatSlackRealtimeMode(t: ChronicleTranslate, mode: ChronicleMessageSource['realtimeMode']): string {
+  if (mode === 'events-api') return 'Events API'
+  if (mode === 'socket-mode') return 'Socket Mode'
+  return t('slack.mode.polling')
+}
+
+function formatAudioRuntimeStatus(t: ChronicleTranslate, status: ChronicleStatus['audioRuntimeStatus']): string {
+  if (status === 'armed') return t('common.status.armed')
+  if (status === 'unavailable') return t('common.status.unavailable')
+  return t('common.status.disabled')
+}
+
+function formatAccessibilityStatus(t: ChronicleTranslate, status: ChronicleAccessibilitySnapshot['status']): string {
+  if (status === 'permission-denied') return t('accessibility.status.permissionDenied')
+  if (status === 'unavailable') return t('common.status.unavailable')
+  if (status === 'error') return t('common.status.error')
+  return t('resource.state.available')
+}
+
+function formatAccessibilityEventNotification(t: ChronicleTranslate, notification: string): string {
+  if (notification === 'AXFocusedWindowChanged') return t('accessibility.notification.focusedWindowChanged')
+  if (notification === 'AXFocusedUIElementChanged') return t('accessibility.notification.focusedElementChanged')
+  if (notification === 'AXWindowCreated') return t('accessibility.notification.windowCreated')
+  if (notification === 'AXWindowMoved') return t('accessibility.notification.windowMoved')
+  if (notification === 'AXWindowResized') return t('accessibility.notification.windowResized')
+  return notification
+}
+
+function formatMemoryType(t: ChronicleTranslate, type: MemoryEntry['type']): string {
+  if (type === '10min') return t('memory.type.short')
+  return t('memory.type.long')
+}
+
+function formatAudioSegmentTitle(t: ChronicleTranslate, segment: ChronicleAudioRawSegment): string {
+  if (segment.source === 'system') return t('audioRaw.title.system')
+  if (segment.source === 'mixed') return t('audioRaw.title.mixed')
+  return t('audioRaw.title.microphone')
+}
+
+function formatAudioProcessingStatus(t: ChronicleTranslate, status: ChronicleAudioRawSegment['vadStatus']): string {
+  if (status === 'pending') return t('common.status.pending')
+  if (status === 'ready') return t('common.status.completed')
+  if (status === 'error') return t('common.status.error')
+  return t('audioRaw.processing.notConnected')
+}
+
+function getMemoryMatchLabel(t: ChronicleTranslate, entry: MemoryEntry): string {
+  if (entry.matchKind === 'hybrid') return t('memory.match.hybrid')
+  if (entry.matchKind === 'semantic') {
+    return entry.semanticScore !== null && entry.semanticScore !== undefined
+      ? t('memory.match.semanticScore', { score: entry.semanticScore.toFixed(2) })
+      : t('memory.match.semantic')
+  }
+  return t('memory.match.keyword')
+}
+
+function getAccessibilityTreeDepthClass(depth: number): string {
+  if (depth <= 0) return 'pl-0'
+  if (depth === 1) return 'pl-2'
+  if (depth === 2) return 'pl-4'
+  if (depth === 3) return 'pl-6'
+  return 'pl-8'
+}
+
+// ---------------------------------------------------------------------------
+// Data display components (preserved from original)
+// ---------------------------------------------------------------------------
 
 function MemoryList({
   entries,
@@ -2756,54 +2352,6 @@ function AccessibilityEventList({ events }: { events: ChronicleAccessibilityEven
   )
 }
 
-function getAccessibilityTreeDepthClass(depth: number): string {
-  if (depth <= 0) {
-    return 'pl-0'
-  }
-  if (depth === 1) {
-    return 'pl-2'
-  }
-  if (depth === 2) {
-    return 'pl-4'
-  }
-  if (depth === 3) {
-    return 'pl-6'
-  }
-  return 'pl-8'
-}
-
-function formatAccessibilityStatus(t: ChronicleTranslate, status: ChronicleAccessibilitySnapshot['status']): string {
-  if (status === 'permission-denied') {
-    return t('accessibility.status.permissionDenied')
-  }
-  if (status === 'unavailable') {
-    return t('common.status.unavailable')
-  }
-  if (status === 'error') {
-    return t('common.status.error')
-  }
-  return t('resource.state.available')
-}
-
-function formatAccessibilityEventNotification(t: ChronicleTranslate, notification: string): string {
-  if (notification === 'AXFocusedWindowChanged') {
-    return t('accessibility.notification.focusedWindowChanged')
-  }
-  if (notification === 'AXFocusedUIElementChanged') {
-    return t('accessibility.notification.focusedElementChanged')
-  }
-  if (notification === 'AXWindowCreated') {
-    return t('accessibility.notification.windowCreated')
-  }
-  if (notification === 'AXWindowMoved') {
-    return t('accessibility.notification.windowMoved')
-  }
-  if (notification === 'AXWindowResized') {
-    return t('accessibility.notification.windowResized')
-  }
-  return notification
-}
-
 function SpeakerProfileList({ profiles }: { profiles: ChronicleSpeakerProfile[] }) {
   const { t } = useTranslation('chronicle')
 
@@ -2953,36 +2501,6 @@ function AudioProcessingBadge({
   )
 }
 
-function formatAudioSegmentTitle(t: ChronicleTranslate, segment: ChronicleAudioRawSegment): string {
-  if (segment.source === 'system') {
-    return t('audioRaw.title.system')
-  }
-  if (segment.source === 'mixed') {
-    return t('audioRaw.title.mixed')
-  }
-  return t('audioRaw.title.microphone')
-}
-
-function formatAudioProcessingStatus(t: ChronicleTranslate, status: ChronicleAudioRawSegment['vadStatus']): string {
-  if (status === 'pending') {
-    return t('common.status.pending')
-  }
-  if (status === 'ready') {
-    return t('common.status.completed')
-  }
-  if (status === 'error') {
-    return t('common.status.error')
-  }
-  return t('audioRaw.processing.notConnected')
-}
-
-function formatMemoryType(t: ChronicleTranslate, type: MemoryEntry['type']): string {
-  if (type === '10min') {
-    return t('memory.type.short')
-  }
-  return t('memory.type.long')
-}
-
 function MemoryCard({ entry, focused }: { entry: MemoryEntry, focused: boolean }) {
   const { t } = useTranslation('chronicle')
 
@@ -3021,16 +2539,210 @@ function MemoryCard({ entry, focused }: { entry: MemoryEntry, focused: boolean }
   )
 }
 
-function getMemoryMatchLabel(t: ChronicleTranslate, entry: MemoryEntry): string {
-  if (entry.matchKind === 'hybrid') {
-    return t('memory.match.hybrid')
+// ---------------------------------------------------------------------------
+// Status panel (advanced)
+// ---------------------------------------------------------------------------
+
+interface StatusPanelProps {
+  loading: boolean
+  running: boolean
+  available: boolean
+  pid: number | null
+  lastSummaryAt: string | number | null
+  lastExitAt: string | number | null
+  lastExitCode: number | null
+  totalSummaries: number
+  totalMessages: number
+  lastMessageAt: string | number | null
+  totalAccessibilitySnapshots: number
+  lastAccessibilitySnapshotAt: string | number | null
+  totalAccessibilityEvents: number
+  lastAccessibilityEventAt: string | number | null
+  totalAudioTranscripts: number
+  lastAudioTranscriptAt: string | number | null
+  totalAudioRawSegments: number
+  lastAudioRawSegmentAt: string | number | null
+  totalActivitySegments: number
+  totalPipelineRuns: number
+  totalKnowledgeCards: number
+  totalDreamRuns: number
+  activityPipelineEnabled: boolean
+  activityPipelineRunning: boolean
+  activityPipelineIntervalMs: number
+  activityPipelineBatchSize: number
+  dreamSchedulerEnabled: boolean
+  dreamSchedulerRunning: boolean
+  dreamSchedulerIntervalMs: number
+  dreamSchedulerApplyMerge: boolean
+  audioCaptureEnabled: boolean
+  audioRuntimeStatus: ChronicleStatus['audioRuntimeStatus']
+  modelLabel: string | null
+  storageRoot: string | null
+}
+
+function StatusPanel({
+  loading,
+  running,
+  available,
+  pid,
+  lastSummaryAt,
+  lastExitAt,
+  lastExitCode,
+  totalSummaries,
+  totalMessages,
+  lastMessageAt,
+  totalAccessibilitySnapshots,
+  lastAccessibilitySnapshotAt,
+  totalAccessibilityEvents,
+  lastAccessibilityEventAt,
+  totalAudioTranscripts,
+  lastAudioTranscriptAt,
+  totalAudioRawSegments,
+  lastAudioRawSegmentAt,
+  totalActivitySegments,
+  totalPipelineRuns,
+  totalKnowledgeCards,
+  totalDreamRuns,
+  activityPipelineEnabled,
+  activityPipelineRunning,
+  activityPipelineIntervalMs,
+  activityPipelineBatchSize,
+  dreamSchedulerEnabled,
+  dreamSchedulerRunning,
+  dreamSchedulerIntervalMs,
+  dreamSchedulerApplyMerge,
+  audioCaptureEnabled,
+  audioRuntimeStatus,
+  modelLabel,
+  storageRoot,
+}: StatusPanelProps) {
+  const { t } = useTranslation('chronicle')
+
+  if (loading) {
+    return <EmptyState icon={<ActivityIcon className="size-4" />} title={t('status.loading')} />
   }
-  if (entry.matchKind === 'semantic') {
-    return entry.semanticScore !== null && entry.semanticScore !== undefined
-      ? t('memory.match.semanticScore', { score: entry.semanticScore.toFixed(2) })
-      : t('memory.match.semantic')
-  }
-  return t('memory.match.keyword')
+
+  return (
+    <div className="rounded-lg border border-foreground/5 bg-background p-4 shadow-sm">
+      <div className="mb-3 flex items-center gap-2">
+        <ActivityIcon className="size-3.5 text-muted-foreground" />
+        <span className="text-[13px] font-medium text-foreground">{t('status.title')}</span>
+        <StatusBadge running={running} available={available} />
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 md:grid-cols-4 lg:grid-cols-10 xl:grid-cols-12">
+        <StatusItem
+          icon={<EyeIcon className="size-3.5" />}
+          label={t('status.item.service')}
+          value={running ? t('status.service.running', { pid: pid ?? t('common.status.unknown') }) : t('common.status.stopped')}
+        />
+        <StatusItem
+          icon={<ClockIcon className="size-3.5" />}
+          label={t('status.item.lastMemory')}
+          value={formatRelativeTime(t, lastSummaryAt)}
+          detail={formatDateTime(t, lastSummaryAt)}
+        />
+        <StatusItem
+          icon={<BrainIcon className="size-3.5" />}
+          label={t('status.item.memories')}
+          value={String(totalSummaries)}
+        />
+        <StatusItem
+          icon={<MessageSquareIcon className="size-3.5" />}
+          label="Slack"
+          value={String(totalMessages)}
+          detail={formatRelativeTime(t, lastMessageAt)}
+        />
+        <StatusItem
+          icon={<EyeIcon className="size-3.5" />}
+          label={t('status.item.windows')}
+          value={String(totalAccessibilitySnapshots)}
+          detail={formatRelativeTime(t, lastAccessibilitySnapshotAt)}
+        />
+        <StatusItem
+          icon={<ActivityIcon className="size-3.5" />}
+          label={t('status.item.events')}
+          value={String(totalAccessibilityEvents)}
+          detail={formatRelativeTime(t, lastAccessibilityEventAt)}
+        />
+        <StatusItem
+          icon={<FileAudioIcon className="size-3.5" />}
+          label={t('status.item.transcripts')}
+          value={String(totalAudioTranscripts)}
+          detail={formatRelativeTime(t, lastAudioTranscriptAt)}
+        />
+        <StatusItem
+          icon={<FileAudioIcon className="size-3.5" />}
+          label={t('status.item.audio')}
+          value={String(totalAudioRawSegments)}
+          detail={audioCaptureEnabled ? formatRelativeTime(t, lastAudioRawSegmentAt) : formatAudioRuntimeStatus(t, audioRuntimeStatus)}
+        />
+        <StatusItem
+          icon={<ActivityIcon className="size-3.5" />}
+          label={t('status.item.activities')}
+          value={String(totalActivitySegments)}
+        />
+        <StatusItem
+          icon={<CpuIcon className="size-3.5" />}
+          label={t('status.item.pipeline')}
+          value={String(totalPipelineRuns)}
+        />
+        <StatusItem
+          icon={<BrainIcon className="size-3.5" />}
+          label={t('status.item.knowledge')}
+          value={String(totalKnowledgeCards)}
+        />
+        <StatusItem
+          icon={<ClockIcon className="size-3.5" />}
+          label={t('status.item.preview')}
+          value={String(totalDreamRuns)}
+        />
+      </div>
+
+      <div className="mt-3 grid gap-2 border-t border-foreground/5 pt-3 text-[12px] text-muted-foreground md:grid-cols-2">
+        <div className="flex min-w-0 items-center gap-2">
+          <HardDriveIcon className="size-3.5 shrink-0" />
+          <span className="truncate">{storageRoot ?? t('status.storageUnavailable')}</span>
+        </div>
+        <div className="flex min-w-0 items-center gap-2 md:justify-end">
+          <CpuIcon className="size-3.5 shrink-0" />
+          <span className="truncate">
+            {activityPipelineEnabled
+              ? t('status.pipelineSummary', {
+                  state: activityPipelineRunning ? t('common.status.running') : t('common.status.ready'),
+                  seconds: Math.round(activityPipelineIntervalMs / 1000),
+                  count: activityPipelineBatchSize,
+                })
+              : t('status.pipelineDisabled')}
+          </span>
+        </div>
+        <div className="flex min-w-0 items-center gap-2">
+          <LayersIcon className="size-3.5 shrink-0" />
+          <span className="truncate">
+            {dreamSchedulerEnabled
+              ? t('status.dreamSummary', {
+                  state: dreamSchedulerRunning ? t('common.status.running') : t('common.status.ready'),
+                  mode: dreamSchedulerApplyMerge ? t('control.status.autoMerge') : t('control.status.previewOnly'),
+                  hours: Math.round(dreamSchedulerIntervalMs / 3_600_000),
+                })
+              : t('status.dreamDisabled')}
+          </span>
+        </div>
+        <div className="flex min-w-0 items-center gap-2 md:justify-end">
+          <CpuIcon className="size-3.5 shrink-0" />
+          <span className="truncate">{modelLabel ?? t('status.noModel')}</span>
+        </div>
+        <div className="flex min-w-0 items-center gap-2">
+          <TriangleAlertIcon className="size-3.5 shrink-0" />
+          <span className="truncate">
+            {lastExitCode === null
+              ? t('status.noExitRecord')
+              : t('status.lastExit', { code: lastExitCode, time: formatDateTime(t, lastExitAt) })}
+          </span>
+        </div>
+      </div>
+    </div>
+  )
 }
 
 function StatusItem({

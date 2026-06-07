@@ -1,4 +1,3 @@
-import { memo, useMemo } from 'react'
 
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
@@ -105,14 +104,14 @@ interface GitGraphRowProps {
   commit: LayoutCommit
 }
 
-export const GitGraphRow = memo(GitGraphRowInner)
+export const GitGraphRow = GitGraphRowInner
 
 function GitGraphRowInner({ commit }: GitGraphRowProps) {
   const laneCount = Math.max(commit.visibleLaneCount, commit.lane + 1)
   const svgWidth = laneCount * LANE_WIDTH
   const cx = commit.lane * LANE_WIDTH + LANE_WIDTH / 2
 
-  const svgPaths = useMemo(() => {
+  const svgPaths = (() => {
     const paths: React.ReactNode[] = []
 
     for (const line of commit.linesAbove) {
@@ -146,7 +145,7 @@ function GitGraphRowInner({ commit }: GitGraphRowProps) {
     }
 
     return paths
-  }, [commit.linesAbove, commit.linesBelow])
+  })()
 
   const dotColor = laneColor(commit.lane)
   const isMerge = commit.parents.length > 1

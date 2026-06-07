@@ -59,7 +59,7 @@ describe('jarvis UI cross-window sync', () => {
     ])
     expect(secondStore.getState().activeSessionId).toBe('session-1')
 
-    secondStore.getState().removeSession('session-1')
+    secondStore.getState().closeSessionTab('session-1')
 
     expect(firstStore.getState().sessions).toEqual([])
     expect(firstStore.getState().activeSessionId).toBeNull()

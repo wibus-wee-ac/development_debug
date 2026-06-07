@@ -118,6 +118,42 @@ const PROJECT_FILTER_OPTIONS: readonly WorkspaceSidebarProjectFilter[] = ['all',
 const PROJECT_SORT_OPTIONS: readonly WorkspaceSidebarProjectSortKey[] = ['name', 'updatedAt', 'createdAt']
 const PROJECT_SORT_DIRECTION_OPTIONS: readonly WorkspaceSidebarProjectSortDirection[] = ['asc', 'desc']
 
+function formatRegenerateTitleError(error: unknown): string {
+  if (error instanceof Error) {
+    return error.message
+  }
+  if (!error || typeof error !== 'object') {
+    return String(error)
+  }
+  const payload = error as {
+    message?: unknown
+    details?: {
+      reason?: unknown
+      providerError?: { detail?: unknown, method?: unknown }
+      error?: { message?: unknown }
+    }
+  }
+  const providerDetail = typeof payload.details?.providerError?.detail === 'string'
+    ? payload.details.providerError.detail
+    : null
+  const providerMethod = typeof payload.details?.providerError?.method === 'string'
+    ? payload.details.providerError.method
+    : null
+  if (providerDetail && providerMethod) {
+    return `${providerMethod}: ${providerDetail}`
+  }
+  if (providerDetail) {
+    return providerDetail
+  }
+  if (typeof payload.details?.error?.message === 'string') {
+    return payload.details.error.message
+  }
+  if (typeof payload.message === 'string') {
+    return payload.message
+  }
+  return JSON.stringify(error)
+}
+
 function isSessionRunning(session: WorkspaceSession, locallyStreamingSessionIds: Set<string>): boolean {
   return session.status === 'streaming' || locallyStreamingSessionIds.has(session.id)
 }
@@ -388,7 +424,7 @@ function SessionActionsMenu({
       toastManager.add({
         type: 'error',
         title: t('session.toast.regenerateTitleFailed'),
-        description: error instanceof Error ? error.message : String(error),
+        description: formatRegenerateTitleError(error),
       })
     }
   }, [invalidateSessionQueries, session, t])
@@ -1036,6 +1072,226 @@ SessionListRows.displayName = 'SessionListRows'
 
 // ── Workspace group ───────────────────────────────────────────────────────────
 
+function WorkspaceGroupDisclosure({
+  workspace,
+  workspacePinned,
+  workspaceActions,
+  overlays,
+  onRecordWorkspaceLayout,
+  children,
+}: {
+  workspace: Workspace
+  workspacePinned: boolean
+  workspaceActions: WorkspaceMenuAction[]
+  overlays: React.ReactNode
+  onRecordWorkspaceLayout: () => void
+  children: React.ReactNode
+}) {
+  'use no memo'
+
+  const { t } = useTranslation('workspace')
+  const expanded = useWorkspaceSidebarUiStore(state => state.collapsedWorkspaceIds[workspace.id] !== true)
+  const setWorkspaceExpanded = useWorkspaceSidebarUiStore(state => state.setWorkspaceExpanded)
+  const toggleExpanded = (event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setWorkspaceExpanded(workspace.id, !expanded)
+  }
+
+  const headerContent = (
+    <div className="group flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-accent/50">
+      <button
+        type="button"
+        onClick={toggleExpanded}
+        onPointerDown={event => event.stopPropagation()}
+        aria-label={t('workspace.aria.toggleExpanded')}
+        aria-expanded={expanded}
+        className="-ml-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-fill/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+        data-testid={`workspace-toggle-${workspace.id}`}
+      >
+        {expanded
+          ? <FolderOpenIcon className="size-3.5" aria-hidden="true" />
+          : <FolderClosedIcon className="size-3.5" aria-hidden="true" />}
+      </button>
+
+      <Link
+        to="workspace-detail"
+        params={{ workspaceId: workspace.id }}
+        onClick={onRecordWorkspaceLayout}
+        onPointerDown={onRecordWorkspaceLayout}
+        data-testid={`workspace-open-${workspace.id}`}
+        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
+      >
+        {workspacePinned
+          ? <PinIcon className="size-3 shrink-0 text-primary/60" aria-label={t('workspace.aria.pinned')} data-testid={`workspace-pin-indicator-${workspace.id}`} />
+          : null}
+        <span className="truncate text-xs font-medium text-sidebar-foreground/80">
+          {workspace.name}
+        </span>
+      </Link>
+
+      <Menu>
+        <MenuTrigger
+          render={(
+            <Button
+              variant="ghost"
+              size="icon-xs"
+              className="opacity-0 group-hover:opacity-100 -mr-1"
+              onClick={e => e.stopPropagation()}
+            />
+          )}
+        >
+          <MoreHorizontalIcon />
+        </MenuTrigger>
+        <MenuPopup align="start" side="bottom" sideOffset={4}>
+          <WorkspaceMenuActionItems actions={workspaceActions} surface="button" />
+        </MenuPopup>
+      </Menu>
+    </div>
+  )
+
+  return (
+    <div className="flex min-w-0 flex-col" data-testid={`workspace-group-${workspace.id}`} data-workspace-pinned={workspacePinned ? 'true' : 'false'}>
+      <ContextMenu>
+        <ContextMenuTrigger asChild>
+          {headerContent}
+        </ContextMenuTrigger>
+        <ContextMenuContent className="w-48">
+          <WorkspaceMenuActionItems actions={workspaceActions} surface="context" />
+        </ContextMenuContent>
+      </ContextMenu>
+      {overlays}
+      {expanded ? children : null}
+    </div>
+  )
+}
+WorkspaceGroupDisclosure.displayName = 'WorkspaceGroupDisclosure'
+
+function WorkspaceSessionListSection({
+  workspaceId,
+  sortedSessions,
+  activeSessionId,
+  renamingSessionId,
+  retainedSessionIds,
+  locallyStreamingSessionIds,
+  locallyErroredSessionIds,
+  t,
+  onPrepareSessionOpen,
+  onPrefetchSession,
+  onRenameCommit,
+  onRenameCancel,
+  onOpenSessionMenu,
+}: {
+  workspaceId: string
+  sortedSessions: WorkspaceSession[]
+  activeSessionId: string | null
+  renamingSessionId: string | null
+  retainedSessionIds: Set<string>
+  locallyStreamingSessionIds: Set<string>
+  locallyErroredSessionIds: Set<string>
+  t: WorkspaceTranslation
+  onPrepareSessionOpen: (session: WorkspaceSession) => void
+  onPrefetchSession: (sessionId: string) => void
+  onRenameCommit: (session: WorkspaceSession, nextTitle: string) => Promise<void>
+  onRenameCancel: () => void
+  onOpenSessionMenu: (request: SessionMenuRequest) => void
+}) {
+  'use no memo'
+
+  const sessionListExpanded = useWorkspaceSidebarUiStore(state => state.expandedSessionListWorkspaceIds[workspaceId] === true)
+  const setWorkspaceSessionListExpanded = useWorkspaceSidebarUiStore(state => state.setWorkspaceSessionListExpanded)
+  const [expandedSessionRenderCount, setExpandedSessionRenderCount] = useState(SESSION_PREVIEW_LIMIT)
+  const requiredPreviewCount = useMemo(() => {
+    let highestRequiredIndex = -1
+    for (const [index, session] of sortedSessions.entries()) {
+      if (session.pinned || isSessionRunning(session, locallyStreamingSessionIds) || retainedSessionIds.has(session.id)) {
+        highestRequiredIndex = index
+      }
+    }
+    return highestRequiredIndex + 1
+  }, [locallyStreamingSessionIds, retainedSessionIds, sortedSessions])
+  const collapsedSessionPreviewLimit = Math.max(SESSION_PREVIEW_LIMIT, requiredPreviewCount)
+  const hasHiddenSessions = sortedSessions.length > collapsedSessionPreviewLimit
+  const hiddenSessionCount = Math.max(sortedSessions.length - collapsedSessionPreviewLimit, 0)
+  const renderedSessionCount = sessionListExpanded
+    ? Math.min(Math.max(expandedSessionRenderCount, collapsedSessionPreviewLimit), sortedSessions.length)
+    : collapsedSessionPreviewLimit
+  const visibleSessions = useMemo(
+    () => sortedSessions.slice(0, renderedSessionCount),
+    [renderedSessionCount, sortedSessions],
+  )
+
+  useEffect(() => {
+    if (!sessionListExpanded) {
+      setExpandedSessionRenderCount(current => current === collapsedSessionPreviewLimit ? current : collapsedSessionPreviewLimit)
+      return
+    }
+
+    if (expandedSessionRenderCount >= sortedSessions.length) {
+      return
+    }
+
+    const timeout = window.setTimeout(() => {
+      startTransition(() => {
+        setExpandedSessionRenderCount(current => Math.min(
+          Math.max(current, collapsedSessionPreviewLimit) + SESSION_REVEAL_BATCH_SIZE,
+          sortedSessions.length,
+        ))
+      })
+    }, SESSION_REVEAL_DELAY_MS)
+
+    return () => window.clearTimeout(timeout)
+  }, [collapsedSessionPreviewLimit, expandedSessionRenderCount, sessionListExpanded, sortedSessions.length])
+
+  const toggleSessionListExpanded = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
+    event.preventDefault()
+    event.stopPropagation()
+    setWorkspaceSessionListExpanded(workspaceId, !sessionListExpanded)
+  }, [sessionListExpanded, setWorkspaceSessionListExpanded, workspaceId])
+
+  return (
+    <div className="min-w-0 overflow-hidden">
+      <div className="ml-4.25 flex min-w-0 flex-col gap-0.5 border-l border-sidebar-border/50 pl-2 py-0.5">
+        {sortedSessions.length === 0 && (
+          <p className="px-2.5 py-1.5 text-xs text-muted-foreground">{t('session.empty')}</p>
+        )}
+        <SessionListRows
+          sessions={visibleSessions}
+          activeSessionId={activeSessionId}
+          renamingSessionId={renamingSessionId}
+          locallyStreamingSessionIds={locallyStreamingSessionIds}
+          locallyErroredSessionIds={locallyErroredSessionIds}
+          t={t}
+          onPrepareSessionOpen={onPrepareSessionOpen}
+          onPrefetchSession={onPrefetchSession}
+          onRenameCommit={onRenameCommit}
+          onRenameCancel={onRenameCancel}
+          onOpenSessionMenu={onOpenSessionMenu}
+        />
+        {hasHiddenSessions && (
+          <button
+            type="button"
+            onClick={toggleSessionListExpanded}
+            className="mt-0.5 flex h-6 min-w-0 items-center gap-1.5 rounded-lg px-2.5 text-left text-[11px] text-muted-foreground hover:bg-accent/50 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+            aria-expanded={sessionListExpanded}
+            data-testid={`workspace-sessions-toggle-${workspaceId}`}
+          >
+            {sessionListExpanded
+              ? <ChevronUpIcon className="size-3 shrink-0" aria-hidden="true" />
+              : <ChevronDownIcon className="size-3 shrink-0" aria-hidden="true" />}
+            <span className="min-w-0 truncate">
+              {sessionListExpanded
+                ? t('session.action.showLess')
+                : t('session.action.showAll', { count: hiddenSessionCount })}
+            </span>
+          </button>
+        )}
+      </div>
+    </div>
+  )
+}
+WorkspaceSessionListSection.displayName = 'WorkspaceSessionListSection'
+
 const WorkspaceGroup = memo(({
   workspace,
   sessions,
@@ -1050,10 +1306,6 @@ const WorkspaceGroup = memo(({
   const { t } = useTranslation('workspace')
   const queryClient = useQueryClient()
   const { openTab } = useCradleNavigation()
-  const expanded = useWorkspaceSidebarUiStore(state => state.collapsedWorkspaceIds[workspace.id] !== true)
-  const sessionListExpanded = useWorkspaceSidebarUiStore(state => state.expandedSessionListWorkspaceIds[workspace.id] === true)
-  const toggleWorkspaceExpanded = useWorkspaceSidebarUiStore(state => state.toggleWorkspaceExpanded)
-  const toggleWorkspaceSessionListExpanded = useWorkspaceSidebarUiStore(state => state.toggleWorkspaceSessionListExpanded)
   const [renameOpen, setRenameOpen] = useState(false)
   const [retainedSessionIds, setRetainedSessionIds] = useState<Set<string>>(() => new Set())
   const acknowledgedSessionIdsRef = useRef<Set<string> | null>(null)
@@ -1065,7 +1317,6 @@ const WorkspaceGroup = memo(({
   } | null>(null)
   const [sessionMenuState, setSessionMenuState] = useState<SessionMenuState>(CLOSED_SESSION_MENU_STATE)
   const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
-  const [expandedSessionRenderCount, setExpandedSessionRenderCount] = useState(SESSION_PREVIEW_LIMIT)
   const workspacePinned = Boolean(workspace.pinned)
   const workspaceSessionIds = useMemo(() => sessions.map(session => session.id), [sessions])
   const sessionsById = useMemo(() => {
@@ -1128,47 +1379,6 @@ const WorkspaceGroup = memo(({
       return 0
     })
   }, [locallyStreamingSessionIds, sessions])
-  const requiredPreviewCount = useMemo(() => {
-    let highestRequiredIndex = -1
-    for (const [index, session] of sortedSessions.entries()) {
-      if (session.pinned || isSessionRunning(session, locallyStreamingSessionIds) || retainedSessionIds.has(session.id)) {
-        highestRequiredIndex = index
-      }
-    }
-    return highestRequiredIndex + 1
-  }, [locallyStreamingSessionIds, retainedSessionIds, sortedSessions])
-  const collapsedSessionPreviewLimit = Math.max(SESSION_PREVIEW_LIMIT, requiredPreviewCount)
-  const hasHiddenSessions = sortedSessions.length > collapsedSessionPreviewLimit
-  const hiddenSessionCount = Math.max(sortedSessions.length - collapsedSessionPreviewLimit, 0)
-  const renderedSessionCount = sessionListExpanded
-    ? Math.min(Math.max(expandedSessionRenderCount, collapsedSessionPreviewLimit), sortedSessions.length)
-    : collapsedSessionPreviewLimit
-  const visibleSessions = useMemo(
-    () => sortedSessions.slice(0, renderedSessionCount),
-    [renderedSessionCount, sortedSessions],
-  )
-
-  useEffect(() => {
-    if (!sessionListExpanded) {
-      setExpandedSessionRenderCount(current => current === collapsedSessionPreviewLimit ? current : collapsedSessionPreviewLimit)
-      return
-    }
-
-    if (expandedSessionRenderCount >= sortedSessions.length) {
-      return
-    }
-
-    const timeout = window.setTimeout(() => {
-      startTransition(() => {
-        setExpandedSessionRenderCount(current => Math.min(
-          Math.max(current, collapsedSessionPreviewLimit) + SESSION_REVEAL_BATCH_SIZE,
-          sortedSessions.length,
-        ))
-      })
-    }, SESSION_REVEAL_DELAY_MS)
-
-    return () => window.clearTimeout(timeout)
-  }, [collapsedSessionPreviewLimit, expandedSessionRenderCount, sessionListExpanded, sortedSessions.length])
 
   useEffect(() => {
     setRetainedSessionIds((current) => {
@@ -1273,12 +1483,6 @@ const WorkspaceGroup = memo(({
 
     acknowledgedSessionIdsRef.current! = next
   }, [locallyStreamingSessionIds, sessionsById])
-  const toggleExpanded = useCallback(() => {
-    toggleWorkspaceExpanded(workspace.id)
-  }, [toggleWorkspaceExpanded, workspace.id])
-  const toggleSessionListExpanded = useCallback(() => {
-    toggleWorkspaceSessionListExpanded(workspace.id)
-  }, [toggleWorkspaceSessionListExpanded, workspace.id])
   const recordWorkspaceLayout = useCallback(() => {
     useSessionLayoutStore.getState().upsertWorkspace({
       workspaceId: workspace.id,
@@ -1388,6 +1592,11 @@ const WorkspaceGroup = memo(({
       })
     }
   }, [createRequest, createWorkspaceFile, createWorkspaceFolder, queryClient, t, workspace.id])
+  const handleOpenCreateDialogChange = useCallback((open: boolean) => {
+    if (!open) {
+      setCreateRequest(null)
+    }
+  }, [])
   const workspaceActions = useMemo<WorkspaceMenuAction[]>(() => [
     {
       key: 'open',
@@ -1475,134 +1684,60 @@ const WorkspaceGroup = memo(({
     workspacePinned,
   ])
 
-  const headerContent = (
-    <div className="group flex min-w-0 items-center gap-2 rounded-lg px-2.5 py-1.5 hover:bg-accent/50">
-      <button
-        type="button"
-        onClick={toggleExpanded}
-        aria-label={t('workspace.aria.toggleExpanded')}
-        className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70"
-      >
-        {expanded
-          ? <FolderOpenIcon className="size-3.5" aria-hidden="true" />
-          : <FolderClosedIcon className="size-3.5" aria-hidden="true" />}
-      </button>
-
-      <Link
-        to="workspace-detail"
-        params={{ workspaceId: workspace.id }}
-        onClick={recordWorkspaceLayout}
-        onPointerDown={recordWorkspaceLayout}
-        data-testid={`workspace-open-${workspace.id}`}
-        className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
-      >
-        {workspacePinned
-          ? <PinIcon className="size-3 shrink-0 text-primary/60" aria-label={t('workspace.aria.pinned')} data-testid={`workspace-pin-indicator-${workspace.id}`} />
-          : null}
-        <span className="truncate text-xs font-medium text-sidebar-foreground/80">
-          {workspace.name}
-        </span>
-      </Link>
-
-      <Menu>
-        <MenuTrigger
-          render={(
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="opacity-0 group-hover:opacity-100 -mr-1"
-              onClick={e => e.stopPropagation()}
-            />
-          )}
-        >
-          <MoreHorizontalIcon />
-        </MenuTrigger>
-        <MenuPopup align="start" side="bottom" sideOffset={4}>
-          <WorkspaceMenuActionItems actions={workspaceActions} surface="button" />
-        </MenuPopup>
-      </Menu>
-    </div>
-  )
-
   return (
-    <div className="flex min-w-0 flex-col" data-testid={`workspace-group-${workspace.id}`} data-workspace-pinned={workspacePinned ? 'true' : 'false'}>
-      <ContextMenu>
-        <ContextMenuTrigger asChild>
-          {headerContent}
-        </ContextMenuTrigger>
-        <ContextMenuContent className="w-48">
-          <WorkspaceMenuActionItems actions={workspaceActions} surface="context" />
-        </ContextMenuContent>
-      </ContextMenu>
-      <WorkspaceTextInputDialog
-        open={renameOpen}
-        title={t('workspace.dialog.renameTitle')}
-        initialValue={workspace.name}
-        label={t('workspace.dialog.nameLabel')}
-        confirmLabel={t('workspace.dialog.rename')}
-        onOpenChange={setRenameOpen}
-        onCommit={handleRenameWorkspace}
-      />
-      <WorkspaceTextInputDialog
-        open={createRequest !== null}
-        title={createRequest?.kind === 'folder' ? t('workspace.dialog.newFolderTitle') : t('workspace.dialog.newFileTitle')}
-        initialValue={createRequest?.kind === 'folder' ? DEFAULT_WORKSPACE_FOLDER_NAME : DEFAULT_WORKSPACE_FILE_NAME}
-        label={t('workspace.dialog.nameLabel')}
-        confirmLabel={t('workspace.dialog.create')}
-        onOpenChange={open => !open && setCreateRequest(null)}
-        onCommit={handleCreateWorkspaceChild}
-      />
-      <SessionActionsMenu
-        state={sessionMenuState}
-        session={activeMenuSession}
-        workspaceId={workspace.id}
-        workspacePath={workspace.path}
-        onOpenChange={handleSessionMenuOpenChange}
-        onPrepareSessionOpen={handlePrepareSessionOpen}
-        onStartRename={handleStartSessionRename}
-      />
-
-      {expanded && (
-        <div className="min-w-0 overflow-hidden">
-          <div className="ml-4.25 flex min-w-0 flex-col gap-0.5 border-l border-sidebar-border/50 pl-2 py-0.5">
-            {sessions.length === 0 && (
-              <p className="px-2.5 py-1.5 text-xs text-muted-foreground">{t('session.empty')}</p>
-            )}
-            <SessionListRows
-              sessions={visibleSessions}
-              activeSessionId={activeSessionId}
-              renamingSessionId={renamingSessionId}
-              locallyStreamingSessionIds={locallyStreamingSessionIds}
-              locallyErroredSessionIds={locallyErroredSessionIds}
-              t={t}
-              onPrepareSessionOpen={handlePrepareSessionOpen}
-              onPrefetchSession={prefetchSession}
-              onRenameCommit={handleRenameSession}
-              onRenameCancel={handleRenameCancel}
-              onOpenSessionMenu={handleOpenSessionMenu}
-            />
-            {hasHiddenSessions && (
-              <button
-                type="button"
-                onClick={toggleSessionListExpanded}
-                className="mt-0.5 flex h-6 min-w-0 items-center gap-1.5 rounded-lg px-2.5 text-left text-[11px] text-muted-foreground hover:bg-accent/50 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
-                aria-expanded={sessionListExpanded}
-                data-testid={`workspace-sessions-toggle-${workspace.id}`}
-              >
-                {sessionListExpanded
-                  ? <ChevronUpIcon className="size-3 shrink-0" aria-hidden="true" />
-                  : <ChevronDownIcon className="size-3 shrink-0" aria-hidden="true" />}
-                <span className="min-w-0 truncate">
-                  {sessionListExpanded
-                    ? t('session.action.showLess')
-                    : t('session.action.showAll', { count: hiddenSessionCount })}
-                </span>
-              </button>
-            )}
-          </div>
-        </div>
+    <WorkspaceGroupDisclosure
+      workspace={workspace}
+      workspacePinned={workspacePinned}
+      workspaceActions={workspaceActions}
+      onRecordWorkspaceLayout={recordWorkspaceLayout}
+      overlays={(
+        <>
+          <WorkspaceTextInputDialog
+            open={renameOpen}
+            title={t('workspace.dialog.renameTitle')}
+            initialValue={workspace.name}
+            label={t('workspace.dialog.nameLabel')}
+            confirmLabel={t('workspace.dialog.rename')}
+            onOpenChange={setRenameOpen}
+            onCommit={handleRenameWorkspace}
+          />
+          <WorkspaceTextInputDialog
+            open={createRequest !== null}
+            title={createRequest?.kind === 'folder' ? t('workspace.dialog.newFolderTitle') : t('workspace.dialog.newFileTitle')}
+            initialValue={createRequest?.kind === 'folder' ? DEFAULT_WORKSPACE_FOLDER_NAME : DEFAULT_WORKSPACE_FILE_NAME}
+            label={t('workspace.dialog.nameLabel')}
+            confirmLabel={t('workspace.dialog.create')}
+            onOpenChange={handleOpenCreateDialogChange}
+            onCommit={handleCreateWorkspaceChild}
+          />
+          <SessionActionsMenu
+            state={sessionMenuState}
+            session={activeMenuSession}
+            workspaceId={workspace.id}
+            workspacePath={workspace.path}
+            onOpenChange={handleSessionMenuOpenChange}
+            onPrepareSessionOpen={handlePrepareSessionOpen}
+            onStartRename={handleStartSessionRename}
+          />
+        </>
       )}
-    </div>
+    >
+      <WorkspaceSessionListSection
+        workspaceId={workspace.id}
+        sortedSessions={sortedSessions}
+        activeSessionId={activeSessionId}
+        renamingSessionId={renamingSessionId}
+        retainedSessionIds={retainedSessionIds}
+        locallyStreamingSessionIds={locallyStreamingSessionIds}
+        locallyErroredSessionIds={locallyErroredSessionIds}
+        t={t}
+        onPrepareSessionOpen={handlePrepareSessionOpen}
+        onPrefetchSession={prefetchSession}
+        onRenameCommit={handleRenameSession}
+        onRenameCancel={handleRenameCancel}
+        onOpenSessionMenu={handleOpenSessionMenu}
+      />
+    </WorkspaceGroupDisclosure>
   )
 })
 WorkspaceGroup.displayName = 'WorkspaceGroup'
@@ -1967,7 +2102,7 @@ const WorkspaceSidebarBody = memo(({
 })
 WorkspaceSidebarBody.displayName = 'WorkspaceSidebarBody'
 
-export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean }) {
+export const WorkspaceSidebar = memo(({ collapsed = false }: { collapsed?: boolean }) => {
   const { t } = useTranslation('workspace')
   const { workspaces, ready: workspacesReady } = useWorkspaces()
   const { sessions } = useAllSessions()
@@ -2024,7 +2159,7 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
           <TopNavItem
             icon={<SearchIcon className="size-3.5" />}
             label={t('nav.search')}
-            shortcut="⌘K"
+            shortcut="⌘P"
             collapsed={collapsed}
             onClick={openSearch}
             dataTestId="nav-search"
@@ -2074,4 +2209,5 @@ export function WorkspaceSidebar({ collapsed = false }: { collapsed?: boolean })
       </ScrollArea>
     </div>
   )
-}
+})
+WorkspaceSidebar.displayName = 'WorkspaceSidebar'

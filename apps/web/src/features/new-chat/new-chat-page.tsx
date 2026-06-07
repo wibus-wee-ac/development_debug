@@ -17,14 +17,15 @@ import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import { Button } from '~/components/ui/button'
 import { DitheredGradientDecoration } from '~/components/ui/canvas-art'
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
-import type { ChatContextPart } from '~/features/chat/context/chat-context-parts'
 import type { DraftChatComposerSubmitOptions } from '~/features/chat/composer/draft-chat-composer'
 import { DraftChatComposer } from '~/features/chat/composer/draft-chat-composer'
+import type { ChatContextPart } from '~/features/chat/context/chat-context-parts'
 import { startOptimisticChatResponse } from '~/features/chat/session/optimistic-chat-turn'
 import { sessionsQueryKey, updateSessionInSessionLists, useWorkspaceSessions } from '~/features/workspace/use-session'
 import { useAddWorkspace, useWorkspaces, WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
+import { useNewChatStore } from '~/store/new-chat'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { useCradleTabStore } from '~/tabs/registry'
 import { openTearoffSessionWindow } from '~/tabs/tearoff-tabs'
@@ -239,7 +240,7 @@ function useNewChatPageOwner(active: boolean) {
       console.error('[NewChatPage] send failed:', err)
       return false
     }
-  }, [selectedProjectWorkspaceId, selectedWorkspace?.id, selectedWorkspace?.path, openCreatedChatSession, queryClient])
+  }, [openCreatedChatSession, queryClient, selectedProjectWorkspaceId, selectedWorkspace?.id, selectedWorkspace?.path])
 
   const handleSend = useCallback((text: string, files: FileUIPart[], contextParts: ChatContextPart[], options: DraftChatComposerSubmitOptions) => {
     return handleSendToTarget(text, files, contextParts, options, 'tab')
@@ -281,7 +282,13 @@ function useNewChatPageOwner(active: boolean) {
 
 /* ─── Composer Card ───────────────────────────────────────────────────── */
 
-function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
+function NewChatComposerCard({
+  active,
+  owner,
+}: {
+  active: boolean
+  owner: ReturnType<typeof useNewChatPageOwner>
+}) {
   const {
     handleSend,
     handleSendInNewWindow,
@@ -340,7 +347,7 @@ function NewChatComposerCard({ owner }: { owner: ReturnType<typeof useNewChatPag
   return (
     <DraftChatComposer
       workspaceId={selectedWorkspace?.id ?? null}
-      active
+      active={active}
       contextBar={workspaceSelector}
       replaceText={quickActionText}
       replaceTextKey={quickActionKey}
@@ -445,16 +452,29 @@ export function NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useN
 
 /* ─── Main Component ──────────────────────────────────────────────────── */
 
+function NewChatLayoutSlots({
+  hasWorkspace,
+  workspaceId,
+}: {
+  hasWorkspace: boolean
+  workspaceId: string | null
+}) {
+  'use no memo'
+
+  useRegisterLayoutSlots('new-chat', useMemo(() => ({
+    asideWorkspaceId: hasWorkspace ? workspaceId : null,
+    hasAside: hasWorkspace,
+    hasBrowserPanel: hasWorkspace,
+  }), [hasWorkspace, workspaceId]))
+
+  return null
+}
+
 export function NewChatPage() {
   const isActive = useTabFrameActive()
   const owner = useNewChatPageOwner(isActive)
   const hasWorkspace = !!owner.selectedWorkspace?.path
-
-  useRegisterLayoutSlots('new-chat', useMemo(() => ({
-    asideWorkspaceId: hasWorkspace ? owner.selectedWorkspace?.id : null,
-    hasAside: hasWorkspace,
-    hasBrowserPanel: hasWorkspace,
-  }), [hasWorkspace, owner.selectedWorkspace?.id]))
+  const isPlanMode = useNewChatStore(s => s.lastRuntimeSettings.interactionMode === 'plan')
 
   return (
     <div
@@ -462,6 +482,11 @@ export function NewChatPage() {
       data-testid="new-chat-page"
       data-new-chat-ready={owner.isReady ? 'true' : 'false'}
     >
+      <NewChatLayoutSlots
+        hasWorkspace={hasWorkspace}
+        workspaceId={owner.selectedWorkspace?.id ?? null}
+      />
+
       <m.div
         className="pointer-events-none"
         initial={{ opacity: 0 }}
@@ -474,6 +499,7 @@ export function NewChatPage() {
           glowRadius={140}
           trackGlobal
           active={isActive}
+          tone={isPlanMode ? 'plan' : 'neutral'}
         />
       </m.div>
       <div className="relative flex flex-1 flex-col items-center justify-center px-6 pb-4">
@@ -483,7 +509,7 @@ export function NewChatPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
         >
-          <NewChatComposerCard owner={owner} />
+          <NewChatComposerCard owner={owner} active={isActive} />
           <NewChatQuickActions owner={owner} />
         </m.div>
       </div>

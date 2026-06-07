@@ -1,6 +1,6 @@
 import Editor from '@monaco-editor/react'
 import { CheckIcon, Loader2Icon, SaveIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
@@ -32,7 +32,7 @@ export function WorkspaceFileEditor({ workspaceId, path }: { workspaceId: string
   const saveMutation = useWorkspaceFileContentMutation(workspaceId, path)
   const monacoTheme = useMonacoTheme()
   const content = fileQuery.data?.content
-  const fileIdentity = useMemo(() => `${workspaceId}\0${path}`, [path, workspaceId])
+  const fileIdentity = `${workspaceId}\0${path}`
   const saveDraftRef = useRef<() => Promise<void>>(async () => {})
   const [editorState, setEditorState] = useState({
     fileIdentity,
@@ -71,7 +71,7 @@ export function WorkspaceFileEditor({ workspaceId, path }: { workspaceId: string
     })
   }, [content, fileIdentity])
 
-  const saveDraft = useCallback(async () => {
+  const saveDraft = async () => {
     if (!isDirty || isSaving) {
       return
     }
@@ -92,7 +92,7 @@ export function WorkspaceFileEditor({ workspaceId, path }: { workspaceId: string
         saveError: error instanceof Error ? error.message : 'Unable to save this file.',
       }))
     }
-  }, [editorState.draft, isDirty, isSaving, path, saveMutation, workspaceId])
+  }
 
   useEffect(() => {
     saveDraftRef.current = saveDraft

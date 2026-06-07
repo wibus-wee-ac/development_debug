@@ -1,4 +1,4 @@
-import { createContext, use, useCallback, useRef, useState } from 'react'
+import { createContext, use, useRef, useState } from 'react'
 import { z } from 'zod'
 
 import { DirectoryBrowserDialog } from '~/features/filesystem/directory-browser-dialog'
@@ -31,7 +31,7 @@ export function DirectoryPickerProvider({ children }: { children: React.ReactNod
   const [dialogProps, setDialogProps] = useState<ParsedDirectoryPickerOptions>(() => DirectoryPickerOptionsSchema.parse(undefined))
   const resolverRef = useRef<((value: string | null) => void) | null>(null)
 
-  const selectDirectory = useCallback(async (rawOptions?: DirectoryPickerOptions) => {
+  const selectDirectory = async (rawOptions?: DirectoryPickerOptions) => {
     const options = DirectoryPickerOptionsSchema.parse(rawOptions)
     // In Electron, use the native OS dialog
     if (isElectron && nativeIpc) {
@@ -48,20 +48,20 @@ export function DirectoryPickerProvider({ children }: { children: React.ReactNod
       setDialogProps(options)
       setOpen(true)
     })
-  }, [])
+  }
 
-  const handleSelect = useCallback((path: string) => {
+  const handleSelect = (path: string) => {
     resolverRef.current?.(path)
     resolverRef.current = null
-  }, [])
+  }
 
-  const handleOpenChange = useCallback((isOpen: boolean) => {
+  const handleOpenChange = (isOpen: boolean) => {
     setOpen(isOpen)
     if (!isOpen) {
       resolverRef.current?.(null)
       resolverRef.current = null
     }
-  }, [])
+  }
 
   return (
     <DirectoryPickerContext value={{ selectDirectory }}>

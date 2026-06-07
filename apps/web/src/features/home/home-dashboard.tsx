@@ -14,7 +14,7 @@ import {
   TriangleAlertIcon,
   ZapIcon,
 } from 'lucide-react'
-import { useCallback, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { postWorkspacesFromDirectoryMutation } from '~/api-gen/@tanstack/react-query.gen'
@@ -435,7 +435,7 @@ export function HomeDashboard() {
     })),
   ]
 
-  const handleAddWorkspace = useCallback(async () => {
+  const handleAddWorkspace = async () => {
     const dirPath = await selectDirectory({
       title: homeT('workspace.addProjectDialogTitle'),
       description: homeT('workspace.addProjectDialogDescription'),
@@ -444,7 +444,7 @@ export function HomeDashboard() {
       return
     }
     await addWorkspaceMutation.mutateAsync({ body: { path: dirPath } })
-  }, [addWorkspaceMutation.mutateAsync, homeT, selectDirectory])
+  }
 
   if (automationOpen) {
     return <AutomationDashboard onBack={() => setAutomationOpen(false)} />
@@ -461,7 +461,7 @@ export function HomeDashboard() {
         >
           <SearchIcon className="size-3.5 shrink-0" />
           <span className="flex-1 text-left">{homeT('search.placeholder')}</span>
-          <span className="font-mono text-[10px] text-muted-foreground/35">⌘K</span>
+          <span className="font-mono text-[10px] text-muted-foreground/35">⌘P</span>
         </button>
       </div>
 

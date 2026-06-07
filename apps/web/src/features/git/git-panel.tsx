@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { ArrowDownIcon, ArrowUpIcon, GitBranchIcon, GitGraphIcon, RefreshCwIcon } from 'lucide-react'
-import { useCallback, useMemo, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { VListHandle } from 'virtua'
 import { VList } from 'virtua'
@@ -37,40 +37,37 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
   const queryClient = useQueryClient()
   const ready = !!workspaceId && statusReady && graphReady
 
-  const invalidateAll = useCallback(() => {
+  const invalidateAll = () => {
     void queryClient.invalidateQueries({ queryKey: gitStatusQueryKey({ path: { id: workspaceId! } }) })
     void queryClient.invalidateQueries({ queryKey: gitBranchesQueryKey({ path: { id: workspaceId! } }) })
     // Omit query.limit to fuzzy-match all limit variants for this workspace
     void queryClient.invalidateQueries({ queryKey: gitGraphQueryKey({ path: { id: workspaceId! } }) })
-  }, [queryClient, workspaceId])
+  }
 
   const fetchMutation = useMutation({
     ...postWorkspacesByIdGitFetchMutation(),
     onSuccess: () => invalidateAll(),
   })
 
-  const handleFetch = useCallback(async () => {
+  const handleFetch = async () => {
     if (!workspaceId) {
       return
     }
     await fetchMutation.mutateAsync({ path: { id: workspaceId } })
-  }, [fetchMutation.mutateAsync, workspaceId])
+  }
 
   const vListRef = useRef<VListHandle>(null)
 
-  const handleRangeChange = useCallback((_offset: number) => {
+  const handleRangeChange = (_offset: number) => {
     const handle = vListRef.current
     if (handle && commits && !graphFetching) {
       if (_offset + handle.viewportSize >= handle.scrollSize - handle.viewportSize * 0.5) {
         setLimit(prev => prev + 100)
       }
     }
-  }, [commits, graphFetching])
+  }
 
-  const layoutCommits = useMemo(
-    () => (commits ? computeGraphLayout(commits) : []),
-    [commits],
-  )
+  const layoutCommits = (commits ? computeGraphLayout(commits) : [])
 
   if (!workspaceId) {
     return (

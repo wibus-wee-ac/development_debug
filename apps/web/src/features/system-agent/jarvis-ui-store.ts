@@ -31,7 +31,7 @@ export interface JarvisUiState {
   activeSessionId: string | null
   setActiveSessionId: (id: string | null) => void
   addSession: (session: JarvisSession) => void
-  removeSession: (id: string) => void
+  closeSessionTab: (id: string) => void
 }
 
 interface JarvisUiStoreOptions {
@@ -112,8 +112,13 @@ export function createJarvisUiStore(options?: JarvisUiStoreOptions) {
         sessions: [],
         activeSessionId: null,
         setActiveSessionId: activeSessionId => set({ activeSessionId }),
-        addSession: session => set(s => ({ sessions: [...s.sessions, session] })),
-        removeSession: id => set(s => ({
+        addSession: session => set(s => ({
+          sessions: [
+            ...s.sessions.filter(existing => existing.id !== session.id),
+            session,
+          ],
+        })),
+        closeSessionTab: id => set(s => ({
           sessions: s.sessions.filter(sess => sess.id !== id),
           activeSessionId: s.activeSessionId === id ? null : s.activeSessionId,
         })),

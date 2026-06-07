@@ -13,7 +13,7 @@ import {
   Position,
   ReactFlow,
 } from '@xyflow/react'
-import { useCallback, useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { cn } from '~/lib/cn'
 import type { WebCommandRegistration, WebPanelRegistration } from '~/lib/plugin-store'
@@ -379,7 +379,7 @@ const nodeTypes = {
 export function PluginGraph({ plugins, panels, commands }: PluginGraphProps) {
   const [selectedNode, setSelectedNode] = useState<PluginGraphNode | null>(null)
 
-  const { nodes, edges, counts } = useMemo(() => {
+  const { nodes, edges, counts } = (() => {
     if (plugins.length === 0) {
       return {
         nodes: [] satisfies PluginGraphNode[],
@@ -593,11 +593,11 @@ export function PluginGraph({ plugins, panels, commands }: PluginGraphProps) {
         issue: issueY,
       },
     }
-  }, [commands, panels, plugins])
+  })()
 
-  const handleSelectionChange = useCallback((params: OnSelectionChangeParams<PluginGraphNode>) => {
+  const handleSelectionChange = (params: OnSelectionChangeParams<PluginGraphNode>) => {
     setSelectedNode(params.nodes[0] ?? null)
-  }, [])
+  }
 
   if (plugins.length === 0) { return null }
 

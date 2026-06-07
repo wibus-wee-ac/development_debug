@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef } from 'react'
+import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { ModelDescriptor } from '~/features/agent-runtime/types'
@@ -56,22 +56,16 @@ export function ProviderModelSelector({
 }: ProviderModelSelectorProps) {
   const { t } = useTranslation('common')
   const selectedModel = models.find(model => model.id === selectedModelId) ?? null
-  const thinkingOptions: Array<ThinkingOption<ThinkingEffort>> = useMemo(
-    () => THINKING_EFFORTS.map((option) => {
+  const thinkingOptions: Array<ThinkingOption<ThinkingEffort>> = THINKING_EFFORTS.map((option) => {
       const key = option.value
       return {
         value: key,
         label: t(thinkingLabelKeys[key]),
         description: t(thinkingDescriptionKeys[key]),
       }
-    }),
-    [t],
-  )
-  const selectThinkingForModel = useCallback(
-    (model: ModelDescriptor | null): ThinkingEffort =>
-      selectSupportedThinkingValue(model, thinkingOptions, thinkingEffort, 'high'),
-    [thinkingEffort, thinkingOptions],
-  )
+    })
+  const selectThinkingForModel = (model: ModelDescriptor | null): ThinkingEffort =>
+      selectSupportedThinkingValue(model, thinkingOptions, thinkingEffort, 'high')
 
   // Track pending provider selection to auto-select first model after load
   const pendingProviderSelectionRef = useRef<string | null>(null)

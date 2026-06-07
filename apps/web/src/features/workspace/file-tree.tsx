@@ -7,7 +7,7 @@ import {
   SearchIcon,
   XIcon,
 } from 'lucide-react'
-import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -270,7 +270,7 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
     })
   }, [rootChildrenQuery.data])
 
-  const paths = useMemo(() => {
+  const paths = (() => {
     const seen = new Set<string>()
     const entries = [...childrenByDirectory.values()].flat().filter((entry) => {
       const key = entry.type === 'directory' ? `${entry.path}/` : entry.path
@@ -281,18 +281,12 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
       return true
     })
     return getFileTreeInputPaths(entries)
-  }, [childrenByDirectory])
+  })()
 
-  const preparedInput = useMemo(
-    () => paths.length > 0 ? prepareFileTreeInput(paths, { flattenEmptyDirectories: true }) : null,
-    [paths],
-  )
+  const preparedInput = paths.length > 0 ? prepareFileTreeInput(paths, { flattenEmptyDirectories: true }) : null
 
-  const treeGitStatus = useMemo(
-    () => gitStatuses ? toTreeGitStatus(gitStatuses) : undefined,
-    [gitStatuses],
-  )
-  const refreshWorkspaceFiles = useCallback(async () => {
+  const treeGitStatus = gitStatuses ? toTreeGitStatus(gitStatuses) : undefined
+  const refreshWorkspaceFiles = async () => {
     if (!workspaceId) {
       return
     }
@@ -302,8 +296,8 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
       await fetchWorkspaceFileChildren(workspaceId, directoryPath),
     ] as const))
     setChildrenByDirectory(new Map(updates))
-  }, [workspaceId])
-  const loadDirectoryChildren = useCallback(async (directoryPath: string, force = false) => {
+  }
+  const loadDirectoryChildren = async (directoryPath: string, force = false) => {
     if (!workspaceId) {
       return
     }
@@ -335,7 +329,7 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
     finally {
       loadingDirectoriesRef.current.delete(normalizedPath)
     }
-  }, [t, workspaceId])
+  }
   useEffect(() => {
     if (!searchEnabled || searchPending || searchFiles.length === 0) {
       return
@@ -368,7 +362,7 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
       eventSource.close()
     }
   }, [loadDirectoryChildren, workspaceId])
-  const commitCreate = useCallback(async (input: { kind: 'file' | 'folder', parentPath: string, name: string }) => {
+  const commitCreate = async (input: { kind: 'file' | 'folder', parentPath: string, name: string }) => {
     if (!workspaceId) {
       return null
     }
@@ -380,7 +374,7 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
       name: input.name,
       operationFailedMessage: t('fileTree.error.operationFailed'),
     })
-  }, [t, workspaceId])
+  }
 
   if (!workspaceId) {
     return (
@@ -503,10 +497,10 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
   const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
   const activeWorkspaceFilePathRef = useRef<string | null>(null)
   const copyPathChordActiveRef = useRef(false)
-  const refreshWorkspaceFiles = useCallback(async () => {
+  const refreshWorkspaceFiles = async () => {
     await onRefreshDirectory(ROOT_DIRECTORY_KEY, true)
-  }, [onRefreshDirectory])
-  const commitRename = useCallback(async (sourcePath: string, destinationPath: string) => {
+  }
+  const commitRename = async (sourcePath: string, destinationPath: string) => {
     await renameWorkspaceFilePath({
       workspaceId,
       sourcePath,
@@ -514,15 +508,15 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
       operationFailedMessage: t('fileTree.error.operationFailed'),
     })
     await onRefreshDirectory(getParentDirectoryPath(destinationPath), true)
-  }, [onRefreshDirectory, t, workspaceId])
-  const handleRenameError = useCallback((error: unknown) => {
+  }
+  const handleRenameError = (error: unknown) => {
     toastManager.add({
       type: 'error',
       title: t('fileTree.toast.renameFailed'),
       description: error instanceof Error ? error.message : String(error),
     })
     void onRefreshDirectory(ROOT_DIRECTORY_KEY, true)
-  }, [onRefreshDirectory, t])
+  }
 
   const { model } = useFileTree({
     preparedInput,
@@ -558,17 +552,17 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
   const selectedPaths = useFileTreeSelection(model)
   const hasSearchValue = searchQuery.trim().length > 0
 
-  const openWorkspaceFile = useCallback((path: string, view: 'editor' | 'preview') => {
+  const openWorkspaceFile = (path: string, view: 'editor' | 'preview') => {
     openWorkspaceFileTab({ workspaceId, path, view })
     setBrowserPanelOpen(true)
-  }, [openWorkspaceFileTab, setBrowserPanelOpen, workspaceId])
-  const copyRelativePath = useCallback(async (path: string) => {
+  }
+  const copyRelativePath = async (path: string) => {
     await navigator.clipboard.writeText(path)
-  }, [])
-  const copyAbsolutePath = useCallback(async (path: string) => {
+  }
+  const copyAbsolutePath = async (path: string) => {
     await navigator.clipboard.writeText(workspacePath ? joinWorkspacePath(workspacePath, path) : path)
-  }, [workspacePath])
-  const openInDefaultApplication = useCallback(async (path: string) => {
+  }
+  const openInDefaultApplication = async (path: string) => {
     if (!workspacePath || !isElectron || !nativeIpc) {
       return
     }
@@ -583,8 +577,8 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
         description: error instanceof Error ? error.message : String(error),
       })
     }
-  }, [t, workspacePath])
-  const commitCreate = useCallback(async (input: { kind: 'file' | 'folder', parentPath: string, name: string }) => {
+  }
+  const commitCreate = async (input: { kind: 'file' | 'folder', parentPath: string, name: string }) => {
     const nextPath = await createWorkspaceFileEntry({
       workspaceId,
       kind: input.kind,
@@ -598,7 +592,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
 
     await onRefreshDirectory(input.parentPath, true)
     model.focusPath(input.kind === 'folder' ? `${nextPath}/` : nextPath)
-  }, [model, onRefreshDirectory, t, workspaceId])
+  }
   const startDragFromTree = useEffectEvent((event: DragEvent) => {
     const itemPath = getDraggedTreeItemPath(event)
     if (!itemPath || !event.dataTransfer) {
@@ -611,13 +605,13 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
     )
     event.dataTransfer.effectAllowed = 'copy'
   })
-  const openWorkspaceFileFromTree = useCallback((path: string) => {
+  const openWorkspaceFileFromTree = (path: string) => {
     openWorkspaceFile(path, getWorkspaceFileDefaultView(path))
-  }, [openWorkspaceFile])
-  const openPeekFromTree = useCallback((path: string) => {
+  }
+  const openPeekFromTree = (path: string) => {
     openWorkspaceFile(path, 'preview')
-  }, [openWorkspaceFile])
-  const revealWorkspacePath = useCallback(async (path: string) => {
+  }
+  const revealWorkspacePath = async (path: string) => {
     if (!workspacePath || !isElectron || !nativeIpc) {
       return
     }
@@ -632,7 +626,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
         description: error instanceof Error ? error.message : String(error),
       })
     }
-  }, [t, workspacePath])
+  }
 
   useEffect(() => {
     const searchRevealExpandedTreePaths = hasSearchValue ? getSearchRevealExpandedTreePaths(searchRevealEntries) : []

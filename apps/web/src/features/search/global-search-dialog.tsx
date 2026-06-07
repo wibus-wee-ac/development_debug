@@ -12,7 +12,7 @@ import {
   UserCircleIcon,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
-import { memo, useCallback, useEffect, useEffectEvent, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
@@ -234,8 +234,7 @@ function useCommands(close: () => void): CommandAction[] {
   const toggleSidebar = useLayoutStore(s => s.toggleSidebar)
   const pluginCommands = usePluginStore(s => s.commands)
 
-  return useMemo(
-    () => {
+  return (() => {
       const appCommands: CommandAction[] = [
         {
           id: 'new-chat',
@@ -330,9 +329,7 @@ function useCommands(close: () => void): CommandAction[] {
       }))
 
       return [...appCommands, ...contributedCommands]
-    },
-    [close, openTab, openSettings, pluginCommands, t, toggleSidebar],
-  )
+    })()
 }
 
 // ── File search hook ──────────────────────────────────────────────────────────
@@ -347,7 +344,7 @@ function useFileSearch(query: string, enabled: boolean, workspaceId: string | nu
 
   const trimmed = query.trim().toLowerCase()
 
-  const filtered = useMemo(() => {
+  const filtered = (() => {
     if (!enabled || !trimmed || files.length === 0) {
       return []
     }
@@ -359,7 +356,7 @@ function useFileSearch(query: string, enabled: boolean, workspaceId: string | nu
       searchText: file => file.path,
       limit: 10,
     }).map(result => result.item)
-  }, [enabled, trimmed, files])
+  })()
 
   return {
     files: filtered,
@@ -419,10 +416,7 @@ function useIssueSearch(query: string, enabled: boolean) {
   const issues = (data ?? []) as IssueSearchHit[]
 
   // Derive workspace IDs from search results to batch-fetch boards
-  const workspaceIds = useMemo(
-    () => [...new Set(issues.map(issue => issue.workspaceId))],
-    [issues],
-  )
+  const workspaceIds = [...new Set(issues.map(issue => issue.workspaceId))]
 
   const firstWorkspaceId = workspaceIds[0] ?? null
 
@@ -475,7 +469,7 @@ function HighlightedText({ text, ranges }: { text: string, ranges: Array<{ start
 
 // ── Main component ────────────────────────────────────────────────────────────
 
-export const GlobalSearchDialog = memo(({ open, initialQuery = '>', onOpenChange }: GlobalSearchDialogProps) => {
+export const GlobalSearchDialog = ({ open, initialQuery = '>', onOpenChange }: GlobalSearchDialogProps) => {
   if (!open) {
     return null
   }
@@ -487,9 +481,9 @@ export const GlobalSearchDialog = memo(({ open, initialQuery = '>', onOpenChange
       onOpenChange={onOpenChange}
     />
   )
-})
+}
 
-const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange }: GlobalSearchDialogProps) => {
+const GlobalSearchDialogContent = ({ open, initialQuery = '>', onOpenChange }: GlobalSearchDialogProps) => {
   const { t } = useTranslation('search')
   const fileSearchWorkspace = useActiveFileSearchWorkspaceId(open)
   const openWorkspaceFile = useBrowserPanelStore(s => s.openWorkspaceFileTab)
@@ -538,9 +532,8 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
     return () => window.removeEventListener('keydown', closeOnEscape)
   }, [open])
 
-  const close = useCallback(() => onOpenChange(false), [onOpenChange])
-  const handleQueryChange = useCallback(
-    (nextQuery: string) => {
+  const close = () => onOpenChange(false)
+  const handleQueryChange = (nextQuery: string) => {
       setQuery(nextQuery)
 
       const nextTrimmed = nextQuery.trim()
@@ -552,11 +545,9 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
 
       requestedQueryRef.current = nextTrimmed
       measuredQueryRef.current = ''
-    },
-    [open],
-  )
+    }
   const commands = useCommands(close)
-  const paletteMode = useMemo(() => parsePaletteInput(query), [query])
+  const paletteMode = parsePaletteInput(query)
   const trimmed = paletteMode.query.trim()
   const hasQuery = trimmed.length > 0
   const isCommandMode = paletteMode.id === 'command'
@@ -586,7 +577,7 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
   )
 
   // Filter commands by query
-  const filteredCommands = useMemo(() => {
+  const filteredCommands = (() => {
     if (!isCommandMode) {
       return []
     }
@@ -611,7 +602,7 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
       ],
       searchText: command => `${command.label} ${command.id} ${command.keywords} ${command.description ?? ''} ${command.source}`,
     }).map(result => result.item)
-  }, [commandHistory, commands, hasQuery, isCommandMode, trimmed])
+  })()
 
   const isPending = isQuickOpenMode && (filesPending || threadsPending || issuesPending)
   const hasResults = filteredCommands.length > 0 || files.length > 0 || threads.length > 0 || issues.length > 0
@@ -643,13 +634,12 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
     })
   }, [hasQuery, isPending, open, trimmed])
 
-  const handleSelectCommand = useCallback((command: CommandAction) => {
+  const handleSelectCommand = (command: CommandAction) => {
     setCommandHistory(writeCommandHistory(command.id))
     void command.handler()
-  }, [])
+  }
 
-  const handleSelectFile = useCallback(
-    (filePath: string) => {
+  const handleSelectFile = (filePath: string) => {
       if (!fileWorkspaceId) {
         return
       }
@@ -661,29 +651,21 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
         openWorkspaceFile,
         setBrowserPanelOpen,
       })
-    },
-    [close, fileWorkspaceId, openWorkspaceFile, setBrowserPanelOpen],
-  )
+    }
 
   const { openTab } = useCradleNavigation()
 
-  const handleSelectThread = useCallback(
-    (sessionId: string) => {
+  const handleSelectThread = (sessionId: string) => {
       close()
       openTab('chat', { sessionId })
-    },
-    [close, openTab],
-  )
+    }
 
-  const handleSelectIssue = useCallback(
-    (issueId: string) => {
+  const handleSelectIssue = (issueId: string) => {
       close()
       if (boardId) {
         openTab('kanban-board', { boardId, issue: issueId })
       }
-    },
-    [boardId, close, openTab],
-  )
+    }
 
   return createPortal(
     <div
@@ -851,11 +833,11 @@ const GlobalSearchDialogContent = memo(({ open, initialQuery = '>', onOpenChange
     </div>,
     document.body,
   )
-})
+}
 
 // ── Shared sub-components ─────────────────────────────────────────────────────
 
-const PaletteModeRow = memo(({
+const PaletteModeRow = ({
   mode,
   onSelect,
 }: {
@@ -863,9 +845,9 @@ const PaletteModeRow = memo(({
   onSelect: (query: string) => void
 }) => {
   const { t } = useTranslation('search')
-  const selectMode = useCallback(() => {
+  const selectMode = () => {
     onSelect(mode.prefix)
-  }, [mode.prefix, onSelect])
+  }
 
   return (
     <CommandItem
@@ -883,9 +865,9 @@ const PaletteModeRow = memo(({
       </span>
     </CommandItem>
   )
-})
+}
 
-const CommandActionRow = memo(({
+const CommandActionRow = ({
   command,
   recent,
   onSelect,
@@ -895,9 +877,9 @@ const CommandActionRow = memo(({
   onSelect: (command: CommandAction) => void
 }) => {
   const { t } = useTranslation('search')
-  const selectCommand = useCallback(() => {
+  const selectCommand = () => {
     onSelect(command)
-  }, [command, onSelect])
+  }
 
   return (
     <CommandItem
@@ -924,18 +906,18 @@ const CommandActionRow = memo(({
       )}
     </CommandItem>
   )
-})
+}
 
-const FileSearchCommandRow = memo(({
+const FileSearchCommandRow = ({
   file,
   onSelect,
 }: {
   file: GlobalSearchFile
   onSelect: (filePath: string) => void
 }) => {
-  const selectFile = useCallback(() => {
+  const selectFile = () => {
     onSelect(file.path)
-  }, [file.path, onSelect])
+  }
 
   return (
     <CommandItem
@@ -948,9 +930,9 @@ const FileSearchCommandRow = memo(({
       <span className="min-w-0 flex-1 truncate font-mono text-xs">{file.path}</span>
     </CommandItem>
   )
-})
+}
 
-const ThreadSearchResultRow = memo(({
+const ThreadSearchResultRow = ({
   thread,
   onSelect,
 }: {
@@ -958,9 +940,9 @@ const ThreadSearchResultRow = memo(({
   onSelect: (sessionId: string) => void
 }) => {
   const { t } = useTranslation('search')
-  const selectThread = useCallback(() => {
+  const selectThread = () => {
     onSelect(thread.sessionId)
-  }, [thread.sessionId, onSelect])
+  }
 
   const title = thread.sessionTitle ?? thread.snippets[0]?.text ?? ''
   const snippet = thread.snippets[0]
@@ -996,18 +978,18 @@ const ThreadSearchResultRow = memo(({
       </span>
     </CommandItem>
   )
-})
+}
 
-const IssueSearchResultRow = memo(({
+const IssueSearchResultRow = ({
   issue,
   onSelect,
 }: {
   issue: IssueSearchHit
   onSelect: (issueId: string) => void
 }) => {
-  const selectIssue = useCallback(() => {
+  const selectIssue = () => {
     onSelect(issue.id)
-  }, [issue.id, onSelect])
+  }
 
   return (
     <CommandItem
@@ -1020,7 +1002,7 @@ const IssueSearchResultRow = memo(({
       <span className="min-w-0 flex-1 truncate text-sm">{issue.title}</span>
     </CommandItem>
   )
-})
+}
 
 function GroupHeader({ label, count }: { label: string, count: number }) {
   const { t } = useTranslation('search')

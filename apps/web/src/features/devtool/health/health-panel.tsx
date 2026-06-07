@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { getServerUrl } from '~/lib/electron'
@@ -23,7 +23,7 @@ export function HealthPanel() {
   const [health, setHealth] = useState<HealthData | null>(null)
   const [error, setError] = useState<string | null>(null)
 
-  const fetchHealth = useCallback(async () => {
+  const fetchHealth = async () => {
     try {
       const res = await fetch(`${SERVER_BASE}/health`)
       if (!res.ok) {
@@ -37,7 +37,7 @@ export function HealthPanel() {
     catch (err) {
       setError(String(err))
     }
-  }, [])
+  }
 
   useEffect(() => {
     void fetchHealth()
