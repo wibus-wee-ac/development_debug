@@ -22,7 +22,7 @@ import {
   SlidersHorizontalIcon,
 } from 'lucide-react'
 import type { ReactNode } from 'react'
-import { useCallback, useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
@@ -334,6 +334,7 @@ function DesignInput({ field, value, originalValue, onChange, onReset }: DesignI
         <input
           type="text"
           value={value}
+          aria-label={field.label}
           placeholder={readableOriginal}
           className={cn(
             'h-7 min-w-0 flex-1 rounded-md bg-background px-2 font-mono text-[11px] text-foreground outline-none ring-1 transition-colors placeholder:text-muted-foreground/45 focus:ring-primary/50',
@@ -440,7 +441,7 @@ export function BrowserAnnotationAdjustmentPanel() {
   const designChanges = adjustmentSession?.designChanges ?? {}
   const changeCount = changedCount(designChanges)
 
-  const fieldsByGroup = useMemo(() => {
+  const fieldsByGroup = (() => {
     const groups: Record<InspectorGroup, BrowserAnnotationDesignField[]> = {
       Position: [],
       Layout: [],
@@ -452,15 +453,15 @@ export function BrowserAnnotationAdjustmentPanel() {
       groups[field.group].push(field)
     }
     return groups
-  }, [])
+  })()
 
-  const handleFieldChange = useCallback((key: DesignKey, value: string) => {
+  const handleFieldChange = (key: DesignKey, value: string) => {
     updateDesignChanges({ [key]: value })
-  }, [updateDesignChanges])
+  }
 
-  const handleFieldReset = useCallback((key: DesignKey) => {
+  const handleFieldReset = (key: DesignKey) => {
     updateDesignChanges({ [key]: '' })
-  }, [updateDesignChanges])
+  }
 
   if (!adjustmentSession || !selectedElement) {
     return <EmptyInspector />

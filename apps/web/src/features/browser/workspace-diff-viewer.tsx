@@ -13,7 +13,7 @@ import {
 } from '@pierre/diffs/react'
 import WorkerUrl from '@pierre/diffs/worker/worker.js?worker&url'
 import { Columns2Icon, FileDiffIcon, Loader2Icon, Rows3Icon } from 'lucide-react'
-import { useDeferredValue, useEffect, useMemo, useRef, useState, useTransition } from 'react'
+import { useDeferredValue, useEffect, useRef, useState, useTransition } from 'react'
 
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { cn } from '~/lib/cn'
@@ -119,12 +119,12 @@ function WorkspaceDiffViewerContent({ ownerId, tabId, workspaceId, paths }: Work
   const viewerRef = useRef<CodeViewHandle<undefined>>(null)
   const pendingScrollRef = useRef<string | null>(null)
 
-  const diffData = useMemo<WorkspaceDiffData>(() => {
+  const diffData = ((): WorkspaceDiffData => {
     if (!deferredPatch || deferredPatch.trim().length === 0) {
       return { items: [], pathToItemId: new Map() }
     }
     return buildItemsFromPatch(deferredPatch)
-  }, [deferredPatch])
+  })()
   const { items, pathToItemId } = diffData
 
   // Listen for scroll-to-file requests from the Changes Panel
@@ -172,8 +172,7 @@ function WorkspaceDiffViewerContent({ ownerId, tabId, workspaceId, paths }: Work
     scrollToPath(path)
   }, [items, scrollToPath])
 
-  const options = useMemo<CodeViewOptions<undefined>>(
-    () => ({
+  const options: CodeViewOptions<undefined> = ({
       theme: { dark: 'pierre-dark', light: 'pierre-light' },
       themeType: 'system',
       diffStyle,
@@ -188,9 +187,7 @@ function WorkspaceDiffViewerContent({ ownerId, tabId, workspaceId, paths }: Work
         hunkLineCount: 1,
         lineHeight: DIFF_LINE_HEIGHT,
       },
-    }),
-    [diffStyle],
-  )
+    })
 
   if (isLoading) {
     return (

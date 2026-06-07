@@ -1,6 +1,6 @@
 import type { FileUIPart, UIMessage } from 'ai'
 import { BotIcon, SendIcon, XCircleIcon } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
@@ -91,7 +91,7 @@ export function SideConversationPanel({
   parentSessionId,
   title,
 }: SideConversationPanelProps) {
-  const viewSessionId = useMemo(() => buildSideConversationViewId(sideConversationId), [sideConversationId])
+  const viewSessionId = buildSideConversationViewId(sideConversationId)
   const messages = useChatStore(chatSelectors.messages(viewSessionId))
   const [draft, setDraft] = useState('')
   const [submitting, setSubmitting] = useState(false)
@@ -161,6 +161,7 @@ export function SideConversationPanel({
       >
         <textarea
           value={draft}
+          aria-label="Side conversation message"
           onChange={event => setDraft(event.target.value)}
           onKeyDown={(event) => {
             if (event.key === 'Enter' && !event.shiftKey) {

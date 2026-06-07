@@ -9,7 +9,6 @@ import {
   ArrowRightIcon,
   BotIcon,
   CameraIcon,
-  ChevronDownIcon,
   ExternalLinkIcon,
   FileDiffIcon,
   FileTextIcon,
@@ -17,6 +16,7 @@ import {
   GlobeIcon,
   LoaderCircleIcon,
   MessageSquarePlusIcon,
+  PanelTopIcon,
   PencilIcon,
   PlusIcon,
   RefreshCwIcon,
@@ -26,18 +26,9 @@ import {
   XIcon,
 } from 'lucide-react'
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
-import {
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useLayoutEffect,
-  useMemo,
-  useRef,
-  useState,
-} from 'react'
+import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
-import { releaseSideConversation } from '../chat/commands/chat-response-command'
 import {
   submitChatComposerFileIngress,
   submitChatPromptIngress,
@@ -63,6 +54,7 @@ import {
   useBrowserPanelStore,
 } from '~/store/browser-panel'
 
+import { releaseSideConversation } from '../chat/commands/chat-response-command'
 import type { BrowserAnnotationAdjustmentApplyDetail } from './browser-annotation-adjustment-panel'
 import {
   BROWSER_ANNOTATION_ADJUSTMENT_APPLY_EVENT,
@@ -76,6 +68,7 @@ import {
   resolveBrowserChromeStatus,
 } from './browser-panel.logic'
 import { ContextUsageReport } from './context-usage-report'
+import { PlanDocumentViewer } from './plan-document-viewer'
 import { SideConversationPanel } from './side-conversation-panel'
 import { SubagentOutputPanel } from './subagent-output-panel'
 import { WorkspaceDiffViewer } from './workspace-diff-viewer'
@@ -753,6 +746,193 @@ function createBrowserAnnotationPrompt(input: {
   ].filter(line => line !== null).join('\n')
 }
 
+interface BrowserAnnotationRailProps {
+  annotations: BrowserAnnotationRecord[]
+  collapsed: boolean
+  onCollapsedChange: (collapsed: boolean) => void
+  onClear: () => void
+  onEdit: (annotation: BrowserAnnotationRecord) => void
+  onDelete: (annotationId: string) => void
+  onSend: (annotation: BrowserAnnotationRecord) => void
+}
+
+function BrowserAnnotationRail({
+  annotations,
+  collapsed,
+  onCollapsedChange,
+  onClear,
+  onEdit,
+  onDelete,
+  onSend,
+}: BrowserAnnotationRailProps) {
+  if (annotations.length === 0) {
+    return null
+  }
+
+  if (collapsed) {
+    return (
+      <div className="absolute right-3 top-3 z-20 flex max-h-[calc(100%-1.5rem)] items-start justify-end">
+        <button
+          type="button"
+          className="relative flex size-10 animate-[browser-annotation-popup-enter_200ms_cubic-bezier(0.34,1.56,0.64,1)_both] items-center justify-center rounded-lg bg-popover/95 text-popover-foreground shadow-[0_10px_34px_rgba(0,0,0,0.16)] ring-1 ring-foreground/10 backdrop-blur-md transition-[scale,background-color,color] duration-150 ease-out hover:bg-popover active:scale-[0.96] motion-reduce:animate-none dark:shadow-[0_12px_40px_rgba(0,0,0,0.45)]"
+          onClick={() => onCollapsedChange(false)}
+          aria-label={`Show ${annotations.length} browser annotations`}
+          aria-expanded="false"
+        >
+          <MessageSquarePlusIcon className="size-4 text-primary" />
+          <span className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-medium text-primary-foreground tabular-nums shadow-sm ring-2 ring-background">
+            {annotations.length}
+          </span>
+        </button>
+      </div>
+    )
+  }
+
+  return (
+    <div className="absolute right-3 top-3 z-20 flex max-h-[calc(100%-1.5rem)] items-start justify-end">
+      <div className="flex max-h-full w-72 origin-top-right animate-[browser-annotation-popup-enter_200ms_cubic-bezier(0.34,1.56,0.64,1)_both] flex-col overflow-hidden rounded-2xl bg-popover/95 text-popover-foreground shadow-[0_4px_24px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.06)] backdrop-blur-md motion-reduce:animate-none dark:bg-[#1a1a1a]/95 dark:shadow-[0_4px_24px_rgba(0,0,0,0.34),0_0_0_1px_rgba(255,255,255,0.08)]">
+        <div className="flex h-10 shrink-0 items-center justify-between gap-2 px-2">
+          <button
+            type="button"
+            className="flex min-w-0 items-center gap-2 rounded-md px-2 py-1 text-left text-xs font-medium text-popover-foreground transition-colors hover:bg-foreground/5"
+            onClick={() => onCollapsedChange(true)}
+            aria-label="Collapse browser annotations"
+            aria-expanded="true"
+          >
+            <MessageSquarePlusIcon className="size-3.5 shrink-0 text-primary" />
+            <span className="truncate">Annotations</span>
+            <span className="rounded bg-foreground/7 px-1.5 py-0.5 text-[10px] text-muted-foreground tabular-nums">
+              {annotations.length}
+            </span>
+          </button>
+          <Button
+            type="button"
+            variant="ghost"
+            size="icon-sm"
+            className="text-muted-foreground"
+            onClick={onClear}
+            title="Clear all browser annotations"
+            aria-label="Clear all browser annotations"
+          >
+            <Trash2Icon className="size-3.5" />
+          </Button>
+        </div>
+        <div className="min-h-0 overflow-y-auto px-1.5 pb-1.5">
+          {annotations.map((annotation, index) => {
+            const previewTarget = getBrowserAnnotationPreviewTarget(annotation)
+            const designChangeCount = countBrowserAnnotationDesignChanges(
+              annotation.designChange,
+            )
+            return (
+              <div
+                key={annotation.id}
+                className="group mb-1.5 grid grid-cols-[44px_minmax(0,1fr)] gap-2 rounded-lg p-1.5 transition-[background-color,scale] duration-150 ease-out last:mb-0 hover:bg-foreground/5 active:scale-[0.99]"
+              >
+                <div className="relative h-11 overflow-hidden rounded-md bg-muted ring-1 ring-border/60">
+                  <img
+                    src={annotation.screenshot.url}
+                    alt=""
+                    className="size-full object-cover"
+                    draggable={false}
+                  />
+                  <div className="absolute inset-0 bg-black/5" aria-hidden="true" />
+                  {previewTarget?.mode === 'rect' && (
+                    <span
+                      className="absolute rounded-[2px] border border-primary bg-primary/15 shadow-[0_0_0_1px_rgba(255,255,255,0.45)]"
+                      style={previewTarget.style}
+                      aria-hidden="true"
+                    />
+                  )}
+                  {previewTarget?.mode === 'point' && (
+                    <span
+                      className="absolute size-2 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary shadow-[0_0_0_2px_rgba(255,255,255,0.7)]"
+                      style={previewTarget.style}
+                      aria-hidden="true"
+                    />
+                  )}
+                  <span
+                    className="absolute left-3 top-3 flex size-5 -translate-x-1/2 -translate-y-1/2 animate-[browser-annotation-marker-in_250ms_cubic-bezier(0.22,1,0.36,1)_both] items-center justify-center rounded-full bg-primary text-[10px] font-semibold text-primary-foreground shadow-[0_2px_6px_rgba(0,0,0,0.20),inset_0_0_0_1px_rgba(0,0,0,0.04)] motion-reduce:animate-none"
+                    style={{ animationDelay: `${index * 20}ms` }}
+                    aria-hidden="true"
+                  >
+                    {index + 1}
+                  </span>
+                </div>
+                <div className="min-w-0">
+                  <div className="flex min-w-0 items-center gap-1.5">
+                    <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-popover-foreground">
+                      {formatBrowserAnnotationAnchor(annotation.anchor)}
+                    </span>
+                    <span
+                      className={cn(
+                        'shrink-0 rounded px-1.5 py-0.5 text-[10px] tabular-nums',
+                        annotation.status === 'sent'
+                          ? 'bg-primary/10 text-primary'
+                          : 'bg-foreground/7 text-muted-foreground',
+                      )}
+                    >
+                      {annotation.status}
+                    </span>
+                  </div>
+                  <div className="mt-0.5 line-clamp-2 text-[11px] leading-4 text-muted-foreground">
+                    {formatBrowserAnnotationSummary(annotation)}
+                  </div>
+                  <div className="mt-1.5 flex items-center justify-between gap-1">
+                    <span className="truncate text-[10px] text-muted-foreground/80">
+                      {designChangeCount > 0
+                        ? `${designChangeCount} ${designChangeCount === 1 ? 'adjustment' : 'adjustments'}`
+                        : 'Browser note'}
+                    </span>
+                    <span className="flex shrink-0 items-center gap-0.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="size-6 rounded-md text-muted-foreground hover:text-foreground"
+                        onClick={() => onEdit(annotation)}
+                        title="Edit browser annotation"
+                        aria-label="Edit browser annotation"
+                      >
+                        <PencilIcon className="size-3" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="size-6 rounded-md text-muted-foreground hover:text-foreground"
+                        onClick={() => onDelete(annotation.id)}
+                        title="Delete browser annotation"
+                        aria-label="Delete browser annotation"
+                      >
+                        <Trash2Icon className="size-3" />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon-sm"
+                        className="size-6 rounded-md text-muted-foreground hover:text-foreground"
+                        onClick={() => onSend(annotation)}
+                        title={annotation.status === 'sent'
+                          ? 'Resend browser annotation'
+                          : 'Send browser annotation'}
+                        aria-label={annotation.status === 'sent'
+                          ? 'Resend browser annotation'
+                          : 'Send browser annotation'}
+                      >
+                        <SendIcon className="size-3" />
+                      </Button>
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )
+          })}
+        </div>
+      </div>
+    </div>
+  )
+}
+
 export function BrowserPanel({
   ownerId = null,
   activeSessionId = null,
@@ -761,18 +941,9 @@ export function BrowserPanel({
   onCloseLastTab,
 }: BrowserPanelProps) {
   const resolvedOwnerId = ownerId ?? DEFAULT_BROWSER_PANEL_OWNER_ID
-  const selectBrowserState = useMemo(
-    () => selectOwnerBrowserState(resolvedOwnerId),
-    [resolvedOwnerId],
-  )
-  const selectBrowserHistory = useMemo(
-    () => selectOwnerBrowserHistory(resolvedOwnerId),
-    [resolvedOwnerId],
-  )
-  const selectBrowserAnnotations = useMemo(
-    () => selectOwnerBrowserAnnotations(resolvedOwnerId),
-    [resolvedOwnerId],
-  )
+  const selectBrowserState = selectOwnerBrowserState(resolvedOwnerId)
+  const selectBrowserHistory = selectOwnerBrowserHistory(resolvedOwnerId)
+  const selectBrowserAnnotations = selectOwnerBrowserAnnotations(resolvedOwnerId)
   const browserState = useBrowserPanelStore(selectBrowserState)
   const recentHistory = useBrowserPanelStore(selectBrowserHistory)
   const requestedTab = useBrowserPanelStore(
@@ -801,7 +972,7 @@ export function BrowserPanel({
   )
   const ownerAnnotations = useBrowserPanelStore(selectBrowserAnnotations)
   const annotationTrayCollapsed = useBrowserPanelStore(
-    state => state.annotationTrayCollapsedByOwnerId[resolvedOwnerId] ?? false,
+    state => state.annotationTrayCollapsedByOwnerId[resolvedOwnerId] ?? true,
   )
 
   const viewportRef = useRef<HTMLDivElement | null>(null)
@@ -842,30 +1013,23 @@ export function BrowserPanel({
   const activePanelTabId = useBrowserPanelStore(
     state => state.owners[resolvedOwnerId]?.activeTabId ?? null,
   )
-  const browserTabs = useMemo(() => tabs.filter(isBrowserPanelTab), [tabs])
+  const browserTabs = tabs.filter(isBrowserPanelTab)
   const activePanelTab = tabs.find(tab => tab.id === activePanelTabId) ?? tabs[0] ?? null
   const activeBrowserTab = activePanelTab?.kind === 'browser' ? activePanelTab : null
   const activeBrowserTabId = activeBrowserTab?.id ?? null
   const activeBrowserTabUrl = activeBrowserTab?.lastCommittedUrl ?? activeBrowserTab?.url ?? null
   const activeBrowserTabIsBlank = isBrowserBlankTab(activeBrowserTab)
-  const activeBrowserAnnotations = useMemo(
-    () => ownerAnnotations.filter(annotation => annotation.tabId === activeBrowserTabId),
-    [activeBrowserTabId, ownerAnnotations],
-  )
+  const activeBrowserAnnotations = ownerAnnotations.filter(annotation => annotation.tabId === activeBrowserTabId)
   const activeAnnotationSession = annotationSession?.tabId === activeBrowserTabId
     ? annotationSession
     : null
   const hasActiveAnnotationSession = activeAnnotationSession !== null
-  const suggestions = useMemo(
-    () =>
-      buildBrowserAddressSuggestions({
+  const suggestions = buildBrowserAddressSuggestions({
         query: addressValue,
         activeTabId: activeBrowserTabId,
         tabs: browserTabs,
         recentHistory,
-      }),
-    [activeBrowserTabId, addressValue, browserTabs, recentHistory],
-  )
+      })
   const chromeStatus = activePanelTab?.kind === 'browser' || localError || browserState?.lastError
     ? resolveBrowserChromeStatus({
       localError,
@@ -878,7 +1042,7 @@ export function BrowserPanel({
   const chromeStatusLabel = chromeStatus?.label ?? null
   const chromeStatusTone = chromeStatus?.tone ?? null
 
-  const refreshLocalServers = useCallback(() => {
+  const refreshLocalServers = () => {
     const bridge = readBrowserBridge()
     const requestId = localServerDiscoveryRequestRef.current + 1
     localServerDiscoveryRequestRef.current = requestId
@@ -914,7 +1078,7 @@ export function BrowserPanel({
         }
         setLocalServersLoading(false)
       })
-  }, [])
+  }
 
   useEffect(() => {
     return () => {
@@ -997,11 +1161,11 @@ export function BrowserPanel({
     upsertOwnerState,
   ])
 
-  const hideNativeBrowserSurface = useCallback(() => {
+  const hideNativeBrowserSurface = () => {
     readBrowserBridge()?.setBounds({ threadId: resolvedOwnerId, bounds: null, surface: 'native' })
-  }, [resolvedOwnerId])
+  }
 
-  const syncBounds = useCallback(() => {
+  const syncBounds = () => {
     if (nativeBoundsPausedRef.current && !hasActiveAnnotationSession) {
       return
     }
@@ -1034,16 +1198,9 @@ export function BrowserPanel({
         height: rect.height,
       },
     })
-  }, [
-    activeBrowserTabIsBlank,
-    activePanelTab?.kind,
-    browserState?.open,
-    hasActiveAnnotationSession,
-    hideNativeBrowserSurface,
-    resolvedOwnerId,
-  ])
+  }
 
-  const scheduleStableBoundsSync = useCallback(() => {
+  const scheduleStableBoundsSync = () => {
     if (typeof window === 'undefined') {
       return
     }
@@ -1071,7 +1228,7 @@ export function BrowserPanel({
     }
 
     animationFrameRef.current = window.requestAnimationFrame(tick)
-  }, [hasActiveAnnotationSession, syncBounds])
+  }
 
   const scheduleStableBoundsSyncFromObserver = useEffectEvent(() => {
     scheduleStableBoundsSync()
@@ -1260,7 +1417,7 @@ export function BrowserPanel({
     }
   }, [activeBrowserTab, activeBrowserTabId, isEditingAddress])
 
-  const runBrowserAction = useCallback(async (action: () => Promise<unknown>) => {
+  const runBrowserAction = async (action: () => Promise<unknown>) => {
     setLocalError(null)
     try {
       await action()
@@ -1271,7 +1428,7 @@ export function BrowserPanel({
         setLocalError(message)
       }
     }
-  }, [])
+  }
 
   useEffect(() => {
     const bridge = readBrowserBridge()
@@ -1307,7 +1464,7 @@ export function BrowserPanel({
     })
   }, [activeSessionId, resolvedOwnerId])
 
-  const handleNewTab = useCallback(() => {
+  const handleNewTab = () => {
     const bridge = readBrowserBridge()
     if (!bridge) {
       return
@@ -1325,10 +1482,9 @@ export function BrowserPanel({
         setActiveTab(nextState.activeTabId, resolvedOwnerId)
       }
     })
-  }, [browserState?.open, resolvedOwnerId, runBrowserAction, setActiveTab, upsertOwnerState])
+  }
 
-  const handleCloseTab = useCallback(
-    (tabId: string) => {
+  const handleCloseTab = (tabId: string) => {
       const tab = tabs.find(item => item.id === tabId)
       if (!tab) {
         return
@@ -1382,20 +1538,9 @@ export function BrowserPanel({
           onCloseLastTab?.(resolvedOwnerId)
         }
       })
-    },
-    [
-      closePanelTab,
-      onCloseLastTab,
-      removeOwnerState,
-      resolvedOwnerId,
-      runBrowserAction,
-      tabs,
-      upsertOwnerState,
-    ],
-  )
+    }
 
-  const handleSelectTab = useCallback(
-    (tabId: string) => {
+  const handleSelectTab = (tabId: string) => {
       const tab = tabs.find(item => item.id === tabId)
       if (!tab) {
         return
@@ -1414,12 +1559,9 @@ export function BrowserPanel({
         upsertOwnerState(await bridge.selectTab({ threadId: resolvedOwnerId, tabId }))
         setActiveTab(tabId, resolvedOwnerId)
       })
-    },
-    [resolvedOwnerId, runBrowserAction, setActiveTab, tabs, upsertOwnerState],
-  )
+    }
 
-  const navigateActiveTab = useCallback(
-    (url: string) => {
+  const navigateActiveTab = (url: string) => {
       if (!activeBrowserTabId) {
         return
       }
@@ -1440,31 +1582,23 @@ export function BrowserPanel({
         addressDraftByTabIdRef.current.delete(activeBrowserTabId)
         setSuggestionsOpen(false)
       })
-    },
-    [activeBrowserTabId, resolvedOwnerId, runBrowserAction, upsertOwnerState],
-  )
+    }
 
-  const handleSuggestion = useCallback(
-    (suggestion: BrowserAddressSuggestion) => {
+  const handleSuggestion = (suggestion: BrowserAddressSuggestion) => {
       if (suggestion.kind === 'tab' && suggestion.tabId) {
         handleSelectTab(suggestion.tabId)
         setSuggestionsOpen(false)
         return
       }
       navigateActiveTab(suggestion.url)
-    },
-    [handleSelectTab, navigateActiveTab],
-  )
+    }
 
-  const handleAddressSubmit = useCallback(
-    (event: FormEvent<HTMLFormElement>) => {
+  const handleAddressSubmit = (event: FormEvent<HTMLFormElement>) => {
       event.preventDefault()
       navigateActiveTab(addressValue)
-    },
-    [addressValue, navigateActiveTab],
-  )
+    }
 
-  const handleCaptureScreenshot = useCallback(() => {
+  const handleCaptureScreenshot = () => {
     if (!activeBrowserTabId) {
       return
     }
@@ -1491,9 +1625,9 @@ export function BrowserPanel({
         throw new Error('The active composer is not ready for browser screenshots.')
       }
     })
-  }, [activeBrowserTabId, activeSessionId, resolvedOwnerId, runBrowserAction])
+  }
 
-  const handleStartAnnotation = useCallback(() => {
+  const handleStartAnnotation = () => {
     if (!activeBrowserTabId) {
       return
     }
@@ -1521,14 +1655,9 @@ export function BrowserPanel({
         editingAnnotationId: null,
       })
     })
-  }, [
-    activeBrowserTabId,
-    resolvedOwnerId,
-    runBrowserAction,
-    setAnnotationAdjustmentSession,
-  ])
+  }
 
-  const buildBrowserAnnotationRecordInput = useCallback(async (
+  const buildBrowserAnnotationRecordInput = async (
     input: BrowserAnnotationRuntimeEvent,
   ): Promise<Omit<BrowserAnnotationRecord, 'id' | 'createdAt' | 'updatedAt' | 'status'> | null> => {
     if (!input.anchor) {
@@ -1572,9 +1701,9 @@ export function BrowserPanel({
         height: fallbackSurfaceRect?.height ?? 0,
       },
     }
-  }, [resolvedOwnerId])
+  }
 
-  const sendBrowserAnnotationRecord = useCallback(async (record: BrowserAnnotationRecord) => {
+  const sendBrowserAnnotationRecord = async (record: BrowserAnnotationRecord) => {
     if (!activeSessionId) {
       setLocalError('Open a chat session to send browser annotations.')
       return false
@@ -1608,9 +1737,9 @@ export function BrowserPanel({
       setLocalError('The active composer is not ready for browser annotations.')
     }
     return sent
-  }, [activeSessionId])
+  }
 
-  const clearAnnotationRuntimeDraft = useCallback(() => {
+  const clearAnnotationRuntimeDraft = () => {
     if (!activeBrowserTabId) {
       return
     }
@@ -1618,12 +1747,9 @@ export function BrowserPanel({
       threadId: resolvedOwnerId,
       tabId: activeBrowserTabId,
     }).catch(() => { })
-  }, [
-    activeBrowserTabId,
-    resolvedOwnerId,
-  ])
+  }
 
-  const stopAnnotationRuntime = useCallback((tabId: string | null = activeBrowserTabId) => {
+  const stopAnnotationRuntime = (tabId: string | null = activeBrowserTabId) => {
     if (!tabId) {
       return
     }
@@ -1631,31 +1757,22 @@ export function BrowserPanel({
       threadId: resolvedOwnerId,
       tabId,
     }).catch(() => { })
-  }, [activeBrowserTabId, resolvedOwnerId])
+  }
 
-  const closeAnnotationSession = useCallback(() => {
+  const closeAnnotationSession = () => {
     clearAnnotationRuntimeDraft()
     setAnnotationAdjustmentSession(null)
     setAnnotationSession(null)
     setAnnotationSubmitting(false)
     scheduleStableBoundsSync()
-  }, [
-    clearAnnotationRuntimeDraft,
-    scheduleStableBoundsSync,
-    setAnnotationAdjustmentSession,
-  ])
+  }
 
-  const handleCancelAnnotation = useCallback(() => {
+  const handleCancelAnnotation = () => {
     stopAnnotationRuntime(activeAnnotationSession?.tabId ?? activeBrowserTabId)
     closeAnnotationSession()
-  }, [
-    activeAnnotationSession?.tabId,
-    activeBrowserTabId,
-    closeAnnotationSession,
-    stopAnnotationRuntime,
-  ])
+  }
 
-  const handleRuntimeAnnotationCommit = useCallback((event: BrowserAnnotationRuntimeEvent) => {
+  const handleRuntimeAnnotationCommit = (event: BrowserAnnotationRuntimeEvent) => {
     void (async () => {
       if (event.type === 'submit') {
         setAnnotationSubmitting(true)
@@ -1690,17 +1807,9 @@ export function BrowserPanel({
       markAnnotationSent(annotationId, resolvedOwnerId)
       closeAnnotationSession()
     })()
-  }, [
-    buildBrowserAnnotationRecordInput,
-    annotationSession?.editingAnnotationId,
-    closeAnnotationSession,
-    markAnnotationSent,
-    resolvedOwnerId,
-    saveAnnotation,
-    sendBrowserAnnotationRecord,
-  ])
+  }
 
-  const handleApplyAnnotationAdjustment = useCallback((
+  const handleApplyAnnotationAdjustment = (
     detail: BrowserAnnotationAdjustmentApplyDetail,
   ) => {
     if (detail.ownerId !== resolvedOwnerId || detail.tabId !== activeBrowserTabId) {
@@ -1735,22 +1844,15 @@ export function BrowserPanel({
       sourceUrl: activeBrowserTabUrl,
       sourceTitle: activeBrowserTab ? getTabTitle(activeBrowserTab) : activeBrowserTabUrl,
     })
-  }, [
-    activeBrowserTab,
-    activeBrowserTabId,
-    activeBrowserTabUrl,
-    annotationAdjustmentSession,
-    handleRuntimeAnnotationCommit,
-    resolvedOwnerId,
-  ])
+  }
 
-  const handleToggleAnnotation = useCallback(() => {
+  const handleToggleAnnotation = () => {
     if (hasActiveAnnotationSession) {
       handleCancelAnnotation()
       return
     }
     handleStartAnnotation()
-  }, [handleCancelAnnotation, handleStartAnnotation, hasActiveAnnotationSession])
+  }
 
   useEffect(() => {
     const handleEvent = (event: Event) => {
@@ -1823,7 +1925,7 @@ export function BrowserPanel({
     setAnnotationAdjustmentSession,
   ])
 
-  const handleEditSavedAnnotation = useCallback((annotation: BrowserAnnotationRecord) => {
+  const handleEditSavedAnnotation = (annotation: BrowserAnnotationRecord) => {
     if (activeBrowserTabId !== annotation.tabId) {
       return
     }
@@ -1853,19 +1955,18 @@ export function BrowserPanel({
       tabId: annotation.tabId,
       editingAnnotationId: annotation.id,
     })
-  }, [activeBrowserTabId, resolvedOwnerId, runBrowserAction, setAnnotationAdjustmentSession])
+  }
 
-  const handleSendSavedAnnotation = useCallback((annotation: BrowserAnnotationRecord) => {
+  const handleSendSavedAnnotation = (annotation: BrowserAnnotationRecord) => {
     void (async () => {
       const sent = await sendBrowserAnnotationRecord(annotation)
       if (sent) {
         markAnnotationSent(annotation.id, resolvedOwnerId)
       }
     })()
-  }, [markAnnotationSent, resolvedOwnerId, sendBrowserAnnotationRecord])
+  }
 
-  const handlePanelKeyDown = useCallback(
-    (event: ReactKeyboardEvent<HTMLDivElement>) => {
+  const handlePanelKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
       const isAnnotationToggle
         = event.nativeEvent.metaKey
           && event.nativeEvent.shiftKey
@@ -1911,11 +2012,9 @@ export function BrowserPanel({
       event.stopPropagation()
       event.nativeEvent.stopImmediatePropagation()
       handleSelectTab(targetTab.id)
-    },
-    [activePanelTab, handleCloseTab, handleSelectTab, handleToggleAnnotation, tabs],
-  )
+    }
 
-  const handleOpenContextUsageReport = useCallback(() => {
+  const handleOpenContextUsageReport = () => {
     if (!activeSessionId) {
       return
     }
@@ -1924,7 +2023,7 @@ export function BrowserPanel({
       sessionTitle: activeSessionTitle,
       ownerId: resolvedOwnerId,
     })
-  }, [activeSessionId, activeSessionTitle, openContextUsageReportTab, resolvedOwnerId])
+  }
 
   if (!isElectron) {
     return (
@@ -1991,6 +2090,9 @@ export function BrowserPanel({
                 )}
                 {tab.kind === 'context-usage-report' && (
                   <GaugeIcon className="size-3 shrink-0 text-muted-foreground/60" />
+                )}
+                {tab.kind === 'plan-document' && (
+                  <PanelTopIcon className="size-3 shrink-0 text-muted-foreground/60" />
                 )}
                 <span className="truncate">{getPanelTabTitle(tab)}</span>
                 {tab.kind === 'browser'
@@ -2234,146 +2336,20 @@ export function BrowserPanel({
                   )}
                 </div>
               )}
+              {!hasActiveAnnotationSession && (
+                <BrowserAnnotationRail
+                  annotations={activeBrowserAnnotations}
+                  collapsed={annotationTrayCollapsed}
+                  onCollapsedChange={collapsed =>
+                    setAnnotationTrayCollapsed(collapsed, resolvedOwnerId)}
+                  onClear={() =>
+                    clearAnnotations({ ownerId: resolvedOwnerId, tabId: activeBrowserTabId })}
+                  onEdit={handleEditSavedAnnotation}
+                  onDelete={annotationId => deleteAnnotation(annotationId, resolvedOwnerId)}
+                  onSend={handleSendSavedAnnotation}
+                />
+              )}
             </div>
-
-            {activeBrowserAnnotations.length > 0 && (
-              <div className="relative z-20 shrink-0 border-t border-border/50 bg-card/95 backdrop-blur">
-                <div className="flex h-9 items-center justify-between gap-2 px-2">
-                  <button
-                    type="button"
-                    className="flex min-w-0 items-center gap-2 rounded-md px-1.5 py-1 text-left text-xs font-medium text-foreground transition-colors hover:bg-foreground/5"
-                    onClick={() =>
-                      setAnnotationTrayCollapsed(!annotationTrayCollapsed, resolvedOwnerId)}
-                    aria-expanded={!annotationTrayCollapsed}
-                  >
-                    <ChevronDownIcon
-                      className={cn(
-                        'size-3.5 shrink-0 text-muted-foreground transition-transform',
-                        annotationTrayCollapsed && '-rotate-90',
-                      )}
-                    />
-                    <MessageSquarePlusIcon className="size-3.5 shrink-0 text-primary" />
-                    <span className="truncate">Annotations</span>
-                    <span className="rounded bg-foreground/7 px-1.5 py-0.5 text-[10px] text-muted-foreground tabular-nums">
-                      {activeBrowserAnnotations.length}
-                    </span>
-                  </button>
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    className="gap-1.5 text-muted-foreground"
-                    onClick={() =>
-                      clearAnnotations({ ownerId: resolvedOwnerId, tabId: activeBrowserTabId })}
-                  >
-                    <Trash2Icon className="size-3.5" />
-                    Clear all
-                  </Button>
-                </div>
-                {!annotationTrayCollapsed && (
-                  <div className="flex max-h-36 gap-2 overflow-x-auto px-2 pb-2">
-                    {activeBrowserAnnotations.map((annotation) => {
-                      const previewTarget = getBrowserAnnotationPreviewTarget(annotation)
-                      const designChangeCount = countBrowserAnnotationDesignChanges(
-                        annotation.designChange,
-                      )
-                      return (
-                        <div
-                          key={annotation.id}
-                          className="w-80 max-w-[calc(100vw-32px)] shrink-0 overflow-hidden rounded-lg bg-background shadow-sm ring-1 ring-border/70"
-                        >
-                          <div className="relative h-20 overflow-hidden border-b border-border/50 bg-muted">
-                            <img
-                              src={annotation.screenshot.url}
-                              alt=""
-                              className="size-full object-cover"
-                              draggable={false}
-                            />
-                            <div className="absolute inset-0 bg-black/5" aria-hidden="true" />
-                            {previewTarget?.mode === 'rect' && (
-                              <span
-                                className="absolute rounded-sm border border-primary bg-primary/15 shadow-[0_0_0_1px_rgba(255,255,255,0.45)]"
-                                style={previewTarget.style}
-                                aria-hidden="true"
-                              />
-                            )}
-                            {previewTarget?.mode === 'point' && (
-                              <span
-                                className="absolute size-3 -translate-x-1/2 -translate-y-1/2 rounded-full bg-primary shadow-[0_0_0_3px_rgba(255,255,255,0.65)]"
-                                style={previewTarget.style}
-                                aria-hidden="true"
-                              />
-                            )}
-                            {designChangeCount > 0 && (
-                              <span className="absolute bottom-1.5 right-1.5 rounded bg-background/90 px-1.5 py-0.5 text-[10px] text-foreground shadow-sm ring-1 ring-border/70 backdrop-blur">
-                                {designChangeCount}
-                                {' '}
-                                {designChangeCount === 1 ? 'adjustment' : 'adjustments'}
-                              </span>
-                            )}
-                          </div>
-                          <div className="p-2.5">
-                            <div className="flex items-start gap-2">
-                              <MessageSquarePlusIcon className="mt-0.5 size-3.5 shrink-0 text-primary" />
-                              <div className="min-w-0 flex-1">
-                                <div className="flex min-w-0 items-center gap-1.5">
-                                  <span className="truncate text-xs font-medium text-foreground">
-                                    {formatBrowserAnnotationAnchor(annotation.anchor)}
-                                  </span>
-                                  <span
-                                    className={cn(
-                                      'shrink-0 rounded px-1.5 py-0.5 text-[10px] tabular-nums',
-                                      annotation.status === 'sent'
-                                        ? 'bg-primary/10 text-primary'
-                                        : 'bg-foreground/7 text-muted-foreground',
-                                    )}
-                                  >
-                                    {annotation.status}
-                                  </span>
-                                </div>
-                                <div className="mt-1 line-clamp-2 text-xs text-muted-foreground">
-                                  {formatBrowserAnnotationSummary(annotation)}
-                                </div>
-                              </div>
-                            </div>
-                            <div className="mt-2 flex items-center justify-end gap-1">
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                onClick={() => handleEditSavedAnnotation(annotation)}
-                                aria-label="Edit browser annotation"
-                              >
-                                <PencilIcon className="size-3.5" />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="ghost"
-                                size="icon-sm"
-                                onClick={() => deleteAnnotation(annotation.id, resolvedOwnerId)}
-                                aria-label="Delete browser annotation"
-                              >
-                                <Trash2Icon className="size-3.5" />
-                              </Button>
-                              <Button
-                                type="button"
-                                variant="outline"
-                                size="sm"
-                                className="gap-1.5"
-                                onClick={() => handleSendSavedAnnotation(annotation)}
-                              >
-                                <SendIcon className="size-3.5" />
-                                {annotation.status === 'sent' ? 'Resend' : 'Send'}
-                              </Button>
-                            </div>
-                          </div>
-                        </div>
-                      )
-                    })}
-                  </div>
-                )}
-              </div>
-            )}
           </div>
         )}
 
@@ -2426,6 +2402,13 @@ export function BrowserPanel({
           <ContextUsageReport
             sessionId={activePanelTab.sessionId}
             sessionTitle={activePanelTab.sessionTitle}
+          />
+        )}
+
+        {activePanelTab?.kind === 'plan-document' && (
+          <PlanDocumentViewer
+            title={activePanelTab.title}
+            text={activePanelTab.text}
           />
         )}
 

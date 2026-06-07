@@ -12,7 +12,7 @@ import type {
   DragEvent as ReactDragEvent,
   PointerEvent as ReactPointerEvent,
 } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Textarea } from '~/components/ui/textarea'
@@ -74,7 +74,13 @@ interface BrowserAnnotationAttachedImage {
 const MIN_REGION_SIZE = 12
 const PANEL_WIDTH = 360
 const PANEL_MIN_VISIBLE = 72
+const POPUP_ENTER_MS = 200
+const POPUP_EXIT_MS = 150
+const POPUP_FOCUS_DELAY_MS = 50
+const POPUP_SHAKE_MS = 250
 let nextAttachedImageId = 0
+
+type PopupAnimationState = 'initial' | 'enter' | 'entered' | 'exit'
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
@@ -192,6 +198,22 @@ function hasDesignChanges(designChange: BrowserAnnotationDesignChange | null): b
     && Object.values(designChange).some(value => typeof value === 'string' && value.trim())
 }
 
+function focusBypassingTraps(element: HTMLElement | null) {
+  if (!element) {
+    return
+  }
+  const trap = (event: Event) => event.stopImmediatePropagation()
+  document.addEventListener('focusin', trap, true)
+  document.addEventListener('focusout', trap, true)
+  try {
+    element.focus()
+  }
+  finally {
+    document.removeEventListener('focusin', trap, true)
+    document.removeEventListener('focusout', trap, true)
+  }
+}
+
 export function BrowserAnnotationOverlay({
   ownerId,
   tabId,
@@ -206,7 +228,10 @@ export function BrowserAnnotationOverlay({
 }: BrowserAnnotationOverlayProps) {
   const surfaceRef = useRef<HTMLDivElement | null>(null)
   const imageInputRef = useRef<HTMLInputElement | null>(null)
+  const textareaRef = useRef<HTMLTextAreaElement | null>(null)
   const previewDialogRef = useRef<HTMLDialogElement | null>(null)
+  const cancelTimerRef = useRef<number | null>(null)
+  const shakeTimerRef = useRef<number | null>(null)
   const setAnnotationAdjustmentSession = useBrowserPanelStore(state => state.setAnnotationAdjustmentSession)
   const openAsideTab = useLayoutStore(state => state.openAsideTab)
   const setAsideOpen = useLayoutStore(state => state.setAsideOpen)
@@ -228,6 +253,8 @@ export function BrowserAnnotationOverlay({
   const [editorDrag, setEditorDrag] = useState<EditorDragState | null>(null)
   const [hoveredElement, setHoveredElement] = useState<BrowserAnnotationElement | null>(null)
   const [previewImage, setPreviewImage] = useState<BrowserAnnotationAttachedImage | null>(null)
+  const [popupAnimationState, setPopupAnimationState] = useState<PopupAnimationState>('initial')
+  const [isShaking, setIsShaking] = useState(false)
 
   const visibleRegion = drag ? buildRegion(drag) : anchor?.kind === 'region' ? anchor : null
   const selectedElement = anchor?.kind === 'element' ? anchor.element : null
@@ -239,10 +266,10 @@ export function BrowserAnnotationOverlay({
     ? adjustmentSession.designChanges
     : null
   const framedElement = selectedElement ?? hoveredElement
-  const anchoredEditor = useMemo(() => editorPosition(anchor, surfaceSize), [anchor, surfaceSize])
+  const anchoredEditor = editorPosition(anchor, surfaceSize)
   const editor = editorOverride ?? anchoredEditor
 
-  const readSurfacePoint = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+  const readSurfacePoint = (event: ReactPointerEvent<HTMLDivElement>) => {
     const rect = surfaceRef.current?.getBoundingClientRect()
     if (!rect) {
       return null
@@ -251,7 +278,7 @@ export function BrowserAnnotationOverlay({
       x: clamp(event.clientX - rect.left, 0, rect.width),
       y: clamp(event.clientY - rect.top, 0, rect.height),
     }
-  }, [])
+  }
 
   const clearOwnedAdjustmentSession = useCallback(() => {
     const currentSession = useBrowserPanelStore.getState().annotationAdjustmentSession
@@ -264,8 +291,43 @@ export function BrowserAnnotationOverlay({
     }
   }, [initialAnnotation?.id, ownerId, setAnnotationAdjustmentSession, tabId])
 
-  const handlePointerDown = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+  const focusTextarea = useCallback(() => {
+    const textarea = textareaRef.current
+    focusBypassingTraps(textarea)
+    if (textarea) {
+      textarea.selectionStart = textarea.selectionEnd = textarea.value.length
+      textarea.scrollTop = textarea.scrollHeight
+    }
+  }, [])
+
+  const shakeEditor = useCallback(() => {
+    if (shakeTimerRef.current !== null) {
+      window.clearTimeout(shakeTimerRef.current)
+    }
+    setIsShaking(true)
+    shakeTimerRef.current = window.setTimeout(() => {
+      setIsShaking(false)
+      focusTextarea()
+    }, POPUP_SHAKE_MS)
+  }, [focusTextarea])
+
+  const cancelWithExit = useCallback(() => {
+    if (cancelTimerRef.current !== null) {
+      return
+    }
+    setPopupAnimationState('exit')
+    cancelTimerRef.current = window.setTimeout(() => {
+      onCancel()
+    }, POPUP_EXIT_MS)
+  }, [onCancel])
+
+  const handlePointerDown = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!event.isPrimary || event.button !== 0) {
+      return
+    }
+    if (anchor) {
+      event.preventDefault()
+      shakeEditor()
       return
     }
     const point = readSurfacePoint(event)
@@ -280,9 +342,9 @@ export function BrowserAnnotationOverlay({
       currentX: point.x,
       currentY: point.y,
     })
-  }, [readSurfacePoint])
+  }
 
-  const handlePointerMove = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+  const handlePointerMove = (event: ReactPointerEvent<HTMLDivElement>) => {
     const point = readSurfacePoint(event)
     if (!point) {
       return
@@ -297,9 +359,9 @@ export function BrowserAnnotationOverlay({
       currentX: point.x,
       currentY: point.y,
     })
-  }, [drag, elements, readSurfacePoint])
+  }
 
-  const handlePointerUp = useCallback((event: ReactPointerEvent<HTMLDivElement>) => {
+  const handlePointerUp = (event: ReactPointerEvent<HTMLDivElement>) => {
     if (!drag) {
       return
     }
@@ -337,18 +399,9 @@ export function BrowserAnnotationOverlay({
       setEditorOverride(null)
     }
     setDrag(null)
-  }, [
-    clearOwnedAdjustmentSession,
-    drag,
-    elements,
-    ownerId,
-    setAnnotationAdjustmentSession,
-    openAsideTab,
-    setAsideOpen,
-    tabId,
-  ])
+  }
 
-  const handleEditorPointerMove = useCallback((event: ReactPointerEvent<HTMLFormElement>) => {
+  const handleEditorPointerMove = (event: ReactPointerEvent<HTMLFormElement>) => {
     if (!editorDrag) {
       return
     }
@@ -359,16 +412,16 @@ export function BrowserAnnotationOverlay({
       left: clamp(nextLeft, 8, Math.max(8, surfaceSize.width - PANEL_MIN_VISIBLE)),
       top: clamp(nextTop, 8, Math.max(8, surfaceSize.height - PANEL_MIN_VISIBLE)),
     })
-  }, [editorDrag, surfaceSize.height, surfaceSize.width])
+  }
 
-  const handleEditorPointerUp = useCallback((event: ReactPointerEvent<HTMLFormElement>) => {
+  const handleEditorPointerUp = (event: ReactPointerEvent<HTMLFormElement>) => {
     if (!editorDrag) {
       return
     }
     event.preventDefault()
     event.currentTarget.releasePointerCapture(event.pointerId)
     setEditorDrag(null)
-  }, [editorDrag])
+  }
 
   const canSubmit = Boolean(anchor)
     && (draft.trim().length > 0 || attachedImages.length > 0 || hasDesignChanges(activeDesignChange))
@@ -385,7 +438,7 @@ export function BrowserAnnotationOverlay({
     }
   }, [activeDesignChange, anchor, attachedImages, canSubmit, draft])
 
-  const appendImageFiles = useCallback(async (files: File[]) => {
+  const appendImageFiles = async (files: File[]) => {
     if (files.length === 0) {
       return
     }
@@ -395,24 +448,24 @@ export function BrowserAnnotationOverlay({
       return
     }
     setAttachedImages(previous => [...previous, ...nextImages])
-  }, [])
+  }
 
-  const handleImagesSelected = useCallback(async (event: ChangeEvent<HTMLInputElement>) => {
+  const handleImagesSelected = async (event: ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(event.target.files ?? [])
     event.target.value = ''
     await appendImageFiles(files)
-  }, [appendImageFiles])
+  }
 
-  const handlePaste = useCallback((event: ReactClipboardEvent<HTMLFormElement>) => {
+  const handlePaste = (event: ReactClipboardEvent<HTMLFormElement>) => {
     const files = Array.from(event.clipboardData.files).filter(file => file.type.startsWith('image/'))
     if (files.length === 0) {
       return
     }
     event.preventDefault()
     void appendImageFiles(files)
-  }, [appendImageFiles])
+  }
 
-  const handleDrag = useCallback((event: ReactDragEvent<HTMLFormElement>) => {
+  const handleDrag = (event: ReactDragEvent<HTMLFormElement>) => {
     const hasImages = Array.from(event.dataTransfer.items)
       .some(item => item.kind === 'file' && item.type.startsWith('image/'))
     if (!hasImages) {
@@ -422,19 +475,20 @@ export function BrowserAnnotationOverlay({
     event.stopPropagation()
     event.dataTransfer.dropEffect = 'copy'
     return true
-  }, [])
+  }
 
   useEffect(() => {
     const handleKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault()
-        onCancel()
+        cancelWithExit()
         return
       }
       if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
         event.preventDefault()
         const input = buildSubmitInput()
         if (!input) {
+          shakeEditor()
           return
         }
         onSubmit(input)
@@ -445,10 +499,40 @@ export function BrowserAnnotationOverlay({
     return () => {
       window.removeEventListener('keydown', handleKeyDown, true)
     }
-  }, [buildSubmitInput, onCancel, onSubmit])
+  }, [buildSubmitInput, cancelWithExit, onSubmit, shakeEditor])
+
+  useEffect(() => {
+    if (!anchor) {
+      return
+    }
+    if (cancelTimerRef.current !== null) {
+      window.clearTimeout(cancelTimerRef.current)
+      cancelTimerRef.current = null
+    }
+    setIsShaking(false)
+    setPopupAnimationState('initial')
+    const enterTimer = window.setTimeout(() => {
+      setPopupAnimationState('enter')
+    }, 0)
+    const enteredTimer = window.setTimeout(() => {
+      setPopupAnimationState('entered')
+    }, POPUP_ENTER_MS)
+    const focusTimer = window.setTimeout(focusTextarea, POPUP_FOCUS_DELAY_MS)
+    return () => {
+      window.clearTimeout(enterTimer)
+      window.clearTimeout(enteredTimer)
+      window.clearTimeout(focusTimer)
+    }
+  }, [anchor, focusTextarea])
 
   useEffect(() => {
     return () => {
+      if (cancelTimerRef.current !== null) {
+        window.clearTimeout(cancelTimerRef.current)
+      }
+      if (shakeTimerRef.current !== null) {
+        window.clearTimeout(shakeTimerRef.current)
+      }
       clearOwnedAdjustmentSession()
     }
   }, [clearOwnedAdjustmentSession])
@@ -499,7 +583,7 @@ export function BrowserAnnotationOverlay({
         )}
         {anchor?.kind === 'point' && (
           <span
-            className="pointer-events-none absolute flex size-6 -translate-x-1/2 -translate-y-1/2 items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm ring-2 ring-primary/25 transition-[left,top,transform] duration-200 ease-out"
+            className="pointer-events-none absolute flex size-6 -translate-x-1/2 -translate-y-1/2 animate-[browser-annotation-marker-in_250ms_cubic-bezier(0.22,1,0.36,1)_both] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm ring-2 ring-primary/25 transition-[left,top,transform] duration-200 ease-out motion-reduce:animate-none"
             style={{ left: anchor.x, top: anchor.y }}
             aria-hidden="true"
           >
@@ -522,7 +606,17 @@ export function BrowserAnnotationOverlay({
 
       {anchor && (
         <form
-          className="absolute w-[360px] rounded-lg bg-popover/95 p-2.5 text-popover-foreground shadow-[0_16px_50px_rgba(0,0,0,0.18)] ring-1 ring-foreground/10 backdrop-blur-md dark:shadow-[0_18px_60px_rgba(0,0,0,0.45)]"
+          className={cn(
+            'absolute w-[360px] origin-top-left rounded-2xl bg-popover/95 p-3 text-popover-foreground opacity-0 shadow-[0_4px_24px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.06)] backdrop-blur-md dark:bg-[#1a1a1a]/95 dark:shadow-[0_4px_24px_rgba(0,0,0,0.34),0_0_0_1px_rgba(255,255,255,0.08)]',
+            'motion-reduce:animate-none motion-reduce:opacity-100',
+            popupAnimationState === 'enter'
+            && 'animate-[browser-annotation-popup-enter_200ms_cubic-bezier(0.34,1.56,0.64,1)_forwards]',
+            popupAnimationState === 'entered' && 'opacity-100',
+            popupAnimationState === 'exit'
+            && 'animate-[browser-annotation-popup-exit_150ms_ease-in_forwards]',
+            popupAnimationState === 'entered' && isShaking
+            && 'animate-[browser-annotation-popup-shake_250ms_ease-out]',
+          )}
           data-testid="browser-annotation-editor"
           style={{ left: editor.left, top: editor.top }}
           onPointerMove={handleEditorPointerMove}
@@ -551,6 +645,7 @@ export function BrowserAnnotationOverlay({
             event.preventDefault()
             const input = buildSubmitInput()
             if (!input) {
+              shakeEditor()
               return
             }
             onSubmit(input)
@@ -598,7 +693,7 @@ export function BrowserAnnotationOverlay({
               variant="ghost"
               size="icon-sm"
               className="-mr-1 text-muted-foreground"
-              onClick={onCancel}
+              onClick={cancelWithExit}
               aria-label="Close"
             >
               <XIcon className="size-3.5" />
@@ -622,11 +717,11 @@ export function BrowserAnnotationOverlay({
             </div>
           )}
           <Textarea
+            ref={textareaRef}
             value={draft}
             onChange={event => setDraft(event.target.value)}
             placeholder="Comment"
-            className="min-h-24 resize-none bg-background/70 text-sm shadow-none"
-            autoFocus
+            className="min-h-24 resize-none rounded-lg bg-background/70 text-sm shadow-none transition-[border-color,box-shadow] duration-150 focus-visible:ring-primary/45 dark:bg-white/5"
           />
           {attachedImages.length > 0 && (
             <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
@@ -696,7 +791,9 @@ export function BrowserAnnotationOverlay({
                   const input = buildSubmitInput()
                   if (input) {
                     onSave(input)
+                    return
                   }
+                  shakeEditor()
                 }}
               >
                 Save
@@ -716,7 +813,7 @@ export function BrowserAnnotationOverlay({
           'absolute bottom-3 left-3 rounded-md bg-background/90 px-2.5 py-1.5 text-xs text-muted-foreground shadow-lg ring-1 ring-border/70 backdrop-blur',
           'transition-colors hover:bg-background hover:text-foreground',
         )}
-        onClick={onCancel}
+        onClick={cancelWithExit}
       >
         Exit annotate
       </button>

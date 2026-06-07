@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query'
 import { ChevronDownIcon, ChevronRightIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { useCallback, useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
 import { cn } from '~/lib/cn'
@@ -116,14 +116,14 @@ export function ContextUsageReport({
   })
 
   const usage = data?.usage ?? null
-  const aggregate = useMemo(() => readContextAggregate(usage), [usage])
-  const sections = useMemo(() => readContextSections(usage), [usage])
-  const sectionShareTotal = useMemo(() => readSectionShareTotal(sections), [sections])
+  const aggregate = readContextAggregate(usage)
+  const sections = readContextSections(usage)
+  const sectionShareTotal = readSectionShareTotal(sections)
   const expandedAll = sections.length > 0
     && sections.every(section => expandedSectionKinds.has(section.kind))
   const largestSection = sections[0] ?? null
 
-  const toggleSection = useCallback((kind: string) => {
+  const toggleSection = (kind: string) => {
     setExpandedSectionKinds((current) => {
       const next = new Set(current)
       if (next.has(kind)) {
@@ -134,16 +134,16 @@ export function ContextUsageReport({
       }
       return next
     })
-  }, [])
+  }
 
-  const toggleAll = useCallback(() => {
+  const toggleAll = () => {
     setExpandedSectionKinds(() => {
       if (expandedAll) {
         return new Set()
       }
       return new Set(sections.map(section => section.kind))
     })
-  }, [expandedAll, sections])
+  }
 
   if (isLoading || isError || !aggregate || !usage) {
     return (

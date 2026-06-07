@@ -123,6 +123,17 @@ export interface BrowserContextUsageReportTab {
   favicon: null
 }
 
+export interface BrowserPlanDocumentTab {
+  kind: 'plan-document'
+  id: string
+  sessionId: string | null
+  toolCallId: string
+  title: string
+  text: string
+  loading: false
+  favicon: null
+}
+
 export type BrowserPanelTab
   = | BrowserWebTab
     | BrowserWorkspaceFileTab
@@ -130,6 +141,7 @@ export type BrowserPanelTab
     | BrowserSubagentTab
     | BrowserSideConversationTab
     | BrowserContextUsageReportTab
+    | BrowserPlanDocumentTab
 
 export interface BrowserHistoryEntry {
   url: string
@@ -364,6 +376,13 @@ interface BrowserPanelState {
   openContextUsageReportTab: (input: {
     sessionId: string
     sessionTitle?: string | null
+    ownerId?: string | null
+  }) => string
+  openPlanDocumentTab: (input: {
+    sessionId?: string | null
+    toolCallId: string
+    title?: string
+    text: string
     ownerId?: string | null
   }) => string
   requestScrollToFilePath: (input: { path: string, tabId: string }) => void
@@ -932,6 +951,37 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
           sessionId,
           sessionTitle: sessionTitle ?? null,
           title: 'Context Usage Report',
+          loading: false,
+          favicon: null,
+        }
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            tabs: [...ownerState.tabs, tab],
+            activeTabId: tab.id,
+          })
+        })
+        return tab.id
+      },
+
+      openPlanDocumentTab: ({ sessionId, toolCallId, title, text, ownerId: ownerIdInput }) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        const ownerState = getOwnerState(get(), ownerId)
+        const existing = ownerState.tabs.find(
+          tab => tab.kind === 'plan-document' && tab.toolCallId === toolCallId,
+        )
+        if (existing) {
+          get().setActiveTab(existing.id, ownerId)
+          return existing.id
+        }
+        const tab: BrowserPlanDocumentTab = {
+          kind: 'plan-document',
+          id: `plan-document:${toolCallId}`,
+          sessionId: sessionId ?? null,
+          toolCallId,
+          title: title ?? 'Plan document',
+          text,
           loading: false,
           favicon: null,
         }

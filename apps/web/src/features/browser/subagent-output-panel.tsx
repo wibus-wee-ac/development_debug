@@ -1,6 +1,6 @@
 import { useQuery } from '@tanstack/react-query'
 import { BotIcon, CheckCircle2Icon, LoaderCircleIcon, XCircleIcon } from 'lucide-react'
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef } from 'react'
+import { useEffect, useLayoutEffect, useRef } from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
 import { cn } from '~/lib/cn'
@@ -25,10 +25,7 @@ export function SubagentOutputPanel({
 }: SubagentOutputPanelProps) {
   const outputScrollRef = useRef<HTMLDivElement | null>(null)
   const shouldStickToBottomRef = useRef(true)
-  const viewSessionId = useMemo(
-    () => buildProviderThreadViewSessionId(sessionId, threadId),
-    [sessionId, threadId],
-  )
+  const viewSessionId = buildProviderThreadViewSessionId(sessionId, threadId)
 
   const threadQuery = useQuery({
     queryKey: providerThreadQueryKey(sessionId, threadId),
@@ -107,22 +104,22 @@ export function SubagentOutputPanel({
   const statusLabel = formatAgentStatus(status)
   const hasError = threadQuery.isError || turnsQuery.isError
 
-  const scrollOutputToBottom = useCallback(() => {
+  const scrollOutputToBottom = () => {
     const viewport = outputScrollRef.current
     if (!viewport) {
       return
     }
     viewport.scrollTop = viewport.scrollHeight
-  }, [])
+  }
 
-  const handleOutputScroll = useCallback(() => {
+  const handleOutputScroll = () => {
     const viewport = outputScrollRef.current
     if (!viewport) {
       return
     }
     const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
     shouldStickToBottomRef.current = distanceFromBottom < 48
-  }, [])
+  }
 
   useLayoutEffect(() => {
     shouldStickToBottomRef.current = true
