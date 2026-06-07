@@ -32,6 +32,27 @@ pnpm test:server
 
 If repo-wide server typecheck is blocked by unrelated concurrent work, report the exact unrelated files and still run narrower checks that cover your changes where possible.
 
+## Codex App-Server Runtime
+
+When changing `apps/server/src/modules/chat-runtime-providers/codex`, keep the server adapter aligned with the desktop-vendored Codex runtime:
+
+- Do not depend on the user's global `codex` command for Desktop runtime behavior.
+- Desktop owns the bundled executable path and injects it as `CRADLE_CODEX_APP_SERVER_PATH`; the server Codex client should default to that env var and only fall back to `codex` for non-desktop/dev contexts.
+- Keep the launch shape as `codex app-server --listen stdio://`. Do not add `--analytics-default-enabled`.
+- Use the full Codex CLI release asset (`codex-*`), not the standalone `codex-app-server-*` asset, unless the adapter no longer needs CLI-only behavior. The current adapter needs `codex app-server --config ...` and protocol generation needs `codex app-server generate-ts`.
+- Runtime download/update is handled by `apps/desktop/scripts/sync-codex-runtime.mjs`; generated binaries and runtime manifests under `apps/desktop/resources/codex/**` are build artifacts and should stay ignored.
+
+Codex runtime update workflow:
+
+```bash
+pnpm --filter @cradle/desktop sync:codex-runtime
+pnpm --filter @cradle/server generate:codex-app-server-protocol
+pnpm --filter @cradle/server typecheck
+pnpm --filter @cradle/server exec vitest run src/modules/chat-runtime-providers/codex/app-server-client.test.ts src/modules/chat-runtime-providers/codex/app-server-capabilities.test.ts src/modules/chat-runtime-providers/codex/provider.test.ts
+```
+
+For reproducible release work, set `CRADLE_CODEX_RELEASE_TAG=rust-vX.Y.Z` for both sync and generation. If regenerated protocol removes deprecated fields, delete those request fields and update tests rather than preserving compatibility shims.
+
 ## Generated CLI Metadata
 
 Cradle CLI is generated from the server OpenAPI document. Add `x-cradle-cli` only to routes that should become stable Agent-facing shell commands.

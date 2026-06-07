@@ -14,6 +14,9 @@ data
 !.env.example
 chronicle/target/
 apps/desktop/release
+apps/desktop/resources/codex/**/codex
+apps/desktop/resources/codex/**/codex.exe
+apps/desktop/resources/codex/**/codex-runtime.json
 .cradle/
 apps/server/openapi.json
 apps/web/i18n-hardcoded-report.json
