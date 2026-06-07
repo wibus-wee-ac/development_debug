@@ -47,6 +47,7 @@ export interface ChatComposerRuntime {
     tokens: number
     contextWindow: number
   }
+  compactState: ChatRuntimeCompactUiSlotState | null
 }
 
 interface UseChatComposerRuntimeOptions {
@@ -236,6 +237,7 @@ export function useChatComposerRuntime({
     slotStates: runtimeUiSlotStates?.states ?? [],
     supportsAttachments,
     tokenUsage,
+    compactState: compactSlotState,
   }
 }
 

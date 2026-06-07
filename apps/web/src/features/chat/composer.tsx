@@ -4,7 +4,7 @@ import type { ChangeEvent } from 'react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
-import { HoverCard, HoverCardContent, HoverCardTrigger } from '~/components/ui/hover-card'
+import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { toastManager } from '~/components/ui/toast'
 import { cn } from '~/lib/cn'
 import { isLocalMode } from '~/lib/electron'
@@ -12,6 +12,7 @@ import { formatTokenCount } from '~/lib/number-format'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 
 import { readBangCommand } from './bang-command'
+import type { ChatRuntimeCompactUiSlotState } from './chat-capabilities'
 import type { ChatContextPart } from './chat-context-parts'
 import type { ChatRuntimeSettings, ChatRuntimeSettingsPatch } from './chat-response-command'
 import type { ChatComposerSlashCommand } from './chat-slash-commands'
@@ -30,6 +31,7 @@ import {
   ComposerAttachmentInput,
   ComposerAttachmentList,
 } from './composer-attachments'
+import { ContextUsageDetailPanel } from './context-usage-detail-panel'
 import type { MentionItem, MentionPickerItem, PluginMentionItem } from './mention-panel'
 import { MentionPanel } from './mention-panel'
 import type { PromptEditorController, PromptEditorSnapshot, PromptEditorTriggerRange } from './prompt-editor'
@@ -125,8 +127,10 @@ export interface ComposerViewOptions {
   sendButtonClassName?: string
   onDraftChange?: (value: string) => void
   onFocusChange?: (focused: boolean) => void
+  sessionId?: string | null
   sessionTokens?: number
   sessionContextWindow?: number | null
+  compactState?: ChatRuntimeCompactUiSlotState | null
 }
 
 export interface ComposerTestIds {
@@ -389,7 +393,19 @@ function composerReducer(state: ComposerState, action: ComposerAction): Composer
 const TOKEN_CIRCLE_RADIUS = 7
 const TOKEN_CIRCUMFERENCE = 2 * Math.PI * TOKEN_CIRCLE_RADIUS
 
-function TokenProgress({ tokens, contextWindow }: { tokens: number, contextWindow: number | null | undefined }) {
+function TokenProgress({
+  tokens,
+  contextWindow,
+  sessionId,
+  compactState,
+}: {
+  tokens: number
+  contextWindow: number | null | undefined
+  sessionId?: string | null
+  compactState?: ChatRuntimeCompactUiSlotState | null
+}) {
+  const [open, setOpen] = useState(false)
+
   if (!tokens || tokens <= 0) {
     return null
   }
@@ -400,13 +416,13 @@ function TokenProgress({ tokens, contextWindow }: { tokens: number, contextWindo
   const label = contextWindow
     ? `${formatTokenCount(tokens)} / ${formatTokenCount(contextWindow)} tokens`
     : `${formatTokenCount(tokens)} tokens`
-  const percentLabel = contextWindow ? `${Math.round(percent * 100)}%` : 'unknown'
+
   return (
-    <HoverCard openDelay={120} closeDelay={80}>
-      <HoverCardTrigger asChild>
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger asChild>
         <button
           type="button"
-          className="flex size-6 cursor-default items-center justify-center rounded-md text-muted-foreground transition-[background-color,color] duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          className="flex size-6 cursor-pointer items-center justify-center rounded-md text-muted-foreground transition-[background-color,color] duration-150 hover:bg-muted hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           aria-label={`Context usage: ${label}`}
         >
           <svg width="18" height="18" viewBox="0 0 18 18" fill="none" style={{ transform: 'rotate(-90deg)' }}>
@@ -429,48 +445,15 @@ function TokenProgress({ tokens, contextWindow }: { tokens: number, contextWindo
             )}
           </svg>
         </button>
-      </HoverCardTrigger>
-      <HoverCardContent side="top" align="end" sideOffset={8} className="w-56 p-3">
-        <div className="grid gap-2">
-          <div className="flex items-center justify-between gap-3">
-            <span className="text-xs font-medium text-foreground">Context usage</span>
-            <span
-              className={cn(
-                'font-mono text-[10px] tabular-nums',
-                isDanger ? 'text-destructive' : isWarning ? 'text-warning' : 'text-muted-foreground',
-              )}
-            >
-              {percentLabel}
-            </span>
-          </div>
-          {contextWindow && (
-            <div className="h-1 overflow-hidden rounded-full bg-muted">
-              <div
-                className={cn(
-                  'h-full rounded-full transition-[width,background-color] duration-150',
-                  isDanger ? 'bg-destructive' : isWarning ? 'bg-warning' : 'bg-primary',
-                )}
-                style={{ width: `${Math.round(percent * 100)}%` }}
-              />
-            </div>
-          )}
-          <div className="flex items-baseline justify-between gap-3 text-[11px]">
-            <span className="text-muted-foreground">Tokens</span>
-            <span className="font-mono tabular-nums text-foreground">{formatTokenCount(tokens)}</span>
-          </div>
-          {contextWindow
-            ? (
-                <div className="flex items-baseline justify-between gap-3 text-[11px]">
-                  <span className="text-muted-foreground">Window</span>
-                  <span className="font-mono tabular-nums text-foreground">{formatTokenCount(contextWindow)}</span>
-                </div>
-              )
-            : (
-                <div className="text-[11px] text-muted-foreground">Context window unavailable</div>
-              )}
-        </div>
-      </HoverCardContent>
-    </HoverCard>
+      </PopoverTrigger>
+      <PopoverContent side="top" align="end" sideOffset={12} className="w-auto p-0 border-0 shadow-none ring-0 bg-transparent">
+        <ContextUsageDetailPanel
+          sessionId={sessionId ?? null}
+          compactState={compactState}
+          onClose={() => setOpen(false)}
+        />
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -516,8 +499,10 @@ function ComposerActions({
   sendButtonTestId,
   stopButtonTestId,
   attachmentController,
+  sessionId,
   sessionTokens,
   sessionContextWindow,
+  compactState,
   sendButtonAriaLabel,
 }: {
   actionsClassName?: string
@@ -538,8 +523,10 @@ function ComposerActions({
   sendButtonTestId: string
   stopButtonTestId: string
   attachmentController: ComposerAttachmentController
+  sessionId?: string | null
   sessionTokens?: number
   sessionContextWindow?: number | null
+  compactState?: ChatRuntimeCompactUiSlotState | null
   sendButtonAriaLabel?: string
 }) {
   return (
@@ -554,7 +541,12 @@ function ComposerActions({
         testId={attachButtonTestId}
       />
       {sessionTokens != null && sessionTokens > 0 && sessionContextWindow != null && sessionContextWindow > 0 && (
-        <TokenProgress tokens={sessionTokens} contextWindow={sessionContextWindow} />
+        <TokenProgress
+          tokens={sessionTokens}
+          contextWindow={sessionContextWindow}
+          sessionId={sessionId}
+          compactState={compactState}
+        />
       )}
       {isStreaming && hasDraft && (
         <Button
@@ -654,8 +646,10 @@ export function Composer({
     sendButtonClassName,
     onDraftChange,
     onFocusChange,
+    sessionId,
     sessionTokens,
     sessionContextWindow,
+    compactState,
   } = view ?? {}
   const {
     textareaAriaLabel = 'Message',
@@ -1125,8 +1119,10 @@ export function Composer({
             actionsClassName={actionsClassName}
             attachButtonClassName={attachButtonClassName}
             attachIconClassName={attachIconClassName}
+            sessionId={sessionId}
             sessionTokens={sessionTokens}
             sessionContextWindow={sessionContextWindow}
+            compactState={compactState}
             contextBar={contextBar}
             disabled={effectiveDisabled}
             hasDraft={hasDraft}

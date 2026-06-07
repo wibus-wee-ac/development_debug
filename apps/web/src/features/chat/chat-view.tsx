@@ -223,6 +223,7 @@ function ChatAwaitBanner({
 }
 
 function ChatComposerSection({
+  sessionId,
   awaitSummary,
   queueItems,
   onCancelQueueItem,
@@ -246,6 +247,7 @@ function ChatComposerSection({
   onQuickQuestion,
   onComposerFocusChange,
 }: {
+  sessionId: string | null
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
   queueItems: ChatQueueItem[]
   onCancelQueueItem: (queueItemId: string) => void
@@ -329,8 +331,10 @@ function ChatComposerSection({
             searchSkills,
             textareaRows: 1,
             onFocusChange: onComposerFocusChange,
+            sessionId,
             sessionTokens: composerRuntime.tokenUsage?.tokens,
             sessionContextWindow: composerRuntime.tokenUsage?.contextWindow,
+            compactState: composerRuntime.compactState,
           }}
         />
       </div>
@@ -690,6 +694,7 @@ export function ChatView({
       />
 
       <ChatComposerSection
+        sessionId={sessionId}
         awaitSummary={awaitSummary}
         queueItems={queueItems}
         onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}

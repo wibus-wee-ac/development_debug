@@ -475,7 +475,7 @@ function toolPayloadFromObject(value: ToolObjectPayload): ToolPayload {
     pattern: value.pattern ?? value.query ?? value.glob,
     query: value.query,
     url: value.url,
-    subagentName: value.name ?? value.subagent_type ?? value.team_name,
+    subagentName: value.name ?? value.subagent_type ?? value.description ?? value.team_name,
     agentId: value.agentId,
     agentType: value.agentType,
     taskId: value.task_id ?? value.shell_id,
