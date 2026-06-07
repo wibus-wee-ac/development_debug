@@ -7,7 +7,7 @@ import {
   useSensors,
 } from '@dnd-kit/core'
 import { m } from 'motion/react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 
@@ -64,7 +64,7 @@ export function KanbanBoard({
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
   )
 
-  const groups = useMemo((): GroupDef[] => {
+  const groups = (() => {
     if (config.groupBy === 'status') {
       return statuses.map(s => ({
         id: s.id,
@@ -91,9 +91,9 @@ export function KanbanBoard({
       name: s.name,
       category: StatusCategorySchema.parse(s.category),
     }))
-  }, [config.groupBy, statuses, milestones])
+  })()
 
-  const groupedIssues = useMemo(() => {
+  const groupedIssues = (() => {
     const map: Record<string, KanbanIssue[]> = {}
     for (const g of groups) {
       map[g.id] = []
@@ -119,7 +119,7 @@ export function KanbanBoard({
       map[groupId].push(issue)
     }
     return map
-  }, [issues, groups, config.groupBy])
+  })()
 
   const handleDragStart = (event: DragStartEvent) => {
     const issue = event.active.data.current?.issue as KanbanIssue | undefined

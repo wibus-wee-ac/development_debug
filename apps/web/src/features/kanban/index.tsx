@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { BetaNotice } from '~/components/common/beta-notice'
@@ -144,7 +144,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
     }
   }, [initialMilestoneId, setFilter])
 
-  const parentIssueRefs = useMemo(() => {
+  const parentIssueRefs = (() => {
     const issuesById = new Map(allIssues.map(issue => [issue.id, issue]))
     const refs = new Map<string, ParentIssueRef>()
 
@@ -161,10 +161,10 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
     }
 
     return refs
-  }, [allIssues, workspaces])
+  })()
 
   // Apply filters
-  const filteredIssues = useMemo(() => {
+  const filteredIssues = (() => {
     let result = allIssues
 
     if (filter.statusIds?.length) {
@@ -207,56 +207,45 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
     })
 
     return result
-  }, [allIssues, filter, searchQuery, config.orderBy, config.orderDirection])
+  })()
 
-  const handleIssueClick = useCallback((id: string) => {
+  const handleIssueClick = (id: string) => {
     onSelectIssue?.(id)
-  }, [onSelectIssue])
+  }
 
-  const handleOpenMilestone = useCallback((id: string) => {
+  const handleOpenMilestone = (id: string) => {
     setFilter({ milestoneId: id })
     onOpenMilestone?.(id)
     onSelectIssue?.(null)
-  }, [onOpenMilestone, onSelectIssue, setFilter])
+  }
 
-  const handleMoveIssue = useCallback((issueId: string, targetGroupId: string) => {
+  const handleMoveIssue = (issueId: string, targetGroupId: string) => {
     if (config.groupBy === 'status') {
       moveIssue.mutate({ id: issueId, statusId: targetGroupId })
     }
-  }, [config.groupBy, moveIssue])
+  }
 
-  const handleCreateIssue = useCallback((groupId: string) => {
+  const handleCreateIssue = (groupId: string) => {
     setCreateDefaultStatusId(config.groupBy === 'status' ? groupId : undefined)
     setCreateDialogOpen(true)
-  }, [config.groupBy])
+  }
 
-  const visibleIssues = useMemo(
-    () => orderedIssuesForKanbanView(filteredIssues, statuses, milestones, config),
-    [filteredIssues, statuses, milestones, config],
-  )
+  const visibleIssues = orderedIssuesForKanbanView(filteredIssues, statuses, milestones, config)
 
-  const visibleIssueIds = useMemo(() => visibleIssues.map(issue => issue.id), [visibleIssues])
+  const visibleIssueIds = visibleIssues.map(issue => issue.id)
 
-  const selectedIssues = useMemo(
-    () => visibleIssues.filter(issue => selectedIssueIds.has(issue.id)),
-    [visibleIssues, selectedIssueIds],
-  )
+  const selectedIssues = visibleIssues.filter(issue => selectedIssueIds.has(issue.id))
 
-  const focusedIssueId = useMemo(() => {
+  const focusedIssueId = (() => {
     if (focusedIndex >= 0 && focusedIndex < visibleIssues.length) {
       return visibleIssues[focusedIndex].id
     }
     return null
-  }, [focusedIndex, visibleIssues])
+  })()
 
-  const issuesById = useMemo(() => {
-    return new Map(allIssues.map(issue => [issue.id, issue]))
-  }, [allIssues])
+  const issuesById = new Map(allIssues.map(issue => [issue.id, issue]))
 
-  const kanbanFilterSummary = useMemo(
-    () => summarizeKanbanFilter(filter, statuses, milestones),
-    [filter, statuses, milestones],
-  )
+  const kanbanFilterSummary = summarizeKanbanFilter(filter, statuses, milestones)
 
   useEffect(() => {
     installKanbanContextProvider()
@@ -303,22 +292,22 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
     }
   }, [boardId])
 
-  const clearSelectedIssues = useCallback(() => {
+  const clearSelectedIssues = () => {
     setSelectedIssueIds(new Set())
     setSelectionAnchorId(null)
     setFocusedIndex(-1)
     setPeekIssueId(null)
-  }, [])
+  }
 
-  const selectAllVisibleIssues = useCallback(() => {
+  const selectAllVisibleIssues = () => {
     if (visibleIssuesRef.current.length === 0) {
       return
     }
     setSelectedIssueIds(new Set(visibleIssuesRef.current.map(issue => issue.id)))
     setSelectionAnchorId(visibleIssuesRef.current[0]?.id ?? null)
-  }, [])
+  }
 
-  const extendSelectionToIssue = useCallback((issueId: string) => {
+  const extendSelectionToIssue = (issueId: string) => {
     const issueIds = visibleIssuesRef.current.map(issue => issue.id)
     const fallbackAnchorId = selectionAnchorIdRef.current
       ?? [...selectedIssueIdsRef.current][0]
@@ -326,9 +315,9 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
 
     setSelectedIssueIds(prev => addIssueSelectionRange(prev, issueIds, fallbackAnchorId, issueId))
     setSelectionAnchorId(fallbackAnchorId)
-  }, [])
+  }
 
-  const toggleIssueSelected = useCallback((issueId: string) => {
+  const toggleIssueSelected = (issueId: string) => {
     const next = toggleIssueSelection(selectedIssueIdsRef.current, issueId)
     selectedIssueIdsRef.current = next
     setSelectedIssueIds(next)
@@ -336,9 +325,9 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
     if (!next.has(issueId)) {
       setFocusedIndex(-1)
     }
-  }, [])
+  }
 
-  const handleIssueSelectionGesture = useCallback((issueId: string, mode: IssueSelectionMode) => {
+  const handleIssueSelectionGesture = (issueId: string, mode: IssueSelectionMode) => {
     const index = visibleIssuesRef.current.findIndex(issue => issue.id === issueId)
     if (index >= 0) {
       setFocusedIndex(index)
@@ -348,7 +337,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
       return
     }
     toggleIssueSelected(issueId)
-  }, [extendSelectionToIssue, toggleIssueSelected])
+  }
 
   // Keep visible issue order ref in sync with the rendered group layout.
   useEffect(() => {

@@ -1,6 +1,6 @@
 import { AlertCircleIcon, ArrowUpRightIcon, CheckCircle2Icon, CircleDotIcon, LinkIcon, MessageSquareTextIcon, SearchIcon, UnlinkIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Combobox, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList } from '~/components/ui/combobox'
@@ -76,7 +76,7 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
   const linkedIssueDataReady = !linkedIssueId || (issue.isSuccess && comments.isSuccess)
   const pickerDataReady = issues.isSuccess && statuses.isSuccess && boards.isSuccess
   const ready = !!workspaceId && workspacesReady && linkedIssueReady && linkedIssueDataReady && pickerDataReady
-  const candidateIssues = useMemo(() => {
+  const candidateIssues = (() => {
     const needle = query.trim().toLowerCase()
     const rows = issues.data ?? []
     if (!needle) {
@@ -88,7 +88,7 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
         return row.title.toLowerCase().includes(needle) || readableId.includes(needle)
       })
       .slice(0, 6)
-  }, [issues.data, query, workspaces])
+  })()
 
   const isInitialLoading = linkedIssue.isLoading || (linkedIssueId && issue.isLoading)
   const isPickerLoading = issues.isLoading || boards.isLoading

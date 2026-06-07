@@ -1,7 +1,7 @@
 import { useDraggable } from '@dnd-kit/core'
 import { CheckIcon } from 'lucide-react'
 import type { CSSProperties, HTMLAttributes, MouseEvent, PointerEvent, ReactNode, Ref } from 'react'
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { AgentAvatar } from '~/features/agent-runtime/agent-avatar'
@@ -99,9 +99,9 @@ function KanbanCardView({
     }
   }, [])
 
-  const handleOpenIssue = useCallback(() => {
+  const handleOpenIssue = () => {
     onOpenIssue(issue.id)
-  }, [issue.id, onOpenIssue])
+  }
 
   const openIssue = (delayMs: number) => {
     if (openTimerRef.current !== null) {
@@ -192,7 +192,7 @@ function KanbanCardView({
   )
 }
 
-export const KanbanCard = memo(KanbanCardView)
+export const KanbanCard = KanbanCardView
 
 function KanbanCardChrome({
   runtimeData,

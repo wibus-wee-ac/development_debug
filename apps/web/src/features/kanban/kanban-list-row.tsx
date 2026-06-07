@@ -1,6 +1,6 @@
 import { CheckIcon } from 'lucide-react'
 import type { MouseEvent, PointerEvent } from 'react'
-import { memo, useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import { AgentAvatar } from '~/features/agent-runtime/agent-avatar'
 import { useAgents } from '~/features/agent-runtime/use-agents'
@@ -78,9 +78,9 @@ function KanbanListRowView({
     }
   }, [])
 
-  const handleOpenIssue = useCallback(() => {
+  const handleOpenIssue = () => {
     onOpenIssue(issue.id)
-  }, [issue.id, onOpenIssue])
+  }
 
   const openIssue = (delayMs: number) => {
     if (openTimerRef.current !== null) {
@@ -246,4 +246,4 @@ function KanbanListRowView({
   )
 }
 
-export const KanbanListRow = memo(KanbanListRowView)
+export const KanbanListRow = KanbanListRowView

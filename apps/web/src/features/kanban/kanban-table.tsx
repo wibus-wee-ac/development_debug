@@ -12,7 +12,7 @@ import {
   useReactTable,
 } from '@tanstack/react-table'
 import { ArrowDownIcon, ArrowUpDownIcon, ArrowUpIcon, CalendarIcon, CheckIcon, Columns3Icon, SearchIcon, TagsIcon, UserRoundXIcon, XIcon } from 'lucide-react'
-import { memo, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Calendar } from '~/components/ui/calendar'
@@ -211,7 +211,7 @@ function AgentCell({ issue }: { issue: KanbanIssue }) {
   const { agents } = useAgents()
   const delegateIssue = useDelegateIssue()
   const undelegateIssue = useUndelegateIssue()
-  const agentCandidates = useMemo(() => agents.filter(agent => !!agent.providerTargetId), [agents])
+  const agentCandidates = agents.filter(agent => !!agent.providerTargetId)
   const delegatedAgent = findDelegatedAgent(issue, agentCandidates)
   const selectedValue = delegatedAgent ? `agent:${delegatedAgent.id}` : ''
 
@@ -289,12 +289,9 @@ function LabelsCell({ issue, workspaceIssues }: { issue: KanbanIssue, workspaceI
   const [open, setOpen] = useState(false)
   const [inputValue, setInputValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
-  const selectedLabelKeys = useMemo(() => new Set(issue.labels.map(normalizeLabelForCompare)), [issue.labels])
-  const workspaceLabelOptions = useMemo(() => collectWorkspaceLabelOptions(workspaceIssues), [workspaceIssues])
-  const labelSuggestions = useMemo(
-    () => filterWorkspaceLabelOptions(workspaceLabelOptions, inputValue, issue.labels).slice(0, LABEL_SUGGESTION_LIMIT),
-    [inputValue, issue.labels, workspaceLabelOptions],
-  )
+  const selectedLabelKeys = new Set(issue.labels.map(normalizeLabelForCompare))
+  const workspaceLabelOptions = collectWorkspaceLabelOptions(workspaceIssues)
+  const labelSuggestions = filterWorkspaceLabelOptions(workspaceLabelOptions, inputValue, issue.labels).slice(0, LABEL_SUGGESTION_LIMIT)
   const trimmedInput = inputValue.trim()
   const canCreateLabel = trimmedInput.length > 0 && !selectedLabelKeys.has(normalizeLabelForCompare(trimmedInput))
 
@@ -352,6 +349,7 @@ function LabelsCell({ issue, workspaceIssues }: { issue: KanbanIssue, workspaceI
             <input
               ref={inputRef}
               value={inputValue}
+              aria-label={t('issue.label.inputPlaceholder')}
               onChange={event => setInputValue(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {
@@ -464,9 +462,9 @@ function KanbanTableView({
   const { agents } = useAgents()
   const [sorting, setSorting] = useState<SortingState>([])
   const [globalFilter, setGlobalFilter] = useState('')
-  const selectedIds = useMemo(() => selectedIssueIds ?? new Set<string>(), [selectedIssueIds])
+  const selectedIds = selectedIssueIds ?? new Set<string>()
 
-  const defaultColumnVisibility = useMemo<VisibilityState>(() => ({
+  const defaultColumnVisibility = ({
     issueKey: displayProperties.id,
     priority: displayProperties.priority,
     status: displayProperties.status,
@@ -475,14 +473,14 @@ function KanbanTableView({
     agent: displayProperties.agentIndicator,
     milestone: displayProperties.milestone,
     dueDate: displayProperties.dueDate,
-  }), [displayProperties])
+  })
   const [columnVisibility, setColumnVisibility] = useState<VisibilityState>(defaultColumnVisibility)
 
   useEffect(() => {
     setColumnVisibility(current => ({ ...current, ...defaultColumnVisibility }))
   }, [defaultColumnVisibility])
 
-  const rows = useMemo<IssueTableRow[]>(() => {
+  const rows = ((): IssueTableRow[] => {
     const statusById = new Map(statuses.map(status => [status.id, status]))
     const milestoneById = new Map(milestones.map(milestone => [milestone.id, milestone]))
 
@@ -517,9 +515,9 @@ function KanbanTableView({
         updatedAt: issue.updatedAt,
       }
     })
-  }, [agents, issues, milestones, parentIssueRefs, statuses, t, workspaces])
+  })()
 
-  const columns = useMemo<ColumnDef<IssueTableRow>[]>(() => [
+  const columns = [
     {
       id: 'selected',
       header: '',
@@ -654,11 +652,9 @@ function KanbanTableView({
         </span>
       ),
     },
-  ], [issues, onIssueClick, onIssueSelectionGesture, selectedIds, t])
+  ]
 
-  const rowSelection = useMemo(() => {
-    return Object.fromEntries(Array.from(selectedIds, id => [id, true]))
-  }, [selectedIds])
+  const rowSelection = Object.fromEntries(Array.from(selectedIds, id => [id, true]))
 
   // TanStack Table exposes imperative helpers; keep the instance local to this view.
   // eslint-disable-next-line react-hooks/incompatible-library
@@ -822,4 +818,4 @@ function KanbanTableView({
   )
 }
 
-export const KanbanTable = memo(KanbanTableView)
+export const KanbanTable = KanbanTableView

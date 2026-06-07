@@ -1,5 +1,5 @@
 import { LinkIcon, PlusIcon, SearchIcon, XIcon } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { useState } from 'react'
 
 import { Combobox, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList } from '~/components/ui/combobox'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
@@ -70,11 +70,9 @@ export function RelationManager({ issueId, workspaceId }: RelationManagerProps) 
   const addRelation = useAddRelation()
   const deleteRelation = useDeleteRelation()
 
-  const issueById = useMemo(() => {
-    return new Map(workspaceIssues.map(issue => [issue.id, issue]))
-  }, [workspaceIssues])
+  const issueById = new Map(workspaceIssues.map(issue => [issue.id, issue]))
 
-  const candidateIssues = useMemo(() => {
+  const candidateIssues = (() => {
     const byId = new Map<string, KanbanIssue>()
     const needle = trimmedQuery.toLowerCase()
     const append = (issue: KanbanIssue) => {
@@ -107,9 +105,9 @@ export function RelationManager({ issueId, workspaceId }: RelationManagerProps) 
     }
 
     return Array.from(byId.values()).slice(0, 8)
-  }, [issueId, searchIssues.data, trimmedQuery, workspaceIssues, workspaces])
+  })()
 
-  const typedIssue = useMemo(() => {
+  const typedIssue = (() => {
     const needle = trimmedQuery.toLowerCase()
     if (!needle) {
       return null
@@ -120,7 +118,7 @@ export function RelationManager({ issueId, workspaceId }: RelationManagerProps) 
         || readableId === needle
         || String(issue.number) === needle
     }) ?? null
-  }, [candidateIssues, trimmedQuery, workspaces])
+  })()
 
   const selectedIssue = targetIssueId
     ? issueById.get(targetIssueId) ?? candidateIssues.find(issue => issue.id === targetIssueId)

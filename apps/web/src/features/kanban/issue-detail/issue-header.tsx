@@ -1,5 +1,4 @@
 import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon, CornerUpLeftIcon, MoreHorizontalIcon, TrashIcon } from 'lucide-react'
-import { memo } from 'react'
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import type { KanbanIssue, KanbanStatus } from '~/features/kanban/types'
@@ -22,7 +21,7 @@ interface IssueHeaderProps {
   onDelete: () => void
 }
 
-export const IssueHeader = memo(({
+export const IssueHeader = ({
   issue,
   status,
   parentIssue,
@@ -140,4 +139,4 @@ done
       </Menu>
     </div>
   )
-})
+}

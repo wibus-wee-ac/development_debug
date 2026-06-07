@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo } from 'react'
+import { useEffect } from 'react'
 
 import { Skeleton } from '~/components/ui/skeleton'
 import type { KanbanIssue } from '~/features/kanban/types'
@@ -39,32 +39,23 @@ export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onOpenM
     return () => document.removeEventListener('keydown', handler)
   }, [onBack])
 
-  const handleUpdate = useCallback((patch: Parameters<typeof updateIssue.mutate>[0]['patch']) => {
+  const handleUpdate = (patch: Parameters<typeof updateIssue.mutate>[0]['patch']) => {
     updateIssue.mutate({ id: issueId, patch })
-  }, [issueId, updateIssue])
+  }
 
-  const handleDelete = useCallback(() => {
+  const handleDelete = () => {
     deleteIssue.mutate(issueId, {
       onSuccess: () => onBack(),
     })
-  }, [issueId, deleteIssue, onBack])
+  }
 
-  const statusById = useMemo(
-    () => new Map(statuses.map(status => [status.id, status])),
-    [statuses],
-  )
+  const statusById = new Map(statuses.map(status => [status.id, status]))
 
-  const subIssues = useMemo(
-    () => issue ? issues.filter(candidate => candidate.parentIssueId === issue.id) : [],
-    [issues, issue],
-  )
+  const subIssues = issue ? issues.filter(candidate => candidate.parentIssueId === issue.id) : []
 
-  const completedSubIssueCount = useMemo(
-    () => subIssues.filter(subIssue => statusById.get(subIssue.statusId ?? '')?.category === 'completed').length,
-    [statusById, subIssues],
-  )
+  const completedSubIssueCount = subIssues.filter(subIssue => statusById.get(subIssue.statusId ?? '')?.category === 'completed').length
 
-  const siblingIssues = useMemo(() => {
+  const siblingIssues = (() => {
     if (!issue?.parentIssueId) {
       return []
     }
@@ -77,27 +68,15 @@ export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onOpenM
         }
         return (left.createdAt ?? 0) - (right.createdAt ?? 0)
       })
-  }, [issues, issue?.parentIssueId])
+  })()
 
-  const siblingIndex = useMemo(
-    () => issue ? siblingIssues.findIndex(candidate => candidate.id === issue.id) : -1,
-    [issue, siblingIssues],
-  )
+  const siblingIndex = issue ? siblingIssues.findIndex(candidate => candidate.id === issue.id) : -1
 
-  const parentIssue = useMemo(
-    () => issue?.parentIssueId ? issues.find(candidate => candidate.id === issue.parentIssueId) : undefined,
-    [issues, issue?.parentIssueId],
-  )
+  const parentIssue = issue?.parentIssueId ? issues.find(candidate => candidate.id === issue.parentIssueId) : undefined
 
-  const currentMilestone = useMemo(
-    () => issue?.milestoneId ? milestones.find(milestone => milestone.id === issue.milestoneId) : undefined,
-    [issue?.milestoneId, milestones],
-  )
+  const currentMilestone = issue?.milestoneId ? milestones.find(milestone => milestone.id === issue.milestoneId) : undefined
 
-  const milestoneProgress = useMemo(
-    () => calculateMilestoneProgress(issues, statuses, currentMilestone?.id ?? null),
-    [currentMilestone?.id, issues, statuses],
-  )
+  const milestoneProgress = calculateMilestoneProgress(issues, statuses, currentMilestone?.id ?? null)
 
   const previousSiblingIssue = siblingIndex > 0 ? siblingIssues[siblingIndex - 1] : undefined
   const nextSiblingIssue = siblingIndex >= 0 && siblingIndex < siblingIssues.length - 1

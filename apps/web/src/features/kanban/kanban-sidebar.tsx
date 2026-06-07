@@ -8,7 +8,7 @@ import {
   XIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 
@@ -48,7 +48,7 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, o
     requestAnimationFrame(() => inputRef.current?.focus())
   }, [open, workspaceId, workspaces])
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = () => {
     const trimmed = name.trim()
     if (!trimmed || !workspaceId) {
       return
@@ -62,9 +62,9 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, o
         },
       },
     )
-  }, [name, workspaceId, createBoard, onCreated, onOpenChange])
+  }
 
-  const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
       handleSubmit()
@@ -72,7 +72,7 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, o
  else if (e.key === 'Escape') {
       onOpenChange(false)
     }
-  }, [handleSubmit, onOpenChange])
+  }
 
   return createPortal(
     <AnimatePresence>
@@ -187,28 +187,28 @@ function BoardItem({ board }: { board: { id: string, name: string } }) {
   const [renameValue, setRenameValue] = useState(board.name)
   const renameInputRef = useRef<HTMLInputElement>(null)
 
-  const handleDelete = useCallback(() => {
+  const handleDelete = () => {
     deleteBoard.mutate(board.id)
-  }, [deleteBoard, board.id])
+  }
 
-  const handleRenameStart = useCallback(() => {
+  const handleRenameStart = () => {
     setRenameValue(board.name)
     setIsRenaming(true)
     requestAnimationFrame(() => {
       renameInputRef.current?.focus()
       renameInputRef.current?.select()
     })
-  }, [board.name])
+  }
 
-  const handleRenameSubmit = useCallback(() => {
+  const handleRenameSubmit = () => {
     const trimmed = renameValue.trim()
     if (trimmed && trimmed !== board.name) {
       updateBoard.mutate({ id: board.id, patch: { name: trimmed } })
     }
     setIsRenaming(false)
-  }, [renameValue, board.name, board.id, updateBoard])
+  }
 
-  const handleRenameKeyDown = useCallback((e: React.KeyboardEvent) => {
+  const handleRenameKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter') {
       e.preventDefault()
       handleRenameSubmit()
@@ -216,7 +216,7 @@ function BoardItem({ board }: { board: { id: string, name: string } }) {
  else if (e.key === 'Escape') {
       setIsRenaming(false)
     }
-  }, [handleRenameSubmit])
+  }
 
   return (
     <div

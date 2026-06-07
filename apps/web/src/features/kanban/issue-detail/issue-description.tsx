@@ -1,5 +1,4 @@
 import { useQueries } from '@tanstack/react-query'
-import { useCallback, useMemo } from 'react'
 import { z } from 'zod'
 
 import { getIssuesSearch, getSessionsByIdMessages } from '~/api-gen/sdk.gen'
@@ -168,7 +167,7 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
     })),
   })
 
-  const sessionMessageCountById = useMemo(() => {
+  const sessionMessageCountById = (() => {
     const counts = new Map<string, number>()
     sessions.slice(0, 20).forEach((session, index) => {
       const count = sessionMessageCounts[index]?.data
@@ -177,9 +176,9 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
       }
     })
     return counts
-  }, [sessionMessageCounts, sessions])
+  })()
 
-  const staticItems = useMemo<SmartMentionItem[]>(() => {
+  const staticItems = ((): SmartMentionItem[] => {
     const workspaceById = new Map(workspaces.map(workspace => [workspace.id, workspace]))
     const statusById = new Map(statuses.map(status => [status.id, status]))
 
@@ -257,9 +256,9 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
       ...agentItems,
       ...milestoneItems,
     ]
-  }, [agents, issue, milestones, sessionMessageCountById, sessions, statuses, workspaceIssues, workspaces])
+  })()
 
-  const getMentionItems = useCallback(async (query: string): Promise<SmartMentionItem[]> => {
+  const getMentionItems = async (query: string): Promise<SmartMentionItem[]> => {
     const parsed = parseMentionQuery(query)
     const localItems = limitItems(staticItems, query, 12)
 
@@ -319,9 +318,9 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
         return true
       })
       .slice(0, 20)
-  }, [issue.workspaceId, staticItems, statuses, workspaces])
+  }
 
-  const handleMentionOpen = useCallback((attrs: SmartMentionAttrs) => {
+  const handleMentionOpen = (attrs: SmartMentionAttrs) => {
     if (attrs.kind === 'issue') {
       const board = getFirstBoardForWorkspace(boards, attrs.workspaceId ?? issue.workspaceId)
       openTab('kanban-board', board ? { boardId: board.id, issue: attrs.id } : {})
@@ -363,7 +362,7 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
       const board = getFirstBoardForWorkspace(boards, attrs.workspaceId ?? issue.workspaceId)
       openTab('kanban-board', board ? { boardId: board.id, milestoneId: attrs.id } : {})
     }
-  }, [boards, issue.workspaceId, openSettings, openTab, openWorkspaceFileTab, setAgentFocusTarget, setBrowserPanelOpen, setSettingsSection])
+  }
 
   return (
     <div data-testid="issue-description-editor">

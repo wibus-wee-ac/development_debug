@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 
 import type { KanbanIssue } from '~/features/kanban/types'
 
@@ -36,30 +36,31 @@ function IssueTitleEditor({
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
 
-  const adjustHeight = useCallback(() => {
+  const adjustHeight = () => {
     if (ref.current) {
       ref.current.style.height = '0'
       const h = ref.current.scrollHeight
       ref.current.style.height = `${h}px`
     }
-  }, [])
+  }
 
   useEffect(() => {
     requestAnimationFrame(adjustHeight)
   }, [adjustHeight])
 
-  const commitTitleEdit = useCallback(() => {
+  const commitTitleEdit = () => {
     const trimmed = ref.current?.value.trim() ?? ''
     if (trimmed) {
       onCommit(trimmed)
     }
-  }, [onCommit])
+  }
 
   return (
     <div data-testid="issue-title-display">
       <textarea
         ref={ref}
         defaultValue={initialTitle}
+        aria-label="Issue title"
         onChange={(e) => {
           const el = e.currentTarget
           el.style.height = '0'

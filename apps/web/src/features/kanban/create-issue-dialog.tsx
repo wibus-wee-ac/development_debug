@@ -1,6 +1,6 @@
 import { CalendarIcon, ChevronRightIcon, MaximizeIcon, PaperclipIcon, SearchIcon, TagsIcon, UserRoundXIcon, XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
@@ -189,6 +189,7 @@ export function CreateIssueDialog({ workspaceId, issues, defaultStatusId, open, 
               <input
                 ref={titleInputRef}
                 value={title}
+                aria-label={t('createIssue.titlePlaceholder')}
                 onChange={e => setTitle(e.target.value)}
                 placeholder={t('createIssue.titlePlaceholder')}
                 className="w-full bg-transparent text-[15px] font-semibold text-foreground outline-none placeholder:text-muted-foreground leading-snug"
@@ -378,12 +379,9 @@ function LabelsPicker({ labels, issues, onChange }: { labels: string[], issues: 
   const [open, setOpen] = useState(false)
   const [inputValue, setInputValue] = useState('')
   const inputRef = useRef<HTMLInputElement>(null)
-  const selectedLabelKeys = useMemo(() => new Set(labels.map(normalizeLabelForCompare)), [labels])
-  const workspaceLabelOptions = useMemo(() => collectWorkspaceLabelOptions(issues), [issues])
-  const labelSuggestions = useMemo(
-    () => filterWorkspaceLabelOptions(workspaceLabelOptions, inputValue, labels).slice(0, LABEL_SUGGESTION_LIMIT),
-    [inputValue, labels, workspaceLabelOptions],
-  )
+  const selectedLabelKeys = new Set(labels.map(normalizeLabelForCompare))
+  const workspaceLabelOptions = collectWorkspaceLabelOptions(issues)
+  const labelSuggestions = filterWorkspaceLabelOptions(workspaceLabelOptions, inputValue, labels).slice(0, LABEL_SUGGESTION_LIMIT)
   const trimmedInput = inputValue.trim()
   const canCreateLabel = trimmedInput.length > 0 && !selectedLabelKeys.has(normalizeLabelForCompare(trimmedInput))
 
@@ -439,6 +437,7 @@ function LabelsPicker({ labels, issues, onChange }: { labels: string[], issues: 
             <input
               ref={inputRef}
               value={inputValue}
+              aria-label={t('property.labels')}
               onChange={event => setInputValue(event.target.value)}
               onKeyDown={(event) => {
                 if (event.key === 'Enter') {

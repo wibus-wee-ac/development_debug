@@ -4,7 +4,7 @@ import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import { GripVerticalIcon, TrashIcon } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
@@ -32,7 +32,7 @@ export function StatusManager({ workspaceId }: StatusManagerProps) {
     useSensor(PointerSensor, { activationConstraint: { distance: 3 } }),
   )
 
-  const handleAdd = useCallback(() => {
+  const handleAdd = () => {
     const name = newName.trim()
     if (!name) {
       return
@@ -41,17 +41,17 @@ export function StatusManager({ workspaceId }: StatusManagerProps) {
       { workspaceId, name },
       { onSuccess: () => setNewName('') },
     )
-  }, [newName, workspaceId, createStatus])
+  }
 
-  const handleDelete = useCallback((statusId: string) => {
+  const handleDelete = (statusId: string) => {
     deleteStatus.mutate({ id: statusId, workspaceId })
-  }, [workspaceId, deleteStatus])
+  }
 
-  const handleRename = useCallback((statusId: string, name: string) => {
+  const handleRename = (statusId: string, name: string) => {
     updateStatus.mutate({ id: statusId, workspaceId, patch: { name } })
-  }, [workspaceId, updateStatus])
+  }
 
-  const handleDragEnd = useCallback((event: DragEndEvent) => {
+  const handleDragEnd = (event: DragEndEvent) => {
     const { active, over } = event
     if (!over || active.id === over.id) {
       return
@@ -64,7 +64,7 @@ export function StatusManager({ workspaceId }: StatusManagerProps) {
     }
     const reordered = arrayMove(items, oldIdx, newIdx)
     reorderStatuses.mutate({ workspaceId, orderedIds: reordered.map(s => s.id) })
-  }, [statuses.data, workspaceId, reorderStatuses])
+  }
 
   const statusIds = (statuses.data ?? []).map(s => s.id)
 
@@ -190,6 +190,7 @@ function SortableStatusRow({
           ref={inputRef}
           data-testid={`status-input-${id}`}
           defaultValue={name}
+          aria-label="Status name"
           onKeyDown={(e) => {
             if (e.key === 'Enter') {
               handleConfirm()

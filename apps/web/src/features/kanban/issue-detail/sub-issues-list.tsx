@@ -1,5 +1,5 @@
 import { CornerDownRightIcon, PlusIcon } from 'lucide-react'
-import { useCallback, useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -51,7 +51,7 @@ export function SubIssuesList({ issueId, workspaceId, statuses, onOpenIssue }: S
     requestAnimationFrame(() => inputRef.current?.focus())
   }, [creating])
 
-  const handleCreate = useCallback(() => {
+  const handleCreate = () => {
     const trimmed = newTitle.trim()
     if (!trimmed) {
       return
@@ -67,14 +67,14 @@ export function SubIssuesList({ issueId, workspaceId, statuses, onOpenIssue }: S
     setStatusId('')
     setPriority('none')
     setCreating(false)
-  }, [newTitle, statusId, priority, workspaceId, issueId, createIssue])
+  }
 
-  const handleCancel = useCallback(() => {
+  const handleCancel = () => {
     setNewTitle('')
     setStatusId('')
     setPriority('none')
     setCreating(false)
-  }, [])
+  }
 
   const currentStatus = statuses.find(s => s.id === statusId)
 

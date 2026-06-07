@@ -1,6 +1,6 @@
 import { useDroppable } from '@dnd-kit/core'
 import { PlusIcon } from 'lucide-react'
-import { useCallback, useRef, useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { cn } from '~/lib/cn'
@@ -58,13 +58,13 @@ export function KanbanColumn({
   const inputRef = useRef<HTMLInputElement>(null)
   const createIssue = useCreateIssue()
 
-  const handleStartInlineCreate = useCallback(() => {
+  const handleStartInlineCreate = () => {
     setShowInlineInput(true)
     setInlineTitle('')
     setTimeout(() => inputRef.current?.focus(), 0)
-  }, [])
+  }
 
-  const handleConfirmInlineCreate = useCallback(() => {
+  const handleConfirmInlineCreate = () => {
     const title = inlineTitle.trim()
     if (!title) {
       setShowInlineInput(false)
@@ -90,7 +90,7 @@ export function KanbanColumn({
         setShowInlineInput(false)
       },
     })
-  }, [inlineTitle, runtimeData, createIssue, workspaceId, groupId, onCreateIssue])
+  }
 
   return (
     <div className="flex flex-col w-80 shrink-0 bg-muted/20 rounded-xl h-full" data-kanban-column-id={groupId}>
@@ -135,6 +135,7 @@ export function KanbanColumn({
               <input
                 ref={inputRef}
                 value={inlineTitle}
+                aria-label={t('issue.newTitlePlaceholder')}
                 onChange={e => setInlineTitle(e.target.value)}
                 onKeyDown={(e) => {
                   if (e.key === 'Enter') {

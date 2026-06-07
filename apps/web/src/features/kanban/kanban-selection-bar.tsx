@@ -1,6 +1,5 @@
 import { CheckIcon, CircleDashedIcon, FlagIcon, XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
-import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
@@ -48,7 +47,7 @@ function statusCategory(status: KanbanStatus): StatusCategory {
 export function KanbanSelectionBar({ issues, statuses, onClear }: KanbanSelectionBarProps) {
   const { t } = useTranslation('kanban')
   const bulkUpdateIssues = useBulkUpdateIssues()
-  const issueIds = useMemo(() => issues.map(issue => issue.id), [issues])
+  const issueIds = issues.map(issue => issue.id)
   const isVisible = issues.length > 0
   const isMutating = bulkUpdateIssues.isPending
 

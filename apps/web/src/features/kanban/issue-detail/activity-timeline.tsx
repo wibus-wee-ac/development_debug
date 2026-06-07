@@ -2,7 +2,7 @@ import { StaticRender } from '@cradle/streamdown'
 import type { TFunction } from 'i18next'
 import { CirclePlusIcon, GitBranchIcon, SparklesIcon, Trash2Icon, UserRoundCheckIcon, UserRoundMinusIcon } from 'lucide-react'
 import type { ElementType, ReactNode } from 'react'
-import { memo, useCallback, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
@@ -19,29 +19,26 @@ interface ActivityTimelineProps {
 type KanbanTranslation = TFunction<'kanban'>
 type KanbanKey = keyof typeof import('~/locales/default').default.kanban
 
-export const ActivityTimeline = memo(({ issueId }: ActivityTimelineProps) => {
+export const ActivityTimeline = ({ issueId }: ActivityTimelineProps) => {
   const { t } = useTranslation('kanban')
   const { data: activity = [] } = useIssueActivity(issueId)
   const addComment = useAddComment()
   const deleteComment = useDeleteComment()
   const [commentText, setCommentText] = useState('')
-  const timelineItems = useMemo(
-    () => activity.toSorted((left, right) => left.createdAt - right.createdAt),
-    [activity],
-  )
+  const timelineItems = activity.toSorted((left, right) => left.createdAt - right.createdAt)
 
-  const handleSubmit = useCallback(() => {
+  const handleSubmit = () => {
     const trimmed = commentText.trim()
     if (!trimmed) {
       return
     }
     addComment.mutate({ issueId, content: trimmed })
     setCommentText('')
-  }, [commentText, issueId, addComment])
+  }
 
-  const handleDeleteComment = useCallback((commentId: string) => {
+  const handleDeleteComment = (commentId: string) => {
     deleteComment.mutate({ id: commentId, issueId })
-  }, [deleteComment, issueId])
+  }
 
   return (
     <div data-testid="issue-activity-timeline">
@@ -60,6 +57,7 @@ export const ActivityTimeline = memo(({ issueId }: ActivityTimelineProps) => {
       <div className="mt-4 rounded-lg border border-border bg-card shadow-xs">
         <textarea
           value={commentText}
+          aria-label={t('issue.comment.placeholder')}
           onChange={e => setCommentText(e.target.value)}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
@@ -88,7 +86,7 @@ export const ActivityTimeline = memo(({ issueId }: ActivityTimelineProps) => {
       </div>
     </div>
   )
-})
+}
 
 const systemEventConfig = {
   delegated: { icon: UserRoundCheckIcon },
@@ -138,7 +136,7 @@ const valueTokenLabelKeys = {
   'unknown-user': 'assignee.unknownUser',
 } as const satisfies Record<IssueActivityValueToken, KanbanKey>
 
-const ActivityItem = memo(({
+const ActivityItem = ({
   item,
   onDeleteComment,
 }: {
@@ -152,9 +150,9 @@ const ActivityItem = memo(({
     return <FieldChangeItem item={item} />
   }
   return <CommentItem item={item} onDeleteComment={onDeleteComment} />
-})
+}
 
-const CreatedItem = memo(({ item }: { item: KanbanIssueActivityItem }) => {
+const CreatedItem = ({ item }: { item: KanbanIssueActivityItem }) => {
   const { t } = useTranslation('kanban')
   return (
     <TimelineLine
@@ -166,9 +164,9 @@ const CreatedItem = memo(({ item }: { item: KanbanIssueActivityItem }) => {
       <ActivityTime>{formatRelativeTime(item.createdAt, t)}</ActivityTime>
     </TimelineLine>
   )
-})
+}
 
-const FieldChangeItem = memo(({ item }: { item: KanbanIssueActivityItem }) => {
+const FieldChangeItem = ({ item }: { item: KanbanIssueActivityItem }) => {
   const { t } = useTranslation('kanban')
   const fieldChange = item.fieldChange
   if (!fieldChange) {
@@ -192,9 +190,9 @@ const FieldChangeItem = memo(({ item }: { item: KanbanIssueActivityItem }) => {
       <ActivityTime>{formatRelativeTime(item.createdAt, t)}</ActivityTime>
     </TimelineLine>
   )
-})
+}
 
-const CommentItem = memo(({
+const CommentItem = ({
   item,
   onDeleteComment,
 }: {
@@ -203,9 +201,9 @@ const CommentItem = memo(({
 }) => {
   const { t } = useTranslation('kanban')
   const comment = item.comment
-  const handleDelete = useCallback(() => {
+  const handleDelete = () => {
     onDeleteComment?.(item.id)
-  }, [item.id, onDeleteComment])
+  }
 
   if (!comment) {
     return null
@@ -288,7 +286,7 @@ const CommentItem = memo(({
       </div>
     </div>
   )
-})
+}
 
 function TimelineLine({
   children,

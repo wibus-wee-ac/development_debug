@@ -1,6 +1,6 @@
 import { useTabsContext } from '@cradle/tabs-next'
 import { LayoutDashboardIcon } from 'lucide-react'
-import { useCallback, useEffect } from 'react'
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Spinner } from '~/components/ui/spinner'
@@ -27,19 +27,19 @@ export function KanbanBoardTabContent({ params }: { params: { boardId?: string, 
     }
   }, [board?.name, issue?.title, params.issue, store])
 
-  const handleSelectIssue = useCallback((issueId: string | null) => {
+  const handleSelectIssue = (issueId: string | null) => {
     const activeTab = store.getState().getActiveTab()
     if (activeTab) {
       store.getState().updateTabParams(activeTab.id, { issue: issueId ?? undefined })
     }
-  }, [store])
+  }
 
-  const handleOpenMilestone = useCallback((milestoneId: string) => {
+  const handleOpenMilestone = (milestoneId: string) => {
     const activeTab = store.getState().getActiveTab()
     if (activeTab) {
       store.getState().updateTabParams(activeTab.id, { issue: undefined, milestoneId })
     }
-  }, [store])
+  }
 
   if (!params.boardId) {
     return (

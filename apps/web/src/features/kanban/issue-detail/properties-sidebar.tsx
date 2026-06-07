@@ -1,5 +1,5 @@
 import { BotIcon, CalendarIcon, CheckIcon, PencilIcon, PlusIcon, SearchIcon, TagsIcon, Trash2Icon, UserRoundXIcon, XIcon } from 'lucide-react'
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Calendar } from '~/components/ui/calendar'
@@ -68,19 +68,19 @@ interface PropertiesSidebarProps {
   onUpdate: (patch: IssuePatch) => void
 }
 
-export const PropertiesSidebar = memo(({ issue, issues, statuses, milestones, onUpdate }: PropertiesSidebarProps) => {
+export const PropertiesSidebar = ({ issue, issues, statuses, milestones, onUpdate }: PropertiesSidebarProps) => {
   const { t } = useTranslation('kanban')
   const currentStatus = statuses.find(s => s.id === issue.statusId)
   const currentMilestone = milestones.find(m => m.id === issue.milestoneId)
   const labels = issue.labels
-  const labelWorkspaceIssues = useMemo(() => {
+  const labelWorkspaceIssues = (() => {
     const hasCurrentIssue = issues.some(candidate => candidate.id === issue.id)
     if (!hasCurrentIssue) {
       return [...issues, issue]
     }
 
     return issues.map(candidate => candidate.id === issue.id ? issue : candidate)
-  }, [issue, issues])
+  })()
 
   return (
     <div className="flex flex-col gap-1">
@@ -178,7 +178,7 @@ export const PropertiesSidebar = memo(({ issue, issues, statuses, milestones, on
       </div>
     </div>
   )
-})
+}
 
 PropertiesSidebar.displayName = 'PropertiesSidebar'
 
@@ -249,7 +249,7 @@ function DueDateEditor({ dueDate, onUpdate }: { dueDate: number | null, onUpdate
 
 function AssigneePicker({ issue, onUpdate }: { issue: KanbanIssue, onUpdate: (patch: IssuePatch) => void }) {
   const { t } = useTranslation('kanban')
-  const humanCandidates = useMemo(() => [{ id: CURRENT_USER_ASSIGNEE_ID, name: t('assignee.currentUser') }], [t])
+  const humanCandidates = [{ id: CURRENT_USER_ASSIGNEE_ID, name: t('assignee.currentUser') }]
   const assignedHuman = issue.assigneeKind === 'user'
     ? humanCandidates.find(candidate => candidate.id === issue.assigneeId) ?? {
         id: issue.assigneeId ?? '',
@@ -258,7 +258,7 @@ function AssigneePicker({ issue, onUpdate }: { issue: KanbanIssue, onUpdate: (pa
     : null
   const selectedValue = assignedHuman?.id ? `user:${assignedHuman.id}` : ''
 
-  const handleAssigneeChange = useCallback((value: string) => {
+  const handleAssigneeChange = (value: string) => {
     if (value === '') {
       onUpdate({ assigneeKind: null, assigneeId: null })
       return
@@ -268,7 +268,7 @@ function AssigneePicker({ issue, onUpdate }: { issue: KanbanIssue, onUpdate: (pa
     if (kind === 'user') {
       onUpdate({ assigneeKind: 'user', assigneeId: id })
     }
-  }, [onUpdate])
+  }
 
   return (
     <DropdownMenu>
@@ -312,15 +312,12 @@ function AgentDelegatePicker({ issue }: { issue: KanbanIssue }) {
   const { t } = useTranslation('kanban')
   const delegateIssue = useDelegateIssue()
   const undelegateIssue = useUndelegateIssue()
-  const agentCandidates = useMemo(
-    () => agents.filter(agent => !!agent.providerTargetId),
-    [agents],
-  )
+  const agentCandidates = agents.filter(agent => !!agent.providerTargetId)
   const delegatedAgent = findDelegatedAgent(issue, agentCandidates)
   const selectedValue = delegatedAgent ? `agent:${delegatedAgent.id}` : ''
   const isMutating = delegateIssue.isPending || undelegateIssue.isPending
 
-  const handleAgentChange = useCallback((value: string) => {
+  const handleAgentChange = (value: string) => {
     if (value === '') {
       if (issue.delegateAgentId || issue.delegateAgentProfileId) {
         undelegateIssue.mutate({ issueId: issue.id })
@@ -334,7 +331,7 @@ function AgentDelegatePicker({ issue }: { issue: KanbanIssue }) {
       return
     }
     delegateIssue.mutate({ issueId: issue.id, agentId: agent.id, providerTargetId: agent.providerTargetId })
-  }, [agentCandidates, delegateIssue, issue.delegateAgentId, issue.delegateAgentProfileId, issue.id, undelegateIssue])
+  }
 
   return (
     <DropdownMenu>
@@ -418,18 +415,9 @@ function LabelsEditor({
   const inputRef = useRef<HTMLInputElement>(null)
   const renameInputRef = useRef<HTMLInputElement>(null)
   const patchIssueLabels = usePatchIssueLabels()
-  const workspaceLabelOptions = useMemo(
-    () => collectWorkspaceLabelOptions(workspaceIssues),
-    [workspaceIssues],
-  )
-  const labelSuggestions = useMemo(
-    () => filterWorkspaceLabelOptions(workspaceLabelOptions, inputValue, labels).slice(0, LABEL_SUGGESTION_LIMIT),
-    [inputValue, labels, workspaceLabelOptions],
-  )
-  const selectedLabelKeys = useMemo(
-    () => new Set(labels.map(normalizeLabelForCompare)),
-    [labels],
-  )
+  const workspaceLabelOptions = collectWorkspaceLabelOptions(workspaceIssues)
+  const labelSuggestions = filterWorkspaceLabelOptions(workspaceLabelOptions, inputValue, labels).slice(0, LABEL_SUGGESTION_LIMIT)
+  const selectedLabelKeys = new Set(labels.map(normalizeLabelForCompare))
   const trimmedInput = inputValue.trim()
   const canCreateLabel = trimmedInput.length > 0 && !selectedLabelKeys.has(normalizeLabelForCompare(trimmedInput))
   const isGlobalLabelMutating = patchIssueLabels.isPending
@@ -448,7 +436,7 @@ function LabelsEditor({
     requestAnimationFrame(() => renameInputRef.current?.focus())
   }, [editingLabel])
 
-  const handleAddLabel = useCallback((label: string) => {
+  const handleAddLabel = (label: string) => {
     const trimmed = label.trim()
     const labelKey = normalizeLabelForCompare(trimmed)
 
@@ -459,29 +447,29 @@ function LabelsEditor({
     onUpdate([...labels, trimmed])
     setInputValue('')
     setOpen(false)
-  }, [labels, onUpdate, selectedLabelKeys])
+  }
 
-  const handleSubmitInput = useCallback(() => {
+  const handleSubmitInput = () => {
     const exactSuggestion = labelSuggestions.find(option => normalizeLabelForCompare(option.label) === normalizeLabelForCompare(inputValue))
     handleAddLabel(exactSuggestion?.label ?? inputValue)
-  }, [handleAddLabel, inputValue, labelSuggestions])
+  }
 
-  const handleRemove = useCallback((label: string) => {
+  const handleRemove = (label: string) => {
     const labelKey = normalizeLabelForCompare(label)
     onUpdate(labels.filter(l => normalizeLabelForCompare(l) !== labelKey))
-  }, [labels, onUpdate])
+  }
 
-  const startRenamingLabel = useCallback((label: string) => {
+  const startRenamingLabel = (label: string) => {
     setEditingLabel(label)
     setRenameValue(label)
-  }, [])
+  }
 
-  const stopRenamingLabel = useCallback(() => {
+  const stopRenamingLabel = () => {
     setEditingLabel(null)
     setRenameValue('')
-  }, [])
+  }
 
-  const commitRenameLabel = useCallback(() => {
+  const commitRenameLabel = () => {
     if (!editingLabel) {
       return
     }
@@ -494,9 +482,9 @@ function LabelsEditor({
     }
 
     patchIssueLabels.mutate({ patches }, { onSuccess: stopRenamingLabel })
-  }, [editingLabel, patchIssueLabels, renameValue, stopRenamingLabel, workspaceIssues])
+  }
 
-  const deleteWorkspaceLabel = useCallback((label: string) => {
+  const deleteWorkspaceLabel = (label: string) => {
     const patches = buildDeleteLabelPatches(workspaceIssues, label)
 
     if (patches.length === 0) {
@@ -504,7 +492,7 @@ function LabelsEditor({
     }
 
     patchIssueLabels.mutate({ patches })
-  }, [patchIssueLabels, workspaceIssues])
+  }
 
   return (
     <div className="flex flex-wrap items-center gap-1">
