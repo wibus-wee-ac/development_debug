@@ -9,7 +9,7 @@ interface SettingsSectionHeaderProps {
 
 export function SettingsSectionHeader({ title, description, action, className }: SettingsSectionHeaderProps) {
   return (
-    <div className={cn('flex items-start justify-between gap-4 pb-3', className)}>
+    <div className={cn('flex items-start justify-between gap-4 pt-3', className)}>
       <div>
         <h3 className="text-base font-semibold text-foreground text-balance">{title}</h3>
         {description && (

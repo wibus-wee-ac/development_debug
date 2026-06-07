@@ -42,7 +42,7 @@ export const ChronicleModel = {
     activityPipelineEnabled: t.Boolean(),
     activityPipelineIntervalMs: t.Number(),
     activityPipelineBatchSize: t.Number(),
-    dreamSchedulerEnabled: t.Optional(t.Boolean({ default: true })),
+    dreamSchedulerEnabled: t.Optional(t.Boolean({ default: false })),
     dreamSchedulerIntervalMs: t.Optional(t.Number({ default: 86_400_000 })),
     dreamSchedulerApplyMerge: t.Optional(t.Boolean({ default: false })),
     audioCaptureEnabled: t.Boolean(),

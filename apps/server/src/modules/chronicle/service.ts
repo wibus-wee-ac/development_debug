@@ -43,7 +43,7 @@ import { AppError } from '../../errors/app-error'
 import { currentUnixSeconds } from '../../helpers/time'
 import { db, getServerConfig } from '../../infra'
 import { createLanguageModel, detectApiFormat } from '../chat-runtime-engine/providers'
-import * as Profiles from '../profiles/service'
+import * as ProviderTargets from '../provider-targets/service'
 import { readSecret } from '../secrets/service'
 import * as DaemonManager from './daemon-manager'
 
@@ -76,10 +76,10 @@ const defaultConfig: ChronicleConfig = {
   modelId: '',
   workspaceId: '',
   enabled: false,
-  activityPipelineEnabled: true,
+  activityPipelineEnabled: false,
   activityPipelineIntervalMs: 120_000,
   activityPipelineBatchSize: 3,
-  dreamSchedulerEnabled: true,
+  dreamSchedulerEnabled: false,
   dreamSchedulerIntervalMs: 86_400_000,
   dreamSchedulerApplyMerge: false,
   audioCaptureEnabled: false,
@@ -2253,11 +2253,11 @@ function resolveChronicleLanguageModelContext(config: ChronicleConfig): Chronicl
     return { ok: false, message: failure }
   }
 
-  const profile = Profiles.getProfile(config.profileId)!
-  const parsedConfig = ProfileConfigJsonSchema.parse(profile.configJson)
-  const apiKey = resolveProfileApiKey(profile.credentialRef, parsedConfig.apiKey)
+  const providerTarget = ProviderTargets.resolveProviderTarget(config.profileId)
+  const parsedConfig = ProfileConfigJsonSchema.parse(providerTarget.configJson)
+  const apiKey = resolveProfileApiKey(providerTarget.credentialRef, parsedConfig.apiKey)
   if (!apiKey) {
-    return { ok: false, message: 'no API key available for profile' }
+    return { ok: false, message: 'no API key available for provider target' }
   }
 
   const modelId = config.modelId || parsedConfig.modelId || parsedConfig.model || 'gpt-4o-mini'
@@ -7172,10 +7172,14 @@ function validateSummaryConfig(config: ChronicleConfig): string | null {
     return 'Chronicle is not enabled'
   }
   if (!config.profileId) {
-    return 'no profile set'
+    return 'no provider target set'
   }
-  if (!Profiles.getProfile(config.profileId)) {
-    return 'configured profile not found'
+  const providerTarget = ProviderTargets.getProviderTarget(config.profileId)
+  if (!providerTarget) {
+    return 'configured provider target not found'
+  }
+  if (!providerTarget.enabled) {
+    return 'configured provider target disabled'
   }
   return null
 }
@@ -7920,11 +7924,11 @@ async function getConfiguredModel(config: ChronicleConfig): Promise<string | nul
   if (!config.profileId) {
     return null
   }
-  const profile = Profiles.getProfile(config.profileId)
-  if (!profile) {
+  const providerTarget = ProviderTargets.getProviderTarget(config.profileId)
+  if (!providerTarget) {
     return null
   }
-  const parsedConfig = ProfileConfigJsonSchema.parse(profile.configJson)
+  const parsedConfig = ProfileConfigJsonSchema.parse(providerTarget.connectionConfigJson)
   return config.modelId || parsedConfig.modelId || parsedConfig.model || null
 }
 

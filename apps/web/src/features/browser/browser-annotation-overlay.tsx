@@ -1,6 +1,7 @@
 import type { FileUIPart } from 'ai'
 import {
   CheckIcon,
+  ChevronRightIcon,
   ImagePlusIcon,
   Maximize2Icon,
   MousePointer2Icon,
@@ -72,7 +73,7 @@ interface BrowserAnnotationAttachedImage {
 }
 
 const MIN_REGION_SIZE = 12
-const PANEL_WIDTH = 360
+const PANEL_WIDTH = 280
 const PANEL_MIN_VISIBLE = 72
 const POPUP_ENTER_MS = 200
 const POPUP_EXIT_MS = 150
@@ -81,6 +82,23 @@ const POPUP_SHAKE_MS = 250
 let nextAttachedImageId = 0
 
 type PopupAnimationState = 'initial' | 'enter' | 'entered' | 'exit'
+
+const POPUP_COMPUTED_STYLE_FIELDS: ReadonlyArray<{
+  key: keyof BrowserAnnotationElement['styles']
+  property: string
+}> = [
+  { key: 'display', property: 'display' },
+  { key: 'color', property: 'color' },
+  { key: 'backgroundColor', property: 'background-color' },
+  { key: 'fontSize', property: 'font-size' },
+  { key: 'fontWeight', property: 'font-weight' },
+  { key: 'width', property: 'width' },
+  { key: 'height', property: 'height' },
+  { key: 'paddingTop', property: 'padding-top' },
+  { key: 'paddingRight', property: 'padding-right' },
+  { key: 'paddingBottom', property: 'padding-bottom' },
+  { key: 'paddingLeft', property: 'padding-left' },
+]
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value))
@@ -111,9 +129,35 @@ function anchorSummary(anchor: BrowserAnnotationAnchor | null): string {
   return `Region ${Math.round(anchor.width)} x ${Math.round(anchor.height)}`
 }
 
+function anchorTokenLabel(anchor: BrowserAnnotationAnchor | null): string {
+  if (!anchor) {
+    return 'Selection'
+  }
+  if (anchor.kind === 'point') {
+    return 'Point'
+  }
+  if (anchor.kind === 'region') {
+    return 'Area selection'
+  }
+  return `<${anchor.element.tagName.toLowerCase()}> ${anchor.element.label || anchor.element.role || anchor.element.selector}`
+}
+
+function computedStyleRows(element: BrowserAnnotationElement) {
+  return POPUP_COMPUTED_STYLE_FIELDS
+    .map(({ key, property }) => ({
+      property,
+      value: element.styles[key],
+    }))
+    .filter(row =>
+      typeof row.value === 'string'
+      && row.value.trim().length > 0
+      && row.value !== 'rgba(0, 0, 0, 0)',
+    )
+}
+
 function editorPosition(anchor: BrowserAnnotationAnchor | null, surface: BrowserAnnotationSurfaceSize) {
   const fallback = {
-    left: Math.max(12, surface.width - 344 - 12),
+    left: Math.max(12, surface.width - PANEL_WIDTH - 12),
     top: Math.max(12, surface.height - 180 - 12),
   }
   if (!anchor) {
@@ -255,6 +299,7 @@ export function BrowserAnnotationOverlay({
   const [previewImage, setPreviewImage] = useState<BrowserAnnotationAttachedImage | null>(null)
   const [popupAnimationState, setPopupAnimationState] = useState<PopupAnimationState>('initial')
   const [isShaking, setIsShaking] = useState(false)
+  const [isStylesExpanded, setIsStylesExpanded] = useState(false)
 
   const visibleRegion = drag ? buildRegion(drag) : anchor?.kind === 'region' ? anchor : null
   const selectedElement = anchor?.kind === 'element' ? anchor.element : null
@@ -268,6 +313,7 @@ export function BrowserAnnotationOverlay({
   const framedElement = selectedElement ?? hoveredElement
   const anchoredEditor = editorPosition(anchor, surfaceSize)
   const editor = editorOverride ?? anchoredEditor
+  const styleRows = selectedElement ? computedStyleRows(selectedElement) : []
 
   const readSurfacePoint = (event: ReactPointerEvent<HTMLDivElement>) => {
     const rect = surfaceRef.current?.getBoundingClientRect()
@@ -607,7 +653,7 @@ export function BrowserAnnotationOverlay({
       {anchor && (
         <form
           className={cn(
-            'absolute w-[360px] origin-top-left rounded-2xl bg-popover/95 p-3 text-popover-foreground opacity-0 shadow-[0_4px_24px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.06)] backdrop-blur-md dark:bg-[#1a1a1a]/95 dark:shadow-[0_4px_24px_rgba(0,0,0,0.34),0_0_0_1px_rgba(255,255,255,0.08)]',
+            'absolute w-[280px] origin-top-left rounded-2xl bg-popover/95 p-3.5 text-popover-foreground opacity-0 shadow-[0_4px_24px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.06)] backdrop-blur-md dark:bg-[#1a1a1a]/95 dark:shadow-[0_4px_24px_rgba(0,0,0,0.34),0_0_0_1px_rgba(255,255,255,0.08)]',
             'motion-reduce:animate-none motion-reduce:opacity-100',
             popupAnimationState === 'enter'
             && 'animate-[browser-annotation-popup-enter_200ms_cubic-bezier(0.34,1.56,0.64,1)_forwards]',
@@ -657,7 +703,7 @@ export function BrowserAnnotationOverlay({
             </div>
           )}
           <div
-            className="mb-2 flex cursor-grab items-center justify-between gap-2 active:cursor-grabbing"
+            className="mb-2 flex cursor-grab items-start justify-between gap-2 active:cursor-grabbing"
             onPointerDown={(event) => {
               if (!event.isPrimary || event.button !== 0) {
                 return
@@ -679,15 +725,39 @@ export function BrowserAnnotationOverlay({
               })
             }}
           >
-            <div className="flex min-w-0 items-center gap-2">
-              <span className="flex w-3 shrink-0 flex-col gap-0.5" aria-hidden="true">
-                <span className="h-px w-3 rounded-full bg-muted-foreground/45" />
-                <span className="h-px w-3 rounded-full bg-muted-foreground/45" />
-              </span>
-              <span className="min-w-0 truncate text-sm font-medium text-popover-foreground">
-                Comment
-              </span>
-            </div>
+            {selectedElement && styleRows.length > 0
+              ? (
+                  <button
+                    type="button"
+                    className="flex min-w-0 flex-1 items-baseline gap-1.5 text-left text-xs leading-5 text-muted-foreground transition-[color] duration-150 hover:text-foreground"
+                    onClick={() => setIsStylesExpanded(expanded => !expanded)}
+                    aria-expanded={isStylesExpanded}
+                  >
+                    <ChevronRightIcon
+                      className={cn(
+                        'mt-0.5 size-3.5 shrink-0 transition-[transform] duration-250 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                        isStylesExpanded && 'rotate-90',
+                      )}
+                      aria-hidden="true"
+                    />
+                    <span className="shrink-0">Add more detail to</span>
+                    <span className="inline-flex min-w-0 max-w-[104px] items-center rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-medium text-primary-foreground">
+                      <span className="truncate">
+                        {anchorTokenLabel(anchor)}
+                      </span>
+                    </span>
+                  </button>
+                )
+              : (
+                  <div className="flex min-w-0 flex-1 items-baseline gap-1.5 text-xs leading-5 text-muted-foreground">
+                    <span className="shrink-0">Add more detail to</span>
+                    <span className="inline-flex min-w-0 max-w-[126px] items-center rounded-full bg-primary px-1.5 py-0.5 text-[11px] font-medium text-primary-foreground">
+                      <span className="truncate">
+                        {anchorTokenLabel(anchor)}
+                      </span>
+                    </span>
+                  </div>
+                )}
             <Button
               type="button"
               variant="ghost"
@@ -699,29 +769,43 @@ export function BrowserAnnotationOverlay({
               <XIcon className="size-3.5" />
             </Button>
           </div>
-          {selectedElement && (
-            <div className="mb-2 rounded-lg bg-muted/50 px-2.5 py-2 ring-1 ring-border/60">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="shrink-0 rounded-md bg-primary/10 px-1.5 py-0.5 font-mono text-[10px] font-medium uppercase text-primary">
-                  {selectedElement.tagName.toLowerCase()}
-                </span>
-                <span className="min-w-0 truncate text-xs font-medium text-foreground">
-                  {selectedElement.label || selectedElement.role || selectedElement.selector}
-                </span>
-              </div>
-              {selectedElement.selector && (
-                <div className="mt-1 truncate font-mono text-[10px] text-muted-foreground">
-                  {selectedElement.selector}
-                </div>
+          {selectedElement && styleRows.length > 0 && (
+            <div
+              className={cn(
+                'grid transition-[grid-template-rows] duration-300 ease-[cubic-bezier(0.16,1,0.3,1)]',
+                isStylesExpanded ? 'grid-rows-[1fr]' : 'grid-rows-[0fr]',
               )}
+            >
+              <div className="overflow-hidden">
+                <div className="mb-2 rounded-md bg-white/[0.05] px-2.5 py-2 font-mono text-[11px] leading-5 text-foreground/85 dark:bg-white/[0.05]">
+                  {styleRows.map(row => (
+                    <div key={row.property} className="break-words">
+                      <span className="text-primary">
+                        {row.property}
+                      </span>
+                      <span className="text-muted-foreground">
+                        :
+                      </span>
+                      {' '}
+                      <span>
+                        {row.value}
+                      </span>
+                      <span className="text-muted-foreground">
+                        ;
+                      </span>
+                    </div>
+                  ))}
+                </div>
+              </div>
             </div>
           )}
           <Textarea
             ref={textareaRef}
             value={draft}
             onChange={event => setDraft(event.target.value)}
-            placeholder="Comment"
-            className="min-h-24 resize-none rounded-lg bg-background/70 text-sm shadow-none transition-[border-color,box-shadow] duration-150 focus-visible:ring-primary/45 dark:bg-white/5"
+            placeholder="What should change?"
+            rows={2}
+            className="min-h-16 resize-none rounded-lg bg-background/70 text-sm shadow-none transition-[border-color,box-shadow] duration-150 focus-visible:ring-primary/45 dark:bg-white/5"
           />
           {attachedImages.length > 0 && (
             <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
@@ -759,11 +843,11 @@ export function BrowserAnnotationOverlay({
               })}
             </div>
           )}
-          <div className="mt-2 flex items-center justify-between gap-2">
-            <span className="min-w-0 truncate text-xs text-muted-foreground">
+          <div className="mt-2 space-y-2">
+            <span className="block min-w-0 truncate text-xs text-muted-foreground">
               {anchorSummary(anchor)}
             </span>
-            <div className="flex shrink-0 items-center gap-1">
+            <div className="flex items-center justify-end gap-1">
               <input
                 ref={imageInputRef}
                 type="file"
@@ -776,11 +860,13 @@ export function BrowserAnnotationOverlay({
               <Button
                 type="button"
                 variant="ghost"
-                size="icon-sm"
+                size="sm"
+                className="gap-1.5"
                 onClick={() => imageInputRef.current?.click()}
                 aria-label="Attach images"
               >
                 <ImagePlusIcon className="size-3.5" />
+                Attach
               </Button>
               <Button
                 type="button"
