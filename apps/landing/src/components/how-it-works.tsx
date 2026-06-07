@@ -1,166 +1,58 @@
+/**
+ * How It Works — 3 steps with flow lines
+ */
+
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { Layers, PlugZap, Workflow } from 'lucide-react'
 import { useRef } from 'react'
 
-gsap.registerPlugin(useGSAP, ScrollTrigger)
-
 const STEPS = [
-  {
-    Icon: PlugZap,
-    accent: 'var(--color-accent)',
-    n: '01',
-    title: 'Connect your AI tools',
-    desc: 'Point Cradle at your existing Claude Code, Cursor, or any other runtime. No migration, no lock-in — your tools stay exactly as they are.',
-  },
-  {
-    Icon: Layers,
-    accent: 'var(--color-accent-session)',
-    n: '02',
-    title: 'Dispatch tasks in parallel',
-    desc: 'Create sessions for each agent with a specific goal. Watch them run simultaneously in a unified Kanban board with real-time logs.',
-  },
-  {
-    Icon: Workflow,
-    accent: 'var(--color-accent-scope)',
-    n: '03',
-    title: 'Set conditions and walk away',
-    desc: 'Define triggers — "resume after CI passes", "await PR approval" — and Cradle handles coordination. Your agents work while you sleep.',
-  },
+  { Icon: PlugZap, accent: '#8b5cf6', n: '01', title: 'Connect your AI tools', desc: 'Point Cradle at your existing Claude Code, Cursor, or any other runtime. No migration, no lock-in.' },
+  { Icon: Layers, accent: '#3b82f6', n: '02', title: 'Dispatch tasks in parallel', desc: 'Create sessions for each agent with a specific goal. Watch them run simultaneously with real-time logs.' },
+  { Icon: Workflow, accent: '#10b981', n: '03', title: 'Set conditions and walk away', desc: 'Define triggers — "resume after CI passes", "await PR approval" — and Cradle handles coordination.' },
 ]
 
 export function HowItWorksSection() {
   const sectionRef = useRef<HTMLElement>(null)
 
-  useGSAP(
-    () => {
-      gsap.from('.how-header', {
-        y: 20,
-opacity: 0,
-duration: 0.7,
-ease: 'power3.out',
-        scrollTrigger: { trigger: '.how-header', start: 'top 82%' },
-      })
-      gsap.from('.how-step', {
-        y: 24,
-opacity: 0,
-duration: 0.6,
-stagger: 0.12,
-ease: 'power3.out',
-        scrollTrigger: { trigger: '.how-steps', start: 'top 78%' },
-      })
-    },
-    { scope: sectionRef },
-  )
+  useGSAP(() => {
+    gsap.from('.how-step', { y: 16, opacity: 0, duration: 0.5, stagger: 0.1, ease: 'power2.out', scrollTrigger: { trigger: '.how-steps', start: 'top 78%' } })
+  }, { scope: sectionRef })
 
   return (
-    <section
-      ref={sectionRef}
-      id="how-it-works"
-      style={{
-        padding: '96px 24px',
-        borderTop: '1px solid var(--color-border)',
-      }}
-    >
-      <div style={{ maxWidth: 880, margin: '0 auto' }}>
-        <div className="how-header" style={{ textAlign: 'center', marginBottom: 56 }}>
-          <p
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              letterSpacing: '0.06em',
-              color: 'var(--color-neutral-5)',
-              marginBottom: 16,
-            }}
-          >
-            Getting started
-          </p>
-          <h2
-            style={{
-              fontSize: 'clamp(1.6rem, 3.5vw, 2.4rem)',
-              fontWeight: 600,
-              lineHeight: 1.15,
-              letterSpacing: '-0.025em',
-              color: 'var(--color-neutral-9)',
-            }}
-          >
+    <section ref={sectionRef} style={{ padding: '80px 24px', borderTop: '1px solid var(--border-subtle)' }} id="how-it-works">
+      <div style={{ maxWidth: 960, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: 48 }}>
+          <h2 style={{ fontSize: 'clamp(1.4rem, 3vw, 2rem)', fontWeight: 600, lineHeight: 1.15, letterSpacing: '-0.02em', color: 'var(--text)' }}>
             How it works
           </h2>
         </div>
 
-        <div
-          className="how-steps"
-          style={{
-            display: 'grid',
-            gridTemplateColumns: 'repeat(auto-fit, minmax(220px, 1fr))',
-            gap: 16,
-          }}
-        >
+        <div className="how-steps" style={{ display: 'grid', gridTemplateColumns: '1fr auto 1fr auto 1fr', gap: 0, alignItems: 'start' }}>
           {STEPS.map((s, i) => (
-            <div
-              key={i}
-              className="how-step"
-              style={{
-                padding: '24px',
-                borderRadius: 10,
-                background: 'var(--color-neutral-3)',
-                border: '1px solid var(--color-border)',
-                boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.04)',
-              }}
-            >
-              <div
-                style={{
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'space-between',
-                  marginBottom: 20,
-                }}
-              >
-                <div
-                  style={{
-                    width: 32,
-                    height: 32,
-                    borderRadius: 8,
-                    background: 'var(--color-neutral-4)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    boxShadow: 'inset 0 1px 0 rgba(255,255,255,0.06)',
-                  }}
-                >
-                  <s.Icon style={{ width: 14, height: 14, color: s.accent }} />
+            <div key={i} style={{ display: 'contents' }}>
+              <div className="how-step" style={{ padding: '24px', border: '1px dashed var(--border)' }}>
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+                  <div style={{ width: 28, height: 28, border: '1px solid var(--border)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+                    <s.Icon style={{ width: 13, height: 13, color: s.accent }} />
+                  </div>
+                  <span style={{ fontSize: 11, color: s.accent, border: `1px solid ${s.accent}`, padding: '2px 8px', fontWeight: 500 }}>
+                    {s.n}
+                  </span>
                 </div>
-                <span
-                  style={{
-                    fontFamily: 'var(--font-mono)',
-                    fontSize: 11,
-                    color: 'var(--color-neutral-5)',
-                  }}
-                >
-                  {s.n}
-                </span>
+                <h3 style={{ fontSize: 13, fontWeight: 600, color: 'var(--text)', marginBottom: 8, lineHeight: 1.4 }}>{s.title}</h3>
+                <p style={{ fontSize: 13, lineHeight: 1.65, color: 'var(--text-secondary)' }}>{s.desc}</p>
               </div>
-              <h3
-                style={{
-                  fontSize: 13,
-                  fontWeight: 600,
-                  color: 'var(--color-neutral-8)',
-                  marginBottom: 8,
-                  lineHeight: 1.4,
-                }}
-              >
-                {s.title}
-              </h3>
-              <p
-                style={{
-                  fontSize: 13,
-                  lineHeight: 1.65,
-                  color: 'var(--color-neutral-6)',
-                }}
-              >
-                {s.desc}
-              </p>
+
+              {i < STEPS.length - 1 && (
+                <div style={{ display: 'flex', alignItems: 'center', padding: '0 8px', alignSelf: 'center', height: 120 }}>
+                  <svg width={40} height={24} viewBox="0 0 40 24">
+                    <line x1={0} y1={12} x2={32} y2={12} stroke="var(--border-strong)" strokeWidth={1} strokeDasharray="4 4" />
+                    <path d="M 30 6 L 38 12 L 30 18" fill="none" stroke="var(--border-strong)" strokeWidth={1} />
+                  </svg>
+                </div>
+              )}
             </div>
           ))}
         </div>

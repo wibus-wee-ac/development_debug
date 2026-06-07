@@ -1,10 +1,11 @@
+/**
+ * Comparison table
+ */
+
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
-import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import { CheckCircle2, Minus, X } from 'lucide-react'
 import { useRef } from 'react'
-
-gsap.registerPlugin(useGSAP, ScrollTrigger)
 
 const TOOLS = ['Cursor', 'Claude Code', 'Devin', 'Cradle']
 const ROWS = [
@@ -18,121 +19,42 @@ const ROWS = [
 ]
 
 function CellIcon({ val }: { val: boolean | string }) {
-  if (val === true) { return <CheckCircle2 style={{ width: 14, height: 14, color: 'var(--color-accent-scope)' }} /> }
-  if (val === 'partial') { return <Minus style={{ width: 14, height: 14, color: 'var(--color-accent-legacy)' }} /> }
-  return <X style={{ width: 12, height: 12, color: 'var(--color-neutral-5)' }} />
+  if (val === true) return <CheckCircle2 style={{ width: 14, height: 14, color: '#10b981' }} />
+  if (val === 'partial') return <Minus style={{ width: 14, height: 14, color: '#f59e0b' }} />
+  return <X style={{ width: 12, height: 12, color: 'var(--text-muted)' }} />
 }
 
 export function ComparisonSection() {
   const sectionRef = useRef<HTMLElement>(null)
 
-  useGSAP(
-    () => {
-      gsap.from('.comp-header', {
-        y: 20,
-opacity: 0,
-duration: 0.7,
-ease: 'power3.out',
-        scrollTrigger: { trigger: '.comp-header', start: 'top 82%' },
-      })
-      gsap.from('.comp-table', {
-        y: 28,
-opacity: 0,
-duration: 0.7,
-ease: 'power3.out',
-        scrollTrigger: { trigger: '.comp-table', start: 'top 80%' },
-      })
-    },
-    { scope: sectionRef },
-  )
+  useGSAP(() => {
+    gsap.from('.comp-table', { y: 20, opacity: 0, duration: 0.6, ease: 'power2.out', scrollTrigger: { trigger: '.comp-table', start: 'top 80%' } })
+  }, { scope: sectionRef })
 
   return (
-    <section
-      ref={sectionRef}
-      id="comparison"
-      style={{
-        padding: '96px 24px',
-        borderTop: '1px solid var(--color-border)',
-      }}
-    >
-      <div style={{ maxWidth: 880, margin: '0 auto' }}>
-        <div className="comp-header" style={{ textAlign: 'center', marginBottom: 48 }}>
-          <p
-            style={{
-              fontFamily: 'var(--font-mono)',
-              fontSize: 11,
-              letterSpacing: '0.06em',
-              color: 'var(--color-neutral-5)',
-              marginBottom: 16,
-            }}
-          >
-            Why Cradle
-          </p>
-          <h2
-            style={{
-              fontSize: 'clamp(1.6rem, 3.5vw, 2.4rem)',
-              fontWeight: 600,
-              lineHeight: 1.15,
-              letterSpacing: '-0.025em',
-              color: 'var(--color-neutral-9)',
-              marginBottom: 14,
-            }}
-          >
+    <section ref={sectionRef} style={{ padding: '80px 24px', borderTop: '1px solid var(--border-subtle)' }} id="comparison">
+      <div style={{ maxWidth: 960, margin: '0 auto' }}>
+        <div style={{ textAlign: 'center', marginBottom: 40 }}>
+          <h2 style={{ fontSize: 'clamp(1.4rem, 3vw, 2rem)', fontWeight: 600, lineHeight: 1.15, letterSpacing: '-0.02em', color: 'var(--text)', marginBottom: 12 }}>
             Not a replacement. A command center.
           </h2>
-          <p
-            style={{
-              fontSize: 14,
-              lineHeight: 1.7,
-              color: 'var(--color-neutral-6)',
-              maxWidth: 420,
-              margin: '0 auto',
-            }}
-          >
+          <p style={{ fontSize: 14, lineHeight: 1.7, color: 'var(--text-secondary)', maxWidth: 420, margin: '0 auto' }}>
             Cradle doesn't compete with your tools. It sits above them — the neutral orchestration layer no one else is building.
           </p>
         </div>
 
-        <div
-          className="comp-table"
-          style={{
-            borderRadius: 10,
-            border: '1px solid var(--color-border)',
-            overflow: 'hidden',
-          }}
-        >
+        <div className="comp-table" style={{ border: '1px solid var(--border)', overflow: 'hidden' }}>
           <table style={{ width: '100%', borderCollapse: 'collapse', fontSize: 13 }}>
             <thead>
-              <tr
-                style={{
-                  background: 'var(--color-neutral-3)',
-                  borderBottom: '1px solid var(--color-border)',
-                }}
-              >
-                <th
-                  style={{
-                    padding: '10px 16px',
-                    textAlign: 'left',
-                    fontSize: 11,
-                    fontWeight: 500,
-                    color: 'var(--color-neutral-6)',
-                    width: '42%',
-                    fontFamily: 'var(--font-sans)',
-                  }}
-                >
-                  Capability
-                </th>
+              <tr style={{ background: 'var(--fill-hover)' }}>
+                <th style={{ padding: '10px 16px', textAlign: 'left', fontSize: 12, fontWeight: 500, color: 'var(--text-secondary)', width: '42%', borderBottom: '1px solid var(--border)' }}>Capability</th>
                 {TOOLS.map(tool => (
-                  <th
-                    key={tool}
-                    style={{
-                      padding: '10px 16px',
-                      textAlign: 'center',
-                      fontSize: 11,
-                      fontWeight: 500,
-                      color: tool === 'Cradle' ? 'var(--color-accent)' : 'var(--color-neutral-5)',
-                      fontFamily: 'var(--font-sans)',
-                    }}
+                  <th key={tool} style={{
+                    padding: '10px 16px', textAlign: 'center', fontSize: 12, fontWeight: 500,
+                    color: tool === 'Cradle' ? 'var(--text)' : 'var(--text-muted)',
+                    borderBottom: '1px solid var(--border)',
+                    ...(tool === 'Cradle' ? { borderLeft: '1px solid var(--border)' } : {}),
+                  }}
                   >
                     {tool}
                   </th>
@@ -141,27 +63,11 @@ ease: 'power3.out',
             </thead>
             <tbody>
               {ROWS.map((row, i) => (
-                <tr
-                  key={row.label}
-                  style={{
-                    background: i % 2 === 0 ? 'var(--color-neutral-1)' : 'var(--color-neutral-3)',
-                    borderBottom: i < ROWS.length - 1 ? '1px solid var(--color-border)' : 'none',
-                  }}
-                >
-                  <td
-                    style={{
-                      padding: '10px 16px',
-                      fontSize: 12,
-                      color: 'var(--color-neutral-7)',
-                    }}
-                  >
-                    {row.label}
-                  </td>
+                <tr key={row.label} style={{ background: i % 2 === 0 ? 'transparent' : 'var(--fill)', borderBottom: i < ROWS.length - 1 ? '1px solid var(--border-subtle)' : 'none' }}>
+                  <td style={{ padding: '10px 16px', fontSize: 12, color: 'var(--text-secondary)' }}>{row.label}</td>
                   {row.vals.map((v, j) => (
-                    <td key={j} style={{ padding: '10px 16px', textAlign: 'center' }}>
-                      <div style={{ display: 'flex', justifyContent: 'center' }}>
-                        <CellIcon val={v} />
-                      </div>
+                    <td key={j} style={{ padding: '10px 16px', textAlign: 'center', ...(TOOLS[j] === 'Cradle' ? { borderLeft: '1px solid var(--border-subtle)' } : {}) }}>
+                      <div style={{ display: 'flex', justifyContent: 'center' }}><CellIcon val={v} /></div>
                     </td>
                   ))}
                 </tr>
@@ -170,24 +76,15 @@ ease: 'power3.out',
           </table>
         </div>
 
-        {/* Legend */}
-        <div
-          style={{
-            display: 'flex',
-            alignItems: 'center',
-            justifyContent: 'center',
-            gap: 24,
-            marginTop: 16,
-          }}
-        >
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', gap: 24, marginTop: 14 }}>
           {[
-            { Icon: CheckCircle2, color: 'var(--color-accent-scope)', label: 'Supported' },
-            { Icon: Minus, color: 'var(--color-accent-legacy)', label: 'Partial / cloud only' },
-            { Icon: X, color: 'var(--color-neutral-5)', label: 'Not available' },
+            { Icon: CheckCircle2, color: '#10b981', label: 'Supported' },
+            { Icon: Minus, color: '#f59e0b', label: 'Partial' },
+            { Icon: X, color: 'var(--text-muted)', label: 'Not available' },
           ].map(l => (
             <div key={l.label} style={{ display: 'flex', alignItems: 'center', gap: 6 }}>
-              <l.Icon style={{ width: 12, height: 12, color: l.color }} />
-              <span style={{ fontSize: 11, color: 'var(--color-neutral-6)' }}>{l.label}</span>
+              <l.Icon style={{ width: 11, height: 11, color: l.color }} />
+              <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>{l.label}</span>
             </div>
           ))}
         </div>
