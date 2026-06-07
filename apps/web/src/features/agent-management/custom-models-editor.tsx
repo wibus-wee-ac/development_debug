@@ -1,5 +1,5 @@
 import { PlusIcon, SparklesIcon, Trash2Icon } from 'lucide-react'
-import { useCallback, useEffect, useReducer, useRef } from 'react'
+import { useEffect, useReducer, useRef } from 'react'
 import { z } from 'zod'
 
 import { postProvidersModelLookup, postProvidersModelSearch } from '~/api-gen/sdk.gen'
@@ -189,7 +189,7 @@ export function CustomModelsEditor({
     return () => window.cancelAnimationFrame(frame)
   }, [state.enrichingId])
 
-  const addModel = useCallback(async () => {
+  const addModel = async () => {
     const id = state.newId.trim()
     if (!id || models.some(m => m.id === id)) {
       return
@@ -205,17 +205,13 @@ export function CustomModelsEditor({
     }
     dispatch({ type: 'lookup/end' })
     inputRef.current?.focus()
-  }, [state.newId, models, onChange])
+  }
 
-  const removeModel = useCallback(
-    (id: string) => {
+  const removeModel = (id: string) => {
       onChange(models.filter(m => m.id !== id))
-    },
-    [models, onChange],
-  )
+    }
 
-  const applyEnrichResult = useCallback(
-    (targetModelId: string, result: SearchResult) => {
+  const applyEnrichResult = (targetModelId: string, result: SearchResult) => {
       onChange(
         models.map(m =>
           m.id === targetModelId
@@ -227,20 +223,17 @@ export function CustomModelsEditor({
             : m),
       )
       dispatch({ type: 'enrich/apply' })
-    },
-    [models, onChange],
-  )
+    }
 
-  const startEnrich = useCallback((modelId: string) => {
+  const startEnrich = (modelId: string) => {
     dispatch({ type: 'enrich/start', modelId })
-  }, [])
+  }
 
-  const cancelEnrich = useCallback(() => {
+  const cancelEnrich = () => {
     dispatch({ type: 'enrich/cancel' })
-  }, [])
+  }
 
-  const handleSearchKeyDown = useCallback(
-    (e: React.KeyboardEvent) => {
+  const handleSearchKeyDown = (e: React.KeyboardEvent) => {
       if (e.key === 'Escape') {
         cancelEnrich()
         return
@@ -263,9 +256,7 @@ export function CustomModelsEditor({
         e.preventDefault()
         applyEnrichResult(state.enrichingId, state.searchResults[state.highlightIdx])
       }
-    },
-    [applyEnrichResult, cancelEnrich, state.enrichingId, state.highlightIdx, state.searchResults],
-  )
+    }
 
   const modelKeyCounts = new Map<string, number>()
   const searchResultKeyCounts = new Map<string, number>()

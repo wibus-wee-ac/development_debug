@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CircleAlertIcon, CircleCheckIcon, CircleDashedIcon, TriangleAlertIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { z } from 'zod'
 
 import {
@@ -140,11 +140,7 @@ export function ExternalProviderRecordDetailPanel({
   )
   const fetchModels = useMutation(postProvidersModelsMutation())
   const fetchProviderModels = fetchModels.mutateAsync
-  const providerTarget = useMemo(
-    () =>
-      record.providerTargetId ? { kind: 'external' as const, id: record.providerTargetId } : null,
-    [record.providerTargetId],
-  )
+  const providerTarget = record.providerTargetId ? { kind: 'external' as const, id: record.providerTargetId } : null
   const apiProviderKind = isApiProviderKind(record.providerKind) ? record.providerKind : null
   const apiProviderTarget = apiProviderKind ? providerTarget : null
   const [runtimeTarget, setRuntimeTarget] = useState<ExternalProviderRuntimeTargetView | null>(null)
@@ -245,7 +241,7 @@ export function ExternalProviderRecordDetailPanel({
     }
   }, [apiProviderKind, apiProviderTarget, fetchProviderModels, queryClient, record, record.externalId, record.sourceKey])
 
-  const refreshModels = useCallback(async () => {
+  const refreshModels = async () => {
     if (!apiProviderKind || !apiProviderTarget) {
       return
     }
@@ -267,10 +263,9 @@ export function ExternalProviderRecordDetailPanel({
     finally {
       setLoadingModels(false)
     }
-  }, [apiProviderKind, apiProviderTarget, fetchProviderModels, queryClient, record])
+  }
 
-  const handleEnabledModelsChange = useCallback(
-    async (next: string[]) => {
+  const handleEnabledModelsChange = async (next: string[]) => {
       const previous = enabledModels
       if (!apiProviderTarget) {
         return
@@ -290,21 +285,15 @@ export function ExternalProviderRecordDetailPanel({
           description: error instanceof Error ? error.message : 'Unknown error',
         })
       }
-    },
-    [apiProviderTarget, enabledModels, onUpdated, queryClient],
-  )
+    }
 
-  const handleModelRegistryMapped = useCallback(
-    (next: ModelDescriptor) => {
+  const handleModelRegistryMapped = (next: ModelDescriptor) => {
       setModels(current => current.map(model => (model.id === next.id ? next : model)))
       void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
       onUpdated?.()
-    },
-    [onUpdated, queryClient],
-  )
+    }
 
-  const handleCustomModelsChange = useCallback(
-    async (next: EditableCustomModel[]) => {
+  const handleCustomModelsChange = async (next: EditableCustomModel[]) => {
       const previous = customModels
       if (!apiProviderTarget) {
         return
@@ -324,12 +313,9 @@ export function ExternalProviderRecordDetailPanel({
           description: error instanceof Error ? error.message : 'Unknown error',
         })
       }
-    },
-    [apiProviderTarget, customModels, onUpdated, queryClient, refreshModels],
-  )
+    }
 
-  const toggleEnabled = useCallback(
-    async (enabled: boolean) => {
+  const toggleEnabled = async (enabled: boolean) => {
       setUpdatingEnabled(true)
       try {
         const next = await updateRuntimeTarget.mutateAsync({
@@ -368,9 +354,7 @@ export function ExternalProviderRecordDetailPanel({
       finally {
         setUpdatingEnabled(false)
       }
-    },
-    [apiProviderKind, fetchProviderModels, onUpdated, queryClient, record, updateRuntimeTarget],
-  )
+    }
 
   return (
     <div data-testid="external-provider-record-detail-panel" className="flex flex-col gap-4">

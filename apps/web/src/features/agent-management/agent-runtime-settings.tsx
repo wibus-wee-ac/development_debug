@@ -13,7 +13,7 @@ import {
   Trash2Icon,
   XIcon,
 } from 'lucide-react'
-import { memo, useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -90,8 +90,7 @@ function externalRecordCanToggle(record: ExternalProviderRecordView): boolean {
   return !!record.providerTargetId && record.status !== 'missing' && record.status !== 'unsupported'
 }
 
-const ProviderRow = memo(
-  ({
+const ProviderRow = ({
     entry,
     active,
     selected,
@@ -192,8 +191,7 @@ const ProviderRow = memo(
         </button>
       </div>
     )
-  },
-)
+  }
 ProviderRow.displayName = 'ProviderRow'
 
 export function AgentRuntimeSettings() {
@@ -230,24 +228,12 @@ export function AgentRuntimeSettings() {
   } = useQuery(
     getExternalProviderSourcesRecordsOptions(),
   )
-  const ccSwitchSources = useMemo(
-    () => (externalSources as ExternalProviderSourceView[])
-      .filter(source => source.sourceId === 'cc-switch'),
-    [externalSources],
-  )
-  const ccSwitchSourceIds = useMemo(
-    () => new Set(ccSwitchSources.map(source => source.id)),
-    [ccSwitchSources],
-  )
-  const ccSwitchRecords = useMemo(
-    () => (externalRecords as ExternalProviderRecordView[])
-      .filter(record => ccSwitchSourceIds.has(record.sourceKey)),
-    [externalRecords, ccSwitchSourceIds],
-  )
-  const sourceById = useMemo(
-    () => new Map(ccSwitchSources.map(source => [source.id, source])),
-    [ccSwitchSources],
-  )
+  const ccSwitchSources = (externalSources as ExternalProviderSourceView[])
+      .filter(source => source.sourceId === 'cc-switch')
+  const ccSwitchSourceIds = new Set(ccSwitchSources.map(source => source.id))
+  const ccSwitchRecords = (externalRecords as ExternalProviderRecordView[])
+      .filter(record => ccSwitchSourceIds.has(record.sourceKey))
+  const sourceById = new Map(ccSwitchSources.map(source => [source.id, source]))
   const settingsProvidersReady = profilesReady && externalSourcesReady && externalRecordsReady
 
   const refreshExternalSources = useMutation({
@@ -287,11 +273,8 @@ export function AgentRuntimeSettings() {
     patchExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRuntimeTargetMutation(),
   )
 
-  const providerGroups = useMemo(
-    () => collectProviderListGroups(profiles, ccSwitchRecords, ccSwitchSources),
-    [profiles, ccSwitchRecords, ccSwitchSources],
-  )
-  const visibleProfileGroups = useMemo(() => {
+  const providerGroups = collectProviderListGroups(profiles, ccSwitchRecords, ccSwitchSources)
+  const visibleProfileGroups = (() => {
     if (!deferredFilter.trim()) {
       return providerGroups
     }
@@ -315,56 +298,35 @@ export function AgentRuntimeSettings() {
         }),
       }))
       .filter(group => group.entries.length > 0)
-  }, [providerGroups, deferredFilter])
-  const providerEntries = useMemo(
-    () => providerGroups.flatMap(group => group.entries),
-    [providerGroups],
-  )
-  const visibleEntries = useMemo(
-    () => visibleProfileGroups.flatMap(group => group.entries),
-    [visibleProfileGroups],
-  )
+  })()
+  const providerEntries = providerGroups.flatMap(group => group.entries)
+  const visibleEntries = visibleProfileGroups.flatMap(group => group.entries)
 
   const selectedEntryId = selectedIdFromSet(selectedIds)
   const selectedEntry = selectedEntryId
     ? (providerEntries.find(entry => entry.id === selectedEntryId) ?? null)
     : null
-  const selectedEntries = useMemo(
-    () => selectedRecords(providerEntries, selectedIds),
-    [providerEntries, selectedIds],
-  )
-  const selectedProfiles = useMemo(
-    () => selectedEntries.flatMap(entry => (entry.kind === 'manual' ? [entry.profile] : [])),
-    [selectedEntries],
-  )
-  const selectedExternalRecords = useMemo(
-    () => selectedEntries.flatMap(entry => (entry.kind === 'external' ? [entry.record] : [])),
-    [selectedEntries],
-  )
+  const selectedEntries = selectedRecords(providerEntries, selectedIds)
+  const selectedProfiles = selectedEntries.flatMap(entry => (entry.kind === 'manual' ? [entry.profile] : []))
+  const selectedExternalRecords = selectedEntries.flatMap(entry => (entry.kind === 'external' ? [entry.record] : []))
   const toggleableSelectedProfiles = selectedProfiles
-  const toggleableSelectedExternalRecords = useMemo(
-    () => selectedExternalRecords.filter(externalRecordCanToggle),
-    [selectedExternalRecords],
-  )
+  const toggleableSelectedExternalRecords = selectedExternalRecords.filter(externalRecordCanToggle)
   const removableSelectedProfiles = selectedProfiles
   const toggleableSelectedCount = toggleableSelectedProfiles.length + toggleableSelectedExternalRecords.length
   const isDraftSelected = !!(draft && selectedIds.has(draft.id))
   const allVisibleSelected = visibleRecordsAreSelected(visibleEntries, selectedIds)
   const hasFilter = deferredFilter.trim().length > 0
-  const providerGroupLabel = useCallback(
-    (group: (typeof visibleProfileGroups)[number]) => {
+  const providerGroupLabel = (group: (typeof visibleProfileGroups)[number]) => {
       return group.kind === 'manual' ? t('runtime.group.manual') : group.label
-    },
-    [t],
-  )
+    }
 
-  const toggleGroupCollapsed = useCallback((groupId: string, open: boolean) => {
+  const toggleGroupCollapsed = (groupId: string, open: boolean) => {
     setGroupOpenOverrides((prev) => {
       const next = new Map(prev)
       next.set(groupId, open)
       return next
     })
-  }, [])
+  }
 
   useEffect(() => {
     if (isDraftSelected) {
@@ -377,33 +339,29 @@ export function AgentRuntimeSettings() {
     }
   }, [providerEntries, isDraftSelected])
 
-  const startDraft = useCallback(() => {
+  const startDraft = () => {
     const id = `draft-${Date.now()}`
     setDraft({ id, presetId: null })
     setSelectedIds(new Set([id]))
     selectionAnchorIdRef.current = null
-  }, [])
+  }
 
-  const cancelDraft = useCallback(() => {
+  const cancelDraft = () => {
     setDraft(null)
     setSelectedIds(new Set())
     selectionAnchorIdRef.current = null
-  }, [])
+  }
 
-  const handleDraftComplete = useCallback(
-    (newProfileId?: string) => {
+  const handleDraftComplete = (newProfileId?: string) => {
       void refetch().finally(() => {
         setDraft(null)
         const nextId = newProfileId ? providerListEntryId('manual', newProfileId) : null
         setSelectedIds(nextId ? new Set([nextId]) : new Set())
         selectionAnchorIdRef.current = nextId
       })
-    },
-    [refetch],
-  )
+    }
 
-  const handleRemoveProfile = useCallback(
-    async (id: string) => {
+  const handleRemoveProfile = async (id: string) => {
       await removeProfile.mutateAsync({ path: { id } })
       setSelectedIds((prev) => {
         const next = new Set(prev)
@@ -413,12 +371,9 @@ export function AgentRuntimeSettings() {
       if (selectionAnchorIdRef.current === providerListEntryId('manual', id)) {
         selectionAnchorIdRef.current = null
       }
-    },
-    [removeProfile],
-  )
+    }
 
-  const handleToggleProfile = useCallback(
-    async (profile: AgentProfile, enabled: boolean) => {
+  const handleToggleProfile = async (profile: AgentProfile, enabled: boolean) => {
       await updateProfile.mutateAsync({
         path: { id: profile.id },
         body: {
@@ -429,19 +384,16 @@ export function AgentRuntimeSettings() {
           credentialRef: profile.credentialRef ?? null,
         },
       })
-    },
-    [updateProfile],
-  )
+    }
 
-  const handleExternalProviderUpdated = useCallback(() => {
+  const handleExternalProviderUpdated = () => {
     void Promise.all([
       refetchExternalSources(),
       refetchExternalRecords(),
     ])
-  }, [refetchExternalRecords, refetchExternalSources])
+  }
 
-  const handleToggleExternalRecord = useCallback(
-    async (record: ExternalProviderRecordView, enabled: boolean) => {
+  const handleToggleExternalRecord = async (record: ExternalProviderRecordView, enabled: boolean) => {
       await updateExternalRuntimeTarget.mutateAsync({
         path: {
           sourceKey: record.sourceKey,
@@ -449,31 +401,28 @@ export function AgentRuntimeSettings() {
         },
         body: { enabled },
       })
-    },
-    [updateExternalRuntimeTarget],
-  )
+    }
 
-  const toggleVisibleSelected = useCallback(() => {
+  const toggleVisibleSelected = () => {
     setSelectedIds(prev =>
       allVisibleSelected
         ? removeVisibleSelection(prev, visibleEntries)
         : mergeVisibleSelection(prev, visibleEntries))
-  }, [allVisibleSelected, visibleEntries])
+  }
 
-  const selectVisibleProfiles = useCallback(() => {
+  const selectVisibleProfiles = () => {
     setDraft(null)
     setSelectedIds(prev => mergeVisibleSelection(prev, visibleEntries))
     selectionAnchorIdRef.current = visibleEntries.at(-1)?.id ?? null
-  }, [visibleEntries])
+  }
 
-  const clearSelection = useCallback(() => {
+  const clearSelection = () => {
     setDraft(null)
     setSelectedIds(new Set())
     selectionAnchorIdRef.current = null
-  }, [])
+  }
 
-  const selectEntry = useCallback(
-    (entryId: string, selected: boolean, shiftKey: boolean) => {
+  const selectEntry = (entryId: string, selected: boolean, shiftKey: boolean) => {
       setDraft(null)
       setSelectedIds((prev) => {
         if (shiftKey) {
@@ -497,12 +446,9 @@ export function AgentRuntimeSettings() {
         return next
       })
       selectionAnchorIdRef.current = entryId
-    },
-    [draft?.id, visibleEntries],
-  )
+    }
 
-  const openEntry = useCallback(
-    (entryId: string, shiftKey: boolean) => {
+  const openEntry = (entryId: string, shiftKey: boolean) => {
       if (shiftKey) {
         selectEntry(entryId, true, true)
         return
@@ -511,12 +457,9 @@ export function AgentRuntimeSettings() {
       setSelectedIds(new Set([entryId]))
       selectionAnchorIdRef.current = entryId
       setDraft(null)
-    },
-    [selectEntry],
-  )
+    }
 
-  const handleBatchToggle = useCallback(
-    async (enabled: boolean) => {
+  const handleBatchToggle = async (enabled: boolean) => {
       if (toggleableSelectedCount === 0) {
         return
       }
@@ -540,19 +483,9 @@ export function AgentRuntimeSettings() {
  finally {
         setBatchBusy(false)
       }
-    },
-    [
-      toggleableSelectedProfiles,
-      toggleableSelectedExternalRecords,
-      toggleableSelectedCount,
-      handleToggleProfile,
-      handleToggleExternalRecord,
-      queryClient,
-      refetchExternalRecords,
-    ],
-  )
+    }
 
-  const handleBatchRemove = useCallback(async () => {
+  const handleBatchRemove = async () => {
     if (removableSelectedProfiles.length === 0) {
       return
     }
@@ -567,7 +500,7 @@ export function AgentRuntimeSettings() {
  finally {
       setBatchBusy(false)
     }
-  }, [removeProfile, removableSelectedProfiles])
+  }
 
   const selectionShortcutScopeRef = useSettingsSelectionShortcuts({
     hasVisibleRecords: visibleEntries.length > 0,

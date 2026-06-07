@@ -1,7 +1,7 @@
 import { ArrowLeftIcon, CheckIcon, DicesIcon, XIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { Select as RadixSelect } from 'radix-ui'
-import { useCallback, useEffect, useEffectEvent, useMemo, useReducer, useRef, useState } from 'react'
+import { useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
@@ -446,29 +446,23 @@ function AgentProviderModelPicker({
   const { t } = useTranslation('agentManagement')
   const form = useFormContext<AgentDetailFormValues>()
   const [pendingProviderTargetId, setPendingProviderTargetId] = useState<string | null>(null)
-  const thinkingOptions: Array<ThinkingOption<ThinkingEffort>> = useMemo(() => AGENT_THINKING_EFFORTS.map((option) => {
+  const thinkingOptions: Array<ThinkingOption<ThinkingEffort>> = AGENT_THINKING_EFFORTS.map((option) => {
     const value = option.value
     return {
       value,
       label: t(thinkingLabelKeys[value]),
       description: t(thinkingDescriptionKeys[value]),
     }
-  }), [t])
+  })
   const selectedProviderTargetId = pendingProviderTargetId ?? providerTargetId
-  const initialModelProviderTargetIds = useMemo(
-    () => [providerTargetId, pendingProviderTargetId],
-    [pendingProviderTargetId, providerTargetId],
-  )
+  const initialModelProviderTargetIds = [providerTargetId, pendingProviderTargetId]
   const {
     modelsByProviderTargetId,
     loadingProviderTargetIds,
     successfulProviderTargetIds,
     requestProviderTargetModels,
   } = useProviderTargetModelMap(providerTargets, initialModelProviderTargetIds)
-  const models = useMemo(
-    () => selectedProviderTargetId ? modelsByProviderTargetId[selectedProviderTargetId] ?? [] : [],
-    [modelsByProviderTargetId, selectedProviderTargetId],
-  )
+  const models = selectedProviderTargetId ? modelsByProviderTargetId[selectedProviderTargetId] ?? [] : []
   const selectedModelId = pendingProviderTargetId ? null : modelId
   const selectedModel = models.find(model => model.id === selectedModelId) ?? null
   const isLoadingModels = selectedProviderTargetId ? loadingProviderTargetIds.has(selectedProviderTargetId) : false
@@ -657,11 +651,8 @@ function ClaudeAgentSdkSettings({
   const selectedProviderTarget = providerTargetId
     ? providerTargets.find(target => target.id === providerTargetId) ?? null
     : null
-  const pickerProviderTargets = useMemo(
-    () => selectedProviderTarget ? [selectedProviderTarget] : [],
-    [selectedProviderTarget],
-  )
-  const initialModelProviderTargetIds = useMemo(() => [providerTargetId], [providerTargetId])
+  const pickerProviderTargets = selectedProviderTarget ? [selectedProviderTarget] : []
+  const initialModelProviderTargetIds = [providerTargetId]
   const { modelsByProviderTargetId, loadingProviderTargetIds } = useProviderTargetModelMap(
     pickerProviderTargets,
     initialModelProviderTargetIds,
@@ -865,7 +856,7 @@ function AgentIdentitySection({
 }) {
   const { t } = useTranslation('agentManagement')
   const form = useFormContext<AgentDetailFormValues>()
-  const cliEnvParseResult = useMemo(() => parseCliEnvText(draft.cliTuiEnvText), [draft.cliTuiEnvText])
+  const cliEnvParseResult = parseCliEnvText(draft.cliTuiEnvText)
   const invalidEnvLineSummary = cliEnvParseResult.invalidLineNumbers.join(', ')
 
   return (
@@ -1205,13 +1196,13 @@ function useAgentDetailOwner({
   const isCreate = agent === undefined
   const { createAgent, updateAgent, removeAgent } = useAgents()
   const { providerOptions } = useProviderTargets()
-  const persistedConfig = useMemo(() => AgentRuntimeConfigJsonSchema.parse(agent?.configJson), [agent?.configJson])
+  const persistedConfig = AgentRuntimeConfigJsonSchema.parse(agent?.configJson)
   const { systemPrompt: _systemPrompt, skills: _skills, cliTui: _cliTui, claudeAgent: _claudeAgent, ...baseConfig } = persistedConfig
   const form = useForm<AgentDetailFormValues>({
     defaultValues: getAgentDetailFormValues(agent, providerOptions),
   })
   const watchedValues = useWatch({ control: form.control }) as Partial<AgentDetailFormValues>
-  const draft: AgentDetailDraft = useMemo(() => ({
+  const draft: AgentDetailDraft = ({
     name: watchedValues.name ?? '',
     description: watchedValues.description ?? '',
     avatarStyle: watchedValues.avatarStyle ?? AVATAR_STYLES[0].id,
@@ -1228,24 +1219,7 @@ function useAgentDetailOwner({
     cliTuiExecutable: watchedValues.cliTuiExecutable ?? '',
     cliTuiArguments: watchedValues.cliTuiArguments ?? '',
     cliTuiEnvText: watchedValues.cliTuiEnvText ?? '',
-  }), [
-    watchedValues.avatarSeed,
-    watchedValues.avatarStyle,
-    watchedValues.claudeAgentHaikuModel,
-    watchedValues.claudeAgentOpusModel,
-    watchedValues.claudeAgentSonnetModel,
-    watchedValues.cliTuiArguments,
-    watchedValues.cliTuiEnvText,
-    watchedValues.cliTuiExecutable,
-    watchedValues.cliTuiPreset,
-    watchedValues.description,
-    watchedValues.modelId,
-    watchedValues.name,
-    watchedValues.providerTargetId,
-    watchedValues.runtimeKind,
-    watchedValues.systemPrompt,
-    watchedValues.thinkingEffort,
-  ])
+  })
   const [uiState, dispatch] = useReducer(agentDetailUiReducer, INITIAL_AGENT_DETAIL_UI_STATE)
   const { avatarSpinKey, saveState, createSaving, saveError } = uiState
 
@@ -1253,14 +1227,14 @@ function useAgentDetailOwner({
   const savedClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const syncedAgentIdRef = useRef<string | null>(agent?.id ?? null)
 
-  const clearTimers = useCallback(() => {
+  const clearTimers = () => {
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current)
     }
     if (savedClearTimerRef.current) {
       clearTimeout(savedClearTimerRef.current)
     }
-  }, [])
+  }
 
   useEffect(() => {
     return () => {
@@ -1280,16 +1254,10 @@ function useAgentDetailOwner({
     dispatch({ type: 'reset' })
   }, [form, agent, clearTimers, providerOptions])
 
-  const selectableProviderTargets = useMemo(
-    () => listSelectableProviderTargets(providerOptions, draft.runtimeKind),
-    [providerOptions, draft.runtimeKind],
-  )
-  const selectedProviderTarget = useMemo(
-    () => draft.providerTargetId
+  const selectableProviderTargets = listSelectableProviderTargets(providerOptions, draft.runtimeKind)
+  const selectedProviderTarget = draft.providerTargetId
       ? providerOptions.find(target => target.id === draft.providerTargetId) ?? null
-      : null,
-    [draft.providerTargetId, providerOptions],
-  )
+      : null
   const providerDisabledReason = draft.runtimeKind !== 'cli-tui'
     && selectedProviderTarget
     && !selectedProviderTarget.enabled
@@ -1330,7 +1298,7 @@ function useAgentDetailOwner({
 
   const isDirty = form.formState.isDirty
   const createDisabledReason = getAgentCreateDisabledReason({ draft, isDirty, createSaving })
-  const draftSignature = useMemo(() => JSON.stringify(draft), [draft])
+  const draftSignature = JSON.stringify(draft)
   const saveDraft = useEffectEvent(async () => {
     if (!agent) {
       return
@@ -1424,7 +1392,7 @@ function useAgentDetailOwner({
     }
   }, [isCreate, isDirty, saveState, draftSignature])
 
-  const handleCreate = useCallback(async () => {
+  const handleCreate = async () => {
     const currentValues = form.getValues()
     const requiresProviderTarget = currentValues.runtimeKind !== 'cli-tui'
     if (!currentValues.name.trim() || (requiresProviderTarget && !currentValues.providerTargetId) || (!requiresProviderTarget && !currentValues.cliTuiExecutable.trim())) {
@@ -1473,20 +1441,20 @@ function useAgentDetailOwner({
     finally {
       dispatch({ type: 'create/saving', value: false })
     }
-  }, [form, createAgent, onCreated])
+  }
 
-  const handleDelete = useCallback(async () => {
+  const handleDelete = async () => {
     if (!agent) {
       return
     }
     await removeAgent.mutateAsync({ path: { id: agent.id } })
     onDeleted?.()
-  }, [agent, removeAgent, onDeleted])
+  }
 
-  const shuffleAvatar = useCallback(() => {
+  const shuffleAvatar = () => {
     form.setValue('avatarSeed', generateSeed(), { shouldDirty: true })
     dispatch({ type: 'avatar/spin' })
-  }, [form])
+  }
 
   return {
     isCreate,

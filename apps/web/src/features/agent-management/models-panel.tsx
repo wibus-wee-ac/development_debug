@@ -1,6 +1,6 @@
 import type { TFunction } from 'i18next'
 import { RefreshCwIcon, SearchIcon, SparklesIcon } from 'lucide-react'
-import { useCallback, useMemo, useState } from 'react'
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Badge } from '~/components/ui/badge'
@@ -123,11 +123,11 @@ export function ModelsPanel({
   const [mappingModel, setMappingModel] = useState<ModelDescriptor | null>(null)
   const [dialogOpen, setDialogOpen] = useState(false)
 
-  const visibility = useMemo(() => ModelVisibilitySchema.parse(enabledModels), [enabledModels])
+  const visibility = ModelVisibilitySchema.parse(enabledModels)
   const allDisabled = visibility.kind === 'none'
   const isExplicitSelection = visibility.kind === 'list'
 
-  const visible = useMemo(() => {
+  const visible = (() => {
     let filtered = models
     if (filter.trim()) {
       const q = filter.toLowerCase()
@@ -142,7 +142,7 @@ export function ModelsPanel({
       }
       return (a.label || a.id).localeCompare(b.label || b.id)
     })
-  }, [models, filter, visibility])
+  })()
 
   const enabledCount
     = visibility.kind === 'none'
@@ -179,10 +179,10 @@ export function ModelsPanel({
     }
   }
 
-  const openMappingDialog = useCallback((model: ModelDescriptor) => {
+  const openMappingDialog = (model: ModelDescriptor) => {
     setMappingModel(model)
     setDialogOpen(true)
-  }, [])
+  }
 
   const modelKeyCounts = new Map<string, number>()
 

@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { CircleAlertIcon, DownloadIcon, GlobeIcon, KeyIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { z } from 'zod'
 
 import { postSecrets } from '~/api-gen/sdk.gen'
@@ -87,13 +87,13 @@ export function ImportProviderDialog({
   const [manualKind, setManualKind] = useState<ApiProviderKind>('openai-compatible')
   const prevTokenRef = useRef<string | null>(null)
 
-  const parseResult = useMemo(() => {
+  const parseResult = (() => {
     if (!text.trim()) { return null }
     return parseProviderConfig(text)
-  }, [text])
+  })()
 
   // Deduplicate provider names: append " (2)", " (3)" etc for same-name entries
-  const computeResolvedNames = useCallback(() => {
+  const computeResolvedNames = () => {
     const parsed = parseResult?.providers ?? []
     const counts = new Map<string, number>()
     const allExisting = new Set(profiles.map(p => p.name.toLowerCase()))
@@ -109,7 +109,7 @@ export function ImportProviderDialog({
       counts.set(candidate.toLowerCase(), n)
       return candidate
     })
-  }, [parseResult, profiles])
+  }
 
   const [resolvedNames, setResolvedNames] = useState<string[]>([])
 
@@ -133,7 +133,7 @@ export function ImportProviderDialog({
   const hasProviders = parseResult && parseResult.providers.length > 0
   const showManualEntry = parseResult && !hasProviders && parseResult.urls.length === 0
 
-  const handleImport = useCallback(async () => {
+  const handleImport = async () => {
     if (importing) { return }
     const providers: ParsedProvider[] = [...(parseResult?.providers ?? [])]
     const finalKinds = [...kinds]
@@ -208,14 +208,14 @@ export function ImportProviderDialog({
       console.error('[ImportProvider]', err)
       setImporting(false)
     }
-  }, [parseResult, kinds, manualUrl, manualKind, enabledSet, token, importing, createProfile, onOpenChange, resolvedNames, queryClient])
+  }
 
-  const handleClose = useCallback(() => {
+  const handleClose = () => {
     if (importing) { return }
     setText('')
     setManualUrl('')
     onOpenChange(false)
-  }, [importing, onOpenChange])
+  }
 
   const providerCount = hasProviders
     ? parseResult!.providers.filter((_, i) => enabledSet.has(i)).length

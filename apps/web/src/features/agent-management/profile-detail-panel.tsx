@@ -2,16 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, CircleAlertIcon, Trash2Icon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import type { MutableRefObject, ReactNode } from 'react'
-import {
-  memo,
-  useCallback,
-  useEffect,
-  useEffectEvent,
-  useMemo,
-  useReducer,
-  useRef,
-  useState,
-} from 'react'
+import { useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 
@@ -245,10 +236,7 @@ export function ProfileDetailPanel({
 }) {
   const preset = presetForProfile(profile)
   const queryClient = useQueryClient()
-  const providerTarget = useMemo<ProviderTarget>(
-    () => ({ kind: 'manual', id: profile.id }),
-    [profile.id],
-  )
+  const providerTarget: ProviderTarget = ({ kind: 'manual', id: profile.id })
 
   const supportsModels = true
 
@@ -272,38 +260,29 @@ export function ProfileDetailPanel({
   const saveRequestRef = useRef(0)
   const savedSignatureRef = useRef(createProfileSignature(getProfileFormValues(profile)))
 
-  const createProviderRequestBody = useCallback(() => buildProviderRequestBody(profile), [profile])
+  const createProviderRequestBody = () => buildProviderRequestBody(profile)
 
-  const setTextField = useCallback(
-    (field: ProfileTextField, value: string) => {
+  const setTextField = (field: ProfileTextField, value: string) => {
       form.setValue(field, value, { shouldDirty: true })
-    },
-    [form],
-  )
+    }
 
-  const handleEnabledModelsChange = useCallback(
-    (next: string[]) => {
+  const handleEnabledModelsChange = (next: string[]) => {
       form.setValue('enabledModels', next, { shouldDirty: true })
-    },
-    [form],
-  )
+    }
 
-  const handleModelRegistryMapped = useCallback(
-    (next: ModelDescriptor) => {
+  const handleModelRegistryMapped = (next: ModelDescriptor) => {
       dispatch({ type: 'models/update-one', model: next })
       void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
       onSaved()
-    },
-    [queryClient, onSaved],
-  )
+    }
 
-  const clearAutoSaveTimer = useCallback(() => {
+  const clearAutoSaveTimer = () => {
     clearTimer(autoSaveTimerRef)
-  }, [])
+  }
 
-  const clearSavedClearTimer = useCallback(() => {
+  const clearSavedClearTimer = () => {
     clearTimer(savedClearTimerRef)
-  }, [])
+  }
 
   useEffect(() => {
     return () => {
@@ -312,8 +291,7 @@ export function ProfileDetailPanel({
     }
   }, [clearAutoSaveTimer, clearSavedClearTimer])
 
-  const fetchModelsFromProvider = useCallback(
-    (requestId: number) => {
+  const fetchModelsFromProvider = (requestId: number) => {
       postProvidersModels({ body: createProviderRequestBody() })
         .then(({ data }) => {
           if (requestId !== modelsRequestRef.current) {
@@ -332,9 +310,7 @@ export function ProfileDetailPanel({
           }
           dispatch({ type: 'models/failed' })
         })
-    },
-    [createProviderRequestBody, queryClient],
-  )
+    }
 
   // Reset state when switching profile
   const profileId = profile.id
@@ -390,11 +366,11 @@ export function ProfileDetailPanel({
       })
   }, [supportsModels, profile.id, queryClient, fetchModelsFromProvider])
 
-  const handleRefreshModels = useCallback(() => {
+  const handleRefreshModels = () => {
     const requestId = ++modelsRequestRef.current
     dispatch({ type: 'models/loading' })
     fetchModelsFromProvider(requestId)
-  }, [fetchModelsFromProvider])
+  }
 
   const saveProfile = useEffectEvent(async () => {
     const currentValues = form.getValues()
@@ -470,18 +446,14 @@ export function ProfileDetailPanel({
     }
   })
 
-  const watchedSignature = useMemo(
-    () =>
-      JSON.stringify({
+  const watchedSignature = JSON.stringify({
         name,
         apiKey,
         baseUrl,
         model,
         api,
         enabledModels,
-      }),
-    [name, apiKey, baseUrl, model, api, enabledModels],
-  )
+      })
 
   // Auto-save with debounce — but skip the very first run after switching profiles
   useEffect(() => {
@@ -506,8 +478,7 @@ export function ProfileDetailPanel({
   }, [watchedSignature, saveState, clearAutoSaveTimer])
 
   // ── Icon change handler ──
-  const handleIconChange = useCallback(
-    (slug: string | null) => {
+  const handleIconChange = (slug: string | null) => {
       patchProfilesByIdIcon({
         path: { id: profile.id },
         body: { iconSlug: slug },
@@ -517,9 +488,7 @@ export function ProfileDetailPanel({
           onSaved()
         })
         .catch(() => {})
-    },
-    [profile.id, queryClient, onSaved],
-  )
+    }
 
   const kindLabel = PROVIDER_KIND_LABELS[profile.providerKind]
 
@@ -782,7 +751,7 @@ function ProfileModelsSection({
   )
 }
 
-const MemoizedProfileModelsSection = memo(ProfileModelsSection)
+const MemoizedProfileModelsSection = ProfileModelsSection
 
 function ProfileCustomModelsSection({
   providerTarget,
@@ -804,8 +773,7 @@ function ProfileCustomModelsSection({
     setModels(CustomModelsJsonSchema.parse(customModelsJson))
   }, [customModelsJson])
 
-  const saveCustomModels = useCallback(
-    async (next: EditableCustomModel[]) => {
+  const saveCustomModels = async (next: EditableCustomModel[]) => {
       setModels(next)
       try {
         setModels(await updateProviderTargetCustomModels(providerTarget, next))
@@ -820,9 +788,7 @@ function ProfileCustomModelsSection({
           description: error instanceof Error ? error.message : 'Unknown error',
         })
       }
-    },
-    [providerTarget, queryClient, onSaved, onRefreshModels],
-  )
+    }
 
   return (
     <>
@@ -834,7 +800,7 @@ function ProfileCustomModelsSection({
   )
 }
 
-const MemoizedProfileCustomModelsSection = memo(ProfileCustomModelsSection)
+const MemoizedProfileCustomModelsSection = ProfileCustomModelsSection
 
 function RemoveProfileDialog({
   open,

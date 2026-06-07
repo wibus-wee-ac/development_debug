@@ -8,7 +8,7 @@ import {
   XIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 
@@ -138,7 +138,7 @@ function PresetSetupForm({
   const watchedValues = useWatch({ control: form.control }) as PresetSetupFormValues
   const name = watchedValues.name ?? ''
   const values = watchedValues.values ?? {}
-  const profileId = useMemo(() => buildProfileId(name, preset.id), [name, preset.id])
+  const profileId = buildProfileId(name, preset.id)
   const canSubmit = name.trim().length > 0
 
   useEffect(() => {
@@ -146,7 +146,7 @@ function PresetSetupForm({
     setStatus(null)
   }, [form, preset])
 
-  const handleConnect = useCallback(async () => {
+  const handleConnect = async () => {
     const currentValues = form.getValues()
     setStatus(null)
 
@@ -205,7 +205,7 @@ function PresetSetupForm({
  finally {
       setBusy(false)
     }
-  }, [createProfile, form, onComplete, preset, profileId, queryClient])
+  }
 
   return (
     <div className="flex flex-col gap-5">

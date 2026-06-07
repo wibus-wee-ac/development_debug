@@ -11,7 +11,7 @@ import {
   Trash2Icon,
   XIcon,
 } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ProviderIcon } from '~/components/common/provider-icons'
@@ -292,20 +292,17 @@ function AgentBatchProviderPanel({
   const { t } = useTranslation('agentManagement')
   const providerAgents = selectedAgents.filter(agent => agent.runtimeKind !== 'cli-tui')
   const skippedCliTuiCount = selectedAgents.length - providerAgents.length
-  const selectableProviderTargets = useMemo(
-    () => providerTargets.filter(target =>
-      target.enabled && providerTargetCompatibleWithAgents(target, providerAgents)),
-    [providerAgents, providerTargets],
-  )
-  const thinkingOptions: Array<ThinkingOption<AgentBatchThinkingEffort>> = useMemo(() => AGENT_THINKING_EFFORTS.map((option) => {
+  const selectableProviderTargets = providerTargets.filter(target =>
+      target.enabled && providerTargetCompatibleWithAgents(target, providerAgents))
+  const thinkingOptions: Array<ThinkingOption<AgentBatchThinkingEffort>> = AGENT_THINKING_EFFORTS.map((option) => {
     const value = option.value
     return {
       value,
       label: t(thinkingLabelKeys[value]),
       description: t(thinkingDescriptionKeys[value]),
     }
-  }), [t])
-  const defaultSelection = useMemo((): AgentProviderBatchSelection | null => {
+  })
+  const defaultSelection = (() => {
     const providerTarget = defaultBatchProviderTarget(selectedAgents, providerTargets)
     if (!providerTarget) {
       return null
@@ -315,15 +312,12 @@ function AgentBatchProviderPanel({
       modelId: defaultBatchModelId(selectedAgents, providerTarget),
       thinkingEffort: defaultBatchThinkingEffort(selectedAgents),
     }
-  }, [providerTargets, selectedAgents])
+  })()
   const [selectionOverride, setSelectionOverride] = useState<AgentProviderBatchSelection | null>(
     null,
   )
   const selection = selectionOverride ?? defaultSelection
-  const initialProviderTargetIds = useMemo(
-    () => [selection?.providerTarget.id ?? null],
-    [selection?.providerTarget.id],
-  )
+  const initialProviderTargetIds = [selection?.providerTarget.id ?? null]
   const {
     modelsByProviderTargetId,
     loadingProviderTargetIds,
@@ -341,11 +335,11 @@ function AgentBatchProviderPanel({
     ? loadingProviderTargetIds.has(selectedProviderTargetId)
     : false
 
-  const resolveThinkingForModel = useCallback((
+  const resolveThinkingForModel = (
     model: ModelDescriptor | null,
     current: AgentBatchThinkingEffort,
   ): AgentBatchThinkingEffort =>
-    selectSupportedThinkingValue(model, thinkingOptions, current, 'high'), [thinkingOptions])
+    selectSupportedThinkingValue(model, thinkingOptions, current, 'high')
 
   const applyProviderTargetSelection = (nextProviderTargetId: string) => {
     requestProviderTargetModels(nextProviderTargetId)
@@ -609,7 +603,7 @@ export function AgentList() {
   const clearAgentFocusTarget = useSettingsOverlayStore(state => state.clearAgentFocusTarget)
   const settingsAgentsReady = agentsReady && providerTargetsReady
 
-  const visibleAgents = useMemo(() => {
+  const visibleAgents = (() => {
     if (!filter.trim()) {
       return agents
     }
@@ -617,14 +611,11 @@ export function AgentList() {
     return agents.filter(
       a => a.name.toLowerCase().includes(q) || (a.description ?? '').toLowerCase().includes(q),
     )
-  }, [agents, filter])
+  })()
 
   const selectedAgentId = selectedIdFromSet(selectedIds)
-  const selectedAgent = useMemo(
-    () => (selectedAgentId ? agents.find(a => a.id === selectedAgentId) : undefined),
-    [agents, selectedAgentId],
-  )
-  const selectedAgents = useMemo(() => selectedRecords(agents, selectedIds), [agents, selectedIds])
+  const selectedAgent = (selectedAgentId ? agents.find(a => a.id === selectedAgentId) : undefined)
+  const selectedAgents = selectedRecords(agents, selectedIds)
   const isDraftSelected = isDrafting && selectedIds.has(DRAFT_ID)
   const allVisibleSelected = visibleRecordsAreSelected(visibleAgents, selectedIds)
 
@@ -659,24 +650,24 @@ export function AgentList() {
     }
   }, [agentFocusTargetId, agents, agentsReady, clearAgentFocusTarget])
 
-  const startDraft = useCallback(() => {
+  const startDraft = () => {
     setIsDrafting(true)
     setSelectedIds(new Set([DRAFT_ID]))
     selectionAnchorIdRef.current = null
-  }, [])
+  }
 
-  const handleCreated = useCallback((newAgentId: string) => {
+  const handleCreated = (newAgentId: string) => {
     setIsDrafting(false)
     setSelectedIds(new Set([newAgentId]))
     selectionAnchorIdRef.current = newAgentId
-  }, [])
+  }
 
-  const handleDeleted = useCallback(() => {
+  const handleDeleted = () => {
     setSelectedIds(new Set())
     selectionAnchorIdRef.current = null
-  }, [])
+  }
 
-  const openImportDialog = useCallback(async () => {
+  const openImportDialog = async () => {
     setImportMessage(null)
     setImportError(null)
     setImportDialogOpen(true)
@@ -690,9 +681,9 @@ export function AgentList() {
     catch (error) {
       setImportError(error instanceof Error ? error.message : 'Import preview failed')
     }
-  }, [previewLocalConfigImport])
+  }
 
-  const toggleImportCandidate = useCallback((candidateId: string, checked: boolean) => {
+  const toggleImportCandidate = (candidateId: string, checked: boolean) => {
     setSelectedImportCandidateIds((current) => {
       const next = new Set(current)
       if (checked) {
@@ -703,9 +694,9 @@ export function AgentList() {
       }
       return next
     })
-  }, [])
+  }
 
-  const confirmImportLocalConfig = useCallback(async () => {
+  const confirmImportLocalConfig = async () => {
     setImportError(null)
     try {
       const result = await importLocalConfig.mutateAsync({
@@ -732,29 +723,28 @@ export function AgentList() {
     catch (error) {
       setImportError(error instanceof Error ? error.message : 'Import failed')
     }
-  }, [importLocalConfig, selectedImportCandidateIds])
+  }
 
-  const toggleVisibleSelected = useCallback(() => {
+  const toggleVisibleSelected = () => {
     setSelectedIds(prev =>
       allVisibleSelected
         ? removeVisibleSelection(prev, visibleAgents)
         : mergeVisibleSelection(prev, visibleAgents))
-  }, [allVisibleSelected, visibleAgents])
+  }
 
-  const selectVisibleAgents = useCallback(() => {
+  const selectVisibleAgents = () => {
     setIsDrafting(false)
     setSelectedIds(prev => mergeVisibleSelection(prev, visibleAgents))
     selectionAnchorIdRef.current = visibleAgents.at(-1)?.id ?? null
-  }, [visibleAgents])
+  }
 
-  const clearSelection = useCallback(() => {
+  const clearSelection = () => {
     setIsDrafting(false)
     setSelectedIds(new Set())
     selectionAnchorIdRef.current = null
-  }, [])
+  }
 
-  const selectAgent = useCallback(
-    (agentId: string, selected: boolean, shiftKey: boolean) => {
+  const selectAgent = (agentId: string, selected: boolean, shiftKey: boolean) => {
       setIsDrafting(false)
       setSelectedIds((prev) => {
         if (shiftKey) {
@@ -778,12 +768,9 @@ export function AgentList() {
         return next
       })
       selectionAnchorIdRef.current = agentId
-    },
-    [visibleAgents],
-  )
+    }
 
-  const openAgent = useCallback(
-    (agentId: string, shiftKey: boolean) => {
+  const openAgent = (agentId: string, shiftKey: boolean) => {
       if (shiftKey) {
         selectAgent(agentId, true, true)
         return
@@ -792,12 +779,9 @@ export function AgentList() {
       setSelectedIds(new Set([agentId]))
       selectionAnchorIdRef.current = agentId
       setIsDrafting(false)
-    },
-    [selectAgent],
-  )
+    }
 
-  const handleBatchToggle = useCallback(
-    async (enabled: boolean) => {
+  const handleBatchToggle = async (enabled: boolean) => {
       if (selectedAgents.length === 0) {
         return
       }
@@ -828,11 +812,9 @@ export function AgentList() {
  finally {
         setBatchBusy(false)
       }
-    },
-    [selectedAgents, updateAgent],
-  )
+    }
 
-  const handleBatchDelete = useCallback(async () => {
+  const handleBatchDelete = async () => {
     if (selectedAgents.length === 0) {
       return
     }
@@ -845,10 +827,9 @@ export function AgentList() {
  finally {
       setBatchBusy(false)
     }
-  }, [removeAgent, selectedAgents])
+  }
 
-  const handleBatchConfigureProvider = useCallback(
-    async (selection: AgentProviderBatchSelection) => {
+  const handleBatchConfigureProvider = async (selection: AgentProviderBatchSelection) => {
       const { patches } = buildAgentProviderBatchPatches(selectedAgents, selection)
       if (patches.length === 0) {
         return
@@ -869,9 +850,7 @@ export function AgentList() {
  finally {
         setBatchBusy(false)
       }
-    },
-    [selectedAgents, updateAgent],
-  )
+    }
 
   const selectionShortcutScopeRef = useSettingsSelectionShortcuts({
     hasVisibleRecords: visibleAgents.length > 0,
