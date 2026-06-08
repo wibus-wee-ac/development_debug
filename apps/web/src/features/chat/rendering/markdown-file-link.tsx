@@ -1,3 +1,4 @@
+import { handleExternalMarkdownLinkClick, isExternalMarkdownHref } from '@cradle/streamdown'
 import type { AnchorHTMLAttributes } from 'react'
 
 import { useBrowserPanelStore } from '~/store/browser-panel'
@@ -20,7 +21,13 @@ export function MarkdownFileLink({ href, sessionId, children, ...props }: Markdo
     sessionId ? state.sessions[sessionId]?.workspaceId ?? null : null)
 
   const handleClick = (event: React.MouseEvent<HTMLAnchorElement>) => {
+    props.onClick?.(event)
+    if (event.defaultPrevented) {
+      return
+    }
+
     if (!href || !workspaceId) {
+      handleExternalMarkdownLinkClick(event, href)
       return
     }
 
@@ -35,11 +42,22 @@ export function MarkdownFileLink({ href, sessionId, children, ...props }: Markdo
         view: getDefaultViewForPath(filePath),
       })
       setBrowserPanelOpen(true)
+      return
     }
+
+    handleExternalMarkdownLinkClick(event, href)
   }
 
+  const external = isExternalMarkdownHref(href)
+
   return (
-    <a href={href} onClick={handleClick} {...props}>
+    <a
+      {...props}
+      href={href}
+      target={props.target ?? (external ? '_blank' : undefined)}
+      rel={props.rel ?? (external ? 'noreferrer noopener' : undefined)}
+      onClick={handleClick}
+    >
       {children}
     </a>
   )

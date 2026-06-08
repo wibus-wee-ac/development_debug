@@ -7,6 +7,7 @@ import remarkMath from 'remark-math'
 import type { PluggableList } from 'unified'
 
 import { HighlightedCode, HighlightedPre } from '../components/highlighted-code'
+import { MarkdownLink } from '../components/markdown-link'
 import type { BlockState } from '../hooks/use-block-queue'
 import rehypeStreamAnimate from '../plugins/rehype-stream-animate'
 
@@ -68,8 +69,8 @@ const Block = memo<BlockProps>(({
   const remarkPluginsList: PluggableList = [remarkGfm, remarkMath, ...((extraRemarkPlugins as PluggableList | undefined) ?? [])]
 
   const mergedComponents = components
-    ? { code: HighlightedCode, pre: HighlightedPre, ...components }
-    : { code: HighlightedCode, pre: HighlightedPre }
+    ? { a: MarkdownLink, code: HighlightedCode, pre: HighlightedPre, ...components }
+    : { a: MarkdownLink, code: HighlightedCode, pre: HighlightedPre }
 
   return (
     <div data-birth={settled ? undefined : '1'} className={`stream-block${isActiveEnd ? ' stream-block-active' : ''}`}>

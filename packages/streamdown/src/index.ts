@@ -14,6 +14,12 @@ export { CitationPopover } from './components/citation-popover'
 export { StreamErrorBoundary } from './components/error-boundary'
 export { fadeComponents, makeFader } from './components/fade-components'
 export { HighlightedCode, HighlightedPre } from './components/highlighted-code'
+export {
+  handleExternalMarkdownLinkClick,
+  isExternalMarkdownHref,
+  MarkdownLink,
+  resolveExternalMarkdownHref,
+} from './components/markdown-link'
 export { StreamingErrorBoundary } from './components/streaming-error-boundary'
 
 // Context

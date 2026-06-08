@@ -5,6 +5,7 @@ import remarkMath from 'remark-math'
 import type { PluggableList } from 'unified'
 
 import { HighlightedCode, HighlightedPre } from './components/highlighted-code'
+import { MarkdownLink } from './components/markdown-link'
 
 interface StaticRenderProps {
   content: string
@@ -20,6 +21,7 @@ interface StaticRenderProps {
 }
 
 const defaultComponents = {
+  a: MarkdownLink,
   code: HighlightedCode,
   pre: HighlightedPre,
 }
