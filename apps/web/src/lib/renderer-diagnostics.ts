@@ -1,6 +1,6 @@
 import { getChatStoreTelemetrySnapshot } from '~/store/chat'
 
-import { getPerfSnapshots, getWebVitals } from './perf-monitor'
+import { getLongTaskSnapshots, getPaintSnapshots, getPerfSnapshots, getWebVitals } from './perf-monitor'
 
 declare global {
   interface Window {
@@ -26,6 +26,22 @@ function readPerformanceMemory(): Record<string, number> | null {
   }
 }
 
+function readDocumentMetrics(): Record<string, number> {
+  const root = document.getElementById('app') ?? document.body
+  return {
+    nodeCount: document.getElementsByTagName('*').length,
+    appNodeCount: root.getElementsByTagName('*').length,
+    messageBubbleCount: document.querySelectorAll('[data-testid^="message-bubble-"]').length,
+    toolCallCount: document.querySelectorAll('[data-testid^="chat-tool-call-"]').length,
+    codeBlockCount: document.querySelectorAll('pre, .sd-code-block, .shiki').length,
+    shikiSpanCount: document.querySelectorAll('.shiki span').length,
+    streamdownRootCount: document.querySelectorAll('.streamdown-root').length,
+    scrollHeight: document.documentElement.scrollHeight,
+    viewportHeight: window.innerHeight,
+    viewportWidth: window.innerWidth,
+  }
+}
+
 export function readRendererDiagnostics(): Record<string, unknown> {
   return {
     sampledAt: Date.now(),
@@ -44,7 +60,10 @@ export function readRendererDiagnostics(): Record<string, unknown> {
       current: readPerformanceMemory(),
       recentSamples: getPerfSnapshots().slice(-20),
       webVitals: getWebVitals().slice(-20),
+      longTasks: getLongTaskSnapshots().slice(-20),
+      paints: getPaintSnapshots().slice(-20),
     },
+    document: readDocumentMetrics(),
     chatStore: getChatStoreTelemetrySnapshot(),
   }
 }

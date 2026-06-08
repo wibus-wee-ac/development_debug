@@ -21,7 +21,7 @@ Used across features and components in the renderer.
 - **query-refresh-policy.ts**: Shared TanStack Query refresh policy for workspace data, including static, background, active, and interactive timing profiles.
 - **query-refresh-policy.test.ts**: Unit coverage for refresh interval defaults, background polling behavior, and per-hook timing overrides.
 - **vite-plugin-import-map.ts**: Vite import-map 注入插件，为 runtime-loaded web plugins 提供 React shared-module specifier 映射。
-- **perf-monitor.ts**: Renderer performance monitor，收集 Web Vitals 和 heap snapshots。
+- **perf-monitor.ts**: Renderer performance monitor，收集 Web Vitals、heap snapshots、long task 和 paint snapshots。
 - **shortcut-context.ts**: React context for keyboard shortcut management
 - **shortcut-provider.tsx**: Provider component for shortcut context
 - **shortcut-utils.ts**: Keyboard shortcut parsing and matching utilities

@@ -109,6 +109,18 @@ interface ChatStoreTelemetrySnapshot {
     sessionLimit: number
     truncatedSessions: number
   }
+  activeStreamingMessages: ChatStoreActiveStreamingMessageTelemetry[]
+}
+
+interface ChatStoreActiveStreamingMessageTelemetry {
+  sessionId: string
+  messageId: string
+  generating: boolean
+  passiveStreaming: boolean
+  localDriver: boolean
+  role: string
+  partCount: number
+  estimatedPartStringChars: number
 }
 
 // ── State Interface ─────────────────────────────────────────
@@ -846,7 +858,49 @@ export function getChatStoreTelemetrySnapshot(): ChatStoreTelemetrySnapshot {
       sessionLimit: CHAT_STORE_TELEMETRY_SESSION_LIMIT,
       truncatedSessions: Math.max(0, sessions.length - CHAT_STORE_TELEMETRY_SESSION_LIMIT),
     },
+    activeStreamingMessages: getActiveStreamingMessageTelemetry(state),
   }
+}
+
+function getActiveStreamingMessageTelemetry(state: ChatState): ChatStoreActiveStreamingMessageTelemetry[] {
+  const active: ChatStoreActiveStreamingMessageTelemetry[] = []
+  for (const [sessionId, messages] of state.messagesMap) {
+    const meta = state.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
+    for (const message of messages) {
+      const generating = state.generatingMessageIds.has(message.id)
+      const passiveStreaming = state.passiveStreamingMessageIds.has(message.id)
+      const localDriver = meta.localDriverMessageId === message.id
+      if (!generating && !passiveStreaming && !localDriver) {
+        continue
+      }
+      active.push({
+        sessionId,
+        messageId: message.id,
+        generating,
+        passiveStreaming,
+        localDriver,
+        role: message.role,
+        partCount: message.parts.length,
+        estimatedPartStringChars: message.parts.reduce((total, part) => total + estimateStringChars(part), 0),
+      })
+    }
+    if (
+      meta.localDriverMessageId
+      && !messages.some(message => message.id === meta.localDriverMessageId)
+    ) {
+      active.push({
+        sessionId,
+        messageId: meta.localDriverMessageId,
+        generating: state.generatingMessageIds.has(meta.localDriverMessageId),
+        passiveStreaming: state.passiveStreamingMessageIds.has(meta.localDriverMessageId),
+        localDriver: true,
+        role: 'unknown',
+        partCount: 0,
+        estimatedPartStringChars: 0,
+      })
+    }
+  }
+  return active
 }
 
 function countAssistantDisplaySplitsBySessionId(state: ChatState): Map<string, number> {

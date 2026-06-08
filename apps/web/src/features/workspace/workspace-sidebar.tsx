@@ -107,6 +107,7 @@ import { isElectron, isTearoffWindow, nativeIpc } from '~/lib/electron'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
+import { useTitleRegenerationStore } from '~/store/title-regeneration'
 import { useCradleTabStore } from '~/tabs/registry'
 import {
   detachTearoffSessionTab,
@@ -474,6 +475,8 @@ function SessionActionsMenu({
       return
     }
 
+    const { beginRegeneration, endRegeneration } = useTitleRegenerationStore.getState()
+    beginRegeneration(session.id)
     try {
       const { error } = await postChatSessionsBySessionIdTitleRegenerate({
         path: { sessionId: session.id }
@@ -488,6 +491,8 @@ function SessionActionsMenu({
         title: t('session.toast.regenerateTitleFailed'),
         description: formatRegenerateTitleError(error)
       })
+    } finally {
+      endRegeneration(session.id)
     }
   }, [invalidateSessionQueries, session, t])
 
@@ -1052,6 +1057,9 @@ const SessionItem = memo(
     onOpenSessionMenu: (request: SessionMenuRequest) => void
   }) => {
     const isUnread = session.unread
+    const isRegeneratingTitle = useTitleRegenerationStore((state) =>
+      state.regeneratingSessionIds.has(session.id)
+    )
     const dragPointerRef = useRef<ScreenCoordinates | null>(null)
     const dragCleanupRef = useRef<(() => void) | null>(null)
     const dragWasTornOffRef = useRef(false)
@@ -1292,8 +1300,17 @@ const SessionItem = memo(
                 />
               ) : null}
               <span
-                className="min-w-0 flex-1 truncate text-left"
+                className={cn(
+                  'min-w-0 flex-1 truncate text-left',
+                  isRegeneratingTitle && [
+                    'text-sidebar-foreground',
+                    '[mask-image:linear-gradient(90deg,rgba(0,0,0,0.35)_0%,black_36%,black_64%,rgba(0,0,0,0.35)_100%)] [mask-size:220%_100%]',
+                    '[-webkit-mask-image:linear-gradient(90deg,rgba(0,0,0,0.35)_0%,black_36%,black_64%,rgba(0,0,0,0.35)_100%)] [-webkit-mask-size:220%_100%]',
+                    'animate-[shimmer_1.6s_linear_infinite]'
+                  ]
+                )}
                 data-testid={`session-title-${session.id}`}
+                data-regenerating={isRegeneratingTitle ? 'true' : undefined}
               >
                 {sessionTitle}
               </span>

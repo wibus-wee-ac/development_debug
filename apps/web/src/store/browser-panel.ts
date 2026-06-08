@@ -134,6 +134,17 @@ export interface BrowserPlanDocumentTab {
   favicon: null
 }
 
+export interface BrowserPlanRefineTab {
+  kind: 'plan-refine'
+  id: string
+  sessionId: string | null
+  requestId: string
+  title: string
+  text: string
+  loading: false
+  favicon: null
+}
+
 export type BrowserPanelTab
   = | BrowserWebTab
     | BrowserWorkspaceFileTab
@@ -142,6 +153,7 @@ export type BrowserPanelTab
     | BrowserSideConversationTab
     | BrowserContextUsageReportTab
     | BrowserPlanDocumentTab
+    | BrowserPlanRefineTab
 
 export interface BrowserHistoryEntry {
   url: string
@@ -247,8 +259,8 @@ export type BrowserAnnotationAnchor
     | BrowserAnnotationTextAnchor
     | BrowserAnnotationElementAnchor
 
-export type BrowserAnnotationLayoutHint =
-  | {
+export type BrowserAnnotationLayoutHint
+  = | {
       id: string
       kind: 'placement'
       componentType: string
@@ -259,7 +271,7 @@ export type BrowserAnnotationLayoutHint =
       height: number
       scrollY: number
     }
-  | {
+    | {
       id: string
       kind: 'rearrange'
       selector: string
@@ -418,6 +430,13 @@ interface BrowserPanelState {
   openPlanDocumentTab: (input: {
     sessionId?: string | null
     toolCallId: string
+    title?: string
+    text: string
+    ownerId?: string | null
+  }) => string
+  openPlanRefineTab: (input: {
+    sessionId?: string | null
+    requestId: string
     title?: string
     text: string
     ownerId?: string | null
@@ -1030,6 +1049,37 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
           sessionId: sessionId ?? null,
           toolCallId,
           title: title ?? 'Plan document',
+          text,
+          loading: false,
+          favicon: null,
+        }
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            tabs: [...ownerState.tabs, tab],
+            activeTabId: tab.id,
+          })
+        })
+        return tab.id
+      },
+
+      openPlanRefineTab: ({ sessionId, requestId, title, text, ownerId: ownerIdInput }) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        const ownerState = getOwnerState(get(), ownerId)
+        const existing = ownerState.tabs.find(
+          tab => tab.kind === 'plan-refine' && tab.requestId === requestId,
+        )
+        if (existing) {
+          get().setActiveTab(existing.id, ownerId)
+          return existing.id
+        }
+        const tab: BrowserPlanRefineTab = {
+          kind: 'plan-refine',
+          id: `plan-refine:${requestId}`,
+          sessionId: sessionId ?? null,
+          requestId,
+          title: title ?? 'Refine plan',
           text,
           loading: false,
           favicon: null,

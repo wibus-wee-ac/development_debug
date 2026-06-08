@@ -24,13 +24,30 @@ export interface VitalEntry {
   timestamp: number
 }
 
+export interface LongTaskSnapshot {
+  timestamp: number
+  duration: number
+  name: string
+}
+
+export interface PaintSnapshot {
+  timestamp: number
+  name: string
+  startTime: number
+  duration: number
+}
+
 const BUFFER_CAP = 200
 const SAMPLE_INTERVAL_MS = 30_000
 const LEAK_THRESHOLD = 10
 
 const snapshots: MemorySnapshot[] = []
 const vitals: VitalEntry[] = []
+const longTasks: LongTaskSnapshot[] = []
+const paints: PaintSnapshot[] = []
 let intervalId: ReturnType<typeof setInterval> | null = null
+let longTaskObserver: PerformanceObserver | null = null
+let paintObserver: PerformanceObserver | null = null
 let consecutiveIncreases = 0
 let lastHeapUsed = 0
 
@@ -46,6 +63,20 @@ function pushSnapshot(buf: MemorySnapshot[], entry: MemorySnapshot) {
 }
 
 function pushVital(buf: VitalEntry[], entry: VitalEntry) {
+  if (buf.length >= BUFFER_CAP) {
+    buf.shift()
+  }
+  buf.push(entry)
+}
+
+function pushLongTask(buf: LongTaskSnapshot[], entry: LongTaskSnapshot) {
+  if (buf.length >= BUFFER_CAP) {
+    buf.shift()
+  }
+  buf.push(entry)
+}
+
+function pushPaint(buf: PaintSnapshot[], entry: PaintSnapshot) {
   if (buf.length >= BUFFER_CAP) {
     buf.shift()
   }
@@ -92,12 +123,63 @@ function collectWebVitals() {
   onTTFB(record('TTFB'))
 }
 
+function collectLongTasks() {
+  if (longTaskObserver !== null || typeof PerformanceObserver === 'undefined') {
+    return
+  }
+  try {
+    longTaskObserver = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        pushLongTask(longTasks, {
+          timestamp: Date.now(),
+          duration: entry.duration,
+          name: entry.name,
+        })
+      }
+    })
+    longTaskObserver.observe({ type: 'longtask', buffered: true })
+  }
+  catch {
+    longTaskObserver = null
+  }
+}
+
+function collectPaints() {
+  if (paintObserver !== null || typeof PerformanceObserver === 'undefined') {
+    return
+  }
+  try {
+    paintObserver = new PerformanceObserver((list) => {
+      for (const entry of list.getEntries()) {
+        pushPaint(paints, {
+          timestamp: Date.now(),
+          name: entry.name,
+          startTime: entry.startTime,
+          duration: entry.duration,
+        })
+      }
+    })
+    paintObserver.observe({ type: 'paint', buffered: true })
+  }
+  catch {
+    paintObserver = null
+  }
+}
+
 export function getPerfSnapshots(): MemorySnapshot[] {
   return [...snapshots]
 }
 
 export function getWebVitals(): VitalEntry[] {
   return [...vitals]
+}
+
+export function getLongTaskSnapshots(): LongTaskSnapshot[] {
+  return [...longTasks]
+}
+
+export function getPaintSnapshots(): PaintSnapshot[] {
+  return [...paints]
 }
 
 export function initPerfMonitor() {
@@ -108,4 +190,6 @@ export function initPerfMonitor() {
   sampleMemory()
   intervalId = setInterval(sampleMemory, SAMPLE_INTERVAL_MS)
   collectWebVitals()
+  collectLongTasks()
+  collectPaints()
 }

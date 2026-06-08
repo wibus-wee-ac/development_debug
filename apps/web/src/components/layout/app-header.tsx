@@ -2,14 +2,14 @@ import type { TabBarCustomization, TabInstance } from '@cradle/tabs-next'
 import { TabBar } from '@cradle/tabs-next'
 import { GlobeIcon, MessageCircleMoreIcon, PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon, PlusIcon, SettingsIcon, XIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { useCallback, useMemo, useRef } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { ResourcesPopover } from '~/features/devtool/resources/resources-popover'
 import { useUnreadSessionIds } from '~/features/workspace/use-session'
 import { cn } from '~/lib/cn'
-import { isTearoffWindow, nativeIpc, platform, subscribePointerOutsideWindow } from '~/lib/electron'
+import { isTearoffWindow, platform } from '~/lib/electron'
 import { useLayoutStore } from '~/store/layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
@@ -120,44 +120,6 @@ export function AppHeader({
     }
   }, [])
 
-  const draggingTabRef = useRef<TabInstance | null>(null)
-  const pointerUnsubRef = useRef<(() => void) | null>(null)
-  const teardownPointerMonitorRef = useRef<(() => void) | null>(null)
-
-  const teardownPointerMonitor = useCallback(() => {
-    pointerUnsubRef.current?.()
-    pointerUnsubRef.current = null
-    teardownPointerMonitorRef.current?.()
-    teardownPointerMonitorRef.current = null
-    draggingTabRef.current = null
-  }, [])
-
-  const handleDragStart = useCallback((tab: TabInstance) => {
-    if (!window.cradle?.env?.isElectron || sessionScoped) {
-      return
-    }
-    draggingTabRef.current = tab
-
-    // Subscribe to pointer-outside-window events from main process
-    pointerUnsubRef.current = subscribePointerOutsideWindow((screenX, screenY) => {
-      const currentTab = draggingTabRef.current
-      if (currentTab) {
-        handleTabTearOff(currentTab, screenX, screenY)
-        teardownPointerMonitor()
-      }
-    })
-
-    // Tell main process to start monitoring
-    nativeIpc?.window.startPointerMonitor().catch(() => {})
-    teardownPointerMonitorRef.current = () => {
-      nativeIpc?.window.stopPointerMonitor().catch(() => {})
-    }
-  }, [handleTabTearOff, sessionScoped, teardownPointerMonitor])
-
-  const handleDragEnd = useCallback(() => {
-    teardownPointerMonitor()
-  }, [teardownPointerMonitor])
-
   // Overlay the settings tab pill with Settings icon+label regardless of which tab is active
   const tabPresentation = useMemo(() => {
     if (!settingsTabId) {
@@ -248,8 +210,6 @@ export function AppHeader({
           onNewTab={sessionScoped ? undefined : handleNewTab}
           onTabActivated={handleTabActivated}
           onTabTearOff={sessionScoped ? undefined : handleTabTearOff}
-          onDragStart={sessionScoped ? undefined : handleDragStart}
-          onDragEnd={sessionScoped ? undefined : handleDragEnd}
           customization={tabBarCustomization}
           tabPresentation={tabPresentation}
         />

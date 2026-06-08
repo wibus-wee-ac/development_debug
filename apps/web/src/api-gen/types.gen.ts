@@ -2375,6 +2375,11 @@ export type GetSecretsResponses = {
         kind: string;
         label: string;
         maskedSecret: string;
+        chatgpt?: {
+            chatgptAccountId: string;
+            chatgptPlanType: string | null;
+            updatedAt: number;
+        } | null;
         createdAt: number;
         updatedAt: number;
     }>;
@@ -2402,6 +2407,11 @@ export type PostSecretsResponses = {
         kind: string;
         label: string;
         maskedSecret: string;
+        chatgpt?: {
+            chatgptAccountId: string;
+            chatgptPlanType: string | null;
+            updatedAt: number;
+        } | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -7623,7 +7633,7 @@ export type GetChatDraftRuntimeCapabilitiesResponses = {
             description: string;
             argumentHint: string;
             aliases?: Array<string>;
-            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'quick-question' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
+            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'quick-question' | 'user-input' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
             commandText?: string;
             surfaces: Array<'slashCommand' | 'toolbarPicker' | 'composerState' | 'messageInline' | 'runtimePanel' | 'streamEvidence' | 'recordOnly'>;
         }>;
@@ -7661,7 +7671,7 @@ export type GetChatSessionsBySessionIdCapabilitiesResponses = {
             description: string;
             argumentHint: string;
             aliases?: Array<string>;
-            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'quick-question' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
+            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'quick-question' | 'user-input' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
             commandText?: string;
             surfaces: Array<'slashCommand' | 'toolbarPicker' | 'composerState' | 'messageInline' | 'runtimePanel' | 'streamEvidence' | 'recordOnly'>;
         }>;
@@ -7770,6 +7780,28 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
             pendingCount: number;
             inProgressCount: number;
             completedCount: number;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string | null;
+            runId: string;
+            requestId: string;
+            providerMethod: string;
+            toolCallId: string;
+            questionCount: number;
+            questions: Array<{
+                id: string;
+                header: string;
+                question: string;
+                isOther: boolean;
+                isSecret: boolean;
+                options: Array<{
+                    label: string;
+                    description: string;
+                }> | null;
+            }>;
+            createdAt: number;
             updatedAt: number;
         } | {
             kind: string;
@@ -11714,6 +11746,46 @@ export type GetObservabilityRuntimeSnapshotResponses = {
                     [key: string]: unknown;
                 };
             }>;
+        };
+        drilldowns: {
+            renderer: {
+                rendererWindows: Array<{
+                    [key: string]: unknown;
+                }>;
+                topChatSessions: Array<{
+                    [key: string]: unknown;
+                }>;
+                activeStreamingMessages: Array<{
+                    [key: string]: unknown;
+                }>;
+            };
+            browserPanel: {
+                panel: {
+                    [key: string]: unknown;
+                } | null;
+                limits: {
+                    [key: string]: unknown;
+                } | null;
+                activeThreads: Array<{
+                    [key: string]: unknown;
+                }>;
+                liveTabs: Array<{
+                    [key: string]: unknown;
+                }>;
+                runtimes: Array<{
+                    [key: string]: unknown;
+                }>;
+            };
+            replay: {
+                topRuns: Array<{
+                    [key: string]: unknown;
+                }>;
+            };
+            providerRuntime: {
+                topHosts: Array<{
+                    [key: string]: unknown;
+                }>;
+            };
         };
         observability: {
             queueDepth: number;

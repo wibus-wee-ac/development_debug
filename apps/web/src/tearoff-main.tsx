@@ -1,3 +1,5 @@
+/* eslint-disable react-refresh/only-export-components */
+
 import './styles.css'
 
 import { TabRenderer, TabsProvider } from '@cradle/tabs-next'
@@ -14,7 +16,7 @@ import { resolveInitialLocale } from '~/i18n/browser-locale'
 import { I18nProvider } from '~/i18n/client'
 import { tearoffSessionId } from '~/lib/electron'
 import { CHAT_TAB_FALLBACK_LABEL } from '~/tabs/chat.tab'
-import { cradleRegistry, cradleTabStore, useCradleTabStore } from '~/tabs/registry'
+import { cradleRegistry, cradleTabStore } from '~/tabs/registry'
 
 const queryClient = new QueryClient({
   defaultOptions: {
@@ -24,6 +26,27 @@ const queryClient = new QueryClient({
     },
   },
 })
+
+function restoreTearoffTab(sessionId: string): void {
+  cradleTabStore.getState().restoreTabs({
+    tabs: [{
+      id: 'tearoff-session',
+      type: 'chat',
+      params: { sessionId },
+      label: CHAT_TAB_FALLBACK_LABEL,
+      pinned: true,
+    }],
+    activeTabId: 'tearoff-session',
+  })
+}
+
+function TearoffShellFallback() {
+  return <div className="h-full w-full bg-background" />
+}
+
+if (tearoffSessionId) {
+  restoreTearoffTab(tearoffSessionId)
+}
 
 function TearoffRuntime() {
   'use no memo'
@@ -36,7 +59,11 @@ function TearoffRuntime() {
   }, [])
 
   if (!sessionId) {
-    return null
+    return (
+      <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
+        <TearoffShellFallback />
+      </div>
+    )
   }
 
   return <TearoffSession sessionId={sessionId} />
@@ -47,26 +74,13 @@ function TearoffSession({ sessionId }: { sessionId: string }) {
 
   useSyncLayoutSlotScope(sessionId, [sessionId])
 
-  useEffect(() => {
-    useCradleTabStore.getState().restoreTabs({
-      tabs: [{
-        id: 'tearoff-session',
-        type: 'chat',
-        params: { sessionId },
-        label: CHAT_TAB_FALLBACK_LABEL,
-        pinned: true,
-      }],
-      activeTabId: 'tearoff-session',
-    })
-  }, [sessionId])
-
   return (
     <AppEnvironmentProviders>
       <TabsProvider store={cradleTabStore} registry={cradleRegistry}>
         <div className="flex h-screen w-screen overflow-hidden bg-sidebar">
           <AppLayout sessionScoped showFooter={false}>
             <TabRenderer
-              fallback={null}
+              fallback={<TearoffShellFallback />}
               className="h-full flex overflow-hidden w-full"
             />
           </AppLayout>

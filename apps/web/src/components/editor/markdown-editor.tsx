@@ -26,7 +26,9 @@ function getMarkdownContent(storage: unknown): string {
 interface MarkdownEditorProps {
   content: string | null
   documentId?: string
-  onSave?: (markdown: string) => void
+  onChange?: (markdown: string) => void
+  onSave?: (markdown: string) => void | Promise<void>
+  saveOnBlur?: boolean
   readonly?: boolean
   placeholder?: string
   className?: string
@@ -39,13 +41,16 @@ interface MarkdownEditorProps {
 export function MarkdownEditor({
   content,
   documentId,
+  onChange,
   onSave,
+  saveOnBlur = true,
   readonly = false,
   placeholder = '开始编写...',
   className,
   smartMentions,
 }: MarkdownEditorProps) {
   const onSaveRef = useRef(onSave)
+  const onChangeRef = useRef(onChange)
   const readonlyRef = useRef(readonly)
   const documentIdRef = useRef(documentId)
   const externalContentRef = useRef(content ?? '')
@@ -53,6 +58,10 @@ export function MarkdownEditor({
   useEffect(() => {
     onSaveRef.current = onSave
   }, [onSave])
+
+  useEffect(() => {
+    onChangeRef.current = onChange
+  }, [onChange])
 
   useEffect(() => {
     readonlyRef.current = readonly
@@ -105,12 +114,17 @@ export function MarkdownEditor({
     },
     // Auto-save on blur
     onBlur: ({ editor: e }) => {
-      if (!readonlyRef.current && onSaveRef.current) {
+      if (saveOnBlur && !readonlyRef.current && onSaveRef.current) {
         const md = getMarkdownContent(e.storage)
-        onSaveRef.current(md)
+        void onSaveRef.current(md)
       }
     },
-  }, [placeholder, smartMentions, smartMentionsEnabled])
+    onUpdate: ({ editor: e }) => {
+      if (!readonlyRef.current) {
+        onChangeRef.current?.(getMarkdownContent(e.storage))
+      }
+    },
+  }, [placeholder, saveOnBlur, smartMentions, smartMentionsEnabled])
 
   useEffect(() => {
     editor?.setEditable(!readonly)
@@ -154,7 +168,7 @@ export function MarkdownEditor({
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault()
         const md = getMarkdownContent(editor.storage)
-        onSaveRef.current?.(md)
+        void onSaveRef.current?.(md)
       }
     }
     document.addEventListener('keydown', handleKeyDown)

@@ -1,4 +1,4 @@
-import { defineTab, useTabsContext } from '@cradle/tabs-next'
+import { defineTab, useTabFrameActive, useTabsContext } from '@cradle/tabs-next'
 import { useQuery } from '@tanstack/react-query'
 import { MessageCircleIcon } from 'lucide-react'
 import { lazy, Suspense, useEffect, useMemo } from 'react'
@@ -71,6 +71,7 @@ function ChatTabLayoutSlots({
 function ChatTabContent({ params }: { params: { sessionId: string } }) {
   const { sessionId } = params
   const { store } = useTabsContext()
+  const tabFrameActive = useTabFrameActive()
 
   // Fetch session metadata to get workspaceId → workspacePath for aside/panel
   const { data: session } = useQuery({
@@ -186,7 +187,7 @@ function ChatTabContent({ params }: { params: { sessionId: string } }) {
   return (
     <>
       <ChatTabLayoutSlots sessionId={sessionId} workspaceId={workspaceId} workspacePath={workspacePath} />
-      <ChatSessionFrameHost activeSession={activeSession} />
+      <ChatSessionFrameHost activeSession={activeSession} active={tabFrameActive} />
     </>
   )
 }

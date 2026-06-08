@@ -7,7 +7,7 @@ import { postSessionsByIdRead } from '~/api-gen/sdk.gen'
 import { runtimeUiSlotStatesQueryKey } from '~/features/chat/capabilities/chat-capabilities'
 import { runtimeSettingsQueryKey } from '~/features/chat/commands/runtime-settings-command'
 import { runtimeSessionStatusQueryKey } from '~/features/chat/runtime/use-runtime-session-status'
-import { onAnyChatRunEvent, onChatRunSettled, onChatSessionInvalidated } from '~/features/chat/transport/sse-chat-transport'
+import { onAnyChatRunEvent, onChatRunSettled } from '~/features/chat/transport/sse-chat-transport'
 import { isSessionsQueryKey, updateSessionReadState } from '~/features/workspace/use-session'
 import {
   BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL,
@@ -174,12 +174,6 @@ export function useGlobalEventListeners() {
       if (chunk.type !== 'start') {
         return
       }
-      invalidateChatSessionRuntimeQueries(queryClient, chatSessionId)
-    })
-  }, [queryClient])
-
-  useEffect(() => {
-    return onChatSessionInvalidated(({ chatSessionId }) => {
       invalidateChatSessionRuntimeQueries(queryClient, chatSessionId)
     })
   }, [queryClient])
