@@ -222,11 +222,12 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `board` | 4 | Manage Kanban boards. | `cradle man board` |
 | `chat` | 12 | Control chat runtime commands. | `cradle man chat` |
 | `chronicle` | 48 | Generated Cradle CLI module. | `cradle man chronicle` |
+| `external-issue-source` | 9 | Generated Cradle CLI module. | `cradle man external-issue-source` |
 | `health` | 1 | Check server health. | `cradle man health` |
 | `issue` | 30 | Manage Kanban issues, comments, relations, delegation, and context refs. | `cradle man issue` |
 | `issue-agent-session` | 3 | Inspect and control issue agent sessions. | `cradle man issue-agent-session` |
-| `observability` | 4 | Inspect local observability events, incidents, and exports. | `cradle man observability` |
-| `preferences` | 8 | Read and update server preferences. | `cradle man preferences` |
+| `observability` | 5 | Inspect local observability events, incidents, and exports. | `cradle man observability` |
+| `preferences` | 10 | Read and update server preferences. | `cradle man preferences` |
 | `profile` | 5 | Manage agent profiles. | `cradle man profile` |
 | `provider` | 1 | Inspect provider model availability. | `cradle man provider` |
 | `search` | 2 | Search Cradle data. | `cradle man search` |
@@ -235,6 +236,6 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `skill` | 10 | Manage skills and skill sources. | `cradle man skill` |
 | `usage` | 7 | Inspect usage and cost data. | `cradle man usage` |
 | `workflow-rule` | 4 | Manage workflow rules. | `cradle man workflow-rule` |
-| `workspace` | 20 | Manage workspaces, files, and git helpers. | `cradle man workspace` |
+| `workspace` | 22 | Manage workspaces, files, and git helpers. | `cradle man workspace` |
 
 <!-- CRADLE_CLI_MODULES_END -->

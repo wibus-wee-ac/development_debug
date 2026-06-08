@@ -38,6 +38,48 @@ export type GetHealthResponses = {
 
 export type GetHealthResponse = GetHealthResponses[keyof GetHealthResponses];
 
+export type GetPreferencesAppData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/preferences/app';
+};
+
+export type GetPreferencesAppResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        featureFlags: {
+            multiWorkspacePoc: boolean;
+        };
+    };
+};
+
+export type GetPreferencesAppResponse = GetPreferencesAppResponses[keyof GetPreferencesAppResponses];
+
+export type PutPreferencesAppData = {
+    body: {
+        featureFlags: {
+            multiWorkspacePoc: boolean;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/preferences/app';
+};
+
+export type PutPreferencesAppResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type PutPreferencesAppResponse = PutPreferencesAppResponses[keyof PutPreferencesAppResponses];
+
 export type GetPreferencesChatData = {
     body?: never;
     path?: never;
@@ -146,6 +188,9 @@ export type GetPreferencesDesktopResponses = {
     200: {
         requireDoubleCommandQToQuit: boolean;
         appshotHotkeyEnabled: boolean;
+        appshotHotkeyTrigger: 'DoubleCommand' | 'DoubleOption' | 'DoubleShift';
+        autoCheckForUpdates: boolean;
+        autoDownloadUpdates: boolean;
     };
 };
 
@@ -155,6 +200,9 @@ export type PutPreferencesDesktopData = {
     body: {
         requireDoubleCommandQToQuit: boolean;
         appshotHotkeyEnabled: boolean;
+        appshotHotkeyTrigger: 'DoubleCommand' | 'DoubleOption' | 'DoubleShift';
+        autoCheckForUpdates: boolean;
+        autoDownloadUpdates: boolean;
     };
     path?: never;
     query?: never;
@@ -340,6 +388,92 @@ export type PostWorkspacesFromDirectoryResponses = {
 };
 
 export type PostWorkspacesFromDirectoryResponse = PostWorkspacesFromDirectoryResponses[keyof PostWorkspacesFromDirectoryResponses];
+
+export type PostWorkspacesMultiFolderData = {
+    body: {
+        name: string;
+        folders: Array<{
+            name: string;
+            path: string;
+        }>;
+    };
+    path?: never;
+    query?: never;
+    url: '/workspaces/multi-folder';
+};
+
+export type PostWorkspacesMultiFolderErrors = {
+    /**
+     * Response for status 409
+     */
+    409: {
+        code: string;
+        message: string;
+        details: {
+            path: string;
+        };
+    };
+};
+
+export type PostWorkspacesMultiFolderError = PostWorkspacesMultiFolderErrors[keyof PostWorkspacesMultiFolderErrors];
+
+export type PostWorkspacesMultiFolderResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        name: string;
+        path: string;
+        identifier: string;
+        pinned: number;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PostWorkspacesMultiFolderResponse = PostWorkspacesMultiFolderResponses[keyof PostWorkspacesMultiFolderResponses];
+
+export type PostWorkspacesMultiFolderFromConfigData = {
+    body: {
+        path: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/workspaces/multi-folder/from-config';
+};
+
+export type PostWorkspacesMultiFolderFromConfigErrors = {
+    /**
+     * Response for status 409
+     */
+    409: {
+        code: string;
+        message: string;
+        details: {
+            path: string;
+        };
+    };
+};
+
+export type PostWorkspacesMultiFolderFromConfigError = PostWorkspacesMultiFolderFromConfigErrors[keyof PostWorkspacesMultiFolderFromConfigErrors];
+
+export type PostWorkspacesMultiFolderFromConfigResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        name: string;
+        path: string;
+        identifier: string;
+        pinned: number;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PostWorkspacesMultiFolderFromConfigResponse = PostWorkspacesMultiFolderFromConfigResponses[keyof PostWorkspacesMultiFolderFromConfigResponses];
 
 export type GetWorkspacesResolveData = {
     body?: never;
@@ -1415,6 +1549,368 @@ export type PatchProviderTargetsByProviderTargetIdCustomModelsResponses = {
 };
 
 export type PatchProviderTargetsByProviderTargetIdCustomModelsResponse = PatchProviderTargetsByProviderTargetIdCustomModelsResponses[keyof PatchProviderTargetsByProviderTargetIdCustomModelsResponses];
+
+export type GetExternalIssueSourcesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/external-issue-sources';
+};
+
+export type GetExternalIssueSourcesResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        pluginName: string;
+        sourceId: string;
+        label: string;
+        description: string | null;
+        enabled: boolean;
+        registrationStatus: 'registered' | 'unregistered';
+        capabilities: {
+            [key: string]: unknown;
+        };
+        inventory: {
+            [key: string]: unknown;
+        };
+        warnings: Array<{
+            code: string;
+            message: string;
+            severity: 'info' | 'warning' | 'error';
+        }>;
+        lastSyncStatus: 'never' | 'ok' | 'warning' | 'error' | 'rate-limited' | 'not-modified';
+        lastSyncMessage: string | null;
+        lastSyncError: string | null;
+        lastSyncAt: number | null;
+        registeredAt: number;
+    }>;
+};
+
+export type GetExternalIssueSourcesResponse = GetExternalIssueSourcesResponses[keyof GetExternalIssueSourcesResponses];
+
+export type GetExternalIssueSourcesBindingsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        workspaceId?: string;
+        sourceKey?: string;
+    };
+    url: '/external-issue-sources/bindings';
+};
+
+export type GetExternalIssueSourcesBindingsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        workspaceId: string;
+        sourceKey: string;
+        repositoryOwner: string;
+        repositoryName: string;
+        enabled: boolean;
+        scheduleEnabled: boolean;
+        refreshIntervalSeconds: number;
+        lastRefreshStatus: 'never' | 'ok' | 'warning' | 'error' | 'rate-limited' | 'not-modified';
+        lastRefreshMessage: string | null;
+        lastRefreshError: string | null;
+        lastRefreshAt: number | null;
+        nextRefreshAfter: number | null;
+        createdAt: number;
+        updatedAt: number;
+    }>;
+};
+
+export type GetExternalIssueSourcesBindingsResponse = GetExternalIssueSourcesBindingsResponses[keyof GetExternalIssueSourcesBindingsResponses];
+
+export type PostExternalIssueSourcesBySourceKeyBindingsData = {
+    body: {
+        workspaceId: string;
+        repositoryOwner: string;
+        repositoryName: string;
+        scheduleEnabled?: boolean;
+        refreshIntervalSeconds?: number;
+        refreshNow?: boolean;
+    };
+    path: {
+        sourceKey: string;
+    };
+    query?: never;
+    url: '/external-issue-sources/{sourceKey}/bindings';
+};
+
+export type PostExternalIssueSourcesBySourceKeyBindingsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceKey: string;
+        repositoryOwner: string;
+        repositoryName: string;
+        enabled: boolean;
+        scheduleEnabled: boolean;
+        refreshIntervalSeconds: number;
+        lastRefreshStatus: 'never' | 'ok' | 'warning' | 'error' | 'rate-limited' | 'not-modified';
+        lastRefreshMessage: string | null;
+        lastRefreshError: string | null;
+        lastRefreshAt: number | null;
+        nextRefreshAfter: number | null;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PostExternalIssueSourcesBySourceKeyBindingsResponse = PostExternalIssueSourcesBySourceKeyBindingsResponses[keyof PostExternalIssueSourcesBySourceKeyBindingsResponses];
+
+export type DeleteExternalIssueSourcesBindingsByBindingIdData = {
+    body?: never;
+    path: {
+        bindingId: string;
+    };
+    query?: never;
+    url: '/external-issue-sources/bindings/{bindingId}';
+};
+
+export type DeleteExternalIssueSourcesBindingsByBindingIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type DeleteExternalIssueSourcesBindingsByBindingIdResponse = DeleteExternalIssueSourcesBindingsByBindingIdResponses[keyof DeleteExternalIssueSourcesBindingsByBindingIdResponses];
+
+export type PatchExternalIssueSourcesBindingsByBindingIdData = {
+    body: {
+        enabled?: boolean;
+        scheduleEnabled?: boolean;
+        refreshIntervalSeconds?: number;
+    };
+    path: {
+        bindingId: string;
+    };
+    query?: never;
+    url: '/external-issue-sources/bindings/{bindingId}';
+};
+
+export type PatchExternalIssueSourcesBindingsByBindingIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceKey: string;
+        repositoryOwner: string;
+        repositoryName: string;
+        enabled: boolean;
+        scheduleEnabled: boolean;
+        refreshIntervalSeconds: number;
+        lastRefreshStatus: 'never' | 'ok' | 'warning' | 'error' | 'rate-limited' | 'not-modified';
+        lastRefreshMessage: string | null;
+        lastRefreshError: string | null;
+        lastRefreshAt: number | null;
+        nextRefreshAfter: number | null;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PatchExternalIssueSourcesBindingsByBindingIdResponse = PatchExternalIssueSourcesBindingsByBindingIdResponses[keyof PatchExternalIssueSourcesBindingsByBindingIdResponses];
+
+export type PostExternalIssueSourcesBindingsByBindingIdRefreshData = {
+    body: {
+        force?: boolean;
+    };
+    path: {
+        bindingId: string;
+    };
+    query?: never;
+    url: '/external-issue-sources/bindings/{bindingId}/refresh';
+};
+
+export type PostExternalIssueSourcesBindingsByBindingIdRefreshResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        sourceKey: string;
+        bindingId: string;
+        workspaceId: string;
+        repositoryOwner: string;
+        repositoryName: string;
+        status: 'never' | 'ok' | 'warning' | 'error' | 'rate-limited' | 'not-modified';
+        recordsSeen: number;
+        recordsProjected: number;
+        recordsMissing: number;
+        notModified: boolean;
+        rateLimitRemaining: number | null;
+        rateLimitResetAt: number | null;
+        message?: string;
+    };
+};
+
+export type PostExternalIssueSourcesBindingsByBindingIdRefreshResponse = PostExternalIssueSourcesBindingsByBindingIdRefreshResponses[keyof PostExternalIssueSourcesBindingsByBindingIdRefreshResponses];
+
+export type PostExternalIssueSourcesBySourceKeyRefreshData = {
+    body: {
+        workspaceId: string;
+        force?: boolean;
+    };
+    path: {
+        sourceKey: string;
+    };
+    query?: never;
+    url: '/external-issue-sources/{sourceKey}/refresh';
+};
+
+export type PostExternalIssueSourcesBySourceKeyRefreshResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        sourceKey: string;
+        bindingId: string;
+        workspaceId: string;
+        repositoryOwner: string;
+        repositoryName: string;
+        status: 'never' | 'ok' | 'warning' | 'error' | 'rate-limited' | 'not-modified';
+        recordsSeen: number;
+        recordsProjected: number;
+        recordsMissing: number;
+        notModified: boolean;
+        rateLimitRemaining: number | null;
+        rateLimitResetAt: number | null;
+        message?: string;
+    }>;
+};
+
+export type PostExternalIssueSourcesBySourceKeyRefreshResponse = PostExternalIssueSourcesBySourceKeyRefreshResponses[keyof PostExternalIssueSourcesBySourceKeyRefreshResponses];
+
+export type GetExternalIssueSourcesItemsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        workspaceId?: string;
+        sourceKey?: string;
+        syncStatus?: 'active' | 'missing' | 'error';
+    };
+    url: '/external-issue-sources/items';
+};
+
+export type GetExternalIssueSourcesItemsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        bindingId: string;
+        workspaceId: string;
+        statusId: string | null;
+        sourceKey: string;
+        externalId: string;
+        externalKey: string;
+        externalUrl: string | null;
+        repositoryOwner: string;
+        repositoryName: string;
+        number: number;
+        title: string;
+        body: string | null;
+        sourceState: 'open' | 'closed';
+        labels: Array<string>;
+        assignees: Array<string>;
+        milestone: string | null;
+        sourceCreatedAt: string | null;
+        sourceUpdatedAt: string | null;
+        sourceClosedAt: string | null;
+        syncStatus: 'active' | 'missing' | 'error';
+        fingerprint: string;
+        metadata: {
+            [key: string]: unknown;
+        };
+        warnings: Array<{
+            code: string;
+            message: string;
+            severity: 'info' | 'warning' | 'error';
+        }>;
+        lastSeenAt: number;
+        createdAt: number;
+        updatedAt: number;
+    }>;
+};
+
+export type GetExternalIssueSourcesItemsResponse = GetExternalIssueSourcesItemsResponses[keyof GetExternalIssueSourcesItemsResponses];
+
+export type PatchExternalIssueSourcesItemsByIdData = {
+    body: {
+        [key: string]: unknown;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/external-issue-sources/items/{id}';
+};
+
+export type PatchExternalIssueSourcesItemsByIdStatusData = {
+    body: {
+        statusId: string;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/external-issue-sources/items/{id}/status';
+};
+
+export type PatchExternalIssueSourcesItemsByIdStatusResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        bindingId: string;
+        workspaceId: string;
+        statusId: string | null;
+        sourceKey: string;
+        externalId: string;
+        externalKey: string;
+        externalUrl: string | null;
+        repositoryOwner: string;
+        repositoryName: string;
+        number: number;
+        title: string;
+        body: string | null;
+        sourceState: 'open' | 'closed';
+        labels: Array<string>;
+        assignees: Array<string>;
+        milestone: string | null;
+        sourceCreatedAt: string | null;
+        sourceUpdatedAt: string | null;
+        sourceClosedAt: string | null;
+        syncStatus: 'active' | 'missing' | 'error';
+        fingerprint: string;
+        metadata: {
+            [key: string]: unknown;
+        };
+        warnings: Array<{
+            code: string;
+            message: string;
+            severity: 'info' | 'warning' | 'error';
+        }>;
+        lastSeenAt: number;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PatchExternalIssueSourcesItemsByIdStatusResponse = PatchExternalIssueSourcesItemsByIdStatusResponses[keyof PatchExternalIssueSourcesItemsByIdStatusResponses];
 
 export type GetExternalProviderSourcesData = {
     body?: never;
@@ -7195,6 +7691,7 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
             threadId: string;
             turnId: string | null;
             explanation: string | null;
+            content: string | null;
             steps: Array<{
                 step: string;
                 status: string;
@@ -7777,6 +8274,39 @@ export type PostChatSessionsBySessionIdCodexAppServerStreamResponses = {
 };
 
 export type PostChatSessionsBySessionIdCodexAppServerStreamResponse = PostChatSessionsBySessionIdCodexAppServerStreamResponses[keyof PostChatSessionsBySessionIdCodexAppServerStreamResponses];
+
+export type PostChatSessionsBySessionIdMessagesByMessageIdPlanImplementationApprovalData = {
+    body: {
+        approvalId: string;
+        approved: boolean;
+    };
+    path: {
+        sessionId: string;
+        messageId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/messages/{messageId}/plan-implementation-approval';
+};
+
+export type PostChatSessionsBySessionIdMessagesByMessageIdPlanImplementationApprovalResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        message: {
+            id: string;
+            role: 'system' | 'user' | 'assistant';
+            parts: Array<{
+                type: string;
+                [key: string]: unknown;
+            }>;
+            metadata?: unknown;
+            [key: string]: unknown;
+        };
+    };
+};
+
+export type PostChatSessionsBySessionIdMessagesByMessageIdPlanImplementationApprovalResponse = PostChatSessionsBySessionIdMessagesByMessageIdPlanImplementationApprovalResponses[keyof PostChatSessionsBySessionIdMessagesByMessageIdPlanImplementationApprovalResponses];
 
 export type GetChatSessionsBySessionIdMessagesData = {
     body?: never;
@@ -10498,6 +11028,59 @@ export type PostChronicleEmbeddingsResponses = {
 
 export type PostChronicleEmbeddingsResponse = PostChronicleEmbeddingsResponses[keyof PostChronicleEmbeddingsResponses];
 
+export type GetAgentSessionsByAgentSessionIdData = {
+    body?: never;
+    path: {
+        agentSessionId: string;
+    };
+    query?: never;
+    url: '/agent-sessions/{agentSessionId}';
+};
+
+export type GetAgentSessionsByAgentSessionIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        issueId: string;
+        providerTargetId: string;
+        agentId: string | null;
+        chatSessionId: string | null;
+        status: 'created' | 'active' | 'completed' | 'stopped' | 'failed';
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type GetAgentSessionsByAgentSessionIdResponse = GetAgentSessionsByAgentSessionIdResponses[keyof GetAgentSessionsByAgentSessionIdResponses];
+
+export type GetAgentSessionsByAgentSessionIdActivitiesData = {
+    body?: never;
+    path: {
+        agentSessionId: string;
+    };
+    query?: never;
+    url: '/agent-sessions/{agentSessionId}/activities';
+};
+
+export type GetAgentSessionsByAgentSessionIdActivitiesResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        agentSessionId: string;
+        type: 'thought' | 'action' | 'response' | 'elicitation' | 'error' | 'prompt';
+        content: string;
+        signal: string | null;
+        signalMetadata: string | null;
+        createdAt: number;
+    }>;
+};
+
+export type GetAgentSessionsByAgentSessionIdActivitiesResponse = GetAgentSessionsByAgentSessionIdActivitiesResponses[keyof GetAgentSessionsByAgentSessionIdActivitiesResponses];
+
 export type GetDesktopSummaryData = {
     body?: never;
     path?: never;
@@ -10803,6 +11386,36 @@ export type PostObservabilityEventsResponses = {
 
 export type PostObservabilityEventsResponse = PostObservabilityEventsResponses[keyof PostObservabilityEventsResponses];
 
+export type PostObservabilityRuntimeSamplesData = {
+    body: {
+        source: string;
+        sampledAt: number;
+        main: {
+            [key: string]: unknown;
+        };
+        appMetrics: Array<{
+            [key: string]: unknown;
+        }>;
+        windows: Array<{
+            [key: string]: unknown;
+        }>;
+    };
+    path?: never;
+    query?: never;
+    url: '/observability/runtime-samples';
+};
+
+export type PostObservabilityRuntimeSamplesResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type PostObservabilityRuntimeSamplesResponse = PostObservabilityRuntimeSamplesResponses[keyof PostObservabilityRuntimeSamplesResponses];
+
 export type GetObservabilityIncidentsData = {
     body?: never;
     path?: never;
@@ -10903,6 +11516,154 @@ export type PostObservabilityFlushResponses = {
 };
 
 export type PostObservabilityFlushResponse = PostObservabilityFlushResponses[keyof PostObservabilityFlushResponses];
+
+export type GetObservabilityRuntimeSnapshotData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/observability/runtime-snapshot';
+};
+
+export type GetObservabilityRuntimeSnapshotResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        timestamp: number;
+        server: {
+            pid: number;
+            uptimeSeconds: number;
+            memory: {
+                rssMB: number;
+                heapUsedMB: number;
+                heapTotalMB: number;
+                externalMB: number;
+                arrayBuffersMB: number;
+            };
+            cpu: {
+                percent: number | null;
+                userMicros: number;
+                systemMicros: number;
+                sampleMs: number | null;
+                usedMicros: number | null;
+                windowReady: boolean;
+            };
+            node: {
+                activeHandles: number;
+                activeRequests: number;
+            };
+        };
+        chatRuntime: {
+            activeRuns: Array<{
+                runId: string;
+                sessionId: string;
+                messageId: string;
+                providerTargetKind: string;
+                providerTargetId: string;
+                modelId: string | null;
+            }>;
+            replayBuffers: Array<{
+                runId: string;
+                chunkCount: number;
+                textDeltaCount: number;
+                reasoningDeltaCount: number;
+                toolInputDeltaCount: number;
+                toolOutputCount: number;
+                maxDeltaChars: number;
+            }>;
+        };
+        providerRuntime: {
+            hosts: Array<{
+                hostId: string;
+                runtimeKind: string;
+                providerTargetId: string;
+                scopeId: string;
+                refCount: number;
+                pinnedCount: number;
+                hasResource: boolean;
+                expiresAt: number;
+                updatedAt: number;
+            }>;
+        };
+        pty: {
+            terminals: Array<{
+                id: string;
+                role: 'cli-tui' | 'bottom-panel';
+                pid: number;
+                executable: string;
+                cwd: string;
+                running: boolean;
+                startedAt: number;
+                cols: number;
+                rows: number;
+                rssMB: number | null;
+                cpuPercent: number | null;
+                descendantCount: number | null;
+            }>;
+            totals: {
+                cliTuiRssMB: number;
+                bottomPanelRssMB: number;
+                cliTuiCpuPercent: number;
+                bottomPanelCpuPercent: number;
+            };
+            timestamp: number;
+        };
+        chronicle: {
+            running: boolean;
+            pid: number | null;
+            rssMB: number | null;
+            cpuPercent: number | null;
+        };
+        desktop: {
+            latestSamples: Array<{
+                source: string;
+                sampledAt: number;
+                main: {
+                    [key: string]: unknown;
+                };
+                appMetrics: Array<{
+                    [key: string]: unknown;
+                }>;
+                windows: Array<{
+                    [key: string]: unknown;
+                }>;
+            }>;
+        };
+        observability: {
+            queueDepth: number;
+            recentEvents: number;
+            droppedEvents: number;
+            pendingFlush: boolean;
+        };
+    };
+};
+
+export type GetObservabilityRuntimeSnapshotResponse = GetObservabilityRuntimeSnapshotResponses[keyof GetObservabilityRuntimeSnapshotResponses];
+
+export type PostObservabilityDiagnosticsHeapSnapshotData = {
+    body: {
+        token?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/observability/diagnostics/heap-snapshot';
+};
+
+export type PostObservabilityDiagnosticsHeapSnapshotResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+        path: string;
+        pid: number;
+        startedAt: number;
+        completedAt: number;
+        durationMs: number;
+    };
+};
+
+export type PostObservabilityDiagnosticsHeapSnapshotResponse = PostObservabilityDiagnosticsHeapSnapshotResponses[keyof PostObservabilityDiagnosticsHeapSnapshotResponses];
 
 export type GetObservabilityExportData = {
     body?: never;

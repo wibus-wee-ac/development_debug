@@ -2,6 +2,12 @@
 
 import * as z from 'zod';
 
+export const zPutPreferencesAppBody = z.object({
+    featureFlags: z.object({
+        multiWorkspacePoc: z.boolean().default(false)
+    })
+});
+
 export const zPutPreferencesChatBody = z.object({
     modelId: z.string().nullable(),
     configSelections: z.record(z.string(), z.unknown()),
@@ -25,7 +31,14 @@ export const zPutPreferencesCodexBody = z.object({
 
 export const zPutPreferencesDesktopBody = z.object({
     requireDoubleCommandQToQuit: z.boolean().default(true),
-    appshotHotkeyEnabled: z.boolean().default(true)
+    appshotHotkeyEnabled: z.boolean().default(true),
+    appshotHotkeyTrigger: z.enum([
+        'DoubleCommand',
+        'DoubleOption',
+        'DoubleShift'
+    ]).default('DoubleCommand'),
+    autoCheckForUpdates: z.boolean().default(true),
+    autoDownloadUpdates: z.boolean().default(false)
 });
 
 export const zPutPreferencesJarvisBody = z.object({
@@ -47,6 +60,18 @@ export const zPostWorkspacesBody = z.object({
 });
 
 export const zPostWorkspacesFromDirectoryBody = z.object({
+    path: z.string().min(1).regex(/.*\S.*/)
+});
+
+export const zPostWorkspacesMultiFolderBody = z.object({
+    name: z.string().min(1).regex(/.*\S.*/),
+    folders: z.array(z.object({
+        name: z.string().min(1).regex(/.*\S.*/),
+        path: z.string().min(1).regex(/.*\S.*/)
+    })).min(1)
+});
+
+export const zPostWorkspacesMultiFolderFromConfigBody = z.object({
     path: z.string().min(1).regex(/.*\S.*/)
 });
 
@@ -319,6 +344,79 @@ export const zPatchProviderTargetsByProviderTargetIdCustomModelsBody = z.object(
 
 export const zPatchProviderTargetsByProviderTargetIdCustomModelsPath = z.object({
     providerTargetId: z.string().min(1)
+});
+
+export const zGetExternalIssueSourcesBindingsQuery = z.object({
+    workspaceId: z.string().optional(),
+    sourceKey: z.string().optional()
+});
+
+export const zPostExternalIssueSourcesBySourceKeyBindingsBody = z.object({
+    workspaceId: z.string().min(1),
+    repositoryOwner: z.string().min(1),
+    repositoryName: z.string().min(1),
+    scheduleEnabled: z.boolean().optional(),
+    refreshIntervalSeconds: z.number().optional(),
+    refreshNow: z.boolean().optional()
+});
+
+export const zPostExternalIssueSourcesBySourceKeyBindingsPath = z.object({
+    sourceKey: z.string().min(1)
+});
+
+export const zDeleteExternalIssueSourcesBindingsByBindingIdPath = z.object({
+    bindingId: z.string().min(1)
+});
+
+export const zPatchExternalIssueSourcesBindingsByBindingIdBody = z.object({
+    enabled: z.boolean().optional(),
+    scheduleEnabled: z.boolean().optional(),
+    refreshIntervalSeconds: z.number().optional()
+});
+
+export const zPatchExternalIssueSourcesBindingsByBindingIdPath = z.object({
+    bindingId: z.string().min(1)
+});
+
+export const zPostExternalIssueSourcesBindingsByBindingIdRefreshBody = z.object({
+    force: z.boolean().optional()
+});
+
+export const zPostExternalIssueSourcesBindingsByBindingIdRefreshPath = z.object({
+    bindingId: z.string().min(1)
+});
+
+export const zPostExternalIssueSourcesBySourceKeyRefreshBody = z.object({
+    workspaceId: z.string().min(1),
+    force: z.boolean().optional()
+});
+
+export const zPostExternalIssueSourcesBySourceKeyRefreshPath = z.object({
+    sourceKey: z.string().min(1)
+});
+
+export const zGetExternalIssueSourcesItemsQuery = z.object({
+    workspaceId: z.string().optional(),
+    sourceKey: z.string().optional(),
+    syncStatus: z.enum([
+        'active',
+        'missing',
+        'error'
+    ]).optional()
+});
+
+export const zPatchExternalIssueSourcesItemsByIdBody = z.record(z.string(), z.unknown());
+
+export const zPatchExternalIssueSourcesItemsByIdPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zPatchExternalIssueSourcesItemsByIdStatusBody = z.object({
+    statusId: z.string().min(1)
+});
+
+export const zPatchExternalIssueSourcesItemsByIdStatusPath = z.object({
+    id: z.string().min(1)
 });
 
 export const zPostExternalProviderSourcesBySourceKeyRefreshPath = z.object({
@@ -1797,6 +1895,16 @@ export const zPostChatSessionsBySessionIdCodexAppServerStreamPath = z.object({
     sessionId: z.string().min(1)
 });
 
+export const zPostChatSessionsBySessionIdMessagesByMessageIdPlanImplementationApprovalBody = z.object({
+    approvalId: z.string().min(1),
+    approved: z.boolean()
+});
+
+export const zPostChatSessionsBySessionIdMessagesByMessageIdPlanImplementationApprovalPath = z.object({
+    sessionId: z.string().min(1),
+    messageId: z.string().min(1)
+});
+
 export const zGetChatSessionsBySessionIdMessagesPath = z.object({
     sessionId: z.string().min(1)
 });
@@ -1847,7 +1955,7 @@ export const zPutChronicleConfigBody = z.object({
     activityPipelineEnabled: z.boolean(),
     activityPipelineIntervalMs: z.number(),
     activityPipelineBatchSize: z.number(),
-    dreamSchedulerEnabled: z.boolean().optional().default(true),
+    dreamSchedulerEnabled: z.boolean().optional().default(false),
     dreamSchedulerIntervalMs: z.number().optional().default(86400000),
     dreamSchedulerApplyMerge: z.boolean().optional().default(false),
     audioCaptureEnabled: z.boolean(),
@@ -2407,6 +2515,14 @@ export const zPostChronicleEmbeddingsBody = z.object({
     texts: z.array(z.string().min(1)).min(1).max(64)
 });
 
+export const zGetAgentSessionsByAgentSessionIdPath = z.object({
+    agentSessionId: z.string()
+});
+
+export const zGetAgentSessionsByAgentSessionIdActivitiesPath = z.object({
+    agentSessionId: z.string()
+});
+
 export const zPostTerminalSessionsBySessionIdStartOrAttachBody = z.object({
     cols: z.union([
         z.string(),
@@ -2470,6 +2586,14 @@ export const zPostObservabilityEventsBody = z.object({
     recordedAt: z.number().optional()
 });
 
+export const zPostObservabilityRuntimeSamplesBody = z.object({
+    source: z.string(),
+    sampledAt: z.number(),
+    main: z.record(z.string(), z.unknown()),
+    appMetrics: z.array(z.record(z.string(), z.unknown())),
+    windows: z.array(z.record(z.string(), z.unknown()))
+});
+
 export const zGetObservabilityIncidentsQuery = z.object({
     dedupeKey: z.string().optional(),
     chatSessionId: z.string().optional(),
@@ -2487,6 +2611,10 @@ export const zGetObservabilityErrorPatternsQuery = z.object({
     providerTargetId: z.string().optional(),
     sinceUnix: z.string().optional(),
     limit: z.string().optional()
+});
+
+export const zPostObservabilityDiagnosticsHeapSnapshotBody = z.object({
+    token: z.string().optional()
 });
 
 export const zGetObservabilityExportQuery = z.object({

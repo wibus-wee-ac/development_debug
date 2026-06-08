@@ -31,6 +31,12 @@ const spec = {
       "type": "string"
     },
     {
+      "name": "modelId",
+      "required": false,
+      "target": "body.modelId",
+      "type": "string"
+    },
+    {
       "name": "agentId",
       "required": false,
       "target": "body.agentId",
@@ -41,6 +47,12 @@ const spec = {
       "required": false,
       "target": "body.runtimeKind",
       "type": "string"
+    },
+    {
+      "name": "runtimeSettings",
+      "required": false,
+      "target": "body.runtimeSettings",
+      "type": "json"
     },
     {
       "name": "id",

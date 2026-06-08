@@ -91,6 +91,15 @@ import { register as registerChronicleSpeakerProfilesList } from './chronicle/sp
 import { register as registerChronicleSpeakerProfilesUpsert } from './chronicle/speaker-profiles/upsert'
 import { register as registerChronicleStatus } from './chronicle/status'
 import { register as registerChronicleTimeline } from './chronicle/timeline'
+import { register as registerExternalIssueSourceBind } from './external-issue-source/bind'
+import { register as registerExternalIssueSourceBindingDelete } from './external-issue-source/binding/delete'
+import { register as registerExternalIssueSourceBindingList } from './external-issue-source/binding/list'
+import { register as registerExternalIssueSourceBindingUpdate } from './external-issue-source/binding/update'
+import { register as registerExternalIssueSourceItemList } from './external-issue-source/item/list'
+import { register as registerExternalIssueSourceItemMove } from './external-issue-source/item/move'
+import { register as registerExternalIssueSourceList } from './external-issue-source/list'
+import { register as registerExternalIssueSourceRefresh } from './external-issue-source/refresh'
+import { register as registerExternalIssueSourceRefreshSource } from './external-issue-source/refresh-source'
 import { register as registerHealth } from './health'
 import { register as registerIssueActivityList } from './issue/activity/list'
 import { register as registerIssueCommentAdd } from './issue/comment/add'
@@ -129,6 +138,9 @@ import { register as registerObservabilityErrorPatterns } from './observability/
 import { register as registerObservabilityEvents } from './observability/events'
 import { register as registerObservabilityExport } from './observability/export'
 import { register as registerObservabilityIncidents } from './observability/incidents'
+import { register as registerObservabilityRuntimeSnapshot } from './observability/runtime-snapshot'
+import { register as registerPreferencesAppGet } from './preferences/app/get'
+import { register as registerPreferencesAppSet } from './preferences/app/set'
 import { register as registerPreferencesChatGet } from './preferences/chat/get'
 import { register as registerPreferencesChatSet } from './preferences/chat/set'
 import { register as registerPreferencesCodexGet } from './preferences/codex/get'
@@ -204,6 +216,8 @@ import { register as registerWorkspaceGitGraph } from './workspace/git/graph'
 import { register as registerWorkspaceGitStatus } from './workspace/git/status'
 import { register as registerWorkspaceImport } from './workspace/import'
 import { register as registerWorkspaceList } from './workspace/list'
+import { register as registerWorkspaceMultiFolderCreate } from './workspace/multi-folder/create'
+import { register as registerWorkspaceMultiFolderImport } from './workspace/multi-folder/import'
 import { register as registerWorkspaceResolve } from './workspace/resolve'
 import { register as registerWorkspaceUpdate } from './workspace/update'
 
@@ -299,6 +313,15 @@ export function registerGeneratedCommands(program: Command): void {
   registerChronicleSpeakerProfilesUpsert(program)
   registerChronicleStatus(program)
   registerChronicleTimeline(program)
+  registerExternalIssueSourceBind(program)
+  registerExternalIssueSourceBindingDelete(program)
+  registerExternalIssueSourceBindingList(program)
+  registerExternalIssueSourceBindingUpdate(program)
+  registerExternalIssueSourceItemList(program)
+  registerExternalIssueSourceItemMove(program)
+  registerExternalIssueSourceList(program)
+  registerExternalIssueSourceRefresh(program)
+  registerExternalIssueSourceRefreshSource(program)
   registerHealth(program)
   registerIssueActivityList(program)
   registerIssueCommentAdd(program)
@@ -337,6 +360,9 @@ export function registerGeneratedCommands(program: Command): void {
   registerObservabilityEvents(program)
   registerObservabilityExport(program)
   registerObservabilityIncidents(program)
+  registerObservabilityRuntimeSnapshot(program)
+  registerPreferencesAppGet(program)
+  registerPreferencesAppSet(program)
   registerPreferencesChatGet(program)
   registerPreferencesChatSet(program)
   registerPreferencesCodexGet(program)
@@ -412,6 +438,8 @@ export function registerGeneratedCommands(program: Command): void {
   registerWorkspaceGitStatus(program)
   registerWorkspaceImport(program)
   registerWorkspaceList(program)
+  registerWorkspaceMultiFolderCreate(program)
+  registerWorkspaceMultiFolderImport(program)
   registerWorkspaceResolve(program)
   registerWorkspaceUpdate(program)
 }
