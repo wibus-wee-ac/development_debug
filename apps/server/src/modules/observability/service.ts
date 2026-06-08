@@ -6,6 +6,7 @@ import { z } from 'zod'
 
 import { db } from '../../infra'
 import { createChildLogger } from '../../logging/logger'
+import { recordObservabilityDroppedEvents } from '../../telemetry/metrics'
 import type { CreateEventInput, ObservabilityEvent, ObservabilityIncident } from './contract'
 import {
   createDedupeKey,
@@ -91,6 +92,14 @@ export interface ObservabilityErrorPattern {
   sampleMessages: string[]
 }
 
+export interface DesktopRuntimeSample {
+  source: 'desktop-main'
+  sampledAt: number
+  main: Record<string, unknown>
+  appMetrics: Array<Record<string, unknown>>
+  windows: Array<Record<string, unknown>>
+}
+
 // ---------------------------------------------------------------------------
 // Queue state (module-level singleton)
 // ---------------------------------------------------------------------------
@@ -106,6 +115,7 @@ let timer: ReturnType<typeof setTimeout> | null = null
 let activeFlush: Promise<void> | null = null
 let closed = false
 let droppedEvents = 0
+const desktopRuntimeSamples: DesktopRuntimeSample[] = []
 
 // ---------------------------------------------------------------------------
 // Public API
@@ -157,6 +167,7 @@ export async function flushEvents(): Promise<void> {
       }
       catch (error) {
         droppedEvents += batch.length
+        recordObservabilityDroppedEvents(batch.length)
         logger.error('failed to persist batch; dropping events', {
           droppedBatch: batch.length,
           droppedTotal: droppedEvents,
@@ -339,6 +350,27 @@ export function getExportBundle(input: ExportObservabilityBundleInput): Observab
   })
 }
 
+export function getQueueHealth() {
+  return {
+    queueDepth: queue.length,
+    recentEvents: recentEvents.length,
+    droppedEvents,
+    pendingFlush: activeFlush !== null,
+  }
+}
+
+export function recordDesktopRuntimeSample(sample: DesktopRuntimeSample): { ok: true } {
+  desktopRuntimeSamples.push(sample)
+  if (desktopRuntimeSamples.length > 20) {
+    desktopRuntimeSamples.splice(0, desktopRuntimeSamples.length - 20)
+  }
+  return { ok: true }
+}
+
+export function getDesktopRuntimeSamples(): DesktopRuntimeSample[] {
+  return [...desktopRuntimeSamples]
+}
+
 export async function shutdown(): Promise<void> {
   closed = true
   if (timer) {
@@ -414,6 +446,7 @@ function enqueueEvent(event: ObservabilityEvent): void {
 
   if (queue.length >= DEFAULT_MAX_QUEUE_SIZE) {
     droppedEvents += 1
+    recordObservabilityDroppedEvents(1)
     if (droppedEvents % 100 === 1) {
       logger.error('queue is full; dropping new events', {
         maxQueueSize: DEFAULT_MAX_QUEUE_SIZE,

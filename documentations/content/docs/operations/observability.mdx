@@ -3,11 +3,11 @@ title: Observability
 description: Use events, incidents, severity, session, and run dimensions to debug Cradle.
 ---
 
-Observability 用于理解 Cradle 本地 server 和 runtime 发生了什么。它适合管理员、调试者和需要提交问题报告的用户。
+Observability 用于理解 Cradle 本地 server 和 runtime 发生了什么。它适合管理员、调试者和需要提交问题报告的用户。Cradle 同时支持本地 events/incidents、OpenTelemetry traces/metrics、pino JSON logs、runtime snapshot 和 guarded diagnostics。
 
 ## 先认识这个功能
 
-Cradle 的 observability 能力围绕 events、incidents、session、run、code 和 severity。Devtools 可导出诊断 bundle，帮助复现和定位问题。
+Cradle 的 observability 能力围绕 events、incidents、session、run、code 和 severity。Devtools 可导出诊断 bundle，帮助复现和定位问题。OpenTelemetry 负责标准 traces 和 metrics；Grafana、Tempo、Prometheus、Loki、Pyroscope 或 Langfuse 都只是后端，不拥有 Cradle 的产品语义。
 
 ## 查看事件
 
@@ -25,10 +25,189 @@ Cradle 的 observability 能力围绕 events、incidents、session、run、code 
 - Automation run 失败。
 - Issue agent 停止或无输出。
 - Chronicle pipeline 状态异常。
+- Server、PTY、Chronicle daemon 或 Desktop renderer 内存持续上涨。
+
+## Runtime Snapshot
+
+`GET /observability/runtime-snapshot` 返回一次当前状态快照。它读取各 owner 的现有 API，而不是复制业务语义：
+
+- `server`：pid、uptime、RSS、heap、external、arrayBuffers、CPU sample。
+- `chatRuntime`：active runs 和 replay buffer 摘要。
+- `providerRuntime`：provider host lease/ref-count 快照。
+- `pty`：terminal process tree RSS、CPU 和 descendant count。
+- `chronicle`：daemon running、pid、RSS 和 CPU。
+- `desktop`：Electron main/renderer 最近 resource samples。
+- `observability`：queue depth、recent events、dropped events、pending flush。
+
+CLI:
+
+    cradle observability runtime-snapshot
+
+这些 JSON 字段可以包含 run id、session id 或 provider target id，因为 snapshot 是诊断文档。不要把这些高基数值复制到 metrics label。
+
+## OpenTelemetry
+
+默认不启用远端 telemetry。启用本地 OpenTelemetry runtime：
+
+    CRADLE_OTEL_ENABLED=1
+    CRADLE_OTEL_TRACES_ENABLED=1
+    CRADLE_OTEL_METRICS_ENABLED=1
+    CRADLE_OTEL_LOG_CORRELATION_ENABLED=1
+
+发送到 OTLP HTTP Collector：
+
+    CRADLE_OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318
+
+只覆盖 traces 或 metrics endpoint：
+
+    CRADLE_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT=http://127.0.0.1:4318/v1/traces
+    CRADLE_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT=http://127.0.0.1:4318/v1/metrics
+
+启用本地 Prometheus scrape endpoint：
+
+    CRADLE_OTEL_PROMETHEUS_ENABLED=1
+    CRADLE_OTEL_PROMETHEUS_HOST=127.0.0.1
+    CRADLE_OTEL_PROMETHEUS_PORT=9464
+    CRADLE_OTEL_PROMETHEUS_ENDPOINT=/metrics
+
+Langfuse 是可选 exporter，不是 telemetry 总开关：
+
+    CRADLE_LANGFUSE_ENABLED=1
+    LANGFUSE_PUBLIC_KEY=pk-lf-...
+    LANGFUSE_SECRET_KEY=sk-lf-...
+    LANGFUSE_BASE_URL=https://cloud.langfuse.com
+
+当 active span 存在时，server logs 会带 `traceId`、`spanId` 和 `traceFlags`，observability events 会默认写入同一个 `traceId`，并在 `attrs.otel` 中保留 span 信息。
+
+## Desktop 启动
+
+Desktop 会显式把 Cradle-owned OTEL、Prometheus、OTLP、Langfuse、profiling 和 guarded diagnostics 环境变量透传给它 fork 出来的 server。Desktop 仍然拥有 server lifecycle 配置，所以 `CRADLE_HOST`、`CRADLE_PORT`、`CRADLE_DATA_DIR`、plugin dirs 和 credential secret 不应该从外部透传覆盖。
+
+开发态从 Desktop 启动并暴露 Prometheus endpoint：
+
+    CRADLE_OTEL_ENABLED=1 \
+    CRADLE_OTEL_METRICS_ENABLED=1 \
+    CRADLE_OTEL_PROMETHEUS_ENABLED=1 \
+    CRADLE_OTEL_PROMETHEUS_HOST=127.0.0.1 \
+    CRADLE_OTEL_PROMETHEUS_PORT=9464 \
+    pnpm --filter @cradle/desktop dev
+
+如果要同时发 OTLP 到 Collector 或 Alloy：
+
+    CRADLE_OTEL_ENABLED=1 \
+    CRADLE_OTEL_TRACES_ENABLED=1 \
+    CRADLE_OTEL_METRICS_ENABLED=1 \
+    CRADLE_OTEL_EXPORTER_OTLP_ENDPOINT=http://127.0.0.1:4318 \
+    pnpm --filter @cradle/desktop dev
+
+macOS 打包 App 如果从 Finder 启动，通常拿不到当前 shell 的环境变量。需要用带环境变量的终端命令启动可执行文件，例如：
+
+    CRADLE_OTEL_ENABLED=1 \
+    CRADLE_OTEL_METRICS_ENABLED=1 \
+    CRADLE_OTEL_PROMETHEUS_ENABLED=1 \
+    CRADLE_OTEL_PROMETHEUS_PORT=9464 \
+    /Applications/Cradle.app/Contents/MacOS/Cradle
+
+## Grafana Stack
+
+本地推荐路径：
+
+1. Cradle Server 通过 OTLP HTTP 发送 traces 和 metrics 到 OpenTelemetry Collector 或 Grafana Alloy。
+2. Collector/Alloy 将 traces 写入 Tempo，将 metrics 写入 Prometheus 或 Mimir。
+3. pino JSON server log 由 Loki/Promtail/Alloy 采集。
+4. 可选 Pyroscope 用于 CPU/alloc profiling。
+5. Grafana dashboard 同时查看 metrics、logs、traces 和 profiles。
+
+如果 Prometheus/Alloy 原生运行在宿主机，scrape target 用 `127.0.0.1:9464`。如果 Prometheus/Alloy 在 Docker 里运行，target 通常用 `host.docker.internal:9464`。
+
+仓库内置了本地 Prometheus + Grafana provisioning。启动：
+
+    pnpm observability:up
+
+然后用启用 Prometheus exporter 的方式启动 Cradle：
+
+    CRADLE_OTEL_ENABLED=1 \
+    CRADLE_OTEL_METRICS_ENABLED=1 \
+    CRADLE_OTEL_PROMETHEUS_ENABLED=1 \
+    CRADLE_OTEL_PROMETHEUS_HOST=127.0.0.1 \
+    CRADLE_OTEL_PROMETHEUS_PORT=9464 \
+    pnpm --filter @cradle/desktop dev
+
+打开 `http://localhost:3001`。Grafana 会自动加载两个 dashboard：
+
+- `Cradle Runtime - Resources`：Cradle 自定义 runtime 指标，包括 server、chat runtime、provider runtime、PTY、Chronicle、observability queue 和 desktop samples。
+- `Cradle Server - Runtime & HTTP`：OpenTelemetry 自动 instrumentation 的 HTTP、Node.js、V8、process 和 host 指标。
+
+核心面板应包含：
+
+- Server RSS、heap、external、arrayBuffers。
+- Node runtime GC 和 event loop 指标。
+- Active chat runs 和 replay buffer chunks。
+- Provider runtime host count。
+- PTY RSS/CPU by role。
+- Chronicle daemon RSS/CPU。
+- Observability queue depth 和 dropped events。
+- Desktop main/renderer process metrics。
+
+当前 Cradle 自定义 metrics：
+
+- `cradle_process_memory_bytes{process,kind}`：server RSS、heap、external、arrayBuffers。
+- `cradle_process_cpu_percent{process}`：server CPU percent。
+- `cradle_process_uptime_seconds{process}`：server uptime。
+- `cradle_process_active_resources_total{process,kind}`：Node active handles / requests。
+- `cradle_chat_active_runs_total{runtime_kind}`：active chat runs。
+- `cradle_chat_replay_buffer_chunks{runtime_kind}`：active run replay buffer chunk count。
+- `cradle_chat_replay_buffer_deltas{runtime_kind,kind}`：text/reasoning/tool delta counts。
+- `cradle_provider_runtime_hosts_total{runtime_kind}`：provider runtime host count。
+- `cradle_provider_runtime_host_state_total{runtime_kind,kind}`：host resource/ref/pinned counts。
+- `cradle_pty_sessions_total{role}`：terminal session count。
+- `cradle_pty_rss_bytes{role}`：terminal process tree RSS。
+- `cradle_pty_cpu_percent{role}`：terminal process tree CPU。
+- `cradle_pty_descendants_total{role}`：terminal descendant process count。
+- `cradle_chronicle_daemon_rss_bytes{process}`：Chronicle daemon RSS。
+- `cradle_chronicle_daemon_state{kind}`：Chronicle running state and CPU percent。
+- `cradle_observability_queue_depth`：pending observability event queue depth。
+- `cradle_observability_state_total{kind}`：recent events、dropped events、pending flush。
+- `cradle_observability_events_dropped_total`：dropped event counter。
+- `cradle_desktop_windows_total`：latest desktop window count。
+- `cradle_desktop_sample_age_milliseconds`：latest desktop sample freshness。
+- `cradle_desktop_processes_total{type}`：Electron process count by type。
+- `cradle_desktop_memory_bytes{process,kind}`：desktop main/app process memory.
+
+这些指标刻意只使用低基数 labels，例如 `runtime_kind`、`role`、`kind` 和 Electron `type`。如果需要 `runId`、`sessionId`、`providerTargetId`、window id 或 pid，请看 `/observability/runtime-snapshot`、logs 或 traces，而不是把它们放进 metric label。
+
+## Guarded Diagnostics
+
+`POST /observability/diagnostics/heap-snapshot` 默认关闭。启用：
+
+    CRADLE_DIAGNOSTICS_ENABLED=1
+    CRADLE_DIAGNOSTICS_TOKEN=choose-a-local-token
+
+请求必须来自本地地址。如果设置了 token，传入 header：
+
+    x-cradle-diagnostics-token: choose-a-local-token
+
+Heap snapshot 会暂停进程，并且可能临时需要显著更多内存。它只适合本地 leak investigation，不要作为常规监控接口使用。输出文件写入 Cradle data dir 下的 `diagnostics/heap-snapshots/`。
+
+## Leak Harness
+
+Server 提供一个轻量脚本，用 runtime snapshot 反复采样内存趋势：
+
+    pnpm --filter @cradle/server leak:harness -- --server http://127.0.0.1:21423 --iterations 100 --delay-ms 250
+
+如果要每轮先访问一个 workflow endpoint：
+
+    pnpm --filter @cradle/server leak:harness -- --workflow-path /observability/runtime-snapshot
+
+脚本会在 Node 支持 `global.gc()` 时每轮采样前触发 GC，并输出 RSS、heap、external 和 arrayBuffers 的 delta。它用于证明“某个 workflow 反复执行后是否回到平台区间”，不是替代 heap snapshot 的 retain-path 分析。
+
+如果需要强制 GC，在 `apps/server` 下直接运行：
+
+    node --expose-gc --import tsx scripts/leak-harness.ts --server http://127.0.0.1:21423 --iterations 100
 
 ## 使用前先知道
 
-Observability 是本地诊断工具，不是托管监控平台。保留时间、导出格式和事件覆盖范围以当前 server 实现为准。
+Observability 是本地诊断工具，不是托管监控平台。OpenTelemetry/Grafana 能帮助发现哪个进程、workflow 或版本在涨；真正定位 retain path 仍需要 heap snapshot、allocation profile 或专门 leak harness。
 
 ## 继续阅读
 

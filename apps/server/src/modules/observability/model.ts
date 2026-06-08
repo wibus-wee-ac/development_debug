@@ -22,6 +22,27 @@ export const ObservabilityModel = {
     ok: t.Literal(true),
   }),
 
+  runtimeSampleBody: t.Object({
+    source: t.Literal('desktop-main'),
+    sampledAt: t.Number(),
+    main: t.Record(t.String(), t.Unknown()),
+    appMetrics: t.Array(t.Record(t.String(), t.Unknown())),
+    windows: t.Array(t.Record(t.String(), t.Unknown())),
+  }),
+
+  heapSnapshotBody: t.Object({
+    token: t.Optional(t.String()),
+  }),
+
+  heapSnapshotResponse: t.Object({
+    ok: t.Literal(true),
+    path: t.String(),
+    pid: t.Number(),
+    startedAt: t.Number(),
+    completedAt: t.Number(),
+    durationMs: t.Number(),
+  }),
+
   event: t.Object({
     id: t.String(),
     schemaVersion: t.Number(),
@@ -179,5 +200,108 @@ export const ObservabilityModel = {
 
   flushResponse: t.Object({
     ok: t.Literal(true),
+  }),
+
+  runtimeSnapshot: t.Object({
+    timestamp: t.Number(),
+    server: t.Object({
+      pid: t.Number(),
+      uptimeSeconds: t.Number(),
+      memory: t.Object({
+        rssMB: t.Number(),
+        heapUsedMB: t.Number(),
+        heapTotalMB: t.Number(),
+        externalMB: t.Number(),
+        arrayBuffersMB: t.Number(),
+      }),
+      cpu: t.Object({
+        percent: t.Nullable(t.Number()),
+        userMicros: t.Number(),
+        systemMicros: t.Number(),
+        sampleMs: t.Nullable(t.Number()),
+        usedMicros: t.Nullable(t.Number()),
+        windowReady: t.Boolean(),
+      }),
+      node: t.Object({
+        activeHandles: t.Number(),
+        activeRequests: t.Number(),
+      }),
+    }),
+    chatRuntime: t.Object({
+      activeRuns: t.Array(t.Object({
+        runId: t.String(),
+        sessionId: t.String(),
+        messageId: t.String(),
+        providerTargetKind: t.String(),
+        providerTargetId: t.String(),
+        modelId: t.Nullable(t.String()),
+      })),
+      replayBuffers: t.Array(t.Object({
+        runId: t.String(),
+        chunkCount: t.Number(),
+        textDeltaCount: t.Number(),
+        reasoningDeltaCount: t.Number(),
+        toolInputDeltaCount: t.Number(),
+        toolOutputCount: t.Number(),
+        maxDeltaChars: t.Number(),
+      })),
+    }),
+    providerRuntime: t.Object({
+      hosts: t.Array(t.Object({
+        hostId: t.String(),
+        runtimeKind: t.String(),
+        providerTargetId: t.String(),
+        scopeId: t.String(),
+        refCount: t.Number(),
+        pinnedCount: t.Number(),
+        hasResource: t.Boolean(),
+        expiresAt: t.Number(),
+        updatedAt: t.Number(),
+      })),
+    }),
+    pty: t.Object({
+      terminals: t.Array(t.Object({
+        id: t.String(),
+        role: t.Union([t.Literal('cli-tui'), t.Literal('bottom-panel')]),
+        pid: t.Number(),
+        executable: t.String(),
+        cwd: t.String(),
+        running: t.Boolean(),
+        startedAt: t.Number(),
+        cols: t.Number(),
+        rows: t.Number(),
+        rssMB: t.Nullable(t.Number()),
+        cpuPercent: t.Nullable(t.Number()),
+        descendantCount: t.Nullable(t.Number()),
+      })),
+      totals: t.Object({
+        cliTuiRssMB: t.Number(),
+        bottomPanelRssMB: t.Number(),
+        cliTuiCpuPercent: t.Number(),
+        bottomPanelCpuPercent: t.Number(),
+      }),
+      timestamp: t.Number(),
+    }),
+    chronicle: t.Object({
+      running: t.Boolean(),
+      pid: t.Nullable(t.Number()),
+      rssMB: t.Nullable(t.Number()),
+      cpuPercent: t.Nullable(t.Number()),
+    }),
+    desktop: t.Object({
+      latestSamples: t.Array(t.Object({
+        source: t.Literal('desktop-main'),
+        sampledAt: t.Number(),
+        main: t.Record(t.String(), t.Unknown()),
+        appMetrics: t.Array(t.Record(t.String(), t.Unknown())),
+        windows: t.Array(t.Record(t.String(), t.Unknown())),
+      })),
+    }),
+    observability: t.Object({
+      queueDepth: t.Number(),
+      recentEvents: t.Number(),
+      droppedEvents: t.Number(),
+      pendingFlush: t.Boolean(),
+    }),
   }),
 }

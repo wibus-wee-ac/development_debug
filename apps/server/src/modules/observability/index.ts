@@ -2,7 +2,9 @@ import { Elysia, t } from 'elysia'
 import { z } from 'zod'
 
 import type { CreateEventInput } from './contract'
+import * as Diagnostics from './diagnostics'
 import { ObservabilityModel } from './model'
+import * as RuntimeSnapshot from './runtime-snapshot'
 import * as Observability from './service'
 
 const OptionalTrimmedStringSchema = z.string()
@@ -72,6 +74,18 @@ const CreateObservabilityEventBodySchema = z.object({
   recordedAt: z.number().optional(),
 }).passthrough()
 
+const RuntimeSampleBodySchema = z.object({
+  source: z.literal('desktop-main'),
+  sampledAt: z.number(),
+  main: z.record(z.string(), z.unknown()),
+  appMetrics: z.array(z.record(z.string(), z.unknown())),
+  windows: z.array(z.record(z.string(), z.unknown())),
+}).passthrough()
+
+const HeapSnapshotBodySchema = z.object({
+  token: z.string().optional(),
+}).passthrough()
+
 export const observability = new Elysia({
   prefix: '/observability',
   detail: { tags: ['observability'] },
@@ -84,6 +98,16 @@ export const observability = new Elysia({
       summary: 'Record observability event',
     },
     body: ObservabilityModel.createEventBody,
+    response: { 200: ObservabilityModel.createEventResponse },
+  })
+  .post('/runtime-samples', ({ body }) => {
+    return Observability.recordDesktopRuntimeSample(RuntimeSampleBodySchema.parse(body))
+  }, {
+    detail: {
+      summary: 'Record runtime resource sample',
+      description: 'Internal producer endpoint for bounded runtime samples such as Electron desktop process metrics.',
+    },
+    body: ObservabilityModel.runtimeSampleBody,
     response: { 200: ObservabilityModel.createEventResponse },
   })
   .get('/events', ({ query }) => Observability.getEvents(ObservabilityEventsQuerySchema.parse(query)), {
@@ -122,6 +146,25 @@ export const observability = new Elysia({
   }, {
     detail: { summary: 'Flush pending observability events' },
     response: { 200: ObservabilityModel.flushResponse },
+  })
+  .get('/runtime-snapshot', () => RuntimeSnapshot.getRuntimeSnapshot(), {
+    detail: {
+      'summary': 'Get runtime observability snapshot',
+      'x-cradle-cli': {
+        command: ['observability', 'runtime-snapshot'],
+      },
+    },
+    response: { 200: ObservabilityModel.runtimeSnapshot },
+  })
+  .post('/diagnostics/heap-snapshot', ({ body, request }) => {
+    return Diagnostics.writeHeapSnapshot(HeapSnapshotBodySchema.parse(body ?? {}), { request })
+  }, {
+    detail: {
+      summary: 'Write a guarded local heap snapshot',
+      description: 'Disabled unless CRADLE_DIAGNOSTICS_ENABLED=1. This endpoint is intentionally not exposed through the generated CLI.',
+    },
+    body: ObservabilityModel.heapSnapshotBody,
+    response: { 200: ObservabilityModel.heapSnapshotResponse },
   })
   .get('/export', ({ query }) => Observability.getExportBundle(ObservabilityExportQuerySchema.parse(query)), {
     detail: {

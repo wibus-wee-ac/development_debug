@@ -5,6 +5,7 @@ import pc from 'picocolors'
 import pino from 'pino'
 
 import type { LogLevel } from '../config/server-config'
+import { getActiveLogTraceFields } from '../telemetry/spans'
 
 export interface LoggerFields {
   [key: string]: unknown
@@ -159,22 +160,26 @@ export class Logger {
   }
 
   debug(message: string, fields?: LoggerFields): void {
-    if (fields) { this.active.debug(fields, message) }
+    const merged = mergeTraceFields(fields)
+    if (merged) { this.active.debug(merged, message) }
     else { this.active.debug(message) }
   }
 
   info(message: string, fields?: LoggerFields): void {
-    if (fields) { this.active.info(fields, message) }
+    const merged = mergeTraceFields(fields)
+    if (merged) { this.active.info(merged, message) }
     else { this.active.info(message) }
   }
 
   warn(message: string, fields?: LoggerFields): void {
-    if (fields) { this.active.warn(fields, message) }
+    const merged = mergeTraceFields(fields)
+    if (merged) { this.active.warn(merged, message) }
     else { this.active.warn(message) }
   }
 
   error(message: string, fields?: LoggerFields): void {
-    if (fields) { this.active.error(fields, message) }
+    const merged = mergeTraceFields(fields)
+    if (merged) { this.active.error(merged, message) }
     else { this.active.error(message) }
   }
 
@@ -198,11 +203,29 @@ export function createChildLogger(bindings: LoggerFields): Logger {
   return rootLogger ? new Logger(rootLogger.child(bindings)) : new Logger(undefined, bindings)
 }
 
+function mergeTraceFields(fields?: LoggerFields): LoggerFields | undefined {
+  const traceFields = getActiveLogTraceFields()
+  if (!traceFields) {
+    return fields
+  }
+  return fields ? { ...traceFields, ...fields } : traceFields
+}
+
 /** Flush buffered log destinations before intentional process exits. */
 export function flushLogger(): void {
-  rootLogger?.flush()
+  try {
+    rootLogger?.flush()
+  }
+  catch {
+    // Logging flush is best-effort during process shutdown.
+  }
   for (const dest of fileDestinations) {
-    dest.flush?.()
-    dest.flushSync?.()
+    try {
+      dest.flush?.()
+      dest.flushSync?.()
+    }
+    catch {
+      // SonicBoom can reject synchronous flush before the destination is ready.
+    }
   }
 }

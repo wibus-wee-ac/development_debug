@@ -9,6 +9,8 @@ import type {
 } from '@cradle/ipc'
 import { z } from 'zod'
 
+import { getActiveSpanContext } from '../../telemetry/spans'
+
 export type {
   ObservabilityCategory,
   ObservabilityEvent,
@@ -34,6 +36,8 @@ export const OBSERVABILITY_CODES = {
   serverUnhandledRejection: 'SERVER_UNHANDLED_REJECTION',
   serverBootstrapFatal: 'SERVER_BOOTSTRAP_FATAL',
   httpUnhandledError: 'HTTP_UNHANDLED_ERROR',
+  diagnosticsHeapSnapshotWritten: 'DIAGNOSTICS_HEAP_SNAPSHOT_WRITTEN',
+  diagnosticsHeapSnapshotFailed: 'DIAGNOSTICS_HEAP_SNAPSHOT_FAILED',
 } as const
 
 export interface CreateEventInput {
@@ -90,6 +94,19 @@ export function createObservabilityEvent(rawInput: CreateEventInput): Observabil
     occurredAt: z.number().default(now),
     recordedAt: z.number().default(now),
   }).parse(rawInput)
+  const activeSpanContext = getActiveSpanContext()
+  const traceId = input.traceId ?? activeSpanContext?.traceId
+  const attrs = activeSpanContext
+    ? {
+        ...input.attrs,
+        otel: {
+          ...(typeof input.attrs?.otel === 'object' && input.attrs.otel !== null ? input.attrs.otel : {}),
+          traceId: activeSpanContext.traceId,
+          spanId: activeSpanContext.spanId,
+          traceFlags: activeSpanContext.traceFlags,
+        },
+      }
+    : input.attrs
   return {
     id: randomUUID(),
     schemaVersion: OBSERVABILITY_SCHEMA_VERSION,
@@ -98,11 +115,11 @@ export function createObservabilityEvent(rawInput: CreateEventInput): Observabil
     severity: input.severity,
     category: input.category,
     message: input.message,
-    attrs: input.attrs,
+    attrs,
     chatSessionId: input.chatSessionId,
     runId: input.runId,
     messageId: input.messageId,
-    traceId: input.traceId,
+    traceId,
     dedupeKey: input.dedupeKey,
     parentEventId: input.parentEventId,
     occurredAt: input.occurredAt,

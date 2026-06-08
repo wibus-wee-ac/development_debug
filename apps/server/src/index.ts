@@ -1,8 +1,8 @@
-import { initializeLangfuse } from './langfuse'
 import { flushLogger, getLogger, initializeLogger } from './logging/logger'
 import type { CreateEventInput } from './modules/observability/contract'
 import { OBSERVABILITY_CODES } from './modules/observability/contract'
 import { flushEvents, record } from './modules/observability/service'
+import { initializeTelemetry, shutdownTelemetry } from './telemetry'
 
 interface RuntimeServer {
   stop: () => void | Promise<void>
@@ -72,8 +72,8 @@ function installProcessFatalHandlers(): void {
 
 async function bootstrap() {
   initializeLogger()
+  initializeTelemetry()
   installProcessFatalHandlers()
-  initializeLangfuse()
   const [{ createServerApp }, { loadServerConfig }, { warmupModelsDevCache }] = await Promise.all([
     import('./app'),
     import('./config/server-config'),
@@ -118,6 +118,7 @@ async function bootstrap() {
       logger.error('error during graceful shutdown', { err })
     }
  finally {
+      await shutdownTelemetry()
       flushLogger()
       process.exit(0)
     }
@@ -129,6 +130,7 @@ async function bootstrap() {
 
 bootstrap().catch((err) => {
   void recordFatalError('fatal bootstrap error', err).finally(() => {
+    void shutdownTelemetry()
     process.exit(1)
   })
 })

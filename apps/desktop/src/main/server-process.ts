@@ -30,6 +30,40 @@ const SAFE_STORAGE_PREFIX = 'v1-safe:'
 const PLAIN_STORAGE_PREFIX = 'v1-plain:'
 const KEYCHAIN_BACKUP_SUFFIX = '.keychain-backup'
 const CLI_SERVER_LOCATOR_FILE = 'cli/server.json'
+const DESKTOP_SERVER_OBSERVABILITY_ENV_KEYS = [
+  'CRADLE_OTEL_ENABLED',
+  'CRADLE_OTEL_SERVICE_NAME',
+  'CRADLE_OTEL_ENV',
+  'CRADLE_OTEL_TRACES_ENABLED',
+  'CRADLE_OTEL_METRICS_ENABLED',
+  'CRADLE_OTEL_LOG_CORRELATION_ENABLED',
+  'CRADLE_OTEL_EXPORTER_OTLP_ENDPOINT',
+  'CRADLE_OTEL_EXPORTER_OTLP_TRACES_ENDPOINT',
+  'CRADLE_OTEL_EXPORTER_OTLP_METRICS_ENDPOINT',
+  'CRADLE_OTEL_PROMETHEUS_ENABLED',
+  'CRADLE_OTEL_PROMETHEUS_HOST',
+  'CRADLE_OTEL_PROMETHEUS_PORT',
+  'CRADLE_OTEL_PROMETHEUS_ENDPOINT',
+  'CRADLE_OTEL_RUNTIME_SAMPLE_INTERVAL_MS',
+  'CRADLE_LANGFUSE_ENABLED',
+  'LANGFUSE_PUBLIC_KEY',
+  'LANGFUSE_SECRET_KEY',
+  'LANGFUSE_BASE_URL',
+  'CRADLE_PROFILING_ENABLED',
+  'CRADLE_PYROSCOPE_SERVER_URL',
+  'CRADLE_DIAGNOSTICS_ENABLED',
+  'CRADLE_DIAGNOSTICS_TOKEN',
+  'OTEL_SERVICE_NAME',
+  'OTEL_EXPORTER_OTLP_ENDPOINT',
+  'OTEL_EXPORTER_OTLP_TRACES_ENDPOINT',
+  'OTEL_EXPORTER_OTLP_METRICS_ENDPOINT',
+  'OTEL_EXPORTER_OTLP_HEADERS',
+  'OTEL_EXPORTER_OTLP_TRACES_HEADERS',
+  'OTEL_EXPORTER_OTLP_METRICS_HEADERS',
+  'OTEL_EXPORTER_OTLP_PROTOCOL',
+  'OTEL_EXPORTER_OTLP_TRACES_PROTOCOL',
+  'OTEL_EXPORTER_OTLP_METRICS_PROTOCOL',
+] as const
 const ExternalPluginsDirsSchema = z.array(z.string().optional())
   .transform(values => values.flatMap(value => value?.trim() ? [value.trim()] : []))
 const ServerLocatorSchema = z.object({
@@ -162,6 +196,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
   const serverEnv: NodeJS.ProcessEnv = {
     ...process.env,
     ...getPluginEnvVars(),
+    ...pickDesktopServerObservabilityEnv(),
     CRADLE_HOST: host,
     CRADLE_PORT: String(port),
     CRADLE_DATA_DIR: dataDir,
@@ -225,6 +260,17 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
       showServerCrashDialog(code)
     }
   })
+}
+
+export function pickDesktopServerObservabilityEnv(env: NodeJS.ProcessEnv = process.env): NodeJS.ProcessEnv {
+  const picked: NodeJS.ProcessEnv = {}
+  for (const key of DESKTOP_SERVER_OBSERVABILITY_ENV_KEYS) {
+    const value = env[key]
+    if (value?.trim()) {
+      picked[key] = value
+    }
+  }
+  return picked
 }
 
 function recordServerOutput(source: 'stdout' | 'stderr', chunk: Buffer | string): void {
