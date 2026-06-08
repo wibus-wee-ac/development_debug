@@ -51,6 +51,7 @@ interface SettingsGroupProps {
    * so callers can lay out custom content (lists, forms) inside the container.
    */
   bare?: boolean
+  sectionClassName?: string
   className?: string
   children: React.ReactNode
 }
@@ -60,11 +61,11 @@ interface SettingsGroupProps {
  * inset horizontal padding and hairline dividers between them. Pass `bare` to
  * opt out and control the inner layout directly.
  */
-export function SettingsGroup({ label, description, action, bare = false, className, children }: SettingsGroupProps) {
+export function SettingsGroup({ label, description, action, bare = false, sectionClassName, className, children }: SettingsGroupProps) {
   const hasHeader = Boolean(label || description || action)
 
   return (
-    <section className="flex flex-col gap-2.5">
+    <section className={cn('flex flex-col gap-2.5', sectionClassName)}>
       {hasHeader && (
         <div className="flex items-end justify-between gap-3 px-1">
           <div className="min-w-0">

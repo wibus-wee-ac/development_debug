@@ -378,6 +378,7 @@ export function ExternalWorkImportSettings() {
       title={t('import.page.title')}
       description={t('import.page.description')}
       action={<Badge variant="outline">{isElectron ? t('import.badge.device') : t('import.badge.server')}</Badge>}
+      className="h-full min-h-0 pb-0"
       data-testid="external-work-import-settings"
     >
 
@@ -417,7 +418,7 @@ export function ExternalWorkImportSettings() {
       )}
 
       {items.length > 0 && (
-        <SettingsGroup bare className="overflow-hidden">
+        <SettingsGroup bare sectionClassName="min-h-0 flex-1" className="h-full min-h-0 overflow-hidden">
           <VList
             className="h-full min-h-0 pr-1"
             data={items}
