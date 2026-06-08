@@ -1,7 +1,7 @@
 import { randomUUID } from 'node:crypto'
-import { mkdirSync } from 'node:fs'
+import { existsSync, lstatSync, mkdirSync, readFileSync, symlinkSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { basename, join } from 'node:path'
+import { basename, isAbsolute, join, resolve, sep } from 'node:path'
 
 import type { Workspace } from '@cradle/db'
 import { workspaces } from '@cradle/db'
@@ -9,6 +9,7 @@ import { desc, eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { db, getServerConfig } from '../../infra'
+import { getAppPreferencesSync } from '../preferences/service'
 import { subscribeWorkspaceFileChanges } from './file-watch'
 import {
   createDirectory,
@@ -29,6 +30,19 @@ import {
 
 const NON_ALPHA_RE = /[^A-Z]/g
 const AD_HOC_WORKSPACE_ROOT_ENV = 'CRADLE_AD_HOC_WORKSPACE_ROOT'
+const MULTI_WORKSPACE_ROOT_ENV = 'CRADLE_MULTI_WORKSPACE_ROOT'
+const MULTI_WORKSPACE_CONFIG_FILE = 'cradle-workspace.json'
+const WORKSPACE_ENTRY_NAME_RE = /^[A-Za-z0-9._-]+$/
+
+export interface MultiFolderWorkspaceFolder {
+  name: string
+  path: string
+}
+
+export interface MultiFolderWorkspaceConfig {
+  name: string
+  folders: MultiFolderWorkspaceFolder[]
+}
 
 function generateIdentifier(name: string): string {
   const base = name.slice(0, 3).toUpperCase().replace(NON_ALPHA_RE, 'X').padEnd(3, 'X')
@@ -58,6 +72,11 @@ export function resolveByPath(path: string): Workspace | null {
 }
 
 export function addFromDirectory(path: string): Workspace {
+  const configPath = join(path, MULTI_WORKSPACE_CONFIG_FILE)
+  if (existsSync(configPath)) {
+    assertMultiWorkspacePocEnabled()
+    return createMultiFolderWorkspaceFromConfigPath(configPath)
+  }
   return create({ name: basename(path), path })
 }
 
@@ -92,6 +111,45 @@ export function create(input: { name: string, path: string }): Workspace {
     }
     throw error
   }
+}
+
+export function createMultiFolderWorkspace(input: MultiFolderWorkspaceConfig): Workspace {
+  assertMultiWorkspacePocEnabled()
+  const config = normalizeMultiFolderWorkspaceConfig(input)
+  const workspaceRoot = resolveMultiWorkspacePath(config.name)
+
+  if (existsSync(workspaceRoot)) {
+    throw new AppError({
+      code: 'multi_workspace_path_exists',
+      status: 409,
+      message: 'Multi-folder workspace path already exists',
+      details: { path: workspaceRoot },
+    })
+  }
+
+  mkdirSync(workspaceRoot, { recursive: true })
+  writeFileSync(join(workspaceRoot, MULTI_WORKSPACE_CONFIG_FILE), `${JSON.stringify(config, null, 2)}\n`, 'utf8')
+
+  for (const folder of config.folders) {
+    const linkPath = join(workspaceRoot, folder.name)
+    symlinkSync(folder.path, linkPath, process.platform === 'win32' ? 'junction' : 'dir')
+  }
+
+  return create({ name: config.name, path: workspaceRoot })
+}
+
+export function createMultiFolderWorkspaceFromConfigPath(path: string): Workspace {
+  assertMultiWorkspacePocEnabled()
+  if (!existsSync(path)) {
+    throw new AppError({
+      code: 'multi_workspace_config_not_found',
+      status: 404,
+      message: 'Multi-folder workspace config was not found',
+      details: { path },
+    })
+  }
+
+  return createMultiFolderWorkspace(readMultiFolderWorkspaceConfig(path))
 }
 
 export function update(input: { id: string, name?: string, pinned?: boolean }): Workspace | null {
@@ -366,6 +424,132 @@ function createFileOperationResult(success: boolean, workspacePath: string | nul
       relativePath,
     }),
   }
+}
+
+function assertMultiWorkspacePocEnabled(): void {
+  if (getAppPreferencesSync().featureFlags.multiWorkspacePoc) {
+    return
+  }
+
+  throw new AppError({
+    code: 'multi_workspace_poc_disabled',
+    status: 403,
+    message: 'Multi-folder workspace POC is disabled. Enable it in Cradle settings first.',
+  })
+}
+
+function readMultiFolderWorkspaceConfig(path: string): MultiFolderWorkspaceConfig {
+  try {
+    return JSON.parse(readFileSync(path, 'utf8')) as MultiFolderWorkspaceConfig
+  }
+  catch (error) {
+    throw new AppError({
+      code: 'multi_workspace_config_invalid',
+      status: 400,
+      message: 'Multi-folder workspace config could not be parsed',
+      details: { path, reason: error instanceof Error ? error.message : String(error) },
+    })
+  }
+}
+
+function normalizeMultiFolderWorkspaceConfig(input: MultiFolderWorkspaceConfig): MultiFolderWorkspaceConfig {
+  const name = input.name.trim()
+  if (!isSafeWorkspaceEntryName(name)) {
+    throw new AppError({
+      code: 'multi_workspace_name_invalid',
+      status: 400,
+      message: 'Multi-folder workspace name may only contain letters, numbers, dots, underscores, and dashes',
+      details: { name },
+    })
+  }
+
+  if (!Array.isArray(input.folders) || input.folders.length === 0) {
+    throw new AppError({
+      code: 'multi_workspace_folders_required',
+      status: 400,
+      message: 'At least one folder is required for a multi-folder workspace',
+    })
+  }
+
+  const names = new Set<string>()
+  const folders = input.folders.map((folder) => {
+    const folderName = folder.name.trim()
+    const folderPath = resolve(folder.path.trim())
+    if (!isSafeWorkspaceEntryName(folderName)) {
+      throw new AppError({
+        code: 'multi_workspace_folder_name_invalid',
+        status: 400,
+        message: 'Multi-folder workspace folder names may only contain letters, numbers, dots, underscores, and dashes',
+        details: { name: folderName },
+      })
+    }
+    if (names.has(folderName)) {
+      throw new AppError({
+        code: 'multi_workspace_folder_name_collision',
+        status: 409,
+        message: 'Multi-folder workspace folder names must be unique',
+        details: { name: folderName },
+      })
+    }
+    if (!isAbsolute(folder.path.trim())) {
+      throw new AppError({
+        code: 'multi_workspace_folder_path_relative',
+        status: 400,
+        message: 'Multi-folder workspace folder paths must be absolute',
+        details: { name: folderName, path: folder.path },
+      })
+    }
+    assertDirectory(folderPath, folderName)
+    names.add(folderName)
+    return { name: folderName, path: folderPath }
+  })
+
+  return { name, folders }
+}
+
+function isSafeWorkspaceEntryName(name: string): boolean {
+  return name.length > 0
+    && name !== '.'
+    && name !== '..'
+    && !name.includes(sep)
+    && !name.includes('/')
+    && !name.includes('\\')
+    && WORKSPACE_ENTRY_NAME_RE.test(name)
+}
+
+function assertDirectory(path: string, name: string): void {
+  try {
+    if (lstatSync(path).isDirectory()) {
+      return
+    }
+  }
+  catch {
+    throw new AppError({
+      code: 'multi_workspace_folder_not_found',
+      status: 400,
+      message: 'Multi-folder workspace folder path must point to an existing directory',
+      details: { name, path },
+    })
+  }
+
+  throw new AppError({
+    code: 'multi_workspace_folder_not_directory',
+    status: 400,
+    message: 'Multi-folder workspace folder path must point to a directory',
+    details: { name, path },
+  })
+}
+
+function resolveMultiWorkspacePath(name: string): string {
+  return join(resolveMultiWorkspaceRoot(), name)
+}
+
+function resolveMultiWorkspaceRoot(): string {
+  const configuredRoot = process.env[MULTI_WORKSPACE_ROOT_ENV]?.trim()
+  if (configuredRoot) {
+    return configuredRoot
+  }
+  return join(homedir(), 'Documents', 'Cradle', 'workspaces')
 }
 
 function resolveAdHocWorkspaceRoot(): string {

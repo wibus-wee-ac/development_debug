@@ -266,7 +266,11 @@ function asWorkspaceSession(session: GetSessionsResponse[number]): WorkspaceSess
     latestUserMessageAt: normalizedLatestUserMessageAt,
     latestAssistantMessageAt: normalizedLatestAssistantMessageAt,
     unread: session.unread === true,
-    listActivityAt: normalizedLatestUserMessageAt ?? session.createdAt,
+    listActivityAt: Math.max(
+      session.createdAt,
+      normalizedLatestUserMessageAt ?? 0,
+      normalizedLatestAssistantMessageAt ?? 0,
+    ),
   }
 }
 

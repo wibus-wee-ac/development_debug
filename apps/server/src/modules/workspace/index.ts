@@ -62,6 +62,34 @@ export const workspace = new Elysia({
     body: WorkspaceModel.importBody,
     response: { 200: WorkspaceModel.record, 409: WorkspaceModel.pathExistsError },
   })
+  .post('/multi-folder', ({ body }) => Workspace.createMultiFolderWorkspace({
+    name: trimValue(body.name),
+    folders: body.folders.map(folder => ({
+      name: trimValue(folder.name),
+      path: trimValue(folder.path),
+    })),
+  }), {
+    detail: {
+      'summary': 'Create multi-folder workspace',
+      'description': 'Create a Cradle-owned symlink workspace under the multi-workspace root from explicit folder entries. Requires the multi-workspace POC feature flag.',
+      'x-cradle-cli': {
+        command: ['workspace', 'multi-folder', 'create'],
+      },
+    },
+    body: WorkspaceModel.multiFolderWorkspaceBody,
+    response: { 200: WorkspaceModel.record, 409: WorkspaceModel.pathExistsError },
+  })
+  .post('/multi-folder/from-config', ({ body }) => Workspace.createMultiFolderWorkspaceFromConfigPath(trimValue(body.path)), {
+    detail: {
+      'summary': 'Import multi-folder workspace config',
+      'description': 'Read a cradle-workspace.json file and create a Cradle-owned symlink workspace. Requires the multi-workspace POC feature flag.',
+      'x-cradle-cli': {
+        command: ['workspace', 'multi-folder', 'import'],
+      },
+    },
+    body: WorkspaceModel.multiFolderWorkspaceImportBody,
+    response: { 200: WorkspaceModel.record, 409: WorkspaceModel.pathExistsError },
+  })
   .get('/resolve', ({ query }) => nullableJsonResponse(Workspace.resolveByPath(trimValue(query.path))), {
     detail: {
       'summary': 'Resolve workspace by path',

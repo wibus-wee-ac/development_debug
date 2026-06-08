@@ -7,7 +7,7 @@ type WorkspaceSidebarFlagMap = Record<string, true>
 
 export type WorkspaceSidebarProjectSortKey = 'name' | 'updatedAt' | 'createdAt'
 export type WorkspaceSidebarProjectSortDirection = 'asc' | 'desc'
-export type WorkspaceSidebarProjectFilter = 'all' | 'pinned' | 'unpinned' | 'unread' | 'running'
+export type WorkspaceSidebarProjectFilter = 'all' | 'pinned' | 'unpinned' | 'unread' | 'running' | 'recent'
 
 interface WorkspaceSidebarUiState {
   collapsedWorkspaceIds: WorkspaceSidebarFlagMap
@@ -36,7 +36,7 @@ interface PersistedWorkspaceSidebarUiState {
   projectPinnedFirst?: unknown
 }
 
-const PROJECT_FILTERS = new Set<WorkspaceSidebarProjectFilter>(['all', 'pinned', 'unpinned', 'unread', 'running'])
+const PROJECT_FILTERS = new Set<WorkspaceSidebarProjectFilter>(['all', 'pinned', 'unpinned', 'unread', 'running', 'recent'])
 const PROJECT_SORT_KEYS = new Set<WorkspaceSidebarProjectSortKey>(['name', 'updatedAt', 'createdAt'])
 const PROJECT_SORT_DIRECTIONS = new Set<WorkspaceSidebarProjectSortDirection>(['asc', 'desc'])
 

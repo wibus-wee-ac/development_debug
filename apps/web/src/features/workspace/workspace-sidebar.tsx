@@ -30,9 +30,18 @@ import {
   RefreshCwIcon,
   SearchIcon,
   SettingsIcon,
-  Trash2Icon,
+  Trash2Icon
 } from 'lucide-react'
-import { Fragment, memo, startTransition, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import {
+  Fragment,
+  memo,
+  startTransition,
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState
+} from 'react'
 import { useTranslation } from 'react-i18next'
 import { shallow } from 'zustand/shallow'
 
@@ -42,13 +51,15 @@ import {
   postChatSessionsBySessionIdTitleRegenerate,
   postSessionsByIdArchive,
   postSessionsByIdRead,
-  postSessionsByIdUnread,
+  postSessionsByIdUnread
 } from '~/api-gen'
+import type { PostWorkspacesMultiFolderData } from '~/api-gen/types.gen'
 import {
   getSessionsByIdQueryKey,
   patchWorkspacesByIdMutation,
   postWorkspacesByIdFilesFileMutation,
   postWorkspacesByIdFilesFolderMutation,
+  postWorkspacesMultiFolderMutation
 } from '~/api-gen/@tanstack/react-query.gen'
 import { PROVIDER_ICONS, RUNTIME_ICON_KEYS } from '~/components/common/provider-icons'
 import { Button } from '~/components/ui/button'
@@ -57,14 +68,14 @@ import {
   ContextMenuContent,
   ContextMenuItem,
   ContextMenuSeparator,
-  ContextMenuTrigger,
+  ContextMenuTrigger
 } from '~/components/ui/context-menu'
 import {
   Dialog,
   DialogContent,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from '~/components/ui/dialog'
 import { Input } from '~/components/ui/input'
 import {
@@ -77,15 +88,19 @@ import {
   MenuRadioGroup,
   MenuRadioItem,
   MenuSeparator,
-  MenuTrigger,
+  MenuTrigger
 } from '~/components/ui/menu'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { toastManager } from '~/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { prefetchChatSession } from '~/features/chat/session/chat-session-prefetch'
+import { useDirectoryPicker } from '~/features/filesystem/directory-picker-provider'
 import { KanbanSidebar } from '~/features/kanban/kanban-sidebar'
 import { PluginsSidebar } from '~/features/plugins/plugins-sidebar'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'
+import { SettingsGroup, SettingsPage } from '~/features/settings/settings-container'
+import { SettingsRow } from '~/features/settings/settings-row'
+import { useAppPreferences } from '~/features/settings/use-app-preferences'
 import type { Workspace } from '~/features/workspace/types'
 import { cn } from '~/lib/cn'
 import { isElectron, isTearoffWindow, nativeIpc } from '~/lib/electron'
@@ -93,16 +108,26 @@ import { chatSelectors, useChatStore } from '~/store/chat'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useCradleTabStore } from '~/tabs/registry'
-import { detachTearoffSessionTab, releaseTearoffSession, reserveTearoffSession } from '~/tabs/tearoff-tabs'
+import {
+  detachTearoffSessionTab,
+  releaseTearoffSession,
+  reserveTearoffSession
+} from '~/tabs/tearoff-tabs'
 import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import type { WorkspaceSession } from './use-session'
 import { sessionsQueryKey, updateSessionReadState, useAllSessions } from './use-session'
-import { useAddWorkspace, useDeleteWorkspace, useToggleWorkspacePin, useWorkspaces, WORKSPACES_QUERY_KEY } from './use-workspace'
+import {
+  useAddWorkspace,
+  useDeleteWorkspace,
+  useToggleWorkspacePin,
+  useWorkspaces,
+  WORKSPACES_QUERY_KEY
+} from './use-workspace'
 import type {
   WorkspaceSidebarProjectFilter,
   WorkspaceSidebarProjectSortDirection,
-  WorkspaceSidebarProjectSortKey,
+  WorkspaceSidebarProjectSortKey
 } from './workspace-sidebar-ui-store'
 import { useWorkspaceSidebarUiStore } from './workspace-sidebar-ui-store'
 
@@ -110,13 +135,28 @@ type WorkspaceTranslation = TFunction<'workspace'>
 const SESSION_PREVIEW_LIMIT = 5
 const SESSION_REVEAL_BATCH_SIZE = 64
 const SESSION_REVEAL_DELAY_MS = 16
+const RECENT_SESSION_WINDOW_SECONDS = 60 * 60
 const DEFAULT_WORKSPACE_FILE_NAME = 'untitled'
 const DEFAULT_WORKSPACE_FOLDER_NAME = 'untitled-folder'
 const EMPTY_WORKSPACE_SESSIONS: WorkspaceSession[] = []
 
-const PROJECT_FILTER_OPTIONS: readonly WorkspaceSidebarProjectFilter[] = ['all', 'pinned', 'unpinned', 'unread', 'running']
-const PROJECT_SORT_OPTIONS: readonly WorkspaceSidebarProjectSortKey[] = ['name', 'updatedAt', 'createdAt']
-const PROJECT_SORT_DIRECTION_OPTIONS: readonly WorkspaceSidebarProjectSortDirection[] = ['asc', 'desc']
+const PROJECT_FILTER_OPTIONS: readonly WorkspaceSidebarProjectFilter[] = [
+  'all',
+  'pinned',
+  'unpinned',
+  'unread',
+  'running',
+  'recent'
+]
+const PROJECT_SORT_OPTIONS: readonly WorkspaceSidebarProjectSortKey[] = [
+  'name',
+  'updatedAt',
+  'createdAt'
+]
+const PROJECT_SORT_DIRECTION_OPTIONS: readonly WorkspaceSidebarProjectSortDirection[] = [
+  'asc',
+  'desc'
+]
 
 function formatRegenerateTitleError(error: unknown): string {
   if (error instanceof Error) {
@@ -129,16 +169,18 @@ function formatRegenerateTitleError(error: unknown): string {
     message?: unknown
     details?: {
       reason?: unknown
-      providerError?: { detail?: unknown, method?: unknown }
+      providerError?: { detail?: unknown; method?: unknown }
       error?: { message?: unknown }
     }
   }
-  const providerDetail = typeof payload.details?.providerError?.detail === 'string'
-    ? payload.details.providerError.detail
-    : null
-  const providerMethod = typeof payload.details?.providerError?.method === 'string'
-    ? payload.details.providerError.method
-    : null
+  const providerDetail =
+    typeof payload.details?.providerError?.detail === 'string'
+      ? payload.details.providerError.detail
+      : null
+  const providerMethod =
+    typeof payload.details?.providerError?.method === 'string'
+      ? payload.details.providerError.method
+      : null
   if (providerDetail && providerMethod) {
     return `${providerMethod}: ${providerDetail}`
   }
@@ -154,8 +196,15 @@ function formatRegenerateTitleError(error: unknown): string {
   return JSON.stringify(error)
 }
 
-function isSessionRunning(session: WorkspaceSession, locallyStreamingSessionIds: Set<string>): boolean {
+function isSessionRunning(
+  session: WorkspaceSession,
+  locallyStreamingSessionIds: Set<string>
+): boolean {
   return session.status === 'streaming' || locallyStreamingSessionIds.has(session.id)
+}
+
+function isSessionRecent(session: WorkspaceSession, currentUnixTimestamp: number): boolean {
+  return session.listActivityAt >= currentUnixTimestamp - RECENT_SESSION_WINDOW_SECONDS
 }
 
 function SessionRenameInput({
@@ -164,7 +213,7 @@ function SessionRenameInput({
   pinned,
   listActivityAt,
   onCommit,
-  onCancel,
+  onCancel
 }: {
   initialTitle: string
   sessionId: string
@@ -188,23 +237,28 @@ function SessionRenameInput({
   return (
     <fieldset
       className="m-0 flex min-w-0 flex-1 items-center gap-2 border-0 p-0 px-2.5 py-1.5 text-sidebar-foreground/80"
-      onClick={e => e.stopPropagation()}
-      onKeyDown={e => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+      onKeyDown={(e) => e.stopPropagation()}
     >
-      {pinned
-        ? <PinIcon className="size-3 shrink-0 text-primary/60" aria-label={t('session.aria.pinned')} data-testid={`session-pin-indicator-${sessionId}`} />
-        : null}
+      {pinned ? (
+        <PinIcon
+          className="size-3 shrink-0 text-primary/60"
+          aria-label={t('session.aria.pinned')}
+          data-testid={`session-pin-indicator-${sessionId}`}
+        />
+      ) : null}
       <input
         ref={renameInputRef}
         aria-label="Rename session"
         defaultValue={initialTitle}
-        onBlur={(e) => { void onCommit(e.currentTarget.value) }}
+        onBlur={(e) => {
+          void onCommit(e.currentTarget.value)
+        }}
         onKeyDown={(e) => {
           if (e.key === 'Enter') {
             e.preventDefault()
             void onCommit(e.currentTarget.value)
-          }
-          else if (e.key === 'Escape') {
+          } else if (e.key === 'Escape') {
             e.preventDefault()
             onCancel()
           }
@@ -256,9 +310,11 @@ type WorkspaceMenuAction = {
   separatorBefore?: boolean
 }
 
-type SessionMenuAnchor = HTMLElement | {
-  getBoundingClientRect: () => DOMRect
-}
+type SessionMenuAnchor =
+  | HTMLElement
+  | {
+      getBoundingClientRect: () => DOMRect
+    }
 
 type SessionMenuSurface = 'button' | 'context'
 
@@ -279,18 +335,18 @@ const CLOSED_SESSION_MENU_STATE: SessionMenuState = {
   open: false,
   sessionId: null,
   anchor: null,
-  surface: 'button',
+  surface: 'button'
 }
 
 function createPointMenuAnchor(clientX: number, clientY: number): SessionMenuAnchor {
   return {
-    getBoundingClientRect: () => new DOMRect(clientX, clientY, 0, 0),
+    getBoundingClientRect: () => new DOMRect(clientX, clientY, 0, 0)
   }
 }
 
 function SessionMenuActionItems({
   actions,
-  testIdSurface = 'button',
+  testIdSurface = 'button'
 }: {
   actions: SessionMenuAction[]
   testIdSurface?: 'button' | 'context'
@@ -308,7 +364,9 @@ function SessionMenuActionItems({
         {action.variant === 'destructive' && <MenuSeparator />}
         <MenuItem
           variant={action.variant}
-          onClick={() => { void action.invoke() }}
+          onClick={() => {
+            void action.invoke()
+          }}
           data-testid={testIdSurface === 'context' ? `${action.testId}-context` : action.testId}
         >
           {content}
@@ -325,7 +383,7 @@ function SessionActionsMenu({
   workspacePath,
   onOpenChange,
   onPrepareSessionOpen,
-  onStartRename,
+  onStartRename
 }: {
   state: SessionMenuState
   session: WorkspaceSession | null
@@ -349,7 +407,9 @@ function SessionActionsMenu({
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
-      queryClient.invalidateQueries({ queryKey: getSessionsByIdQueryKey({ path: { id: session.id } }) }),
+      queryClient.invalidateQueries({
+        queryKey: getSessionsByIdQueryKey({ path: { id: session.id } })
+      })
     ])
   }, [queryClient, session, workspaceId])
 
@@ -363,7 +423,7 @@ function SessionActionsMenu({
       sessionTitle,
       workspaceId: session.workspaceId ?? workspaceId,
       workspacePath,
-      runtimeKind: session.runtimeKind,
+      runtimeKind: session.runtimeKind
     })
   }, [session, sessionTitle, workspaceId, workspacePath])
 
@@ -388,7 +448,8 @@ function SessionActionsMenu({
       return
     }
 
-    void nativeIpc.window.tearOffSession(session.id, screenX, screenY)
+    void nativeIpc.window
+      .tearOffSession(session.id, screenX, screenY)
       .then(() => {
         if (!isTearoffWindow) {
           detachTearoffSessionTab(useCradleTabStore, session.id)
@@ -414,17 +475,18 @@ function SessionActionsMenu({
     }
 
     try {
-      const { error } = await postChatSessionsBySessionIdTitleRegenerate({ path: { sessionId: session.id } })
+      const { error } = await postChatSessionsBySessionIdTitleRegenerate({
+        path: { sessionId: session.id }
+      })
       if (error) {
         throw error
       }
       await invalidateSessionQueries()
-    }
-    catch (error) {
+    } catch (error) {
       toastManager.add({
         type: 'error',
         title: t('session.toast.regenerateTitleFailed'),
-        description: formatRegenerateTitleError(error),
+        description: formatRegenerateTitleError(error)
       })
     }
   }, [invalidateSessionQueries, session, t])
@@ -450,7 +512,7 @@ function SessionActionsMenu({
     await patchSessionsById({ path: { id: session.id }, body: { pinned: !session.pinned } })
     void Promise.all([
       queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspaceId) }),
-      queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+      queryClient.invalidateQueries({ queryKey: sessionsQueryKey() })
     ])
   }, [queryClient, session, workspaceId])
 
@@ -498,72 +560,74 @@ function SessionActionsMenu({
         label: t('session.action.openInNewTab'),
         icon: <PlusIcon />,
         testId: `session-menu-open-new-tab-${session.id}`,
-        invoke: handleOpenInNewTab,
+        invoke: handleOpenInNewTab
       },
       ...(isElectron
         ? [
-          {
-            key: 'open-new-window',
-            label: t('session.action.openInNewWindow'),
-            icon: <ExternalLinkIcon />,
-            testId: `session-menu-open-new-window-${session.id}`,
-            invoke: handleOpenInNewWindow,
-          },
-        ]
+            {
+              key: 'open-new-window',
+              label: t('session.action.openInNewWindow'),
+              icon: <ExternalLinkIcon />,
+              testId: `session-menu-open-new-window-${session.id}`,
+              invoke: handleOpenInNewWindow
+            }
+          ]
         : []),
       {
         key: 'rename',
         label: t('session.action.rename'),
         icon: <PencilIcon />,
         testId: `session-menu-rename-${session.id}`,
-        invoke: handleStartRename,
+        invoke: handleStartRename
       },
       {
         key: 'regenerate-title',
         label: t('session.action.regenerateTitle'),
         icon: <RefreshCwIcon />,
         testId: `session-menu-regenerate-title-${session.id}`,
-        invoke: handleRegenerateTitle,
+        invoke: handleRegenerateTitle
       },
       {
         key: 'toggle-read-state',
         label: session.unread ? t('session.action.markRead') : t('session.action.markUnread'),
         icon: session.unread ? <MailOpenIcon /> : <MailIcon />,
         testId: `session-menu-toggle-read-state-${session.id}`,
-        invoke: handleToggleReadState,
+        invoke: handleToggleReadState
       },
       {
         key: 'toggle-pin',
         label: session.pinned ? t('session.action.unpin') : t('session.action.pin'),
         icon: session.pinned ? <PinOffIcon /> : <PinIcon />,
         testId: `session-menu-toggle-pin-${session.id}`,
-        invoke: handleTogglePin,
+        invoke: handleTogglePin
       },
       {
         key: 'copy-markdown',
         label: t('session.action.copyMarkdown'),
         icon: <ClipboardCopyIcon />,
         testId: `session-menu-copy-markdown-${session.id}`,
-        invoke: handleExport,
+        invoke: handleExport
       },
       ...(import.meta.env.DEV
         ? [
-          {
-            key: 'copy-session-id',
-            label: t('session.action.copySessionId'),
-            icon: <ClipboardCopyIcon />,
-            testId: `session-menu-copy-session-id-${session.id}`,
-            invoke: () => { navigator.clipboard.writeText(session.id) },
-          },
-        ]
+            {
+              key: 'copy-session-id',
+              label: t('session.action.copySessionId'),
+              icon: <ClipboardCopyIcon />,
+              testId: `session-menu-copy-session-id-${session.id}`,
+              invoke: () => {
+                navigator.clipboard.writeText(session.id)
+              }
+            }
+          ]
         : []),
       {
         key: 'archive',
         label: t('session.action.archive'),
         icon: <ArchiveIcon />,
         testId: `session-menu-archive-${session.id}`,
-        invoke: handleArchive,
-      },
+        invoke: handleArchive
+      }
     ]
   }, [
     handleArchive,
@@ -575,31 +639,32 @@ function SessionActionsMenu({
     handleTogglePin,
     handleToggleReadState,
     session,
-    t,
+    t
   ])
 
   return (
     <Menu open={open} onOpenChange={onOpenChange}>
-      {open && state.anchor
-        ? (
-          <MenuPopup
-            align="start"
-            anchor={state.anchor}
-            side="bottom"
-            sideOffset={state.surface === 'context' ? 0 : 4}
-          >
-            <SessionMenuActionItems
-              actions={actions}
-              testIdSurface={state.surface}
-            />
-          </MenuPopup>
-        )
-        : null}
+      {open && state.anchor ? (
+        <MenuPopup
+          align="start"
+          anchor={state.anchor}
+          side="bottom"
+          sideOffset={state.surface === 'context' ? 0 : 4}
+        >
+          <SessionMenuActionItems actions={actions} testIdSurface={state.surface} />
+        </MenuPopup>
+      ) : null}
     </Menu>
   )
 }
 
-function WorkspaceMenuActionItems({ actions, surface }: { actions: WorkspaceMenuAction[], surface: 'button' | 'context' }) {
+function WorkspaceMenuActionItems({
+  actions,
+  surface
+}: {
+  actions: WorkspaceMenuAction[]
+  surface: 'button' | 'context'
+}) {
   return actions.map((action) => {
     const content = (
       <>
@@ -614,7 +679,9 @@ function WorkspaceMenuActionItems({ actions, surface }: { actions: WorkspaceMenu
           {action.separatorBefore && <ContextMenuSeparator />}
           <ContextMenuItem
             variant={action.variant}
-            onSelect={() => { void action.invoke() }}
+            onSelect={() => {
+              void action.invoke()
+            }}
             data-testid={`${action.testId}-context`}
           >
             {content}
@@ -628,7 +695,9 @@ function WorkspaceMenuActionItems({ actions, surface }: { actions: WorkspaceMenu
         {action.separatorBefore && <MenuSeparator />}
         <MenuItem
           variant={action.variant}
-          onClick={() => { void action.invoke() }}
+          onClick={() => {
+            void action.invoke()
+          }}
           data-testid={action.testId}
         >
           {content}
@@ -645,7 +714,7 @@ function WorkspaceTextInputDialog({
   label,
   confirmLabel,
   onOpenChange,
-  onCommit,
+  onCommit
 }: {
   open: boolean
   title: string
@@ -680,16 +749,247 @@ function WorkspaceTextInputDialog({
           <Input
             autoFocus
             value={value}
-            onChange={event => setValue(event.currentTarget.value)}
-            onFocus={event => event.currentTarget.select()}
+            onChange={(event) => setValue(event.currentTarget.value)}
+            onFocus={(event) => event.currentTarget.select()}
             aria-label={label}
           />
           <DialogFooter variant="bare">
             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
               {t('workspace.dialog.cancel')}
             </Button>
-            <Button type="submit">
-              {confirmLabel}
+            <Button type="submit">{confirmLabel}</Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+type MultiFolderWorkspaceBody = PostWorkspacesMultiFolderData['body']
+type MultiFolderWorkspaceFolder = MultiFolderWorkspaceBody['folders'][number]
+type MultiFolderWorkspaceFolderDraft = MultiFolderWorkspaceFolder & { id: string }
+
+function createMultiFolderWorkspaceFolderDraft(): MultiFolderWorkspaceFolderDraft {
+  return {
+    id: globalThis.crypto?.randomUUID() ?? `${Date.now()}-${Math.random()}`,
+    name: '',
+    path: ''
+  }
+}
+
+function normalizeMultiFolderWorkspaceFolders(
+  rows: MultiFolderWorkspaceFolderDraft[]
+): MultiFolderWorkspaceFolder[] | null {
+  const folders = rows.map((row) => ({
+    name: row.name.trim(),
+    path: row.path.trim()
+  }))
+
+  if (
+    folders.length === 0 ||
+    folders.some((folder) => !folder.name || !folder.path.startsWith('/'))
+  ) {
+    return null
+  }
+
+  return folders
+}
+
+function WorkspaceMultiFolderDialog({
+  open,
+  creating,
+  onOpenChange,
+  onCommit
+}: {
+  open: boolean
+  creating: boolean
+  onOpenChange: (open: boolean) => void
+  onCommit: (input: MultiFolderWorkspaceBody) => Promise<void>
+}) {
+  const { t } = useTranslation('workspace')
+  const { selectDirectory } = useDirectoryPicker()
+  const [name, setName] = useState('')
+  const [folderRows, setFolderRows] = useState<MultiFolderWorkspaceFolderDraft[]>(() => [
+    createMultiFolderWorkspaceFolderDraft()
+  ])
+  const [error, setError] = useState<string | null>(null)
+
+  useEffect(() => {
+    if (open) {
+      setName('')
+      setFolderRows([createMultiFolderWorkspaceFolderDraft()])
+      setError(null)
+    }
+  }, [open])
+
+  const updateFolderRow = useCallback((id: string, patch: Partial<MultiFolderWorkspaceFolder>) => {
+    setFolderRows((rows) => rows.map((row) => (row.id === id ? { ...row, ...patch } : row)))
+    setError(null)
+  }, [])
+
+  const addFolderRow = useCallback(() => {
+    setFolderRows((rows) => [...rows, createMultiFolderWorkspaceFolderDraft()])
+    setError(null)
+  }, [])
+
+  const removeFolderRow = useCallback((id: string) => {
+    setFolderRows((rows) => {
+      if (rows.length === 1) {
+        return rows
+      }
+      return rows.filter((row) => row.id !== id)
+    })
+    setError(null)
+  }, [])
+
+  const browseFolderPath = useCallback(
+    async (id: string) => {
+      const path = await selectDirectory({
+        title: t('workspace.dialog.multiFolderBrowseTitle'),
+        description: t('workspace.dialog.multiFolderBrowseDescription')
+      })
+      if (!path) {
+        return
+      }
+      updateFolderRow(id, { path })
+    },
+    [selectDirectory, t, updateFolderRow]
+  )
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="overflow-hidden p-0 sm:max-w-2xl">
+        <DialogTitle className="sr-only">{t('workspace.dialog.multiFolderTitle')}</DialogTitle>
+        <form
+          className="grid gap-0"
+          onSubmit={(event) => {
+            event.preventDefault()
+            const workspaceName = name.trim()
+            const folders = normalizeMultiFolderWorkspaceFolders(folderRows)
+            if (!workspaceName || !folders) {
+              setError(t('workspace.toast.multiFolderInvalidEntry'))
+              return
+            }
+            const folderNames = new Set(folders.map((folder) => folder.name))
+            if (folderNames.size !== folders.length) {
+              setError(t('workspace.toast.multiFolderDuplicateName'))
+              return
+            }
+            void onCommit({ name: workspaceName, folders })
+          }}
+        >
+          <SettingsPage
+            title={t('workspace.dialog.multiFolderTitle')}
+            description={t('workspace.dialog.multiFolderDescription')}
+            className="max-w-none gap-5 px-5 pt-5 pb-4"
+          >
+            <SettingsGroup>
+              <SettingsRow
+                label={t('workspace.dialog.nameLabel')}
+                description={t('workspace.dialog.multiFolderNameDescription')}
+              >
+                <Input
+                  id="multi-folder-workspace-name"
+                  autoFocus
+                  value={name}
+                  onChange={(event) => {
+                    setName(event.currentTarget.value)
+                    setError(null)
+                  }}
+                  placeholder={t('workspace.dialog.multiFolderNamePlaceholder')}
+                  className="h-8 w-64"
+                />
+              </SettingsRow>
+
+              <SettingsRow
+                label={t('workspace.dialog.multiFolderEntriesLabel')}
+                description={t('workspace.dialog.multiFolderEntriesDescription')}
+                vertical
+              >
+                <div id="multi-folder-workspace-folders" className="grid gap-2">
+                  {folderRows.map((row, index) => (
+                    <div
+                      key={row.id}
+                      className="grid gap-2 rounded-lg bg-muted/40 p-2 sm:grid-cols-[minmax(7rem,0.42fr)_minmax(0,1fr)_2rem_2rem]"
+                    >
+                      <Input
+                        id={`multi-folder-name-${row.id}`}
+                        aria-label={t('workspace.dialog.multiFolderFolderNameLabel')}
+                        value={row.name}
+                        onChange={(event) =>
+                          updateFolderRow(row.id, { name: event.currentTarget.value })
+                        }
+                        placeholder={
+                          index === 0
+                            ? t('workspace.dialog.multiFolderFolderNamePlaceholder')
+                            : undefined
+                        }
+                        className="h-8 bg-background"
+                      />
+                      <Input
+                        id={`multi-folder-path-${row.id}`}
+                        aria-label={t('workspace.dialog.multiFolderFolderPathLabel')}
+                        value={row.path}
+                        onChange={(event) =>
+                          updateFolderRow(row.id, { path: event.currentTarget.value })
+                        }
+                        placeholder={
+                          index === 0
+                            ? t('workspace.dialog.multiFolderFolderPathPlaceholder')
+                            : undefined
+                        }
+                        className="h-8 bg-background font-mono text-xs"
+                      />
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        aria-label={t('workspace.dialog.multiFolderBrowseFolder')}
+                        onClick={() => void browseFolderPath(row.id)}
+                      >
+                        <FolderOpenIcon />
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="icon"
+                        aria-label={t('workspace.dialog.multiFolderRemoveFolder')}
+                        disabled={folderRows.length === 1}
+                        onClick={() => removeFolderRow(row.id)}
+                      >
+                        <Trash2Icon />
+                      </Button>
+                    </div>
+                  ))}
+                  <Button
+                    type="button"
+                    variant="outline"
+                    size="sm"
+                    className="w-fit"
+                    onClick={addFolderRow}
+                  >
+                    <PlusIcon data-icon="inline-start" />
+                    {t('workspace.dialog.multiFolderAddFolder')}
+                  </Button>
+                </div>
+              </SettingsRow>
+            </SettingsGroup>
+
+            {error && (
+              <div className="flex items-start gap-2 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">
+                <CircleAlertIcon className="mt-0.5 size-3.5 shrink-0" />
+                <p>{error}</p>
+              </div>
+            )}
+          </SettingsPage>
+
+          <DialogFooter variant="bare" className="border-t px-5 py-3">
+            <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+              {t('workspace.dialog.cancel')}
+            </Button>
+            <Button type="submit" disabled={creating}>
+              {creating && <LoaderCircleIcon className="animate-spin" />}
+              {t('workspace.dialog.create')}
             </Button>
           </DialogFooter>
         </form>
@@ -703,7 +1003,7 @@ const SessionActiveBackground = memo(({ active }: { active: boolean }) => {
     <div
       className={cn(
         'pointer-events-none absolute inset-0 rounded-lg transition-colors',
-        active ? 'bg-accent/80' : 'bg-transparent',
+        active ? 'bg-accent/80' : 'bg-transparent'
       )}
       aria-hidden="true"
       data-session-active={active ? 'true' : 'false'}
@@ -712,244 +1012,254 @@ const SessionActiveBackground = memo(({ active }: { active: boolean }) => {
 })
 SessionActiveBackground.displayName = 'SessionActiveBackground'
 
-const SessionUnreadIndicator = memo(({
-  show,
-  active,
-  label,
-}: {
-  show: boolean
-  active: boolean
-  label: string
-}) => {
-  if (!show || active) {
-    return null
-  }
+const SessionUnreadIndicator = memo(
+  ({ show, active, label }: { show: boolean; active: boolean; label: string }) => {
+    if (!show || active) {
+      return null
+    }
 
-  return <span className="shrink-0 size-1.5 rounded-full bg-primary" aria-label={label} />
-})
+    return <span className="shrink-0 size-1.5 rounded-full bg-primary" aria-label={label} />
+  }
+)
 SessionUnreadIndicator.displayName = 'SessionUnreadIndicator'
 
 // ── Session item ──────────────────────────────────────────────────────────────
 
-const SessionItem = memo(({
-  session,
-  active,
-  isStreaming,
-  hasError,
-  isRenaming,
-  t,
-  onPrepareSessionOpen,
-  onPrefetchSession,
-  onRenameCommit,
-  onRenameCancel,
-  onOpenSessionMenu,
-}: {
-  session: WorkspaceSession
-  active: boolean
-  isStreaming: boolean
-  hasError: boolean
-  isRenaming: boolean
-  t: WorkspaceTranslation
-  onPrepareSessionOpen: (session: WorkspaceSession) => void
-  onPrefetchSession: (sessionId: string) => void
-  onRenameCommit: (session: WorkspaceSession, nextTitle: string) => Promise<void>
-  onRenameCancel: () => void
-  onOpenSessionMenu: (request: SessionMenuRequest) => void
-}) => {
-  const isUnread = session.unread
-  const dragPointerRef = useRef<ScreenCoordinates | null>(null)
-  const dragCleanupRef = useRef<(() => void) | null>(null)
-  const dragWasTornOffRef = useRef(false)
-  const sessionTitle = session.title ?? t('session.fallbackTitle')
+const SessionItem = memo(
+  ({
+    session,
+    active,
+    isStreaming,
+    hasError,
+    isRenaming,
+    t,
+    onPrepareSessionOpen,
+    onPrefetchSession,
+    onRenameCommit,
+    onRenameCancel,
+    onOpenSessionMenu
+  }: {
+    session: WorkspaceSession
+    active: boolean
+    isStreaming: boolean
+    hasError: boolean
+    isRenaming: boolean
+    t: WorkspaceTranslation
+    onPrepareSessionOpen: (session: WorkspaceSession) => void
+    onPrefetchSession: (sessionId: string) => void
+    onRenameCommit: (session: WorkspaceSession, nextTitle: string) => Promise<void>
+    onRenameCancel: () => void
+    onOpenSessionMenu: (request: SessionMenuRequest) => void
+  }) => {
+    const isUnread = session.unread
+    const dragPointerRef = useRef<ScreenCoordinates | null>(null)
+    const dragCleanupRef = useRef<(() => void) | null>(null)
+    const dragWasTornOffRef = useRef(false)
+    const sessionTitle = session.title ?? t('session.fallbackTitle')
 
-  const prepareSessionOpen = useCallback(() => {
-    onPrepareSessionOpen(session)
-  }, [onPrepareSessionOpen, session])
+    const prepareSessionOpen = useCallback(() => {
+      onPrepareSessionOpen(session)
+    }, [onPrepareSessionOpen, session])
 
-  const prefetchSession = useCallback(() => {
-    onPrefetchSession(session.id)
-  }, [onPrefetchSession, session.id])
+    const prefetchSession = useCallback(() => {
+      onPrefetchSession(session.id)
+    }, [onPrefetchSession, session.id])
 
-  const releaseSessionDrag = useCallback(() => {
-    dragCleanupRef.current?.()
-    dragCleanupRef.current = null
-    dragPointerRef.current = null
-    dragWasTornOffRef.current = false
-  }, [])
+    const releaseSessionDrag = useCallback(() => {
+      dragCleanupRef.current?.()
+      dragCleanupRef.current = null
+      dragPointerRef.current = null
+      dragWasTornOffRef.current = false
+    }, [])
 
-  const recordDragPointer = useCallback((event: Event) => {
-    const pointer = getEventScreenCoordinates(event, window)
-    if (!pointer) {
-      return
+    const recordDragPointer = useCallback((event: Event) => {
+      const pointer = getEventScreenCoordinates(event, window)
+      if (!pointer) {
+        return
+      }
+
+      if (
+        event.type.startsWith('drag') &&
+        pointer.screenX === 0 &&
+        pointer.screenY === 0 &&
+        dragPointerRef.current
+      ) {
+        return
+      }
+
+      dragPointerRef.current = pointer
+    }, [])
+    const RuntimeIcon =
+      PROVIDER_ICONS[RUNTIME_ICON_KEYS[session.runtimeKind]] ?? PROVIDER_ICONS.custom!
+
+    const handleOpenInNewWindow = useCallback(() => {
+      if (!isElectron || !nativeIpc) {
+        return
+      }
+
+      prepareSessionOpen()
+      const screenX = window.screenX + Math.round(window.outerWidth / 2)
+      const screenY = window.screenY + Math.round(window.outerHeight / 2)
+      if (!reserveTearoffSession(session.id)) {
+        return
+      }
+
+      void nativeIpc.window
+        .tearOffSession(session.id, screenX, screenY)
+        .then(() => {
+          if (!isTearoffWindow) {
+            detachTearoffSessionTab(useCradleTabStore, session.id)
+          }
+        })
+        .catch(() => {
+          releaseTearoffSession(session.id)
+        })
+    }, [prepareSessionOpen, session.id])
+
+    function handleSessionDoubleClick(e: React.MouseEvent<HTMLAnchorElement>) {
+      e.preventDefault()
+      e.stopPropagation()
+      handleOpenInNewWindow()
     }
 
-    if (event.type.startsWith('drag') && pointer.screenX === 0 && pointer.screenY === 0 && dragPointerRef.current) {
-      return
-    }
+    const checkSessionTearOff = useCallback(() => {
+      if (dragWasTornOffRef.current || !isElectron || !nativeIpc) {
+        return false
+      }
 
-    dragPointerRef.current = pointer
-  }, [])
-  const RuntimeIcon = PROVIDER_ICONS[RUNTIME_ICON_KEYS[session.runtimeKind]] ?? PROVIDER_ICONS.custom!
+      const pointer = dragPointerRef.current
+      if (!pointer || !isPointerOutsideWindow(pointer, window)) {
+        return false
+      }
 
-  const handleOpenInNewWindow = useCallback(() => {
-    if (!isElectron || !nativeIpc) {
-      return
-    }
+      dragWasTornOffRef.current = true
+      dragCleanupRef.current?.()
+      dragCleanupRef.current = null
+      if (!reserveTearoffSession(session.id)) {
+        return true
+      }
 
-    prepareSessionOpen()
-    const screenX = window.screenX + Math.round(window.outerWidth / 2)
-    const screenY = window.screenY + Math.round(window.outerHeight / 2)
-    if (!reserveTearoffSession(session.id)) {
-      return
-    }
+      void nativeIpc.window
+        .tearOffSession(session.id, pointer.screenX, pointer.screenY)
+        .then(() => {
+          if (!isTearoffWindow) {
+            detachTearoffSessionTab(useCradleTabStore, session.id)
+          }
+        })
+        .catch(() => {
+          releaseTearoffSession(session.id)
+          dragWasTornOffRef.current = false
+        })
 
-    void nativeIpc.window.tearOffSession(session.id, screenX, screenY)
-      .then(() => {
-        if (!isTearoffWindow) {
-          detachTearoffSessionTab(useCradleTabStore, session.id)
-        }
-      })
-      .catch(() => {
-        releaseTearoffSession(session.id)
-      })
-  }, [prepareSessionOpen, session.id])
-
-  function handleSessionDoubleClick(e: React.MouseEvent<HTMLAnchorElement>) {
-    e.preventDefault()
-    e.stopPropagation()
-    handleOpenInNewWindow()
-  }
-
-  const checkSessionTearOff = useCallback(() => {
-    if (dragWasTornOffRef.current || !isElectron || !nativeIpc) {
-      return false
-    }
-
-    const pointer = dragPointerRef.current
-    if (!pointer || !isPointerOutsideWindow(pointer, window)) {
-      return false
-    }
-
-    dragWasTornOffRef.current = true
-    dragCleanupRef.current?.()
-    dragCleanupRef.current = null
-    if (!reserveTearoffSession(session.id)) {
       return true
-    }
+    }, [session.id])
 
-    void nativeIpc.window.tearOffSession(session.id, pointer.screenX, pointer.screenY)
-      .then(() => {
-        if (!isTearoffWindow) {
-          detachTearoffSessionTab(useCradleTabStore, session.id)
-        }
-      })
-      .catch(() => {
-        releaseTearoffSession(session.id)
+    const handleDragStart = useCallback(
+      (e: React.DragEvent) => {
+        e.dataTransfer.setData('application/x-cradle-session', session.id)
+        e.dataTransfer.effectAllowed = 'move'
+        recordDragPointer(e.nativeEvent)
         dragWasTornOffRef.current = false
+        dragCleanupRef.current?.()
+
+        const handleDragMove = (event: DragEvent | MouseEvent | PointerEvent | TouchEvent) => {
+          recordDragPointer(event)
+        }
+
+        window.addEventListener('dragover', handleDragMove, true)
+        window.addEventListener('mousemove', handleDragMove, true)
+        window.addEventListener('pointermove', handleDragMove, true)
+        window.addEventListener('touchmove', handleDragMove, true)
+        dragCleanupRef.current = () => {
+          window.removeEventListener('dragover', handleDragMove, true)
+          window.removeEventListener('mousemove', handleDragMove, true)
+          window.removeEventListener('pointermove', handleDragMove, true)
+          window.removeEventListener('touchmove', handleDragMove, true)
+        }
+      },
+      [recordDragPointer, session.id]
+    )
+
+    const handleDrag = useCallback(
+      (e: React.DragEvent) => {
+        recordDragPointer(e.nativeEvent)
+      },
+      [recordDragPointer]
+    )
+
+    const handleDragEnd = useCallback(
+      (e: React.DragEvent) => {
+        recordDragPointer(e.nativeEvent)
+        if (!dragWasTornOffRef.current) {
+          checkSessionTearOff()
+        }
+        releaseSessionDrag()
+      },
+      [checkSessionTearOff, recordDragPointer, releaseSessionDrag]
+    )
+
+    useEffect(() => {
+      return releaseSessionDrag
+    }, [releaseSessionDrag])
+
+    const openSessionMenu = (anchor: SessionMenuAnchor, surface: SessionMenuSurface) => {
+      onOpenSessionMenu({
+        sessionId: session.id,
+        anchor,
+        surface
       })
-
-    return true
-  }, [session.id])
-
-  const handleDragStart = useCallback((e: React.DragEvent) => {
-    e.dataTransfer.setData('application/x-cradle-session', session.id)
-    e.dataTransfer.effectAllowed = 'move'
-    recordDragPointer(e.nativeEvent)
-    dragWasTornOffRef.current = false
-    dragCleanupRef.current?.()
-
-    const handleDragMove = (event: DragEvent | MouseEvent | PointerEvent | TouchEvent) => {
-      recordDragPointer(event)
     }
 
-    window.addEventListener('dragover', handleDragMove, true)
-    window.addEventListener('mousemove', handleDragMove, true)
-    window.addEventListener('pointermove', handleDragMove, true)
-    window.addEventListener('touchmove', handleDragMove, true)
-    dragCleanupRef.current = () => {
-      window.removeEventListener('dragover', handleDragMove, true)
-      window.removeEventListener('mousemove', handleDragMove, true)
-      window.removeEventListener('pointermove', handleDragMove, true)
-      window.removeEventListener('touchmove', handleDragMove, true)
-    }
-  }, [recordDragPointer, session.id])
-
-  const handleDrag = useCallback((e: React.DragEvent) => {
-    recordDragPointer(e.nativeEvent)
-  }, [recordDragPointer])
-
-  const handleDragEnd = useCallback((e: React.DragEvent) => {
-    recordDragPointer(e.nativeEvent)
-    if (!dragWasTornOffRef.current) {
-      checkSessionTearOff()
-    }
-    releaseSessionDrag()
-  }, [checkSessionTearOff, recordDragPointer, releaseSessionDrag])
-
-  useEffect(() => {
-    return releaseSessionDrag
-  }, [releaseSessionDrag])
-
-  const openSessionMenu = (anchor: SessionMenuAnchor, surface: SessionMenuSurface) => {
-    onOpenSessionMenu({
-      sessionId: session.id,
-      anchor,
-      surface,
-    })
-  }
-
-  const handleOpenButtonMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
-    openSessionMenu(event.currentTarget, 'button')
-  }
-
-  const handleSessionContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
-    openSessionMenu(createPointMenuAnchor(event.clientX, event.clientY), 'context')
-  }
-
-  const handleSessionKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
-    if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) {
-      return
+    const handleOpenButtonMenu = (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      openSessionMenu(event.currentTarget, 'button')
     }
 
-    event.preventDefault()
-    event.stopPropagation()
-    const rect = event.currentTarget.getBoundingClientRect()
-    openSessionMenu(createPointMenuAnchor(rect.left + 24, rect.top + rect.height / 2), 'context')
-  }
+    const handleSessionContextMenu = (event: React.MouseEvent<HTMLDivElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      openSessionMenu(createPointMenuAnchor(event.clientX, event.clientY), 'context')
+    }
 
-  const itemContent = (
-    <div
-      draggable={!isRenaming}
-      onDragStart={handleDragStart}
-      onDrag={handleDrag}
-      onDragEnd={handleDragEnd}
-      onContextMenu={isRenaming ? undefined : handleSessionContextMenu}
-      onKeyDown={isRenaming ? undefined : handleSessionKeyDown}
-      className={cn(
-        'group relative isolate flex min-w-0 w-full items-center rounded-lg text-left text-xs hover:bg-accent/50 [content-visibility:auto] [contain-intrinsic-block-size:30px]',
-        !isRenaming && 'cursor-grab active:cursor-grabbing',
-      )}
-      data-testid={`session-item-${session.id}`}
-      data-session-pinned={session.pinned ? 'true' : 'false'}
-    >
-      <SessionActiveBackground active={active} />
-      {isRenaming
-        ? (
+    const handleSessionKeyDown = (event: React.KeyboardEvent<HTMLDivElement>) => {
+      if (event.key !== 'ContextMenu' && !(event.shiftKey && event.key === 'F10')) {
+        return
+      }
+
+      event.preventDefault()
+      event.stopPropagation()
+      const rect = event.currentTarget.getBoundingClientRect()
+      openSessionMenu(createPointMenuAnchor(rect.left + 24, rect.top + rect.height / 2), 'context')
+    }
+
+    const itemContent = (
+      <div
+        draggable={!isRenaming}
+        onDragStart={handleDragStart}
+        onDrag={handleDrag}
+        onDragEnd={handleDragEnd}
+        onContextMenu={isRenaming ? undefined : handleSessionContextMenu}
+        onKeyDown={isRenaming ? undefined : handleSessionKeyDown}
+        className={cn(
+          'group relative isolate flex min-w-0 w-full items-center rounded-lg text-left text-xs hover:bg-accent/50 [content-visibility:auto] [contain-intrinsic-block-size:30px]',
+          !isRenaming && 'cursor-grab active:cursor-grabbing'
+        )}
+        data-testid={`session-item-${session.id}`}
+        data-session-pinned={session.pinned ? 'true' : 'false'}
+      >
+        <SessionActiveBackground active={active} />
+        {isRenaming ? (
           <SessionRenameInput
             key={`${session.id}:${sessionTitle}`}
             initialTitle={sessionTitle}
             sessionId={session.id}
             pinned={Boolean(session.pinned)}
             listActivityAt={session.listActivityAt}
-            onCommit={nextTitle => onRenameCommit(session, nextTitle)}
+            onCommit={(nextTitle) => onRenameCommit(session, nextTitle)}
             onCancel={onRenameCancel}
           />
-        )
-        : (
+        ) : (
           <>
             <Link
               to="chat"
@@ -962,41 +1272,47 @@ const SessionItem = memo(({
               data-testid={`session-open-${session.id}`}
               className="relative z-10 flex min-w-0 flex-1 items-center gap-2 overflow-hidden px-2.5 py-1.5 text-sidebar-foreground/80"
             >
-              {hasError
-                ? (
-                  <CircleAlertIcon
-                    className="size-3.5 shrink-0 text-destructive/80"
-                    aria-label={t('session.aria.error')}
-                    data-testid={`session-error-indicator-${session.id}`}
-                  />
-                )
-                : (
-                  <RuntimeIcon className="size-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
-                )}
-              {session.pinned
-                ? (
-                  <PinIcon className="size-3 shrink-0 text-primary/60" aria-label={t('session.aria.pinned')} data-testid={`session-pin-indicator-${session.id}`} />
-                )
-                : null}
-              <span className="min-w-0 flex-1 truncate text-left" data-testid={`session-title-${session.id}`}>{sessionTitle}</span>
+              {hasError ? (
+                <CircleAlertIcon
+                  className="size-3.5 shrink-0 text-destructive/80"
+                  aria-label={t('session.aria.error')}
+                  data-testid={`session-error-indicator-${session.id}`}
+                />
+              ) : (
+                <RuntimeIcon
+                  className="size-3.5 shrink-0 text-muted-foreground/70"
+                  aria-hidden="true"
+                />
+              )}
+              {session.pinned ? (
+                <PinIcon
+                  className="size-3 shrink-0 text-primary/60"
+                  aria-label={t('session.aria.pinned')}
+                  data-testid={`session-pin-indicator-${session.id}`}
+                />
+              ) : null}
+              <span
+                className="min-w-0 flex-1 truncate text-left"
+                data-testid={`session-title-${session.id}`}
+              >
+                {sessionTitle}
+              </span>
               <SessionUnreadIndicator
                 show={isUnread && !isStreaming}
                 active={active}
                 label={t('session.aria.newReply')}
               />
-              {isStreaming
-                ? (
-                  <LoaderCircleIcon
-                    className="size-3.5 shrink-0 animate-spin text-muted-foreground/70"
-                    aria-label={t('session.aria.running')}
-                    data-testid={`session-running-indicator-${session.id}`}
-                  />
-                )
-                : (
-                  <span className="shrink-0 text-[11px] text-muted-foreground">
-                    {formatRelativeTime(session.listActivityAt, t)}
-                  </span>
-                )}
+              {isStreaming ? (
+                <LoaderCircleIcon
+                  className="size-3.5 shrink-0 animate-spin text-muted-foreground/70"
+                  aria-label={t('session.aria.running')}
+                  data-testid={`session-running-indicator-${session.id}`}
+                />
+              ) : (
+                <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
+                  {formatRelativeTime(session.listActivityAt, t)}
+                </span>
+              )}
             </Link>
             <button
               type="button"
@@ -1010,11 +1326,12 @@ const SessionItem = memo(({
             </button>
           </>
         )}
-    </div>
-  )
+      </div>
+    )
 
-  return itemContent
-})
+    return itemContent
+  }
+)
 SessionItem.displayName = 'SessionItem'
 
 interface SessionListProps {
@@ -1031,43 +1348,48 @@ interface SessionListProps {
   onOpenSessionMenu: (request: SessionMenuRequest) => void
 }
 
-const SessionListRows = memo(({
-  sessions,
-  activeSessionId,
-  renamingSessionId,
-  locallyStreamingSessionIds,
-  locallyErroredSessionIds,
-  t,
-  onPrepareSessionOpen,
-  onPrefetchSession,
-  onRenameCommit,
-  onRenameCancel,
-  onOpenSessionMenu,
-}: SessionListProps) => {
-  return (
-    <>
-      {sessions.map((session) => {
-        const isStreaming = isSessionRunning(session, locallyStreamingSessionIds)
-        return (
-          <SessionItem
-            key={session.id}
-            session={session}
-            active={session.id === activeSessionId}
-            isStreaming={isStreaming}
-            hasError={!isStreaming && (session.status === 'error' || locallyErroredSessionIds.has(session.id))}
-            isRenaming={session.id === renamingSessionId}
-            t={t}
-            onPrepareSessionOpen={onPrepareSessionOpen}
-            onPrefetchSession={onPrefetchSession}
-            onRenameCommit={onRenameCommit}
-            onRenameCancel={onRenameCancel}
-            onOpenSessionMenu={onOpenSessionMenu}
-          />
-        )
-      })}
-    </>
-  )
-})
+const SessionListRows = memo(
+  ({
+    sessions,
+    activeSessionId,
+    renamingSessionId,
+    locallyStreamingSessionIds,
+    locallyErroredSessionIds,
+    t,
+    onPrepareSessionOpen,
+    onPrefetchSession,
+    onRenameCommit,
+    onRenameCancel,
+    onOpenSessionMenu
+  }: SessionListProps) => {
+    return (
+      <>
+        {sessions.map((session) => {
+          const isStreaming = isSessionRunning(session, locallyStreamingSessionIds)
+          return (
+            <SessionItem
+              key={session.id}
+              session={session}
+              active={session.id === activeSessionId}
+              isStreaming={isStreaming}
+              hasError={
+                !isStreaming &&
+                (session.status === 'error' || locallyErroredSessionIds.has(session.id))
+              }
+              isRenaming={session.id === renamingSessionId}
+              t={t}
+              onPrepareSessionOpen={onPrepareSessionOpen}
+              onPrefetchSession={onPrefetchSession}
+              onRenameCommit={onRenameCommit}
+              onRenameCancel={onRenameCancel}
+              onOpenSessionMenu={onOpenSessionMenu}
+            />
+          )
+        })}
+      </>
+    )
+  }
+)
 SessionListRows.displayName = 'SessionListRows'
 
 // ── Workspace group ───────────────────────────────────────────────────────────
@@ -1078,7 +1400,7 @@ function WorkspaceGroupDisclosure({
   workspaceActions,
   overlays,
   onRecordWorkspaceLayout,
-  children,
+  children
 }: {
   workspace: Workspace
   workspacePinned: boolean
@@ -1090,8 +1412,10 @@ function WorkspaceGroupDisclosure({
   'use no memo'
 
   const { t } = useTranslation('workspace')
-  const expanded = useWorkspaceSidebarUiStore(state => state.collapsedWorkspaceIds[workspace.id] !== true)
-  const setWorkspaceExpanded = useWorkspaceSidebarUiStore(state => state.setWorkspaceExpanded)
+  const expanded = useWorkspaceSidebarUiStore(
+    (state) => state.collapsedWorkspaceIds[workspace.id] !== true
+  )
+  const setWorkspaceExpanded = useWorkspaceSidebarUiStore((state) => state.setWorkspaceExpanded)
   const toggleExpanded = (event: React.MouseEvent<HTMLButtonElement>) => {
     event.preventDefault()
     event.stopPropagation()
@@ -1103,15 +1427,17 @@ function WorkspaceGroupDisclosure({
       <button
         type="button"
         onClick={toggleExpanded}
-        onPointerDown={event => event.stopPropagation()}
+        onPointerDown={(event) => event.stopPropagation()}
         aria-label={t('workspace.aria.toggleExpanded')}
         aria-expanded={expanded}
         className="-ml-1 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 hover:bg-fill/70 hover:text-sidebar-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
         data-testid={`workspace-toggle-${workspace.id}`}
       >
-        {expanded
-          ? <FolderOpenIcon className="size-3.5" aria-hidden="true" />
-          : <FolderClosedIcon className="size-3.5" aria-hidden="true" />}
+        {expanded ? (
+          <FolderOpenIcon className="size-3.5" aria-hidden="true" />
+        ) : (
+          <FolderClosedIcon className="size-3.5" aria-hidden="true" />
+        )}
       </button>
 
       <Link
@@ -1122,9 +1448,13 @@ function WorkspaceGroupDisclosure({
         data-testid={`workspace-open-${workspace.id}`}
         className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
       >
-        {workspacePinned
-          ? <PinIcon className="size-3 shrink-0 text-primary/60" aria-label={t('workspace.aria.pinned')} data-testid={`workspace-pin-indicator-${workspace.id}`} />
-          : null}
+        {workspacePinned ? (
+          <PinIcon
+            className="size-3 shrink-0 text-primary/60"
+            aria-label={t('workspace.aria.pinned')}
+            data-testid={`workspace-pin-indicator-${workspace.id}`}
+          />
+        ) : null}
         <span className="truncate text-xs font-medium text-sidebar-foreground/80">
           {workspace.name}
         </span>
@@ -1132,14 +1462,14 @@ function WorkspaceGroupDisclosure({
 
       <Menu>
         <MenuTrigger
-          render={(
+          render={
             <Button
               variant="ghost"
               size="icon-xs"
               className="opacity-0 group-hover:opacity-100 -mr-1"
-              onClick={e => e.stopPropagation()}
+              onClick={(e) => e.stopPropagation()}
             />
-          )}
+          }
         >
           <MoreHorizontalIcon />
         </MenuTrigger>
@@ -1151,11 +1481,13 @@ function WorkspaceGroupDisclosure({
   )
 
   return (
-    <div className="flex min-w-0 flex-col" data-testid={`workspace-group-${workspace.id}`} data-workspace-pinned={workspacePinned ? 'true' : 'false'}>
+    <div
+      className="flex min-w-0 flex-col"
+      data-testid={`workspace-group-${workspace.id}`}
+      data-workspace-pinned={workspacePinned ? 'true' : 'false'}
+    >
       <ContextMenu>
-        <ContextMenuTrigger asChild>
-          {headerContent}
-        </ContextMenuTrigger>
+        <ContextMenuTrigger asChild>{headerContent}</ContextMenuTrigger>
         <ContextMenuContent className="w-48">
           <WorkspaceMenuActionItems actions={workspaceActions} surface="context" />
         </ContextMenuContent>
@@ -1180,7 +1512,7 @@ function WorkspaceSessionListSection({
   onPrefetchSession,
   onRenameCommit,
   onRenameCancel,
-  onOpenSessionMenu,
+  onOpenSessionMenu
 }: {
   workspaceId: string
   sortedSessions: WorkspaceSession[]
@@ -1198,13 +1530,22 @@ function WorkspaceSessionListSection({
 }) {
   'use no memo'
 
-  const sessionListExpanded = useWorkspaceSidebarUiStore(state => state.expandedSessionListWorkspaceIds[workspaceId] === true)
-  const setWorkspaceSessionListExpanded = useWorkspaceSidebarUiStore(state => state.setWorkspaceSessionListExpanded)
-  const [expandedSessionRenderCount, setExpandedSessionRenderCount] = useState(SESSION_PREVIEW_LIMIT)
+  const sessionListExpanded = useWorkspaceSidebarUiStore(
+    (state) => state.expandedSessionListWorkspaceIds[workspaceId] === true
+  )
+  const setWorkspaceSessionListExpanded = useWorkspaceSidebarUiStore(
+    (state) => state.setWorkspaceSessionListExpanded
+  )
+  const [expandedSessionRenderCount, setExpandedSessionRenderCount] =
+    useState(SESSION_PREVIEW_LIMIT)
   const requiredPreviewCount = useMemo(() => {
     let highestRequiredIndex = -1
     for (const [index, session] of sortedSessions.entries()) {
-      if (session.pinned || isSessionRunning(session, locallyStreamingSessionIds) || retainedSessionIds.has(session.id)) {
+      if (
+        session.pinned ||
+        isSessionRunning(session, locallyStreamingSessionIds) ||
+        retainedSessionIds.has(session.id)
+      ) {
         highestRequiredIndex = index
       }
     }
@@ -1214,16 +1555,21 @@ function WorkspaceSessionListSection({
   const hasHiddenSessions = sortedSessions.length > collapsedSessionPreviewLimit
   const hiddenSessionCount = Math.max(sortedSessions.length - collapsedSessionPreviewLimit, 0)
   const renderedSessionCount = sessionListExpanded
-    ? Math.min(Math.max(expandedSessionRenderCount, collapsedSessionPreviewLimit), sortedSessions.length)
+    ? Math.min(
+        Math.max(expandedSessionRenderCount, collapsedSessionPreviewLimit),
+        sortedSessions.length
+      )
     : collapsedSessionPreviewLimit
   const visibleSessions = useMemo(
     () => sortedSessions.slice(0, renderedSessionCount),
-    [renderedSessionCount, sortedSessions],
+    [renderedSessionCount, sortedSessions]
   )
 
   useEffect(() => {
     if (!sessionListExpanded) {
-      setExpandedSessionRenderCount(current => current === collapsedSessionPreviewLimit ? current : collapsedSessionPreviewLimit)
+      setExpandedSessionRenderCount((current) =>
+        current === collapsedSessionPreviewLimit ? current : collapsedSessionPreviewLimit
+      )
       return
     }
 
@@ -1233,21 +1579,31 @@ function WorkspaceSessionListSection({
 
     const timeout = window.setTimeout(() => {
       startTransition(() => {
-        setExpandedSessionRenderCount(current => Math.min(
-          Math.max(current, collapsedSessionPreviewLimit) + SESSION_REVEAL_BATCH_SIZE,
-          sortedSessions.length,
-        ))
+        setExpandedSessionRenderCount((current) =>
+          Math.min(
+            Math.max(current, collapsedSessionPreviewLimit) + SESSION_REVEAL_BATCH_SIZE,
+            sortedSessions.length
+          )
+        )
       })
     }, SESSION_REVEAL_DELAY_MS)
 
     return () => window.clearTimeout(timeout)
-  }, [collapsedSessionPreviewLimit, expandedSessionRenderCount, sessionListExpanded, sortedSessions.length])
+  }, [
+    collapsedSessionPreviewLimit,
+    expandedSessionRenderCount,
+    sessionListExpanded,
+    sortedSessions.length
+  ])
 
-  const toggleSessionListExpanded = useCallback((event: React.MouseEvent<HTMLButtonElement>) => {
-    event.preventDefault()
-    event.stopPropagation()
-    setWorkspaceSessionListExpanded(workspaceId, !sessionListExpanded)
-  }, [sessionListExpanded, setWorkspaceSessionListExpanded, workspaceId])
+  const toggleSessionListExpanded = useCallback(
+    (event: React.MouseEvent<HTMLButtonElement>) => {
+      event.preventDefault()
+      event.stopPropagation()
+      setWorkspaceSessionListExpanded(workspaceId, !sessionListExpanded)
+    },
+    [sessionListExpanded, setWorkspaceSessionListExpanded, workspaceId]
+  )
 
   return (
     <div className="min-w-0 overflow-hidden">
@@ -1276,9 +1632,11 @@ function WorkspaceSessionListSection({
             aria-expanded={sessionListExpanded}
             data-testid={`workspace-sessions-toggle-${workspaceId}`}
           >
-            {sessionListExpanded
-              ? <ChevronUpIcon className="size-3 shrink-0" aria-hidden="true" />
-              : <ChevronDownIcon className="size-3 shrink-0" aria-hidden="true" />}
+            {sessionListExpanded ? (
+              <ChevronUpIcon className="size-3 shrink-0" aria-hidden="true" />
+            ) : (
+              <ChevronDownIcon className="size-3 shrink-0" aria-hidden="true" />
+            )}
             <span className="min-w-0 truncate">
               {sessionListExpanded
                 ? t('session.action.showLess')
@@ -1292,454 +1650,514 @@ function WorkspaceSessionListSection({
 }
 WorkspaceSessionListSection.displayName = 'WorkspaceSessionListSection'
 
-const WorkspaceGroup = memo(({
-  workspace,
-  sessions,
-  onDelete,
-  onTogglePin,
-}: {
-  workspace: Workspace
-  sessions: WorkspaceSession[]
-  onDelete: (id: string) => void
-  onTogglePin: (id: string, pinned: boolean) => void
-}) => {
-  const { t } = useTranslation('workspace')
-  const queryClient = useQueryClient()
-  const { openTab } = useCradleNavigation()
-  const [renameOpen, setRenameOpen] = useState(false)
-  const [retainedSessionIds, setRetainedSessionIds] = useState<Set<string>>(() => new Set())
-  const acknowledgedSessionIdsRef = useRef<Set<string> | null>(null)
-  if (acknowledgedSessionIdsRef.current === null) {
-    acknowledgedSessionIdsRef.current = new Set()
-  }
-  const [createRequest, setCreateRequest] = useState<{
-    kind: 'file' | 'folder'
-  } | null>(null)
-  const [sessionMenuState, setSessionMenuState] = useState<SessionMenuState>(CLOSED_SESSION_MENU_STATE)
-  const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
-  const workspacePinned = Boolean(workspace.pinned)
-  const workspaceSessionIds = useMemo(() => sessions.map(session => session.id), [sessions])
-  const sessionsById = useMemo(() => {
-    const byId = new Map<string, WorkspaceSession>()
-    for (const session of sessions) {
-      byId.set(session.id, session)
+const WorkspaceGroup = memo(
+  ({
+    workspace,
+    sessions,
+    projectFilter,
+    onDelete,
+    onTogglePin
+  }: {
+    workspace: Workspace
+    sessions: WorkspaceSession[]
+    projectFilter: WorkspaceSidebarProjectFilter
+    onDelete: (id: string) => void
+    onTogglePin: (id: string, pinned: boolean) => void
+  }) => {
+    const { t } = useTranslation('workspace')
+    const queryClient = useQueryClient()
+    const { openTab } = useCradleNavigation()
+    const [renameOpen, setRenameOpen] = useState(false)
+    const [retainedSessionIds, setRetainedSessionIds] = useState<Set<string>>(() => new Set())
+    const acknowledgedSessionIdsRef = useRef<Set<string> | null>(null)
+    if (acknowledgedSessionIdsRef.current === null) {
+      acknowledgedSessionIdsRef.current = new Set()
     }
-    return byId
-  }, [sessions])
-  const workspaceSessionIdSet = useMemo(() => new Set(workspaceSessionIds), [workspaceSessionIds])
-  const activeMenuSession = sessionMenuState.sessionId
-    ? sessionsById.get(sessionMenuState.sessionId) ?? null
-    : null
-  const activeSessionId = useCradleTabStore(
-    useCallback((state) => {
-      const activeTab = state.tabs.find(tab => tab.id === state.activeTabId)
-      if (activeTab?.type !== 'chat') {
-        return null
+    const [createRequest, setCreateRequest] = useState<{
+      kind: 'file' | 'folder'
+    } | null>(null)
+    const [sessionMenuState, setSessionMenuState] =
+      useState<SessionMenuState>(CLOSED_SESSION_MENU_STATE)
+    const [renamingSessionId, setRenamingSessionId] = useState<string | null>(null)
+    const workspacePinned = Boolean(workspace.pinned)
+    const workspaceSessionIds = useMemo(() => sessions.map((session) => session.id), [sessions])
+    const sessionsById = useMemo(() => {
+      const byId = new Map<string, WorkspaceSession>()
+      for (const session of sessions) {
+        byId.set(session.id, session)
       }
+      return byId
+    }, [sessions])
+    const workspaceSessionIdSet = useMemo(() => new Set(workspaceSessionIds), [workspaceSessionIds])
+    const activeMenuSession = sessionMenuState.sessionId
+      ? (sessionsById.get(sessionMenuState.sessionId) ?? null)
+      : null
+    const activeSessionId = useCradleTabStore(
+      useCallback(
+        (state) => {
+          const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId)
+          if (activeTab?.type !== 'chat') {
+            return null
+          }
 
-      const sessionId = activeTab.params.sessionId
-      return sessionId && workspaceSessionIdSet.has(sessionId) ? sessionId : null
-    }, [workspaceSessionIdSet]),
-  )
-  const locallyStreamingSessionIds = useChatStore(
-    useCallback(
-      state => new Set(workspaceSessionIds.filter(sessionId => chatSelectors.isSessionStreaming(sessionId)(state))),
-      [workspaceSessionIds],
-    ),
-    shallow,
-  )
-  const locallyErroredSessionIds = useChatStore(
-    useCallback(
-      state => new Set(workspaceSessionIds.filter(sessionId => Boolean(chatSelectors.latestError(sessionId)(state)))),
-      [workspaceSessionIds],
-    ),
-    shallow,
-  )
-  const { mutateAsync: renameWorkspace } = useMutation({
-    ...patchWorkspacesByIdMutation(),
-    onSuccess: () => {
-      void Promise.all([
-        queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY }),
-        queryClient.invalidateQueries({ queryKey: ['workspace', workspace.id] }),
-      ])
-    },
-  })
-  const { mutateAsync: createWorkspaceFile } = useMutation(postWorkspacesByIdFilesFileMutation())
-  const { mutateAsync: createWorkspaceFolder } = useMutation(postWorkspacesByIdFilesFolderMutation())
-  const sortedSessions = useMemo(() => {
-    return sessions.toSorted((a, b) => {
-      const pinDiff = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)
-      if (pinDiff !== 0) {
-        return pinDiff
+          const sessionId = activeTab.params.sessionId
+          return sessionId && workspaceSessionIdSet.has(sessionId) ? sessionId : null
+        },
+        [workspaceSessionIdSet]
+      )
+    )
+    const locallyStreamingSessionIds = useChatStore(
+      useCallback(
+        (state) =>
+          new Set(
+            workspaceSessionIds.filter((sessionId) =>
+              chatSelectors.isSessionStreaming(sessionId)(state)
+            )
+          ),
+        [workspaceSessionIds]
+      ),
+      shallow
+    )
+    const locallyErroredSessionIds = useChatStore(
+      useCallback(
+        (state) =>
+          new Set(
+            workspaceSessionIds.filter((sessionId) =>
+              Boolean(chatSelectors.latestError(sessionId)(state))
+            )
+          ),
+        [workspaceSessionIds]
+      ),
+      shallow
+    )
+    const currentUnixTimestamp = Math.floor(Date.now() / 1000)
+    const filteredSessions = useMemo(() => {
+      return sessions.filter((session) =>
+        sessionMatchesProjectFilter(
+          session,
+          projectFilter,
+          locallyStreamingSessionIds,
+          currentUnixTimestamp
+        )
+      )
+    }, [currentUnixTimestamp, locallyStreamingSessionIds, projectFilter, sessions])
+    const { mutateAsync: renameWorkspace } = useMutation({
+      ...patchWorkspacesByIdMutation(),
+      onSuccess: () => {
+        void Promise.all([
+          queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY }),
+          queryClient.invalidateQueries({ queryKey: ['workspace', workspace.id] })
+        ])
       }
-      const runningDiff = (isSessionRunning(b, locallyStreamingSessionIds) ? 1 : 0) - (isSessionRunning(a, locallyStreamingSessionIds) ? 1 : 0)
-      if (runningDiff !== 0) {
-        return runningDiff
-      }
-      return 0
     })
-  }, [locallyStreamingSessionIds, sessions])
+    const { mutateAsync: createWorkspaceFile } = useMutation(postWorkspacesByIdFilesFileMutation())
+    const { mutateAsync: createWorkspaceFolder } = useMutation(
+      postWorkspacesByIdFilesFolderMutation()
+    )
+    const sortedSessions = useMemo(() => {
+      return filteredSessions.toSorted((a, b) => {
+        const pinDiff = (b.pinned ? 1 : 0) - (a.pinned ? 1 : 0)
+        if (pinDiff !== 0) {
+          return pinDiff
+        }
+        const runningDiff =
+          (isSessionRunning(b, locallyStreamingSessionIds) ? 1 : 0) -
+          (isSessionRunning(a, locallyStreamingSessionIds) ? 1 : 0)
+        if (runningDiff !== 0) {
+          return runningDiff
+        }
+        return 0
+      })
+    }, [filteredSessions, locallyStreamingSessionIds])
 
-  useEffect(() => {
-    setRetainedSessionIds((current) => {
-      let changed = false
+    useEffect(() => {
+      setRetainedSessionIds((current) => {
+        let changed = false
+        const next = new Set<string>()
+        const knownSessionIds = new Set(workspaceSessionIds)
+
+        for (const sessionId of current) {
+          if (knownSessionIds.has(sessionId)) {
+            next.add(sessionId)
+          } else {
+            changed = true
+          }
+        }
+
+        for (const session of sessions) {
+          if (
+            isSessionRunning(session, locallyStreamingSessionIds) &&
+            !acknowledgedSessionIdsRef.current!.has(session.id) &&
+            !next.has(session.id)
+          ) {
+            next.add(session.id)
+            changed = true
+          }
+        }
+
+        return changed ? next : current
+      })
+    }, [locallyStreamingSessionIds, sessions, workspaceSessionIds])
+
+    const handleOpenSession = useCallback((sessionId: string) => {
+      acknowledgedSessionIdsRef.current!.add(sessionId)
+      setRetainedSessionIds((current) => {
+        if (!current.has(sessionId)) {
+          return current
+        }
+        const next = new Set(current)
+        next.delete(sessionId)
+        return next
+      })
+    }, [])
+    const prefetchSession = useCallback(
+      (sessionId: string) => {
+        prefetchChatSession(queryClient, sessionId)
+      },
+      [queryClient]
+    )
+    const recordSessionLayout = useCallback(
+      (session: WorkspaceSession) => {
+        useSessionLayoutStore.getState().upsertSession({
+          sessionId: session.id,
+          sessionTitle: session.title ?? t('session.fallbackTitle'),
+          workspaceId: session.workspaceId ?? workspace.id,
+          workspacePath: workspace.path,
+          runtimeKind: session.runtimeKind
+        })
+      },
+      [t, workspace.id, workspace.path]
+    )
+    const handlePrepareSessionOpen = useCallback(
+      (session: WorkspaceSession) => {
+        handleOpenSession(session.id)
+        recordSessionLayout(session)
+        prefetchSession(session.id)
+      },
+      [handleOpenSession, prefetchSession, recordSessionLayout]
+    )
+    const handleRenameSession = useCallback(
+      async (session: WorkspaceSession, nextTitleRaw: string) => {
+        const nextTitle = nextTitleRaw.trim()
+        setRenamingSessionId(null)
+
+        if (!nextTitle || nextTitle === (session.title ?? t('session.fallbackTitle'))) {
+          return
+        }
+
+        await patchSessionsById({ path: { id: session.id }, body: { title: nextTitle } })
+        await Promise.all([
+          queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspace.id) }),
+          queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
+          queryClient.invalidateQueries({
+            queryKey: getSessionsByIdQueryKey({ path: { id: session.id } })
+          })
+        ])
+      },
+      [queryClient, t, workspace.id]
+    )
+    const handleRenameCancel = useCallback(() => {
+      setRenamingSessionId(null)
+    }, [])
+    const handleStartSessionRename = useCallback((sessionId: string) => {
+      setRenamingSessionId(sessionId)
+    }, [])
+    const handleOpenSessionMenu = useCallback((request: SessionMenuRequest) => {
+      setSessionMenuState({
+        ...request,
+        open: true
+      })
+    }, [])
+    const handleSessionMenuOpenChange = useCallback((open: boolean) => {
+      setSessionMenuState((current) =>
+        open && current.anchor ? { ...current, open: true } : CLOSED_SESSION_MENU_STATE
+      )
+    }, [])
+
+    useEffect(() => {
       const next = new Set<string>()
-      const knownSessionIds = new Set(workspaceSessionIds)
 
-      for (const sessionId of current) {
-        if (knownSessionIds.has(sessionId)) {
+      for (const sessionId of acknowledgedSessionIdsRef.current!) {
+        const session = sessionsById.get(sessionId)
+        if (session && isSessionRunning(session, locallyStreamingSessionIds)) {
           next.add(sessionId)
         }
-        else {
-          changed = true
-        }
       }
 
-      for (const session of sessions) {
-        if (
-          isSessionRunning(session, locallyStreamingSessionIds)
-          && !acknowledgedSessionIdsRef.current!.has(session.id)
-          && !next.has(session.id)
-        ) {
-          next.add(session.id)
-          changed = true
-        }
-      }
-
-      return changed ? next : current
-    })
-  }, [locallyStreamingSessionIds, sessions, workspaceSessionIds])
-
-  const handleOpenSession = useCallback((sessionId: string) => {
-    acknowledgedSessionIdsRef.current!.add(sessionId)
-    setRetainedSessionIds((current) => {
-      if (!current.has(sessionId)) {
-        return current
-      }
-      const next = new Set(current)
-      next.delete(sessionId)
-      return next
-    })
-  }, [])
-  const prefetchSession = useCallback((sessionId: string) => {
-    prefetchChatSession(queryClient, sessionId)
-  }, [queryClient])
-  const recordSessionLayout = useCallback((session: WorkspaceSession) => {
-    useSessionLayoutStore.getState().upsertSession({
-      sessionId: session.id,
-      sessionTitle: session.title ?? t('session.fallbackTitle'),
-      workspaceId: session.workspaceId ?? workspace.id,
-      workspacePath: workspace.path,
-      runtimeKind: session.runtimeKind,
-    })
-  }, [t, workspace.id, workspace.path])
-  const handlePrepareSessionOpen = useCallback((session: WorkspaceSession) => {
-    handleOpenSession(session.id)
-    recordSessionLayout(session)
-    prefetchSession(session.id)
-  }, [handleOpenSession, prefetchSession, recordSessionLayout])
-  const handleRenameSession = useCallback(async (session: WorkspaceSession, nextTitleRaw: string) => {
-    const nextTitle = nextTitleRaw.trim()
-    setRenamingSessionId(null)
-
-    if (!nextTitle || nextTitle === (session.title ?? t('session.fallbackTitle'))) {
-      return
-    }
-
-    await patchSessionsById({ path: { id: session.id }, body: { title: nextTitle } })
-    await Promise.all([
-      queryClient.invalidateQueries({ queryKey: sessionsQueryKey(workspace.id) }),
-      queryClient.invalidateQueries({ queryKey: sessionsQueryKey() }),
-      queryClient.invalidateQueries({ queryKey: getSessionsByIdQueryKey({ path: { id: session.id } }) }),
-    ])
-  }, [queryClient, t, workspace.id])
-  const handleRenameCancel = useCallback(() => {
-    setRenamingSessionId(null)
-  }, [])
-  const handleStartSessionRename = useCallback((sessionId: string) => {
-    setRenamingSessionId(sessionId)
-  }, [])
-  const handleOpenSessionMenu = useCallback((request: SessionMenuRequest) => {
-    setSessionMenuState({
-      ...request,
-      open: true,
-    })
-  }, [])
-  const handleSessionMenuOpenChange = useCallback((open: boolean) => {
-    setSessionMenuState(current => open && current.anchor
-      ? { ...current, open: true }
-      : CLOSED_SESSION_MENU_STATE)
-  }, [])
-
-  useEffect(() => {
-    const next = new Set<string>()
-
-    for (const sessionId of acknowledgedSessionIdsRef.current!) {
-      const session = sessionsById.get(sessionId)
-      if (session && isSessionRunning(session, locallyStreamingSessionIds)) {
-        next.add(sessionId)
-      }
-    }
-
-    acknowledgedSessionIdsRef.current! = next
-  }, [locallyStreamingSessionIds, sessionsById])
-  const recordWorkspaceLayout = useCallback(() => {
-    useSessionLayoutStore.getState().upsertWorkspace({
-      workspaceId: workspace.id,
-      workspaceName: workspace.name,
-      workspacePath: workspace.path,
-    })
-  }, [workspace.id, workspace.name, workspace.path])
-  const handleTogglePin = useCallback(() => {
-    onTogglePin(workspace.id, !workspacePinned)
-  }, [onTogglePin, workspace.id, workspacePinned])
-  const handleOpenWorkspace = useCallback(() => {
-    recordWorkspaceLayout()
-    openTab('workspace-detail', { workspaceId: workspace.id })
-  }, [openTab, recordWorkspaceLayout, workspace.id])
-  const handleOpenDefault = useCallback(async () => {
-    if (!isElectron || !nativeIpc) {
-      return
-    }
-
-    try {
-      await nativeIpc.native.openPath(workspace.path)
-    }
-    catch (error) {
-      toastManager.add({
-        type: 'error',
-        title: t('workspace.toast.openDefaultFailed'),
-        description: error instanceof Error ? error.message : String(error),
+      acknowledgedSessionIdsRef.current! = next
+    }, [locallyStreamingSessionIds, sessionsById])
+    const recordWorkspaceLayout = useCallback(() => {
+      useSessionLayoutStore.getState().upsertWorkspace({
+        workspaceId: workspace.id,
+        workspaceName: workspace.name,
+        workspacePath: workspace.path
       })
-    }
-  }, [t, workspace.path])
-  const handleRevealInFinder = useCallback(async () => {
-    if (!isElectron || !nativeIpc) {
-      return
-    }
-
-    try {
-      await nativeIpc.native.showItemInFolder(workspace.path)
-    }
-    catch (error) {
-      toastManager.add({
-        type: 'error',
-        title: t('workspace.toast.openInFinderFailed'),
-        description: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }, [t, workspace.path])
-  const handleCopyAbsolutePath = useCallback(async () => {
-    await navigator.clipboard.writeText(workspace.path)
-  }, [workspace.path])
-  const handleRenameWorkspace = useCallback(async (value: string) => {
-    const name = value.trim()
-    if (!name || name === workspace.name) {
-      setRenameOpen(false)
-      return
-    }
-
-    try {
-      await renameWorkspace({ path: { id: workspace.id }, body: { name } })
-      setRenameOpen(false)
-    }
-    catch (error) {
-      toastManager.add({
-        type: 'error',
-        title: t('workspace.toast.renameFailed'),
-        description: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }, [renameWorkspace, t, workspace.id, workspace.name])
-  const handleCreateWorkspaceChild = useCallback(async (nameValue: string) => {
-    if (!createRequest) {
-      return
-    }
-
-    const name = nameValue.trim()
-    if (!name) {
-      return
-    }
-
-    const request = {
-      path: { id: workspace.id },
-      body: {
-        path: name,
-        confirmedNonCradleOwnedWrite: true,
-      },
-    }
-    try {
-      const data = createRequest.kind === 'file'
-        ? await createWorkspaceFile(request)
-        : await createWorkspaceFolder(request)
-
-      if (!data.success) {
-        toastManager.add({
-          type: 'error',
-          title: t('workspace.toast.createFailed'),
-        })
+    }, [workspace.id, workspace.name, workspace.path])
+    const handleTogglePin = useCallback(() => {
+      onTogglePin(workspace.id, !workspacePinned)
+    }, [onTogglePin, workspace.id, workspacePinned])
+    const handleOpenWorkspace = useCallback(() => {
+      recordWorkspaceLayout()
+      openTab('workspace-detail', { workspaceId: workspace.id })
+    }, [openTab, recordWorkspaceLayout, workspace.id])
+    const handleOpenDefault = useCallback(async () => {
+      if (!isElectron || !nativeIpc) {
         return
       }
 
-      await queryClient.invalidateQueries({ queryKey: ['workspace-file-search', workspace.id] })
-      setCreateRequest(null)
-    }
-    catch (error) {
-      toastManager.add({
-        type: 'error',
-        title: t('workspace.toast.createFailed'),
-        description: error instanceof Error ? error.message : String(error),
-      })
-    }
-  }, [createRequest, createWorkspaceFile, createWorkspaceFolder, queryClient, t, workspace.id])
-  const handleOpenCreateDialogChange = useCallback((open: boolean) => {
-    if (!open) {
-      setCreateRequest(null)
-    }
-  }, [])
-  const workspaceActions = useMemo<WorkspaceMenuAction[]>(() => [
-    {
-      key: 'open',
-      label: t('workspace.action.open'),
-      icon: <ExternalLinkIcon />,
-      testId: `workspace-open-action-${workspace.id}`,
-      invoke: handleOpenWorkspace,
-    },
-    {
-      key: 'open-default',
-      label: t('workspace.action.openDefault'),
-      icon: <ExternalLinkIcon />,
-      testId: `workspace-open-default-${workspace.id}`,
-      invoke: handleOpenDefault,
-    },
-    {
-      key: 'open-in-finder',
-      label: t('workspace.action.openInFinder'),
-      icon: <FolderOpenIcon />,
-      testId: `workspace-open-in-finder-${workspace.id}`,
-      invoke: handleRevealInFinder,
-    },
-    {
-      key: 'new-file',
-      label: t('workspace.action.newFile'),
-      icon: <FilePlusIcon />,
-      testId: `workspace-new-file-${workspace.id}`,
-      invoke: () => setCreateRequest({ kind: 'file' }),
-      separatorBefore: true,
-    },
-    {
-      key: 'new-folder',
-      label: t('workspace.action.newFolder'),
-      icon: <FolderPlusIcon />,
-      testId: `workspace-new-folder-${workspace.id}`,
-      invoke: () => setCreateRequest({ kind: 'folder' }),
-    },
-    {
-      key: 'rename',
-      label: t('workspace.action.rename'),
-      icon: <PencilIcon />,
-      testId: `workspace-rename-${workspace.id}`,
-      invoke: () => setRenameOpen(true),
-    },
-    {
-      key: 'copy-path',
-      label: t('workspace.action.copyPath'),
-      icon: <CopyIcon />,
-      testId: `workspace-copy-path-${workspace.id}`,
-      invoke: handleCopyAbsolutePath,
-      separatorBefore: true,
-    },
-    {
-      key: 'copy-relative-path',
-      label: t('workspace.action.copyRelativePath'),
-      icon: <ClipboardCopyIcon />,
-      testId: `workspace-copy-relative-path-${workspace.id}`,
-      invoke: async () => navigator.clipboard.writeText('.'),
-    },
-    {
-      key: 'toggle-pin',
-      label: workspacePinned ? t('workspace.action.unpin') : t('workspace.action.pin'),
-      icon: workspacePinned ? <PinOffIcon /> : <PinIcon />,
-      testId: `workspace-toggle-pin-${workspace.id}`,
-      invoke: handleTogglePin,
-    },
-    {
-      key: 'remove',
-      label: t('workspace.action.remove'),
-      icon: <Trash2Icon />,
-      testId: `workspace-remove-${workspace.id}`,
-      invoke: () => onDelete(workspace.id),
-      variant: 'destructive',
-      separatorBefore: true,
-    },
-  ], [
-    handleCopyAbsolutePath,
-    handleOpenDefault,
-    handleOpenWorkspace,
-    handleRevealInFinder,
-    handleTogglePin,
-    onDelete,
-    t,
-    workspace.id,
-    workspacePinned,
-  ])
+      try {
+        await nativeIpc.native.openPath(workspace.path)
+      } catch (error) {
+        toastManager.add({
+          type: 'error',
+          title: t('workspace.toast.openDefaultFailed'),
+          description: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }, [t, workspace.path])
+    const handleRevealInFinder = useCallback(async () => {
+      if (!isElectron || !nativeIpc) {
+        return
+      }
 
-  return (
-    <WorkspaceGroupDisclosure
-      workspace={workspace}
-      workspacePinned={workspacePinned}
-      workspaceActions={workspaceActions}
-      onRecordWorkspaceLayout={recordWorkspaceLayout}
-      overlays={(
-        <>
-          <WorkspaceTextInputDialog
-            open={renameOpen}
-            title={t('workspace.dialog.renameTitle')}
-            initialValue={workspace.name}
-            label={t('workspace.dialog.nameLabel')}
-            confirmLabel={t('workspace.dialog.rename')}
-            onOpenChange={setRenameOpen}
-            onCommit={handleRenameWorkspace}
-          />
-          <WorkspaceTextInputDialog
-            open={createRequest !== null}
-            title={createRequest?.kind === 'folder' ? t('workspace.dialog.newFolderTitle') : t('workspace.dialog.newFileTitle')}
-            initialValue={createRequest?.kind === 'folder' ? DEFAULT_WORKSPACE_FOLDER_NAME : DEFAULT_WORKSPACE_FILE_NAME}
-            label={t('workspace.dialog.nameLabel')}
-            confirmLabel={t('workspace.dialog.create')}
-            onOpenChange={handleOpenCreateDialogChange}
-            onCommit={handleCreateWorkspaceChild}
-          />
-          <SessionActionsMenu
-            state={sessionMenuState}
-            session={activeMenuSession}
-            workspaceId={workspace.id}
-            workspacePath={workspace.path}
-            onOpenChange={handleSessionMenuOpenChange}
-            onPrepareSessionOpen={handlePrepareSessionOpen}
-            onStartRename={handleStartSessionRename}
-          />
-        </>
-      )}
-    >
-      <WorkspaceSessionListSection
-        workspaceId={workspace.id}
-        sortedSessions={sortedSessions}
-        activeSessionId={activeSessionId}
-        renamingSessionId={renamingSessionId}
-        retainedSessionIds={retainedSessionIds}
-        locallyStreamingSessionIds={locallyStreamingSessionIds}
-        locallyErroredSessionIds={locallyErroredSessionIds}
-        t={t}
-        onPrepareSessionOpen={handlePrepareSessionOpen}
-        onPrefetchSession={prefetchSession}
-        onRenameCommit={handleRenameSession}
-        onRenameCancel={handleRenameCancel}
-        onOpenSessionMenu={handleOpenSessionMenu}
-      />
-    </WorkspaceGroupDisclosure>
-  )
-})
+      try {
+        await nativeIpc.native.showItemInFolder(workspace.path)
+      } catch (error) {
+        toastManager.add({
+          type: 'error',
+          title: t('workspace.toast.openInFinderFailed'),
+          description: error instanceof Error ? error.message : String(error)
+        })
+      }
+    }, [t, workspace.path])
+    const handleCopyAbsolutePath = useCallback(async () => {
+      await navigator.clipboard.writeText(workspace.path)
+    }, [workspace.path])
+    const handleRenameWorkspace = useCallback(
+      async (value: string) => {
+        const name = value.trim()
+        if (!name || name === workspace.name) {
+          setRenameOpen(false)
+          return
+        }
+
+        try {
+          await renameWorkspace({ path: { id: workspace.id }, body: { name } })
+          setRenameOpen(false)
+        } catch (error) {
+          toastManager.add({
+            type: 'error',
+            title: t('workspace.toast.renameFailed'),
+            description: error instanceof Error ? error.message : String(error)
+          })
+        }
+      },
+      [renameWorkspace, t, workspace.id, workspace.name]
+    )
+    const handleCreateWorkspaceChild = useCallback(
+      async (nameValue: string) => {
+        if (!createRequest) {
+          return
+        }
+
+        const name = nameValue.trim()
+        if (!name) {
+          return
+        }
+
+        const request = {
+          path: { id: workspace.id },
+          body: {
+            path: name,
+            confirmedNonCradleOwnedWrite: true
+          }
+        }
+        try {
+          const data =
+            createRequest.kind === 'file'
+              ? await createWorkspaceFile(request)
+              : await createWorkspaceFolder(request)
+
+          if (!data.success) {
+            toastManager.add({
+              type: 'error',
+              title: t('workspace.toast.createFailed')
+            })
+            return
+          }
+
+          await queryClient.invalidateQueries({ queryKey: ['workspace-file-search', workspace.id] })
+          setCreateRequest(null)
+        } catch (error) {
+          toastManager.add({
+            type: 'error',
+            title: t('workspace.toast.createFailed'),
+            description: error instanceof Error ? error.message : String(error)
+          })
+        }
+      },
+      [createRequest, createWorkspaceFile, createWorkspaceFolder, queryClient, t, workspace.id]
+    )
+    const handleOpenCreateDialogChange = useCallback((open: boolean) => {
+      if (!open) {
+        setCreateRequest(null)
+      }
+    }, [])
+    const workspaceActions = useMemo<WorkspaceMenuAction[]>(
+      () => [
+        {
+          key: 'open',
+          label: t('workspace.action.open'),
+          icon: <ExternalLinkIcon />,
+          testId: `workspace-open-action-${workspace.id}`,
+          invoke: handleOpenWorkspace
+        },
+        {
+          key: 'open-default',
+          label: t('workspace.action.openDefault'),
+          icon: <ExternalLinkIcon />,
+          testId: `workspace-open-default-${workspace.id}`,
+          invoke: handleOpenDefault
+        },
+        {
+          key: 'open-in-finder',
+          label: t('workspace.action.openInFinder'),
+          icon: <FolderOpenIcon />,
+          testId: `workspace-open-in-finder-${workspace.id}`,
+          invoke: handleRevealInFinder
+        },
+        {
+          key: 'new-file',
+          label: t('workspace.action.newFile'),
+          icon: <FilePlusIcon />,
+          testId: `workspace-new-file-${workspace.id}`,
+          invoke: () => setCreateRequest({ kind: 'file' }),
+          separatorBefore: true
+        },
+        {
+          key: 'new-folder',
+          label: t('workspace.action.newFolder'),
+          icon: <FolderPlusIcon />,
+          testId: `workspace-new-folder-${workspace.id}`,
+          invoke: () => setCreateRequest({ kind: 'folder' })
+        },
+        {
+          key: 'rename',
+          label: t('workspace.action.rename'),
+          icon: <PencilIcon />,
+          testId: `workspace-rename-${workspace.id}`,
+          invoke: () => setRenameOpen(true)
+        },
+        {
+          key: 'copy-path',
+          label: t('workspace.action.copyPath'),
+          icon: <CopyIcon />,
+          testId: `workspace-copy-path-${workspace.id}`,
+          invoke: handleCopyAbsolutePath,
+          separatorBefore: true
+        },
+        {
+          key: 'copy-relative-path',
+          label: t('workspace.action.copyRelativePath'),
+          icon: <ClipboardCopyIcon />,
+          testId: `workspace-copy-relative-path-${workspace.id}`,
+          invoke: async () => navigator.clipboard.writeText('.')
+        },
+        {
+          key: 'toggle-pin',
+          label: workspacePinned ? t('workspace.action.unpin') : t('workspace.action.pin'),
+          icon: workspacePinned ? <PinOffIcon /> : <PinIcon />,
+          testId: `workspace-toggle-pin-${workspace.id}`,
+          invoke: handleTogglePin
+        },
+        {
+          key: 'remove',
+          label: t('workspace.action.remove'),
+          icon: <Trash2Icon />,
+          testId: `workspace-remove-${workspace.id}`,
+          invoke: () => onDelete(workspace.id),
+          variant: 'destructive',
+          separatorBefore: true
+        }
+      ],
+      [
+        handleCopyAbsolutePath,
+        handleOpenDefault,
+        handleOpenWorkspace,
+        handleRevealInFinder,
+        handleTogglePin,
+        onDelete,
+        t,
+        workspace.id,
+        workspacePinned
+      ]
+    )
+
+    return (
+      <WorkspaceGroupDisclosure
+        workspace={workspace}
+        workspacePinned={workspacePinned}
+        workspaceActions={workspaceActions}
+        onRecordWorkspaceLayout={recordWorkspaceLayout}
+        overlays={
+          <>
+            <WorkspaceTextInputDialog
+              open={renameOpen}
+              title={t('workspace.dialog.renameTitle')}
+              initialValue={workspace.name}
+              label={t('workspace.dialog.nameLabel')}
+              confirmLabel={t('workspace.dialog.rename')}
+              onOpenChange={setRenameOpen}
+              onCommit={handleRenameWorkspace}
+            />
+            <WorkspaceTextInputDialog
+              open={createRequest !== null}
+              title={
+                createRequest?.kind === 'folder'
+                  ? t('workspace.dialog.newFolderTitle')
+                  : t('workspace.dialog.newFileTitle')
+              }
+              initialValue={
+                createRequest?.kind === 'folder'
+                  ? DEFAULT_WORKSPACE_FOLDER_NAME
+                  : DEFAULT_WORKSPACE_FILE_NAME
+              }
+              label={t('workspace.dialog.nameLabel')}
+              confirmLabel={t('workspace.dialog.create')}
+              onOpenChange={handleOpenCreateDialogChange}
+              onCommit={handleCreateWorkspaceChild}
+            />
+            <SessionActionsMenu
+              state={sessionMenuState}
+              session={activeMenuSession}
+              workspaceId={workspace.id}
+              workspacePath={workspace.path}
+              onOpenChange={handleSessionMenuOpenChange}
+              onPrepareSessionOpen={handlePrepareSessionOpen}
+              onStartRename={handleStartSessionRename}
+            />
+          </>
+        }
+      >
+        <WorkspaceSessionListSection
+          workspaceId={workspace.id}
+          sortedSessions={sortedSessions}
+          activeSessionId={activeSessionId}
+          renamingSessionId={renamingSessionId}
+          retainedSessionIds={retainedSessionIds}
+          locallyStreamingSessionIds={locallyStreamingSessionIds}
+          locallyErroredSessionIds={locallyErroredSessionIds}
+          t={t}
+          onPrepareSessionOpen={handlePrepareSessionOpen}
+          onPrefetchSession={prefetchSession}
+          onRenameCommit={handleRenameSession}
+          onRenameCancel={handleRenameCancel}
+          onOpenSessionMenu={handleOpenSessionMenu}
+        />
+      </WorkspaceGroupDisclosure>
+    )
+  }
+)
 WorkspaceGroup.displayName = 'WorkspaceGroup'
 
 // ── Top nav items ─────────────────────────────────────────────────────────────
@@ -1755,8 +2173,18 @@ interface NavItemProps {
   dataTestId?: string
 }
 
-function TopNavItem({ icon, label, shortcut, collapsed, onClick, to, params, dataTestId }: NavItemProps) {
-  const className = 'group flex h-7 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 hover:bg-accent/50 hover:text-sidebar-foreground overflow-hidden'
+function TopNavItem({
+  icon,
+  label,
+  shortcut,
+  collapsed,
+  onClick,
+  to,
+  params,
+  dataTestId
+}: NavItemProps) {
+  const className =
+    'group flex h-7 w-full items-center gap-2 rounded-lg px-2.5 py-1.5 text-xs text-sidebar-foreground/80 hover:bg-accent/50 hover:text-sidebar-foreground overflow-hidden'
   const iconNode = (
     <span className="flex size-3.5 shrink-0 items-center justify-center text-muted-foreground/70">
       {icon}
@@ -1765,22 +2193,20 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, to, params, dat
 
   const content = (
     <>
-      {collapsed
-        ? (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              {iconNode}
-            </TooltipTrigger>
-            <TooltipContent side="right" sideOffset={8}>{label}</TooltipContent>
-          </Tooltip>
-        )
-        : (
-          iconNode
-        )}
+      {collapsed ? (
+        <Tooltip>
+          <TooltipTrigger asChild>{iconNode}</TooltipTrigger>
+          <TooltipContent side="right" sideOffset={8}>
+            {label}
+          </TooltipContent>
+        </Tooltip>
+      ) : (
+        iconNode
+      )}
       <span
         className={cn(
           'flex-1 overflow-hidden text-left whitespace-nowrap',
-          collapsed ? 'opacity-0' : 'opacity-100',
+          collapsed ? 'opacity-0' : 'opacity-100'
         )}
       >
         {label}
@@ -1789,7 +2215,7 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, to, params, dat
         <span
           className={cn(
             'shrink-0 overflow-hidden font-mono text-[10px] text-muted-foreground/40 whitespace-nowrap',
-            collapsed ? 'opacity-0' : 'opacity-0 group-hover:opacity-100',
+            collapsed ? 'opacity-0' : 'opacity-0 group-hover:opacity-100'
           )}
         >
           {shortcut}
@@ -1800,36 +2226,69 @@ function TopNavItem({ icon, label, shortcut, collapsed, onClick, to, params, dat
 
   if (to) {
     return (
-      <Link to={to} params={params} onClick={onClick} className={className} data-testid={dataTestId}>
+      <Link
+        to={to}
+        params={params}
+        onClick={onClick}
+        className={className}
+        data-testid={dataTestId}
+      >
         {content}
       </Link>
     )
   }
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      data-testid={dataTestId}
-      className={className}
-    >
+    <button type="button" onClick={onClick} data-testid={dataTestId} className={className}>
       {content}
     </button>
   )
 }
 
 function workspaceHasUnreadSession(sessions: readonly WorkspaceSession[]): boolean {
-  return sessions.some(session => session.unread)
+  return sessions.some((session) => session.unread)
 }
 
-function workspaceHasRunningSession(sessions: readonly WorkspaceSession[]): boolean {
-  return sessions.some(session => session.status === 'streaming')
+function workspaceHasRunningSession(
+  sessions: readonly WorkspaceSession[],
+  locallyStreamingSessionIds: Set<string>
+): boolean {
+  return sessions.some((session) => isSessionRunning(session, locallyStreamingSessionIds))
+}
+
+function workspaceHasRecentSession(
+  sessions: readonly WorkspaceSession[],
+  currentUnixTimestamp: number
+): boolean {
+  return sessions.some((session) => isSessionRecent(session, currentUnixTimestamp))
+}
+
+function sessionMatchesProjectFilter(
+  session: WorkspaceSession,
+  filter: WorkspaceSidebarProjectFilter,
+  locallyStreamingSessionIds: Set<string>,
+  currentUnixTimestamp: number
+): boolean {
+  switch (filter) {
+    case 'unread':
+      return session.unread
+    case 'running':
+      return isSessionRunning(session, locallyStreamingSessionIds)
+    case 'recent':
+      return isSessionRecent(session, currentUnixTimestamp)
+    case 'pinned':
+    case 'unpinned':
+    case 'all':
+      return true
+  }
 }
 
 function projectMatchesFilter(
   workspace: Workspace,
   sessions: readonly WorkspaceSession[],
   filter: WorkspaceSidebarProjectFilter,
+  locallyStreamingSessionIds: Set<string>,
+  currentUnixTimestamp: number
 ): boolean {
   switch (filter) {
     case 'pinned':
@@ -1839,7 +2298,9 @@ function projectMatchesFilter(
     case 'unread':
       return workspaceHasUnreadSession(sessions)
     case 'running':
-      return workspaceHasRunningSession(sessions)
+      return workspaceHasRunningSession(sessions, locallyStreamingSessionIds)
+    case 'recent':
+      return workspaceHasRecentSession(sessions, currentUnixTimestamp)
     case 'all':
       return true
   }
@@ -1848,7 +2309,7 @@ function projectMatchesFilter(
 function compareProjectBySortKey(
   left: Workspace,
   right: Workspace,
-  sortKey: WorkspaceSidebarProjectSortKey,
+  sortKey: WorkspaceSidebarProjectSortKey
 ): number {
   switch (sortKey) {
     case 'createdAt':
@@ -1867,248 +2328,376 @@ interface WorkspaceSidebarBodyProps {
   workspacesReady: boolean
   sessionsByWorkspaceId: Map<string, WorkspaceSession[]>
   adding: boolean
+  multiWorkspaceEnabled: boolean
   onAddFromPicker: () => void
+  onOpenMultiWorkspaceDialog: () => void
   onDelete: (id: string) => void
   onTogglePin: (id: string, pinned: boolean) => void
 }
 
-const WorkspaceSidebarBody = memo(({
-  workspaces,
-  workspacesReady,
-  sessionsByWorkspaceId,
-  adding,
-  onAddFromPicker,
-  onDelete,
-  onTogglePin,
-}: WorkspaceSidebarBodyProps) => {
-  const { t } = useTranslation('workspace')
-  const pruneWorkspaceSidebarState = useWorkspaceSidebarUiStore(state => state.pruneWorkspaceSidebarState)
-  const projectFilter = useWorkspaceSidebarUiStore(state => state.projectFilter)
-  const projectSortKey = useWorkspaceSidebarUiStore(state => state.projectSortKey)
-  const projectSortDirection = useWorkspaceSidebarUiStore(state => state.projectSortDirection)
-  const projectPinnedFirst = useWorkspaceSidebarUiStore(state => state.projectPinnedFirst)
-  const setProjectFilter = useWorkspaceSidebarUiStore(state => state.setProjectFilter)
-  const setProjectSortKey = useWorkspaceSidebarUiStore(state => state.setProjectSortKey)
-  const setProjectSortDirection = useWorkspaceSidebarUiStore(state => state.setProjectSortDirection)
-  const setProjectPinnedFirst = useWorkspaceSidebarUiStore(state => state.setProjectPinnedFirst)
-  const workspaceIds = useMemo(() => workspaces.map(workspace => workspace.id), [workspaces])
-  const visibleWorkspaces = useMemo(() => {
-    return workspaces
-      .filter(workspace => projectMatchesFilter(
-        workspace,
-        sessionsByWorkspaceId.get(workspace.id) ?? [],
-        projectFilter,
-      ))
-      .toSorted((left, right) => {
-        if (projectPinnedFirst) {
-          const pinDiff = (right.pinned ? 1 : 0) - (left.pinned ? 1 : 0)
-          if (pinDiff !== 0) {
-            return pinDiff
+const WorkspaceSidebarBody = memo(
+  ({
+    workspaces,
+    workspacesReady,
+    sessionsByWorkspaceId,
+    adding,
+    multiWorkspaceEnabled,
+    onAddFromPicker,
+    onOpenMultiWorkspaceDialog,
+    onDelete,
+    onTogglePin
+  }: WorkspaceSidebarBodyProps) => {
+    const { t } = useTranslation('workspace')
+    const pruneWorkspaceSidebarState = useWorkspaceSidebarUiStore(
+      (state) => state.pruneWorkspaceSidebarState
+    )
+    const projectFilter = useWorkspaceSidebarUiStore((state) => state.projectFilter)
+    const projectSortKey = useWorkspaceSidebarUiStore((state) => state.projectSortKey)
+    const projectSortDirection = useWorkspaceSidebarUiStore((state) => state.projectSortDirection)
+    const projectPinnedFirst = useWorkspaceSidebarUiStore((state) => state.projectPinnedFirst)
+    const setProjectFilter = useWorkspaceSidebarUiStore((state) => state.setProjectFilter)
+    const setProjectSortKey = useWorkspaceSidebarUiStore((state) => state.setProjectSortKey)
+    const setProjectSortDirection = useWorkspaceSidebarUiStore(
+      (state) => state.setProjectSortDirection
+    )
+    const setProjectPinnedFirst = useWorkspaceSidebarUiStore((state) => state.setProjectPinnedFirst)
+    const workspaceIds = useMemo(() => workspaces.map((workspace) => workspace.id), [workspaces])
+    const sessionIds = useMemo(() => {
+      const ids: string[] = []
+      for (const sessions of sessionsByWorkspaceId.values()) {
+        for (const session of sessions) {
+          ids.push(session.id)
+        }
+      }
+      return ids
+    }, [sessionsByWorkspaceId])
+    const locallyStreamingSessionIds = useChatStore(
+      useCallback(
+        (state) =>
+          new Set(
+            sessionIds.filter((sessionId) => chatSelectors.isSessionStreaming(sessionId)(state))
+          ),
+        [sessionIds]
+      ),
+      shallow
+    )
+    const currentUnixTimestamp = Math.floor(Date.now() / 1000)
+    const visibleWorkspaces = useMemo(() => {
+      return workspaces
+        .filter((workspace) =>
+          projectMatchesFilter(
+            workspace,
+            sessionsByWorkspaceId.get(workspace.id) ?? [],
+            projectFilter,
+            locallyStreamingSessionIds,
+            currentUnixTimestamp
+          )
+        )
+        .toSorted((left, right) => {
+          if (projectPinnedFirst) {
+            const pinDiff = (right.pinned ? 1 : 0) - (left.pinned ? 1 : 0)
+            if (pinDiff !== 0) {
+              return pinDiff
+            }
           }
-        }
 
-        const keyDiff = compareProjectBySortKey(left, right, projectSortKey)
-        const directedKeyDiff = projectSortDirection === 'desc' ? -keyDiff : keyDiff
-        if (directedKeyDiff !== 0) {
-          return directedKeyDiff
-        }
+          const keyDiff = compareProjectBySortKey(left, right, projectSortKey)
+          const directedKeyDiff = projectSortDirection === 'desc' ? -keyDiff : keyDiff
+          if (directedKeyDiff !== 0) {
+            return directedKeyDiff
+          }
 
-        return left.name.localeCompare(right.name)
-      })
-  }, [projectFilter, projectPinnedFirst, projectSortDirection, projectSortKey, sessionsByWorkspaceId, workspaces])
-  const hasFilteredWorkspaces = workspaces.length > 0 && visibleWorkspaces.length === 0
+          return left.name.localeCompare(right.name)
+        })
+    }, [
+      currentUnixTimestamp,
+      locallyStreamingSessionIds,
+      projectFilter,
+      projectPinnedFirst,
+      projectSortDirection,
+      projectSortKey,
+      sessionsByWorkspaceId,
+      workspaces
+    ])
+    const hasFilteredWorkspaces = workspaces.length > 0 && visibleWorkspaces.length === 0
 
-  useEffect(() => {
-    if (!workspacesReady) {
-      return
-    }
-    pruneWorkspaceSidebarState(workspaceIds)
-  }, [pruneWorkspaceSidebarState, workspaceIds, workspacesReady])
+    useEffect(() => {
+      if (!workspacesReady) {
+        return
+      }
+      pruneWorkspaceSidebarState(workspaceIds)
+    }, [pruneWorkspaceSidebarState, workspaceIds, workspacesReady])
 
-  return (
-    <>
-      {/* ── Kanban section ── */}
-      <KanbanSidebar collapsed={false} />
+    return (
+      <>
+        {/* ── Kanban section ── */}
+        <KanbanSidebar collapsed={false} />
 
-      {/* ── Plugins section ── */}
-      <PluginsSidebar collapsed={false} />
+        {/* ── Plugins section ── */}
+        <PluginsSidebar collapsed={false} />
 
-      {/* ── Projects section ── */}
-      <div className="flex min-w-0 flex-col">
-        <div className="flex items-center px-2.5 py-1.5">
-          <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">
-            {t('sidebar.projects.title')}
-          </span>
-          <div className="flex items-center gap-0.5">
-            <Menu>
-              <MenuTrigger
-                render={(
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className={cn(
-                      'size-6 text-muted-foreground/60 hover:bg-fill/70 hover:text-foreground',
-                      (projectSortKey !== 'name' || projectSortDirection !== 'asc' || !projectPinnedFirst) && 'text-foreground',
-                    )}
-                    title={t('sidebar.action.sort')}
-                    aria-label={t('sidebar.action.sort')}
-                    data-testid="workspace-sort-menu-trigger"
-                  />
-                )}
-              >
-                <ArrowUpDownIcon className="size-3" />
-              </MenuTrigger>
-              <MenuPopup align="end" side="bottom" sideOffset={4} className="w-48">
-                <MenuGroup>
-                  <MenuGroupLabel>{t('sidebar.sort.by')}</MenuGroupLabel>
-                  <MenuRadioGroup
-                    value={projectSortKey}
-                    onValueChange={value => setProjectSortKey(value as WorkspaceSidebarProjectSortKey)}
-                  >
-                    {PROJECT_SORT_OPTIONS.map(sortKey => (
-                      <MenuRadioItem key={sortKey} value={sortKey}>
-                        {t(`sidebar.sort.option.${sortKey}`)}
-                      </MenuRadioItem>
-                    ))}
-                  </MenuRadioGroup>
-                </MenuGroup>
-                <MenuSeparator />
-                <MenuGroup>
-                  <MenuGroupLabel>{t('sidebar.sort.direction')}</MenuGroupLabel>
-                  <MenuRadioGroup
-                    value={projectSortDirection}
-                    onValueChange={value => setProjectSortDirection(value as WorkspaceSidebarProjectSortDirection)}
-                  >
-                    {PROJECT_SORT_DIRECTION_OPTIONS.map(direction => (
-                      <MenuRadioItem key={direction} value={direction}>
-                        {t(`sidebar.sort.direction.${direction}`)}
-                      </MenuRadioItem>
-                    ))}
-                  </MenuRadioGroup>
-                </MenuGroup>
-                <MenuSeparator />
-                <MenuCheckboxItem
-                  checked={projectPinnedFirst}
-                  onCheckedChange={checked => setProjectPinnedFirst(checked)}
+        {/* ── Projects section ── */}
+        <div className="flex min-w-0 flex-col">
+          <div className="flex items-center px-2.5 py-1.5">
+            <span className="flex-1 text-[11px] font-medium text-muted-foreground select-none">
+              {t('sidebar.projects.title')}
+            </span>
+            <div className="flex items-center gap-0.5">
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className={cn(
+                        'size-6 text-muted-foreground/60 hover:bg-fill/70 hover:text-foreground',
+                        (projectSortKey !== 'name' ||
+                          projectSortDirection !== 'asc' ||
+                          !projectPinnedFirst) &&
+                          'text-foreground'
+                      )}
+                      title={t('sidebar.action.sort')}
+                      aria-label={t('sidebar.action.sort')}
+                      data-testid="workspace-sort-menu-trigger"
+                    />
+                  }
                 >
-                  {t('sidebar.sort.pinnedFirst')}
-                </MenuCheckboxItem>
-              </MenuPopup>
-            </Menu>
-            <Menu>
-              <MenuTrigger
-                render={(
-                  <Button
-                    variant="ghost"
-                    size="icon-xs"
-                    className={cn(
-                      'size-6 text-muted-foreground/60 hover:bg-fill/70 hover:text-foreground',
-                      projectFilter !== 'all' && 'text-foreground',
-                    )}
-                    title={t('sidebar.action.filter')}
-                    aria-label={t('sidebar.action.filter')}
-                    data-testid="workspace-filter-menu-trigger"
-                  />
-                )}
-              >
-                <ListFilterIcon className="size-3" />
-              </MenuTrigger>
-              <MenuPopup align="end" side="bottom" sideOffset={4} className="w-44">
-                <MenuGroup>
-                  <MenuGroupLabel>{t('sidebar.filter.show')}</MenuGroupLabel>
-                  <MenuRadioGroup
-                    value={projectFilter}
-                    onValueChange={value => setProjectFilter(value as WorkspaceSidebarProjectFilter)}
+                  <ArrowUpDownIcon className="size-3" />
+                </MenuTrigger>
+                <MenuPopup align="end" side="bottom" sideOffset={4} className="w-48">
+                  <MenuGroup>
+                    <MenuGroupLabel>{t('sidebar.sort.by')}</MenuGroupLabel>
+                    <MenuRadioGroup
+                      value={projectSortKey}
+                      onValueChange={(value) =>
+                        setProjectSortKey(value as WorkspaceSidebarProjectSortKey)
+                      }
+                    >
+                      {PROJECT_SORT_OPTIONS.map((sortKey) => (
+                        <MenuRadioItem key={sortKey} value={sortKey}>
+                          {t(`sidebar.sort.option.${sortKey}`)}
+                        </MenuRadioItem>
+                      ))}
+                    </MenuRadioGroup>
+                  </MenuGroup>
+                  <MenuSeparator />
+                  <MenuGroup>
+                    <MenuGroupLabel>{t('sidebar.sort.direction')}</MenuGroupLabel>
+                    <MenuRadioGroup
+                      value={projectSortDirection}
+                      onValueChange={(value) =>
+                        setProjectSortDirection(value as WorkspaceSidebarProjectSortDirection)
+                      }
+                    >
+                      {PROJECT_SORT_DIRECTION_OPTIONS.map((direction) => (
+                        <MenuRadioItem key={direction} value={direction}>
+                          {t(`sidebar.sort.direction.${direction}`)}
+                        </MenuRadioItem>
+                      ))}
+                    </MenuRadioGroup>
+                  </MenuGroup>
+                  <MenuSeparator />
+                  <MenuCheckboxItem
+                    checked={projectPinnedFirst}
+                    onCheckedChange={(checked) => setProjectPinnedFirst(checked)}
                   >
-                    {PROJECT_FILTER_OPTIONS.map(filter => (
-                      <MenuRadioItem key={filter} value={filter}>
-                        {t(`sidebar.filter.option.${filter}`)}
-                      </MenuRadioItem>
-                    ))}
-                  </MenuRadioGroup>
-                </MenuGroup>
-              </MenuPopup>
-            </Menu>
-            <Button
-              variant="ghost"
-              size="icon-xs"
-              className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
-              onClick={onAddFromPicker}
-              disabled={adding}
-              title={t('sidebar.action.addProject')}
-              data-testid="add-workspace-btn"
-            >
-              <PlusIcon className="size-3" />
-            </Button>
+                    {t('sidebar.sort.pinnedFirst')}
+                  </MenuCheckboxItem>
+                </MenuPopup>
+              </Menu>
+              <Menu>
+                <MenuTrigger
+                  render={
+                    <Button
+                      variant="ghost"
+                      size="icon-xs"
+                      className={cn(
+                        'size-6 text-muted-foreground/60 hover:bg-fill/70 hover:text-foreground',
+                        projectFilter !== 'all' && 'text-foreground'
+                      )}
+                      title={t('sidebar.action.filter')}
+                      aria-label={t('sidebar.action.filter')}
+                      data-testid="workspace-filter-menu-trigger"
+                    />
+                  }
+                >
+                  <ListFilterIcon className="size-3" />
+                </MenuTrigger>
+                <MenuPopup align="end" side="bottom" sideOffset={4} className="w-44">
+                  <MenuGroup>
+                    <MenuGroupLabel>{t('sidebar.filter.show')}</MenuGroupLabel>
+                    <MenuRadioGroup
+                      value={projectFilter}
+                      onValueChange={(value) =>
+                        setProjectFilter(value as WorkspaceSidebarProjectFilter)
+                      }
+                    >
+                      {PROJECT_FILTER_OPTIONS.map((filter) => (
+                        <MenuRadioItem key={filter} value={filter}>
+                          {t(`sidebar.filter.option.${filter}`)}
+                        </MenuRadioItem>
+                      ))}
+                    </MenuRadioGroup>
+                  </MenuGroup>
+                </MenuPopup>
+              </Menu>
+              {multiWorkspaceEnabled ? (
+                <Menu>
+                  <MenuTrigger
+                    render={
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
+                        disabled={adding}
+                        title={t('sidebar.action.addProject')}
+                        data-testid="add-workspace-menu-btn"
+                      />
+                    }
+                  >
+                    <ChevronDownIcon className="size-3" />
+                  </MenuTrigger>
+                  <MenuPopup align="end" side="bottom" sideOffset={4} className="w-52">
+                    <MenuItem onClick={onAddFromPicker} disabled={adding}>
+                      <FolderPlusIcon className="size-3" />
+                      {t('sidebar.action.addProject')}
+                    </MenuItem>
+                    <MenuItem onClick={onOpenMultiWorkspaceDialog}>
+                      <FolderClosedIcon className="size-3" />
+                      {t('sidebar.action.addMultiWorkspace')}
+                    </MenuItem>
+                  </MenuPopup>
+                </Menu>
+              ) : (
+                <Button
+                  variant="ghost"
+                  size="icon-xs"
+                  className="size-6 text-muted-foreground/60 hover:text-foreground hover:bg-fill/70"
+                  onClick={onAddFromPicker}
+                  disabled={adding}
+                  title={t('sidebar.action.addProject')}
+                  data-testid="add-workspace-btn"
+                >
+                  <PlusIcon className="size-3" />
+                </Button>
+              )}
+            </div>
           </div>
-        </div>
 
-        {/* Workspace list */}
-        <nav className="flex min-w-0 flex-col gap-0.5 px-2 pb-2" data-testid="workspace-list">
-          {workspaces.length === 0 && (
-            <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
-              <div className="flex size-10 items-center justify-center rounded-xl bg-muted/60">
-                <FolderOpenIcon className="size-5 text-muted-foreground/50" aria-hidden="true" />
+          {/* Workspace list */}
+          <nav className="flex min-w-0 flex-col gap-0.5 px-2 pb-2" data-testid="workspace-list">
+            {workspaces.length === 0 && (
+              <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
+                <div className="flex size-10 items-center justify-center rounded-xl bg-muted/60">
+                  <FolderOpenIcon className="size-5 text-muted-foreground/50" aria-hidden="true" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {t('sidebar.projects.empty.title')}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {t('sidebar.projects.empty.description')}
+                  </p>
+                </div>
+                {multiWorkspaceEnabled ? (
+                  <Menu>
+                    <MenuTrigger
+                      render={
+                        <Button
+                          variant="outline"
+                          size="xs"
+                          disabled={adding}
+                          className="mt-1 border-dashed"
+                          data-testid="add-workspace-empty-menu-btn"
+                        />
+                      }
+                    >
+                      <PlusIcon />
+                      {t('sidebar.action.addProject')}
+                    </MenuTrigger>
+                    <MenuPopup align="center" side="bottom" sideOffset={4} className="w-52">
+                      <MenuItem onClick={onAddFromPicker} disabled={adding}>
+                        <FolderPlusIcon className="size-3" />
+                        {t('sidebar.action.addProject')}
+                      </MenuItem>
+                      <MenuItem onClick={onOpenMultiWorkspaceDialog}>
+                        <FolderClosedIcon className="size-3" />
+                        {t('sidebar.action.addMultiWorkspace')}
+                      </MenuItem>
+                    </MenuPopup>
+                  </Menu>
+                ) : (
+                  <Button
+                    variant="outline"
+                    size="xs"
+                    onClick={onAddFromPicker}
+                    disabled={adding}
+                    className="mt-1 border-dashed"
+                    data-testid="add-workspace-empty-btn"
+                  >
+                    <PlusIcon />
+                    {t('sidebar.action.addProject')}
+                  </Button>
+                )}
               </div>
-              <div className="flex flex-col gap-1">
-                <p className="text-xs font-medium text-muted-foreground">{t('sidebar.projects.empty.title')}</p>
-                <p className="text-[11px] text-muted-foreground">{t('sidebar.projects.empty.description')}</p>
+            )}
+            {hasFilteredWorkspaces && (
+              <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
+                <div className="flex size-9 items-center justify-center rounded-xl bg-muted/60">
+                  <ListFilterIcon className="size-4 text-muted-foreground/50" aria-hidden="true" />
+                </div>
+                <div className="flex flex-col gap-1">
+                  <p className="text-xs font-medium text-muted-foreground">
+                    {t('sidebar.projects.filteredEmpty.title')}
+                  </p>
+                  <p className="text-[11px] text-muted-foreground">
+                    {t('sidebar.projects.filteredEmpty.description')}
+                  </p>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="xs"
+                  onClick={() => setProjectFilter('all')}
+                  data-testid="workspace-filter-clear-btn"
+                >
+                  {t('sidebar.filter.clear')}
+                </Button>
               </div>
-              <Button
-                variant="outline"
-                size="xs"
-                onClick={onAddFromPicker}
-                disabled={adding}
-                className="mt-1 border-dashed"
-                data-testid="add-workspace-empty-btn"
-              >
-                <PlusIcon />
-                {t('sidebar.action.addProject')}
-              </Button>
-            </div>
-          )}
-          {hasFilteredWorkspaces && (
-            <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
-              <div className="flex size-9 items-center justify-center rounded-xl bg-muted/60">
-                <ListFilterIcon className="size-4 text-muted-foreground/50" aria-hidden="true" />
-              </div>
-              <div className="flex flex-col gap-1">
-                <p className="text-xs font-medium text-muted-foreground">{t('sidebar.projects.filteredEmpty.title')}</p>
-                <p className="text-[11px] text-muted-foreground">{t('sidebar.projects.filteredEmpty.description')}</p>
-              </div>
-              <Button
-                variant="ghost"
-                size="xs"
-                onClick={() => setProjectFilter('all')}
-                data-testid="workspace-filter-clear-btn"
-              >
-                {t('sidebar.filter.clear')}
-              </Button>
-            </div>
-          )}
-          {visibleWorkspaces.map(workspace => (
-            <WorkspaceGroup
-              key={workspace.id}
-              workspace={workspace}
-              sessions={sessionsByWorkspaceId.get(workspace.id) ?? EMPTY_WORKSPACE_SESSIONS}
-              onDelete={onDelete}
-              onTogglePin={onTogglePin}
-            />
-          ))}
-        </nav>
-      </div>
-    </>
-  )
-})
+            )}
+            {visibleWorkspaces.map((workspace) => (
+              <WorkspaceGroup
+                key={workspace.id}
+                workspace={workspace}
+                sessions={sessionsByWorkspaceId.get(workspace.id) ?? EMPTY_WORKSPACE_SESSIONS}
+                projectFilter={projectFilter}
+                onDelete={onDelete}
+                onTogglePin={onTogglePin}
+              />
+            ))}
+          </nav>
+        </div>
+      </>
+    )
+  }
+)
 WorkspaceSidebarBody.displayName = 'WorkspaceSidebarBody'
 
 export const WorkspaceSidebar = memo(({ collapsed = false }: { collapsed?: boolean }) => {
   const { t } = useTranslation('workspace')
+  const queryClient = useQueryClient()
   const { workspaces, ready: workspacesReady } = useWorkspaces()
   const { sessions } = useAllSessions()
   const { addFromPicker, adding } = useAddWorkspace()
+  const { prefs: appPreferences } = useAppPreferences()
   const { remove } = useDeleteWorkspace()
   const { togglePin } = useToggleWorkspacePin()
+  const [multiFolderDialogOpen, setMultiFolderDialogOpen] = useState(false)
+  const multiWorkspaceEnabled = appPreferences?.featureFlags.multiWorkspacePoc === true
+  const { mutateAsync: createMultiFolderWorkspace, isPending: creatingMultiFolderWorkspace } =
+    useMutation({
+      ...postWorkspacesMultiFolderMutation(),
+      onSuccess: () => queryClient.invalidateQueries({ queryKey: WORKSPACES_QUERY_KEY })
+    })
   const sessionsByWorkspaceId = useMemo(() => {
     const grouped = new Map<string, WorkspaceSession[]>()
     for (const session of sessions) {
@@ -2119,14 +2708,13 @@ export const WorkspaceSidebar = memo(({ collapsed = false }: { collapsed?: boole
       const workspaceSessions = grouped.get(session.workspaceId)
       if (workspaceSessions) {
         workspaceSessions.push(session)
-      }
-      else {
+      } else {
         grouped.set(session.workspaceId, [session])
       }
     }
     return grouped
   }, [sessions])
-  const openSettings = useSettingsOverlayStore(s => s.openSettings)
+  const openSettings = useSettingsOverlayStore((s) => s.openSettings)
   const handleOpenSettings = useCallback(() => {
     const activeTabId = useCradleTabStore.getState().activeTabId
     if (activeTabId) {
@@ -2134,13 +2722,39 @@ export const WorkspaceSidebar = memo(({ collapsed = false }: { collapsed?: boole
     }
   }, [openSettings])
 
-  const handleDelete = useCallback((id: string) => {
-    remove({ path: { id } })
-  }, [remove])
+  const handleDelete = useCallback(
+    (id: string) => {
+      remove({ path: { id } })
+    },
+    [remove]
+  )
 
-  const handleToggleWorkspacePin = useCallback((id: string, pinned: boolean) => {
-    togglePin({ path: { id }, body: { pinned } })
-  }, [togglePin])
+  const handleToggleWorkspacePin = useCallback(
+    (id: string, pinned: boolean) => {
+      togglePin({ path: { id }, body: { pinned } })
+    },
+    [togglePin]
+  )
+
+  const handleCreateMultiFolderWorkspace = useCallback(
+    async (input: { name: string; folders: Array<{ name: string; path: string }> }) => {
+      try {
+        await createMultiFolderWorkspace({
+          body: input,
+          throwOnError: true
+        })
+        toastManager.add({ type: 'success', title: t('workspace.toast.multiFolderCreated') })
+        setMultiFolderDialogOpen(false)
+      } catch (error) {
+        toastManager.add({
+          type: 'error',
+          title: t('workspace.toast.multiFolderCreateFailed'),
+          description: error instanceof Error ? error.message : String(error)
+        })
+      }
+    },
+    [createMultiFolderWorkspace, t]
+  )
 
   const openSearch = useCallback(() => useGlobalSearchStore.getState().openSearch(), [])
 
@@ -2201,12 +2815,20 @@ export const WorkspaceSidebar = memo(({ collapsed = false }: { collapsed?: boole
             workspacesReady={workspacesReady}
             sessionsByWorkspaceId={sessionsByWorkspaceId}
             adding={adding}
+            multiWorkspaceEnabled={multiWorkspaceEnabled}
             onAddFromPicker={addFromPicker}
+            onOpenMultiWorkspaceDialog={() => setMultiFolderDialogOpen(true)}
             onDelete={handleDelete}
             onTogglePin={handleToggleWorkspacePin}
           />
         </div>
       </ScrollArea>
+      <WorkspaceMultiFolderDialog
+        open={multiFolderDialogOpen && multiWorkspaceEnabled}
+        creating={creatingMultiFolderWorkspace}
+        onOpenChange={setMultiFolderDialogOpen}
+        onCommit={handleCreateMultiFolderWorkspace}
+      />
     </div>
   )
 })

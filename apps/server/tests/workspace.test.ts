@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
@@ -337,6 +337,130 @@ describe('workspace capability', () => {
       }
       else {
         process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
+  it('creates multi-folder symlink workspaces behind the app feature flag', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const multiRoot = makeTempDir('cradle-multi-root-')
+    const frontendRoot = makeTempDir('cradle-frontend-')
+    const backendRoot = makeTempDir('cradle-backend-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousMultiRoot = process.env.CRADLE_MULTI_WORKSPACE_ROOT
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_MULTI_WORKSPACE_ROOT = multiRoot
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const disabledRes = await app.handle(new Request('http://localhost/workspaces/multi-folder', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'my-monorepo',
+          folders: [
+            { name: 'frontend', path: frontendRoot },
+          ],
+        }),
+      }))
+      expect(disabledRes.status).toBe(403)
+      expect((await disabledRes.json()).code).toBe('multi_workspace_poc_disabled')
+
+      const prefsRes = await app.handle(new Request('http://localhost/preferences/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          featureFlags: {
+            multiWorkspacePoc: true,
+          },
+        }),
+      }))
+      expect(prefsRes.status).toBe(200)
+
+      const createRes = await app.handle(new Request('http://localhost/workspaces/multi-folder', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'my-monorepo',
+          folders: [
+            { name: 'frontend', path: frontendRoot },
+            { name: 'backend', path: backendRoot },
+          ],
+        }),
+      }))
+      expect(createRes.status).toBe(200)
+      const workspace = await createRes.json()
+      const workspacePath = join(multiRoot, 'my-monorepo')
+      expect(workspace).toEqual(expect.objectContaining({
+        name: 'my-monorepo',
+        path: workspacePath,
+      }))
+      expect(JSON.parse(readFileSync(join(workspacePath, 'cradle-workspace.json'), 'utf8'))).toEqual({
+        name: 'my-monorepo',
+        folders: [
+          { name: 'frontend', path: frontendRoot },
+          { name: 'backend', path: backendRoot },
+        ],
+      })
+      expect(readlinkSync(join(workspacePath, 'frontend'))).toBe(frontendRoot)
+      expect(readlinkSync(join(workspacePath, 'backend'))).toBe(backendRoot)
+
+      const listRes = await app.handle(new Request('http://localhost/workspaces'))
+      expect(await listRes.json()).toEqual(expect.arrayContaining([
+        expect.objectContaining({ id: workspace.id, path: workspacePath }),
+      ]))
+
+      const collisionRes = await app.handle(new Request('http://localhost/workspaces/multi-folder', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'colliding-folders',
+          folders: [
+            { name: 'app', path: frontendRoot },
+            { name: 'app', path: backendRoot },
+          ],
+        }),
+      }))
+      expect(collisionRes.status).toBe(409)
+      expect((await collisionRes.json()).code).toBe('multi_workspace_folder_name_collision')
+
+      const importConfigPath = join(dataDir, 'imported-cradle-workspace.json')
+      writeFileSync(importConfigPath, JSON.stringify({
+        name: 'imported-monorepo',
+        folders: [
+          { name: 'frontend', path: frontendRoot },
+        ],
+      }), 'utf8')
+      const importRes = await app.handle(new Request('http://localhost/workspaces/multi-folder/from-config', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ path: importConfigPath }),
+      }))
+      expect(importRes.status).toBe(200)
+      const importedWorkspace = await importRes.json()
+      expect(importedWorkspace).toEqual(expect.objectContaining({
+        name: 'imported-monorepo',
+        path: join(multiRoot, 'imported-monorepo'),
+      }))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(multiRoot, { recursive: true, force: true })
+      rmSync(frontendRoot, { recursive: true, force: true })
+      rmSync(backendRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousMultiRoot === undefined) {
+        delete process.env.CRADLE_MULTI_WORKSPACE_ROOT
+      }
+      else {
+        process.env.CRADLE_MULTI_WORKSPACE_ROOT = previousMultiRoot
       }
     }
   })

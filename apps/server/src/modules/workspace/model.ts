@@ -51,6 +51,23 @@ export const WorkspaceModel = {
     path: nonBlankString,
   }, { additionalProperties: false }),
 
+  multiFolderWorkspaceFolder: t.Object({
+    name: nonBlankString,
+    path: nonBlankString,
+  }, { additionalProperties: false }),
+
+  multiFolderWorkspaceBody: t.Object({
+    name: nonBlankString,
+    folders: t.Array(t.Object({
+      name: nonBlankString,
+      path: nonBlankString,
+    }, { additionalProperties: false }), { minItems: 1 }),
+  }, { additionalProperties: false }),
+
+  multiFolderWorkspaceImportBody: t.Object({
+    path: nonBlankString,
+  }, { additionalProperties: false }),
+
   importBody: t.Object({
     path: nonBlankString,
   }, { additionalProperties: false }),
