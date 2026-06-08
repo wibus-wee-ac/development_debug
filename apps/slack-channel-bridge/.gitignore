@@ -1,0 +1,6 @@
+.env
+dist/
+data/
+*.sqlite
+*.sqlite-shm
+*.sqlite-wal

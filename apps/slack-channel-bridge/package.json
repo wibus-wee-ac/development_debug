@@ -1,0 +1,36 @@
+{
+  "name": "@cradle/slack-channel-bridge",
+  "type": "module",
+  "version": "0.0.1",
+  "private": true,
+  "description": "Independent Slack channel bridge for continuing Cradle sessions from Slack threads",
+  "scripts": {
+    "dev": "tsx watch src/main.ts",
+    "build": "tsup",
+    "start": "node dist/main.js",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "verify": "pnpm run typecheck && pnpm run test && pnpm run build",
+    "generate": "pnpm --filter @cradle/server exec vite-node scripts/export-openapi.ts && openapi-ts"
+  },
+  "dependencies": {
+    "@hey-api/client-fetch": "^0.13.1",
+    "@slack/bolt": "^4.1.0",
+    "better-sqlite3": "^12.10.0",
+    "dotenv": "^16.4.0",
+    "drizzle-orm": "^0.45.2",
+    "markdown-to-slack-blocks": "^1.5.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@hey-api/openapi-ts": "^0.97.0",
+    "@types/better-sqlite3": "^7.6.13",
+    "@types/node": "^22.19.1",
+    "drizzle-kit": "^0.31.10",
+    "tsup": "^8.0.0",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3",
+    "vitest": "^4.1.4"
+  }
+}
