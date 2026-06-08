@@ -532,28 +532,17 @@ function projectThreadState(
   const previousActiveTab = previousOwnerState?.tabs.find(
     tab => tab.id === previousOwnerState.activeTabId,
   )
-  const previousActiveTabStillExists = Boolean(
-    previousActiveTab && projectedTabs.some(tab => tab.id === previousActiveTab.id),
-  )
-  const nativeActiveTabWasAlreadyProjected = Boolean(
-    state.activeTabId
-    && previousOwnerState?.tabs.some(tab => tab.id === state.activeTabId),
-  )
-  const shouldKeepPreviousActiveTab = Boolean(
-    previousActiveTabStillExists
-    && previousActiveTab
-    && (
-      previousActiveTab.kind !== 'browser'
-      || nativeActiveTabWasAlreadyProjected
-    ),
-  )
+  const previousActiveWorkspaceTab
+    = previousActiveTab && previousActiveTab.kind !== 'browser' ? previousActiveTab : null
+  const shouldKeepWorkspaceActiveTab = previousActiveWorkspaceTab !== null
+    && projectedTabs.some(tab => tab.id === previousActiveWorkspaceTab.id)
   const nextBrowserTabIds = new Set(state.tabs.map(tab => tab.id))
 
   return {
     threadState: state,
     tabs: projectedTabs,
-    activeTabId: shouldKeepPreviousActiveTab && previousActiveTab
-      ? previousActiveTab.id
+    activeTabId: shouldKeepWorkspaceActiveTab
+      ? previousActiveWorkspaceTab.id
       : (state.activeTabId ?? projectedTabs.at(-1)?.id ?? null),
     requestedTab: null,
     scrollToFilePath: null,

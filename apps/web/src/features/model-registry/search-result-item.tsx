@@ -5,7 +5,10 @@
  * model-registry detail panel to show merged search results from
  * models.dev and the Cradle Model Registry.
  */
+import { FilePlus2Icon, Link2Icon } from 'lucide-react'
+
 import { Badge } from '~/components/ui/badge'
+import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
 import { formatTokenCount } from '~/lib/number-format'
 
@@ -19,12 +22,18 @@ const SOURCE_LABEL: Record<SearchResultSource, string> = {
 export function SearchResultItem({
   result,
   source,
-  onClick,
+  onMap,
+  onCreateEntry,
+  mapLabel,
+  createEntryLabel,
   disabled,
 }: {
   result: SearchResult
   source: SearchResultSource
-  onClick: () => void
+  onMap: () => void
+  onCreateEntry?: () => void
+  mapLabel: string
+  createEntryLabel?: string
   disabled?: boolean
 }) {
   const contextWindow = result.capabilities.contextWindow && result.capabilities.contextWindow > 0
@@ -32,13 +41,11 @@ export function SearchResultItem({
     : null
 
   return (
-    <button
-      type="button"
-      onClick={onClick}
-      disabled={disabled}
+    <div
       className={cn(
-        'flex w-full items-center gap-3 px-3 py-2 text-left transition-colors',
-        'hover:bg-accent disabled:opacity-60',
+        'flex w-full items-center gap-3 px-3 py-2 transition-colors',
+        'hover:bg-accent',
+        disabled && 'opacity-60',
       )}
     >
       <div className="min-w-0 flex-1">
@@ -67,6 +74,32 @@ export function SearchResultItem({
           {contextWindow}
         </span>
       )}
-    </button>
+      <div className="flex shrink-0 items-center gap-1.5">
+        <Button
+          type="button"
+          size="xs"
+          variant="secondary"
+          onClick={onMap}
+          disabled={disabled}
+          className="text-[11px]"
+        >
+          <Link2Icon className="size-3" aria-hidden="true" />
+          {mapLabel}
+        </Button>
+        {onCreateEntry && createEntryLabel && (
+          <Button
+            type="button"
+            size="xs"
+            variant="outline"
+            onClick={onCreateEntry}
+            disabled={disabled}
+            className="text-[11px]"
+          >
+            <FilePlus2Icon className="size-3" aria-hidden="true" />
+            {createEntryLabel}
+          </Button>
+        )}
+      </div>
+    </div>
   )
 }

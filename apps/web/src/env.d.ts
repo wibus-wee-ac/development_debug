@@ -172,13 +172,12 @@ interface Window {
             | 'delete'
             | 'edit'
             | 'layout-sync'
-            | 'send'
           anchor?: import('~/store/browser-panel').BrowserAnnotationAnchor
           annotationId?: string
+          runtimeAnnotationId?: string
           selectedElement?: import('~/store/browser-panel').BrowserAnnotationElement | null
           body?: string
           output?: string
-          webhookUrl?: string
           annotations?: Array<{
             id: string
             anchor: import('~/store/browser-panel').BrowserAnnotationAnchor
@@ -264,6 +263,7 @@ interface Window {
   __cradleBrowserUseActivateTab?: (tabId: string) => boolean | Promise<boolean>
   __cradleBrowserUseGoOffScreen?: (tabId?: string) => boolean | Promise<boolean>
   __cradleBrowserUseGetActiveTab?: () => string | undefined | Promise<string | undefined>
+  __CRADLE_RENDERER_DIAGNOSTICS__?: () => Record<string, unknown>
   // eslint-disable-next-line ts/no-explicit-any
   __CRADLE_TAB_STORE__?: any
   // eslint-disable-next-line ts/no-explicit-any

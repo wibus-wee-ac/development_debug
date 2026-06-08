@@ -58,6 +58,59 @@ interface AssistantDisplaySplit {
   insertedQueueItemIds: string[]
 }
 
+const CHAT_STORE_TELEMETRY_SESSION_LIMIT = 20
+const CHAT_STORE_TELEMETRY_OBJECT_DEPTH_LIMIT = 6
+const CHAT_STORE_TELEMETRY_OBJECT_ENTRY_LIMIT = 200
+
+interface ChatStoreSessionTelemetry {
+  sessionId: string
+  hydrated: boolean
+  messageCount: number
+  partCount: number
+  textPartCount: number
+  toolPartCount: number
+  filePartCount: number
+  dataPartCount: number
+  reasoningPartCount: number
+  estimatedPartStringChars: number
+  streamingMessageCount: number
+  generatingMessageCount: number
+  passiveStreamingMessageCount: number
+  hasLocalDriver: boolean
+  passiveStatus: PublicStatus
+  errorCount: number
+  activeGoal: boolean
+  assistantDisplaySplitCount: number
+}
+
+interface ChatStoreTelemetrySnapshot {
+  totals: {
+    sessionCount: number
+    hydratedSessionCount: number
+    messageCount: number
+    partCount: number
+    textPartCount: number
+    toolPartCount: number
+    filePartCount: number
+    dataPartCount: number
+    reasoningPartCount: number
+    estimatedPartStringChars: number
+    generatingMessageCount: number
+    passiveStreamingMessageCount: number
+    activeAbortControllerCount: number
+    runDisplayMetaCount: number
+    errorCount: number
+    sessionMetaCount: number
+    activeGoalCount: number
+    assistantDisplaySplitCount: number
+  }
+  sessions: ChatStoreSessionTelemetry[]
+  limits: {
+    sessionLimit: number
+    truncatedSessions: number
+  }
+}
+
 // ── State Interface ─────────────────────────────────────────
 
 interface ChatState {
@@ -628,17 +681,31 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
         set((state) => {
           const removedMessages = state.messagesMap.get(sessionId) ?? []
           const removedMessageIds = new Set(removedMessages.map(m => m.id))
+          for (const split of state.assistantDisplaySplitMap.values()) {
+            if (!removedMessageIds.has(split.sourceMessageId)) {
+              continue
+            }
+            removedMessageIds.add(split.tailMessageId)
+            for (const insertedMessageId of split.insertedMessageIds) {
+              removedMessageIds.add(insertedMessageId)
+            }
+          }
           return produce(state, (draft) => {
             draft.messagesMap.delete(sessionId)
             draft.hydratedSessionIds.delete(sessionId)
             draft.sessionMetaMap.delete(sessionId)
             draft.activeGoalMap.delete(sessionId)
-            for (const message of removedMessages) {
-              draft.runDisplayMetaMap.delete(message.id)
-              draft.errorMap.delete(message.id)
-            }
             for (const id of removedMessageIds) {
+              draft.generatingMessageIds.delete(id)
               draft.passiveStreamingMessageIds.delete(id)
+              draft.activeAbortControllers.delete(id)
+              draft.runDisplayMetaMap.delete(id)
+              draft.errorMap.delete(id)
+            }
+            for (const [sourceMessageId, split] of draft.assistantDisplaySplitMap) {
+              if (removedMessageIds.has(sourceMessageId) || removedMessageIds.has(split.tailMessageId)) {
+                draft.assistantDisplaySplitMap.delete(sourceMessageId)
+              }
             }
           })
         })
@@ -669,6 +736,173 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
   ),
   shallow,
 )
+
+export function getChatStoreTelemetrySnapshot(): ChatStoreTelemetrySnapshot {
+  const state = useChatStore.getState()
+  const sessions: ChatStoreSessionTelemetry[] = []
+  const assistantDisplaySplitCountBySessionId = countAssistantDisplaySplitsBySessionId(state)
+  const totals: ChatStoreTelemetrySnapshot['totals'] = {
+    sessionCount: state.messagesMap.size,
+    hydratedSessionCount: state.hydratedSessionIds.size,
+    messageCount: 0,
+    partCount: 0,
+    textPartCount: 0,
+    toolPartCount: 0,
+    filePartCount: 0,
+    dataPartCount: 0,
+    reasoningPartCount: 0,
+    estimatedPartStringChars: 0,
+    generatingMessageCount: state.generatingMessageIds.size,
+    passiveStreamingMessageCount: state.passiveStreamingMessageIds.size,
+    activeAbortControllerCount: state.activeAbortControllers.size,
+    runDisplayMetaCount: state.runDisplayMetaMap.size,
+    errorCount: state.errorMap.size,
+    sessionMetaCount: state.sessionMetaMap.size,
+    activeGoalCount: state.activeGoalMap.size,
+    assistantDisplaySplitCount: state.assistantDisplaySplitMap.size,
+  }
+
+  for (const [sessionId, messages] of state.messagesMap) {
+    const meta = state.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
+    const session: ChatStoreSessionTelemetry = {
+      sessionId,
+      hydrated: state.hydratedSessionIds.has(sessionId),
+      messageCount: messages.length,
+      partCount: 0,
+      textPartCount: 0,
+      toolPartCount: 0,
+      filePartCount: 0,
+      dataPartCount: 0,
+      reasoningPartCount: 0,
+      estimatedPartStringChars: 0,
+      streamingMessageCount: 0,
+      generatingMessageCount: 0,
+      passiveStreamingMessageCount: 0,
+      hasLocalDriver: Boolean(meta.localDriverMessageId),
+      passiveStatus: meta.passiveStatus,
+      errorCount: 0,
+      activeGoal: state.activeGoalMap.has(sessionId),
+      assistantDisplaySplitCount: assistantDisplaySplitCountBySessionId.get(sessionId) ?? 0,
+    }
+
+    for (const message of messages) {
+      if (state.errorMap.has(message.id)) {
+        session.errorCount += 1
+      }
+      const generating = state.generatingMessageIds.has(message.id)
+      const passiveStreaming = state.passiveStreamingMessageIds.has(message.id)
+      if (generating) {
+        session.generatingMessageCount += 1
+      }
+      if (passiveStreaming) {
+        session.passiveStreamingMessageCount += 1
+      }
+      if (generating || passiveStreaming || meta.localDriverMessageId === message.id) {
+        session.streamingMessageCount += 1
+      }
+
+      for (const part of message.parts ?? EMPTY_MESSAGES) {
+        session.partCount += 1
+        session.estimatedPartStringChars += estimateStringChars(part)
+        const partType = readPartType(part)
+        if (partType === 'text') {
+          session.textPartCount += 1
+        }
+        else if (partType === 'file') {
+          session.filePartCount += 1
+        }
+        else if (partType === 'reasoning' || partType.startsWith('reasoning-')) {
+          session.reasoningPartCount += 1
+        }
+        else if (partType.startsWith('tool-') || partType === 'dynamic-tool') {
+          session.toolPartCount += 1
+        }
+        else if (partType.startsWith('data-')) {
+          session.dataPartCount += 1
+        }
+      }
+    }
+
+    totals.messageCount += session.messageCount
+    totals.partCount += session.partCount
+    totals.textPartCount += session.textPartCount
+    totals.toolPartCount += session.toolPartCount
+    totals.filePartCount += session.filePartCount
+    totals.dataPartCount += session.dataPartCount
+    totals.reasoningPartCount += session.reasoningPartCount
+    totals.estimatedPartStringChars += session.estimatedPartStringChars
+    sessions.push(session)
+  }
+
+  sessions.sort((a, b) =>
+    b.estimatedPartStringChars - a.estimatedPartStringChars
+    || b.messageCount - a.messageCount
+    || a.sessionId.localeCompare(b.sessionId))
+
+  return {
+    totals,
+    sessions: sessions.slice(0, CHAT_STORE_TELEMETRY_SESSION_LIMIT),
+    limits: {
+      sessionLimit: CHAT_STORE_TELEMETRY_SESSION_LIMIT,
+      truncatedSessions: Math.max(0, sessions.length - CHAT_STORE_TELEMETRY_SESSION_LIMIT),
+    },
+  }
+}
+
+function countAssistantDisplaySplitsBySessionId(state: ChatState): Map<string, number> {
+  const messageSessionIds = new Map<string, string>()
+  for (const [sessionId, messages] of state.messagesMap) {
+    for (const message of messages) {
+      messageSessionIds.set(message.id, sessionId)
+    }
+  }
+
+  const counts = new Map<string, number>()
+  for (const split of state.assistantDisplaySplitMap.values()) {
+    const sessionId = messageSessionIds.get(split.sourceMessageId) ?? messageSessionIds.get(split.tailMessageId)
+    if (sessionId) {
+      counts.set(sessionId, (counts.get(sessionId) ?? 0) + 1)
+    }
+  }
+  return counts
+}
+
+function readPartType(part: unknown): string {
+  if (!isRecord(part)) {
+    return 'unknown'
+  }
+  return typeof part.type === 'string' ? part.type : 'unknown'
+}
+
+function estimateStringChars(value: unknown, depth = 0, seen = new Set<object>()): number {
+  if (typeof value === 'string') {
+    return value.length
+  }
+  if (value === null || typeof value !== 'object') {
+    return 0
+  }
+  if (seen.has(value)) {
+    return 0
+  }
+  if (depth >= CHAT_STORE_TELEMETRY_OBJECT_DEPTH_LIMIT) {
+    return 0
+  }
+
+  seen.add(value)
+  let total = 0
+  if (Array.isArray(value)) {
+    for (const item of value.slice(0, CHAT_STORE_TELEMETRY_OBJECT_ENTRY_LIMIT)) {
+      total += estimateStringChars(item, depth + 1, seen)
+    }
+  }
+  else {
+    for (const item of Object.values(value).slice(0, CHAT_STORE_TELEMETRY_OBJECT_ENTRY_LIMIT)) {
+      total += estimateStringChars(item, depth + 1, seen)
+    }
+  }
+  seen.delete(value)
+  return total
+}
 
 // ── Selectors ───────────────────────────────────────────────
 

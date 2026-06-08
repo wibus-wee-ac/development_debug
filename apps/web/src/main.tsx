@@ -13,6 +13,7 @@ import { I18nProvider } from './i18n/client'
 import { initPerfMonitor } from './lib/perf-monitor'
 import { loadWebPlugins } from './lib/plugin-host'
 import { initializeReactDiagnostics } from './lib/react-diagnostics'
+import { installRendererDiagnostics } from './lib/renderer-diagnostics'
 
 type SharedModuleRegistry = Window & {
   [key: symbol]: Record<string, unknown>
@@ -58,6 +59,7 @@ async function startApp(): Promise<void> {
 
   queueMicrotask(() => {
     initPerfMonitor()
+    installRendererDiagnostics()
     void loadWebPlugins().catch((error) => {
       console.error('[plugin-host] failed to load web plugins:', error)
     })

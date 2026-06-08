@@ -25,4 +25,5 @@ export default {
   'runtimeSettings.summary.pendingActiveRun': '{{summary}} (saved for the next run)',
   'runtimeSettings.summary.short': '{{access}} / {{interaction}}',
   'status.thinking': 'Thinking...',
+  'subagent.output.readOnly': 'Cannot interact with Subagent',
 } as const

@@ -1449,6 +1449,76 @@ export type PutProviderTargetsByProviderTargetIdResponses = {
 
 export type PutProviderTargetsByProviderTargetIdResponse = PutProviderTargetsByProviderTargetIdResponses[keyof PutProviderTargetsByProviderTargetIdResponses];
 
+export type PostProviderTargetsCredentialsChatgptLoginData = {
+    body: {
+        label?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/provider-targets/credentials/chatgpt/login';
+};
+
+export type PostProviderTargetsCredentialsChatgptLoginResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        loginId: string;
+        verificationUrl: string;
+        userCode: string;
+        expiresAt: number;
+    };
+};
+
+export type PostProviderTargetsCredentialsChatgptLoginResponse = PostProviderTargetsCredentialsChatgptLoginResponses[keyof PostProviderTargetsCredentialsChatgptLoginResponses];
+
+export type GetProviderTargetsCredentialsChatgptLoginByLoginIdData = {
+    body?: never;
+    path: {
+        loginId: string;
+    };
+    query?: never;
+    url: '/provider-targets/credentials/chatgpt/login/{loginId}';
+};
+
+export type GetProviderTargetsCredentialsChatgptLoginByLoginIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        loginId: string;
+        state: 'pending' | 'completed' | 'failed' | 'cancelled';
+        startedAt: number;
+        completedAt: number | null;
+        credentialRef: string | null;
+        email: string | null;
+        planType: string | null;
+        error: string | null;
+    };
+};
+
+export type GetProviderTargetsCredentialsChatgptLoginByLoginIdResponse = GetProviderTargetsCredentialsChatgptLoginByLoginIdResponses[keyof GetProviderTargetsCredentialsChatgptLoginByLoginIdResponses];
+
+export type PostProviderTargetsCredentialsChatgptLoginByLoginIdCancelData = {
+    body?: never;
+    path: {
+        loginId: string;
+    };
+    query?: never;
+    url: '/provider-targets/credentials/chatgpt/login/{loginId}/cancel';
+};
+
+export type PostProviderTargetsCredentialsChatgptLoginByLoginIdCancelResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type PostProviderTargetsCredentialsChatgptLoginByLoginIdCancelResponse = PostProviderTargetsCredentialsChatgptLoginByLoginIdCancelResponses[keyof PostProviderTargetsCredentialsChatgptLoginByLoginIdCancelResponses];
+
 export type GetProviderTargetsByProviderTargetIdModelSettingsData = {
     body?: never;
     path: {
@@ -7839,6 +7909,16 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
                 startedAt: number | null;
                 completedAt: number | null;
             }>;
+            agents: Array<{
+                threadId: string;
+                status: string | null;
+                message: string | null;
+                name: string | null;
+                preview: string | null;
+                modelProvider: string | null;
+                agentNickname: string | null;
+                agentRole: string | null;
+            }>;
             collaborationModeCount: number;
             collaborationModes: Array<{
                 name: string;
@@ -11399,6 +11479,9 @@ export type PostObservabilityRuntimeSamplesData = {
         windows: Array<{
             [key: string]: unknown;
         }>;
+        diagnostics?: {
+            [key: string]: unknown;
+        };
     };
     path?: never;
     query?: never;
@@ -11627,6 +11710,9 @@ export type GetObservabilityRuntimeSnapshotResponses = {
                 windows: Array<{
                     [key: string]: unknown;
                 }>;
+                diagnostics?: {
+                    [key: string]: unknown;
+                };
             }>;
         };
         observability: {

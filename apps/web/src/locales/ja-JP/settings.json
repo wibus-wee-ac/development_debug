@@ -247,7 +247,7 @@
   "support.feedbackChannel.label": "Private handoff",
   "support.feedbackTemplate.description": "バージョン、ランタイム、サーバー URL、診断手順を含む簡潔な feedback template をコピーします。",
   "support.feedbackTemplate.label": "フィードバックテンプレート",
-  "support.onboarding.description": "ローカルのオンボーディング状態をリセットし、初回フローを再表示します。",
+  "support.onboarding.description": "オンボーディングフローを再表示し、初期設定を再構成します。",
   "support.onboarding.label": "オンボーディング",
   "support.page.description": "ローカル診断をエクスポートし、private-preview feedback を準備し、アンインストール前に Cradle 管理データを確認します。",
   "support.page.title": "サポート",
@@ -269,9 +269,6 @@
   "support.template.title": "# Cradle プレビューフィードバック",
   "support.template.version": "バージョン: {{version}}",
   "support.template.whatHappened": "## 起きたこと",
-  "support.onboarding.label": "オンボーディング",
-  "support.onboarding.description": "オンボーディングフローを再表示し、初期設定を再構成します。",
-  "support.action.showOnboarding": "オンボーディングを表示",
   "support.uninstall.description": "OS のアンインストール手順でアプリを削除します。誤って作業内容を削除しないよう、Cradle 管理のユーザーデータは既定で保持されます。",
   "support.uninstall.label": "アンインストール"
 }

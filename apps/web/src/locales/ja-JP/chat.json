@@ -24,5 +24,6 @@
   "runtimeSettings.summary": "{{access}} / {{interaction}}",
   "runtimeSettings.summary.pendingActiveRun": "{{summary}}（次の実行に保存）",
   "runtimeSettings.summary.short": "{{access}} / {{interaction}}",
-  "status.thinking": "考えています..."
+  "status.thinking": "考えています...",
+  "subagent.output.readOnly": "Subagent とは操作できません"
 }

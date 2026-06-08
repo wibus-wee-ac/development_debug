@@ -451,6 +451,7 @@ export function ChronicleSettings() {
           </Button>
         </div>
       }
+      maxWidth="4xl"
       data-testid="chronicle-settings"
       data-settings-chronicle-ready={settingsChronicleReady ? 'true' : 'false'}
     >

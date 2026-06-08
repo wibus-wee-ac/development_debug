@@ -36,7 +36,7 @@ export const zPutPreferencesDesktopBody = z.object({
         'DoubleCommand',
         'DoubleOption',
         'DoubleShift'
-    ]).default('DoubleCommand'),
+    ]),
     autoCheckForUpdates: z.boolean().default(true),
     autoDownloadUpdates: z.boolean().default(false)
 });
@@ -321,6 +321,18 @@ export const zPutProviderTargetsByProviderTargetIdBody = z.object({
 
 export const zPutProviderTargetsByProviderTargetIdPath = z.object({
     providerTargetId: z.string().min(1)
+});
+
+export const zPostProviderTargetsCredentialsChatgptLoginBody = z.object({
+    label: z.string().nullish()
+});
+
+export const zGetProviderTargetsCredentialsChatgptLoginByLoginIdPath = z.object({
+    loginId: z.string().min(1)
+});
+
+export const zPostProviderTargetsCredentialsChatgptLoginByLoginIdCancelPath = z.object({
+    loginId: z.string().min(1)
 });
 
 export const zGetProviderTargetsByProviderTargetIdModelSettingsPath = z.object({
@@ -2591,7 +2603,8 @@ export const zPostObservabilityRuntimeSamplesBody = z.object({
     sampledAt: z.number(),
     main: z.record(z.string(), z.unknown()),
     appMetrics: z.array(z.record(z.string(), z.unknown())),
-    windows: z.array(z.record(z.string(), z.unknown()))
+    windows: z.array(z.record(z.string(), z.unknown())),
+    diagnostics: z.record(z.string(), z.unknown()).optional()
 });
 
 export const zGetObservabilityIncidentsQuery = z.object({

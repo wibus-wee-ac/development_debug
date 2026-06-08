@@ -28,6 +28,7 @@ import { Label } from '~/components/ui/label'
 import { Spinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import type { ModelCapabilities } from '~/features/agent-runtime/types'
+import { cn } from '~/lib/cn'
 
 import type { ModelsDevModel, SearchResult } from './schemas'
 import { SearchResultItem } from './search-result-item'
@@ -356,7 +357,7 @@ function ManualEntryForm({
             value={draft[f.key]}
             onChange={event => onChange({ ...draft, [f.key]: event.target.value })}
             placeholder={t(f.placeholder)}
-            className={`h-8 text-[12px] ${f.mono ? 'font-mono' : ''}`}
+            className={cn('h-8 text-[12px]', f.mono && 'font-mono')}
           />
         </div>
       ))}
@@ -490,6 +491,13 @@ export function ModelRegistryMappingDialog({
     setStep('manual')
   }
 
+  const openManualFromResult = (result: SearchResult) => {
+    setManualDraft(
+      createManualDraft(modelId, result.label, result.capabilities, result.id),
+    )
+    setStep('manual')
+  }
+
   // ── Search step ──────────────────────────────────────────────────────────
 
   if (step === 'search') {
@@ -550,7 +558,10 @@ export function ModelRegistryMappingDialog({
                         result={result}
                         source={result.source}
                         disabled={saving}
-                        onClick={() => handleSelectResult(result)}
+                        onMap={() => handleSelectResult(result)}
+                        onCreateEntry={() => openManualFromResult(result)}
+                        mapLabel={t('models.mapping.mapResult')}
+                        createEntryLabel={t('models.mapping.createFromResult')}
                       />
                     </li>
                   ))}
@@ -570,7 +581,7 @@ export function ModelRegistryMappingDialog({
             </Button>
             <Button size="sm" variant="secondary" className="gap-1.5" onClick={openManual}>
               <SlidersHorizontalIcon className="size-3.5" />
-              {t('models.mapping.createEntry')}
+              {t('models.mapping.createManualEntry')}
             </Button>
           </DialogFooter>
         </DialogContent>
