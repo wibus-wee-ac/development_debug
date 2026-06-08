@@ -52,9 +52,12 @@ import {
 import { generateClaudeSessionTitle, shouldGenerateClaudeSessionTitle } from './provider-title-generation'
 import { activateClaudeAgentSdkConfigDir, resolveClaudeAgentRuntimeContext } from './runtime-context'
 import {
+  clearClaudeAgentCapturedPlan,
   clearClaudeAgentPendingModelSwitch,
+  projectClaudeAgentPlanUiSlotState,
   readClaudeAgentPendingModelSwitchId,
   resolveClaudeAgentPendingModelSwitchId,
+  writeClaudeAgentCapturedPlan,
   writeClaudeAgentPendingModelSwitch,
 } from './state-projector'
 import type { ClaudeAgentProviderDeps, ClaudeAgentSessionInfo, ClaudeTitleGenerationThinkingEffort } from './types'
@@ -163,8 +166,16 @@ export class ClaudeAgentProvider implements ChatRuntime {
   }
 
   async getUiSlotStates(input: GetUiSlotStatesInput): Promise<RuntimeUiSlotState[]> {
+    const planState = projectClaudeAgentPlanUiSlotState(input.runtimeSession)
     const compactState = await this.readCompactState(input)
-    return compactState ? [compactState] : []
+    const states: RuntimeUiSlotState[] = []
+    if (planState) {
+      states.push(planState)
+    }
+    if (compactState) {
+      states.push(compactState)
+    }
+    return states
   }
 
   async* quickQuestion(input: QuickQuestionInput): AsyncGenerator<UIMessageChunk, void, void> {
@@ -188,8 +199,12 @@ export class ClaudeAgentProvider implements ChatRuntime {
       persistSession: false,
     })
 
-    // Disable tools for quick questions
+    // Quick questions are a no-tools, no-persistence side path. Keep the
+    // transcript in prompt context, but do not initialize provider tools,
+    // MCP servers, or SDK skill discovery for this ephemeral query.
     queryOptions.tools = []
+    delete queryOptions.mcpServers
+    delete queryOptions.skills
 
     const inputStream = new ClaudeAgentInputStream()
     const activeQuery = query({ prompt: inputStream, options: queryOptions })
@@ -262,6 +277,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     const traceMessageId = input.responseMessageId ?? input.message.id
 
     const mapperState = createClaudeAgentChunkMapperState()
+    clearClaudeAgentCapturedPlan(input.runtimeSession)
 
     // Langfuse tracing via @langfuse/tracing SDK
     let generation: LangfuseGeneration | null = null
@@ -342,6 +358,9 @@ export class ClaudeAgentProvider implements ChatRuntime {
         }
 
         const result = await mapClaudeAgentMessageToChunks(message, mapperState)
+        for (const plan of result.capturedPlans) {
+          writeClaudeAgentCapturedPlan(input.runtimeSession, plan)
+        }
 
         if (isChatStreamTraceEnabled()) {
           recordChatStreamTrace({

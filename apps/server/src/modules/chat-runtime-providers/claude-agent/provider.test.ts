@@ -383,6 +383,88 @@ describe('claudeAgentProvider MCP integration', () => {
     })
   })
 
+  it('projects captured ExitPlanMode plans into composer UI slot state', async () => {
+    const plan = '1. Inspect\n2. Patch\n3. Verify'
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-plan-slot',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'toolu_plan_1',
+              name: 'ExitPlanMode',
+              input: { plan },
+            },
+          ],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-session-plan-slot',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const runtimeSession = createRuntimeSession()
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of provider.streamTurn({
+      runId: 'run-claude-agent-plan-slot',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Plan the work'),
+      workspaceId: 'workspace-1',
+      providerOptions: {
+        runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+      },
+    })) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual(expect.arrayContaining([
+      { type: 'tool-approval-request', toolCallId: 'implement-plan:toolu_plan_1', approvalId: 'implement-plan:toolu_plan_1' },
+    ]))
+    expect(JSON.parse(runtimeSession.providerStateSnapshot!).claudeAgent.plan).toEqual(expect.objectContaining({
+      threadId: 'chat-session-1',
+      turnId: 'toolu_plan_1',
+      content: plan,
+      steps: [
+        { step: '1. Inspect', status: 'pending' },
+        { step: '2. Patch', status: 'pending' },
+        { step: '3. Verify', status: 'pending' },
+      ],
+      updatedAt: expect.any(Number),
+    }))
+
+    const slotStates = await provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+    })
+
+    expect(slotStates).toEqual([
+      expect.objectContaining({
+        kind: 'plan',
+        slotId: 'claude-agent:plan',
+        threadId: 'chat-session-1',
+        turnId: 'toolu_plan_1',
+        content: plan,
+        currentStep: '1. Inspect',
+        pendingCount: 3,
+        inProgressCount: 0,
+        completedCount: 0,
+      }),
+      expect.objectContaining({
+        kind: 'compact',
+        slotId: 'claude-agent:compact',
+      }),
+    ])
+  })
+
   it('runs agent-scoped Claude Agent sessions from the agent home while keeping workspace context explicit', async () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'cradle-claude-agent-home-'))
     const previousHome = process.env.HOME
@@ -587,6 +669,16 @@ describe('claudeAgentProvider MCP integration', () => {
           commandText: '/btw ',
           surfaces: ['slashCommand', 'composerState'],
         },
+        {
+          id: 'claude-agent:plan',
+          name: 'plan',
+          label: 'Plan',
+          description: 'Show the current execution plan.',
+          argumentHint: '',
+          iconKey: 'plan',
+          commandText: '/plan ',
+          surfaces: ['composerState', 'runtimePanel'],
+        },
       ],
       skills: [],
     })
@@ -617,6 +709,67 @@ describe('claudeAgentProvider MCP integration', () => {
       }),
     }))
     await expect(readPromptText(1)).resolves.toBe('/review src/app.ts')
+  })
+
+  it('streams quick questions without persisting SDK sessions or loading tools', async () => {
+    addHostMcpServer({
+      name: 'browser-use',
+      command: 'node',
+      args: ['/plugins/browser-use/dist/mcp-server.mjs'],
+      env: { BROWSER_BACKEND_SOCKET: '/tmp/cradle-browser.sock' },
+    })
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-quick-question-session',
+        message: {
+          content: [{ type: 'text', text: 'Use the exported helper.' }],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-quick-question-session',
+        usage: { input_tokens: 3, output_tokens: 2 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of provider.quickQuestion({
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile({ skills: ['review'], tools: ['Read'] }),
+      question: 'Which helper should I use?',
+      transcript: [
+        createUserMessage('How should this module expose helpers?'),
+        {
+          id: 'assistant-context',
+          role: 'assistant',
+          parts: [{ type: 'text', text: 'The module exports named helpers.' }],
+        },
+      ],
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'text-delta', delta: 'Use the exported helper.' }),
+    ]))
+    expect(readQueryOptions(0)).toEqual(expect.objectContaining({
+      persistSession: false,
+      tools: [],
+      model: 'claude-sonnet-4-20250514',
+    }))
+    expect(readQueryOptions(0)).not.toHaveProperty('mcpServers')
+    expect(readQueryOptions(0)).not.toHaveProperty('skills')
+    const promptText = await readPromptText(0)
+    expect(promptText).toContain('Previous messages in this Cradle chat session:')
+    expect(promptText).toContain('User: How should this module expose helpers?')
+    expect(promptText).toContain('Assistant: The module exports named helpers.')
+    expect(promptText).toContain('Current user message:\nWhich helper should I use?')
   })
 
   it('resumes a stored Claude Agent SDK session and applies a pending model switch', async () => {

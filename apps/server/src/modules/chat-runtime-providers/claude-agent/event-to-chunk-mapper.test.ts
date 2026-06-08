@@ -140,7 +140,9 @@ describe('mapClaudeAgentMessageToChunks', () => {
         approvalId: 'implement-plan:toolu_plan_1',
       },
     ])
+    expect(first.capturedPlans).toEqual([{ toolCallId: 'toolu_plan_1', content: plan }])
     expect(second.chunks).toEqual([])
+    expect(second.capturedPlans).toEqual([])
   })
 
   it('ignores the Claude ExitPlanMode denial result after capturing the plan', async () => {

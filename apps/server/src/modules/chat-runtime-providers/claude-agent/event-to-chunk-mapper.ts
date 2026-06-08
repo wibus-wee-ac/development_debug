@@ -97,10 +97,16 @@ interface TextAccumulator {
   length: number
 }
 
+export interface ClaudeAgentCapturedPlan {
+  toolCallId: string
+  content: string
+}
+
 export interface ClaudeAgentChunkMapperResult {
   chunks: UIMessageChunk[]
   sessionId: string | null
   usage: TokenUsage | null
+  capturedPlans: ClaudeAgentCapturedPlan[]
 }
 
 export async function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: ClaudeAgentChunkMapperState): Promise<ClaudeAgentChunkMapperResult> {
@@ -118,6 +124,7 @@ export async function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: Clau
     return {
       ...result,
       chunks: preliminaryChunk ? [preliminaryChunk] : [],
+      capturedPlans: [],
     }
   }
 
@@ -174,6 +181,7 @@ async function mapClaudeAgentMessageToChunksWithoutParentProjection(msg: SDKMess
     chunks: [],
     sessionId: null,
     usage: null,
+    capturedPlans: [],
   }
 
   switch (msg.type) {
@@ -244,6 +252,7 @@ function mapSystemOrUnknown(msg: SDKMessage, state: ClaudeAgentChunkMapperState,
 
 function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
   const chunks: UIMessageChunk[] = []
+  const capturedPlans: ClaudeAgentCapturedPlan[] = []
 
   const flushTextSegment = (text: string) => {
     if (text.length === 0) {
@@ -267,6 +276,7 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
     if (block.type === 'tool_use') {
       const mapped = mapContentBlock(block, state)
       chunks.push(...mapped.chunks)
+      capturedPlans.push(...mapped.capturedPlans)
       state.hadToolCallSinceLastText = true
       continue
     }
@@ -279,6 +289,7 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
 
     const mapped = mapContentBlock(block, state)
     chunks.push(...mapped.chunks)
+    capturedPlans.push(...mapped.capturedPlans)
   }
   flushTextSegment(pendingText)
 
@@ -290,7 +301,7 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
       }
     : null
 
-  return { chunks, sessionId: msg.session_id, usage }
+  return { chunks, sessionId: msg.session_id, usage, capturedPlans }
 }
 
 async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState): Promise<ClaudeAgentChunkMapperResult> {
@@ -337,13 +348,13 @@ async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState):
     }
   }
 
-  return { chunks, sessionId: msg.session_id ?? null, usage: null }
+  return { chunks, sessionId: msg.session_id ?? null, usage: null, capturedPlans: [] }
 }
 
 function mapContentBlock(
   block: BetaContentBlock,
   state: ClaudeAgentChunkMapperState,
-): { chunks: UIMessageChunk[] } {
+): { chunks: UIMessageChunk[], capturedPlans: ClaudeAgentCapturedPlan[] } {
   switch (block.type) {
     case 'text': {
       const chunks: UIMessageChunk[] = []
@@ -354,7 +365,7 @@ function mapContentBlock(
       if (block.text) {
         chunks.push({ type: 'text-delta', id: state.textItemId, delta: block.text })
       }
-      return { chunks }
+      return { chunks, capturedPlans: [] }
     }
     case 'thinking': {
       const itemId = `thinking-${state.textItemId}`
@@ -365,15 +376,15 @@ function mapContentBlock(
         chunks.push({ type: 'reasoning-delta', id: itemId, delta: block.thinking })
       }
       chunks.push({ type: 'reasoning-end', id: itemId })
-      return { chunks }
+      return { chunks, capturedPlans: [] }
     }
     case 'tool_use':
       if (!block.id || !block.name) {
-        return { chunks: [] }
+        return { chunks: [], capturedPlans: [] }
       }
       return emitToolUseChunks(block.id, block.name, block.input, state)
     default:
-      return { chunks: [] }
+      return { chunks: [], capturedPlans: [] }
   }
 }
 
@@ -471,7 +482,7 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
     }
   }
 
-  return { chunks, sessionId: msg.session_id, usage }
+  return { chunks, sessionId: msg.session_id, usage, capturedPlans: [] }
 }
 
 function ensureTextBlockStarted(state: ClaudeAgentChunkMapperState, blockIndex: number): UIMessageChunk[] {
@@ -530,7 +541,7 @@ function mapResult(msg: SDKResultMessage, _state: ClaudeAgentChunkMapperState): 
       }
     : null
 
-  return { chunks: [], sessionId: msg.session_id, usage }
+  return { chunks: [], sessionId: msg.session_id, usage, capturedPlans: [] }
 }
 
 function emitAssistantTextSegment(
@@ -584,9 +595,10 @@ function emitToolUseChunks(
   toolName: string,
   input: unknown,
   state: ClaudeAgentChunkMapperState,
-): { chunks: UIMessageChunk[] } {
+): { chunks: UIMessageChunk[], capturedPlans: ClaudeAgentCapturedPlan[] } {
   const current = state.emittedToolStateByToolCallId.get(toolCallId) ?? { started: false, inputAvailable: false }
   const chunks: UIMessageChunk[] = []
+  const capturedPlans: ClaudeAgentCapturedPlan[] = []
   state.toolNamesByToolCallId.set(toolCallId, toolName)
 
   if (!current.started) {
@@ -607,6 +619,7 @@ function emitToolUseChunks(
 
   const exitPlan = readExitPlanModePlan(toolName, input)
   if (exitPlan && !current.outputAvailable) {
+    capturedPlans.push({ toolCallId, content: exitPlan })
     chunks.push({
       type: 'tool-output-available',
       toolCallId,
@@ -623,7 +636,7 @@ function emitToolUseChunks(
   if (exitPlan) {
     chunks.push(...emitPlanImplementationApprovalChunks(toolCallId, exitPlan, state))
   }
-  return { chunks }
+  return { chunks, capturedPlans }
 }
 
 function readExitPlanModePlan(toolName: string, input: unknown): string | null {

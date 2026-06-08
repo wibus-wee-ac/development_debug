@@ -59,11 +59,22 @@ const CLAUDE_AGENT_QUICK_QUESTION_SLOT: RuntimeUiSlot = {
   surfaces: ['slashCommand', 'composerState'],
 }
 
+const CLAUDE_AGENT_PLAN_SLOT: RuntimeUiSlot = {
+  id: 'claude-agent:plan',
+  name: 'plan',
+  label: 'Plan',
+  description: 'Show the current execution plan.',
+  argumentHint: '',
+  iconKey: 'plan',
+  commandText: '/plan ',
+  surfaces: ['composerState', 'runtimePanel'],
+}
+
 export function projectClaudeAgentPresentation(slashCommands: SlashCommand[]): RuntimePresentationCapabilities {
   return {
     runtimeKind: CLAUDE_AGENT_RUNTIME_KIND,
     slashCommands: slashCommands.map(toRuntimeSlashCommand),
-    uiSlots: [CLAUDE_AGENT_COMPACT_SLOT, CLAUDE_AGENT_QUICK_QUESTION_SLOT],
+    uiSlots: [CLAUDE_AGENT_COMPACT_SLOT, CLAUDE_AGENT_QUICK_QUESTION_SLOT, CLAUDE_AGENT_PLAN_SLOT],
     skills: [],
   }
 }
