@@ -7,8 +7,10 @@ This app is intentionally separate from Cradle Server. It handles Slack protocol
 ## Runtime Model
 
 - A Slack channel can be bound to one default Cradle workspace.
+- A Slack channel can choose one default Cradle agent or provider target through Slack Block UI.
 - A Slack thread is bound to one Cradle session.
 - The bridge stores `team_id + channel_id + thread_ts -> cradle_session_id` in its own SQLite database.
+- The bridge stores Slack channel defaults in its own SQLite database; Cradle remains the owner of agent and provider target definitions.
 - Cradle remains the owner of sessions, messages, chat runtime, files, approvals, and workspace semantics.
 - Slack messages are ingress events and delivery evidence, not canonical chat state.
 
@@ -54,9 +56,9 @@ Create `apps/slack-channel-bridge/.env`:
 
     CRADLE_API_BASE_URL=http://127.0.0.1:21423
 
-    # Required: choose one way for the bridge to create Cradle sessions.
+    # Optional legacy defaults. New channel bindings should choose this in Slack.
     # Agent ID is preferred because it carries the intended runtime/provider config.
-    CRADLE_SLACK_AGENT_ID=agent-your-default-agent
+    # CRADLE_SLACK_AGENT_ID=agent-your-default-agent
 
     # Or use a provider target directly:
     # CRADLE_SLACK_PROVIDER_TARGET_ID=provider-target-id
@@ -68,7 +70,7 @@ Create `apps/slack-channel-bridge/.env`:
 
 The default SQLite path is bridge-owned and separate from the Cradle server database.
 
-Cradle requires every created session to have an agent or provider target. The bridge fails fast at startup unless `CRADLE_SLACK_AGENT_ID` or `CRADLE_SLACK_PROVIDER_TARGET_ID` is configured.
+Cradle requires every created session to have an agent or provider target. The bridge no longer requires those internal IDs in `.env`; bind the Slack channel, then choose the default Cradle runtime from the Slack selector. If a new Slack thread arrives before a runtime is selected, the bridge posts the selector into that thread instead of trying to create a session with a missing or stale provider target ID.
 
 ## Generate Client
 
@@ -96,6 +98,14 @@ In Slack, bind a channel to a Cradle workspace:
 
     /cradle bind workspace <workspace-id>
 
+Slack will show selectors for the default Cradle agent/provider target and model to use for new threads in that channel. You can change them later with:
+
+    /cradle status
+
+The selector only includes provider-backed agents and provider targets. CLI TUI agents are intentionally excluded because the bridge cannot host an interactive terminal session inside a Slack thread.
+
+The model selector reads Cradle's cached provider-target models. If no cached models are available yet, the channel can still use the selected runtime's default model.
+
 Mention the bot in the channel:
 
     @Cradle summarize the current workspace risks
@@ -112,7 +122,7 @@ Bind the current Slack channel to a Cradle workspace.
 
     /cradle status
 
-Show the current channel binding and recent Slack thread to Cradle session mappings.
+Show the current channel binding, default Cradle runtime selector, and recent Slack thread to Cradle session mappings.
 
     /cradle unbind
 

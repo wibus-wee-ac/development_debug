@@ -99,6 +99,15 @@ const MIGRATIONS: Array<{ id: number, sql: string }> = [
       ALTER TABLE delivery_attempts ADD COLUMN message_blocks_json TEXT;
     `,
   },
+  {
+    id: 3,
+    sql: `
+      ALTER TABLE workspace_bindings ADD COLUMN session_agent_id TEXT;
+      ALTER TABLE workspace_bindings ADD COLUMN session_provider_target_id TEXT;
+      ALTER TABLE workspace_bindings ADD COLUMN session_runtime_kind TEXT;
+      ALTER TABLE workspace_bindings ADD COLUMN session_model_id TEXT;
+    `,
+  },
 ]
 
 export function runMigrations(sqlite: Database.Database): void {

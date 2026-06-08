@@ -1,18 +1,23 @@
 import { describe, expect, it } from 'vitest'
 
 import { loadConfig } from '../src/config'
-import { buildSlackSessionCreateBody } from '../src/cradle/service'
+import { buildSlackSessionCreateBody, enabledAgentTargets } from '../src/cradle/service'
+import type { GetAgentsResponse } from '../src/generated/cradle-api'
 
 const baseEnv = {
   SLACK_BOT_TOKEN: 'xoxb-test',
   SLACK_APP_TOKEN: 'xapp-test',
   SLACK_SIGNING_SECRET: 'secret',
   CRADLE_API_BASE_URL: 'http://127.0.0.1:21423',
+  SLACK_CHANNEL_BRIDGE_DB_PATH: '/tmp/slack-channel-bridge-config-test.sqlite',
 }
 
 describe('Cradle session defaults', () => {
-  it('fails fast when no agent or provider target is configured', () => {
-    expect(() => loadConfig(baseEnv)).toThrow(/CRADLE_SLACK_AGENT_ID or CRADLE_SLACK_PROVIDER_TARGET_ID/)
+  it('allows Slack Block UI channel selection without env session defaults', () => {
+    expect(loadConfig(baseEnv)).toMatchObject({
+      cradleAgentId: null,
+      cradleProviderTargetId: null,
+    })
   })
 
   it('builds an agent-backed session create body', () => {
@@ -46,5 +51,41 @@ describe('Cradle session defaults', () => {
       runtimeKind: 'standard',
       modelId: 'model_1',
     })
+  })
+
+  it('excludes CLI TUI agents from Slack-selectable session targets', () => {
+    const agents = [{
+      id: 'agent_codex',
+      name: 'Codex',
+      description: null,
+      avatarUrl: null,
+      avatarStyle: 'initials',
+      avatarSeed: 'codex',
+      providerTargetId: 'provider_1',
+      modelId: null,
+      thinkingEffort: 'medium',
+      runtimeKind: 'codex',
+      configJson: '{}',
+      enabled: true,
+      createdAt: 1,
+      updatedAt: 1,
+    }, {
+      id: 'agent_tui',
+      name: 'Terminal',
+      description: null,
+      avatarUrl: null,
+      avatarStyle: 'initials',
+      avatarSeed: 'terminal',
+      providerTargetId: null,
+      modelId: null,
+      thinkingEffort: 'medium',
+      runtimeKind: 'cli-tui',
+      configJson: '{}',
+      enabled: true,
+      createdAt: 1,
+      updatedAt: 1,
+    }] satisfies GetAgentsResponse
+
+    expect(enabledAgentTargets(agents).map(target => target.id)).toEqual(['agent_codex'])
   })
 })

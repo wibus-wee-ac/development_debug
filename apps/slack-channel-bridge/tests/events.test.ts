@@ -10,6 +10,7 @@ describe('handleSlackMessageEvent', () => {
     const posts: Array<{ channel: string, threadTs: string, text: string, blocks?: SlackBlockMessage['blocks'] }> = []
     const cradle = {
       createSlackBackedSession: vi.fn(async () => ({ id: 'session_1' })),
+      listSessionTargets: vi.fn(async () => []),
       sendMessageAndCollectResponse: vi.fn(async () => ({
         text: 'assistant reply',
         runId: 'run_1',
@@ -31,6 +32,8 @@ describe('handleSlackMessageEvent', () => {
         channelId: 'C1',
         cradleWorkspaceId: 'workspace_1',
         boundBySlackUserId: 'U1',
+        sessionAgentId: 'agent_1',
+        sessionModelId: 'gpt-5',
       })
       await handleSlackMessageEvent({
         event_id: 'Ev1',
@@ -50,6 +53,14 @@ describe('handleSlackMessageEvent', () => {
       })
 
       expect(cradle.createSlackBackedSession).toHaveBeenCalledTimes(1)
+      expect(cradle.createSlackBackedSession).toHaveBeenCalledWith({
+        workspaceId: 'workspace_1',
+        title: 'Slack: start this task',
+        sessionDefaults: {
+          agentId: 'agent_1',
+          modelId: 'gpt-5',
+        },
+      })
       expect(cradle.sendMessageAndCollectResponse).toHaveBeenCalledTimes(1)
       expect(await fixture.store.getThreadBinding({ teamId: 'T1', channelId: 'C1', threadTs: '100.000' })).toMatchObject({
         cradleSessionId: 'session_1',
@@ -86,6 +97,7 @@ describe('handleSlackMessageEvent', () => {
     const fixture = createTestStore()
     const cradle = {
       createSlackBackedSession: vi.fn(async () => ({ id: 'session_1' })),
+      listSessionTargets: vi.fn(async () => []),
       sendMessageAndCollectResponse: vi.fn(async () => ({
         text: 'assistant reply',
         runId: null,
@@ -115,6 +127,7 @@ describe('handleSlackMessageEvent', () => {
         channelId: 'C1',
         cradleWorkspaceId: 'workspace_1',
         boundBySlackUserId: 'U1',
+        sessionAgentId: 'agent_1',
       })
       await handleSlackMessageEvent(envelope, {
         store: fixture.store,
@@ -130,6 +143,70 @@ describe('handleSlackMessageEvent', () => {
       })
       expect(cradle.sendMessageAndCollectResponse).toHaveBeenCalledTimes(1)
       expect(poster.postMessage).toHaveBeenCalledTimes(1)
+    } finally {
+      fixture.cleanup()
+    }
+  })
+
+  it('prompts for a Cradle runtime instead of creating a session without a channel selection', async () => {
+    const fixture = createTestStore()
+    const cradle = {
+      createSlackBackedSession: vi.fn(async () => ({ id: 'session_1' })),
+      listSessionTargets: vi.fn(async () => [{
+        kind: 'agent' as const,
+        id: 'agent_1',
+        label: 'Codex',
+        description: null,
+        runtimeKind: 'codex',
+        providerTargetId: 'provider_1',
+        modelId: null,
+      }]),
+      sendMessageAndCollectResponse: vi.fn(async () => ({
+        text: 'assistant reply',
+        runId: null,
+        assistantMessageId: null,
+        userMessageId: null,
+      })),
+    }
+    const poster = {
+      postMessage: vi.fn(async () => ({ ts: '1.000' })),
+      addReaction: vi.fn(async () => {}),
+    }
+
+    try {
+      await fixture.store.setWorkspaceBinding({
+        teamId: 'T1',
+        channelId: 'C1',
+        cradleWorkspaceId: 'workspace_1',
+        boundBySlackUserId: 'U1',
+      })
+      await handleSlackMessageEvent({
+        event_id: 'Ev1',
+        team_id: 'T1',
+        event: {
+          type: 'app_mention',
+          channel: 'C1',
+          user: 'U1',
+          text: '<@B1> start this task',
+          ts: '100.000',
+        },
+      }, {
+        store: fixture.store,
+        cradle,
+        poster,
+        botUserId: 'B1',
+      })
+
+      expect(cradle.createSlackBackedSession).not.toHaveBeenCalled()
+      expect(cradle.sendMessageAndCollectResponse).not.toHaveBeenCalled()
+      expect(poster.postMessage).toHaveBeenCalledWith(expect.objectContaining({
+        channel: 'C1',
+        threadTs: '100.000',
+        text: expect.stringContaining('Choose a default Cradle runtime'),
+        blocks: expect.arrayContaining([
+          expect.objectContaining({ type: 'actions' }),
+        ]),
+      }))
     } finally {
       fixture.cleanup()
     }

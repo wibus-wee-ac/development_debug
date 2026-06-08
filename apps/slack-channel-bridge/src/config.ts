@@ -18,8 +18,6 @@ const envSchema = z.object({
   CRADLE_SLACK_MODEL_ID: z.string().min(1).optional(),
   SLACK_CHANNEL_BRIDGE_DB_PATH: z.string().optional(),
   SLACK_CHANNEL_BRIDGE_LOG_LEVEL: z.enum(['debug', 'info', 'warn', 'error']).default('info'),
-}).refine(env => Boolean(env.CRADLE_SLACK_AGENT_ID || env.CRADLE_SLACK_PROVIDER_TARGET_ID), {
-  message: 'Set CRADLE_SLACK_AGENT_ID or CRADLE_SLACK_PROVIDER_TARGET_ID so the bridge can create Cradle sessions.',
 })
 
 export interface BridgeConfig {

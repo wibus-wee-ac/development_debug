@@ -5,9 +5,14 @@ import type { BridgeStore } from '../store'
 import type { CradleService } from '../cradle/service'
 import {
   CRADLE_CHANNEL_UNBIND_ACTION,
+  CRADLE_SESSION_MODEL_SELECT_ACTION,
+  CRADLE_SESSION_TARGET_SELECT_ACTION,
   CRADLE_STATUS_REFRESH_ACTION,
+  type CradleActionContext,
   handleCradleChannelUnbindAction,
   handleCradleCommand,
+  handleCradleSessionModelSelectAction,
+  handleCradleSessionTargetSelectAction,
   handleCradleStatusRefreshAction,
 } from './commands'
 import { handleSlackMessageEvent, retryFailedDeliveries, type SlackPoster } from './events'
@@ -75,7 +80,7 @@ export function createSlackBridgeApp(input: {
 
   app.action(CRADLE_STATUS_REFRESH_ACTION, async ({ body, ack, respond }) => {
     await ack()
-    await handleCradleStatusRefreshAction(body, respond, {
+    await handleCradleStatusRefreshAction(body as CradleActionContext, respond, {
       store: input.store,
       cradle: input.cradle,
     })
@@ -83,7 +88,23 @@ export function createSlackBridgeApp(input: {
 
   app.action(CRADLE_CHANNEL_UNBIND_ACTION, async ({ body, ack, respond }) => {
     await ack()
-    await handleCradleChannelUnbindAction(body, respond, {
+    await handleCradleChannelUnbindAction(body as CradleActionContext, respond, {
+      store: input.store,
+      cradle: input.cradle,
+    })
+  })
+
+  app.action(CRADLE_SESSION_TARGET_SELECT_ACTION, async ({ body, ack, respond }) => {
+    await ack()
+    await handleCradleSessionTargetSelectAction(body as CradleActionContext, respond, {
+      store: input.store,
+      cradle: input.cradle,
+    })
+  })
+
+  app.action(CRADLE_SESSION_MODEL_SELECT_ACTION, async ({ body, ack, respond }) => {
+    await ack()
+    await handleCradleSessionModelSelectAction(body as CradleActionContext, respond, {
       store: input.store,
       cradle: input.cradle,
     })

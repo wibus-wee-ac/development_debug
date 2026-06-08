@@ -1,6 +1,16 @@
 import type { BridgeStore } from '../store'
-import type { CradleService, SessionSummary } from '../cradle/service'
+import type { CradleService, ProviderModelSummary, SessionSummary, SessionTargetSummary } from '../cradle/service'
 import type { SlackBlockMessage } from './format'
+import {
+  CRADLE_SESSION_MODEL_SELECT_ACTION,
+  CRADLE_SESSION_TARGET_SELECT_ACTION,
+  buildSessionTargetSelectBlocks,
+  describeSessionModel,
+  describeSessionTarget,
+  parseSessionModelValue,
+  parseSessionTargetValue,
+  selectedTargetForBinding,
+} from './session-targets'
 
 export interface CradleCommand {
   team_id?: string
@@ -18,7 +28,7 @@ export type SlackResponder = (message: {
 
 export interface CommandDependencies {
   store: BridgeStore
-  cradle: Pick<CradleService, 'verifyWorkspace' | 'getSessionSummary'>
+  cradle: Pick<CradleService, 'verifyWorkspace' | 'getSessionSummary' | 'listSessionTargets' | 'listProviderTargetModels'>
 }
 
 export interface CradleActionContext {
@@ -31,10 +41,18 @@ export interface CradleActionContext {
   user?: {
     id?: string
   } | null
+  actions?: Array<{
+    action_id?: string
+    selected_option?: {
+      value?: string
+    } | null
+    value?: string
+  }>
 }
 
 export const CRADLE_STATUS_REFRESH_ACTION = 'cradle_status_refresh'
 export const CRADLE_CHANNEL_UNBIND_ACTION = 'cradle_channel_unbind'
+export { CRADLE_SESSION_MODEL_SELECT_ACTION, CRADLE_SESSION_TARGET_SELECT_ACTION }
 
 interface StatusConversation {
   threadTs: string
@@ -70,6 +88,8 @@ function buildStatusMessage(input: {
   channelId: string
   binding: Awaited<ReturnType<BridgeStore['getWorkspaceBinding']>>
   conversations: StatusConversation[]
+  sessionTargets: SessionTargetSummary[]
+  models: ProviderModelSummary[]
 }): {
   text: string
   blocks: SlackBlockMessage['blocks']
@@ -80,6 +100,8 @@ function buildStatusMessage(input: {
   const threadText = input.conversations.length
     ? input.conversations.map(conversation => `- ${conversation.sessionTitle ?? 'Untitled Cradle session'} started from a Slack conversation on ${slackDateFromThreadTs(conversation.threadTs)}.`).join('\n')
     : 'No Slack conversations have been connected to Cradle yet.'
+  const sessionTargetText = describeSessionTarget(input.binding, input.sessionTargets)
+  const sessionModelText = describeSessionModel(input.binding, input.models)
   const blocks: SlackBlockMessage['blocks'] = [
     {
       type: 'header',
@@ -102,7 +124,7 @@ function buildStatusMessage(input: {
       elements: [{
         type: 'mrkdwn',
         text: input.binding
-          ? `Workspace: \`${escapeSlackText(input.binding.cradleWorkspaceId)}\``
+          ? `Workspace: \`${escapeSlackText(input.binding.cradleWorkspaceId)}\` | Runtime: ${sessionTargetText} | Model: ${sessionModelText}`
           : 'Run `/cradle bind workspace <workspace-id>` to connect this channel.',
       }],
     },
@@ -153,6 +175,18 @@ function buildStatusMessage(input: {
         text: 'No Slack conversations have been connected to Cradle yet. Mention the bot in this channel to start the first one after the channel is bound.',
       },
     })
+  }
+
+  if (input.binding) {
+    blocks.push({
+      type: 'divider',
+    })
+    blocks.push(...buildSessionTargetSelectBlocks({
+      binding: input.binding,
+      targets: input.sessionTargets,
+      models: input.models,
+      prompt: '*Default runtime for new Slack threads*',
+    }))
   }
 
   blocks.push(
@@ -208,8 +242,25 @@ function buildStatusMessage(input: {
   )
 
   return {
-    text: `${bindingText}\n\nRecent connected conversations:\n${threadText}`,
+    text: `${bindingText}\nDefault runtime: ${sessionTargetText}\nDefault model: ${sessionModelText}\n\nRecent connected conversations:\n${threadText}`,
     blocks,
+  }
+}
+
+async function listModelsForBinding(input: {
+  binding: Awaited<ReturnType<BridgeStore['getWorkspaceBinding']>>
+  targets: SessionTargetSummary[]
+  deps: CommandDependencies
+}): Promise<ProviderModelSummary[]> {
+  const selected = selectedTargetForBinding(input.binding, input.targets)
+  if (!selected?.providerTargetId) {
+    return []
+  }
+  try {
+    return await input.deps.cradle.listProviderTargetModels(selected.providerTargetId)
+  } catch (error) {
+    console.warn('[slack-channel-bridge] failed to list provider target models', error)
+    return []
   }
 }
 
@@ -240,8 +291,12 @@ async function respondWithStatus(input: {
 }): Promise<void> {
   const binding = await input.deps.store.getWorkspaceBinding(input.teamId, input.channelId)
   const threads = await input.deps.store.listRecentThreadBindings(input.teamId, input.channelId, 5)
-  const conversations = await resolveStatusConversations({ deps: input.deps, threads })
-  const message = buildStatusMessage({ channelId: input.channelId, binding, conversations })
+  const [conversations, sessionTargets] = await Promise.all([
+    resolveStatusConversations({ deps: input.deps, threads }),
+    input.deps.cradle.listSessionTargets(),
+  ])
+  const models = await listModelsForBinding({ binding, targets: sessionTargets, deps: input.deps })
+  const message = buildStatusMessage({ channelId: input.channelId, binding, conversations, sessionTargets, models })
   await input.respond({
     text: message.text,
     blocks: message.blocks,
@@ -275,8 +330,17 @@ export async function handleCradleCommand(
       cradleWorkspaceId: value,
       boundBySlackUserId: command.user_id,
     })
+    const binding = await deps.store.getWorkspaceBinding(teamId, command.channel_id)
+    const sessionTargets = await deps.cradle.listSessionTargets()
+    const models = await listModelsForBinding({ binding, targets: sessionTargets, deps })
     await respond({
-      text: `Bound this Slack channel to Cradle workspace ${value}. New Cradle sessions will be created per Slack thread.`,
+      text: `Bound this Slack channel to Cradle workspace ${value}. Choose the default Cradle runtime for new Slack threads.`,
+      blocks: buildSessionTargetSelectBlocks({
+        binding,
+        targets: sessionTargets,
+        models,
+        prompt: `Bound this Slack channel to Cradle workspace \`${escapeSlackText(value)}\`. Choose the default Cradle runtime for new Slack threads.`,
+      }),
       response_type: 'in_channel',
     })
     return
@@ -336,6 +400,102 @@ export async function handleCradleChannelUnbindAction(
     return
   }
   await deps.store.removeWorkspaceBinding(teamId, channelId)
+  await respondWithStatus({
+    teamId,
+    channelId,
+    respond,
+    deps,
+    replaceOriginal: true,
+  })
+}
+
+export async function handleCradleSessionTargetSelectAction(
+  action: CradleActionContext,
+  respond: SlackResponder,
+  deps: CommandDependencies,
+): Promise<void> {
+  const teamId = action.team?.id
+  const channelId = action.channel?.id
+  const selectedValue = action.actions?.find(item => item.action_id === CRADLE_SESSION_TARGET_SELECT_ACTION)
+    ?.selected_option?.value
+  if (!teamId || !channelId) {
+    await respond({ text: 'Slack action context was missing team or channel id.', response_type: 'ephemeral' })
+    return
+  }
+  const parsed = selectedValue ? parseSessionTargetValue(selectedValue) : null
+  if (!parsed) {
+    await respond({ text: 'Selected Cradle runtime was invalid.', response_type: 'ephemeral' })
+    return
+  }
+  const binding = await deps.store.getWorkspaceBinding(teamId, channelId)
+  if (!binding) {
+    await respond({ text: 'Bind this channel to a Cradle workspace before choosing a runtime.', response_type: 'ephemeral' })
+    return
+  }
+  const sessionTargets = await deps.cradle.listSessionTargets()
+  const target = sessionTargets.find(candidate => candidate.kind === parsed.kind && candidate.id === parsed.id)
+  if (!target) {
+    await respond({ text: 'Selected Cradle runtime is no longer available.', response_type: 'ephemeral' })
+    return
+  }
+  await deps.store.setWorkspaceSessionTemplate({
+    teamId,
+    channelId,
+    sessionAgentId: target.kind === 'agent' ? target.id : null,
+    sessionProviderTargetId: target.kind === 'provider-target' ? target.id : null,
+    sessionRuntimeKind: target.kind === 'provider-target' ? target.runtimeKind : null,
+    sessionModelId: null,
+  })
+  await respondWithStatus({
+    teamId,
+    channelId,
+    respond,
+    deps,
+    replaceOriginal: true,
+  })
+}
+
+export async function handleCradleSessionModelSelectAction(
+  action: CradleActionContext,
+  respond: SlackResponder,
+  deps: CommandDependencies,
+): Promise<void> {
+  const teamId = action.team?.id
+  const channelId = action.channel?.id
+  const selectedValue = action.actions?.find(item => item.action_id === CRADLE_SESSION_MODEL_SELECT_ACTION)
+    ?.selected_option?.value
+  if (!teamId || !channelId) {
+    await respond({ text: 'Slack action context was missing team or channel id.', response_type: 'ephemeral' })
+    return
+  }
+  if (!selectedValue) {
+    await respond({ text: 'Selected Cradle model was invalid.', response_type: 'ephemeral' })
+    return
+  }
+  const binding = await deps.store.getWorkspaceBinding(teamId, channelId)
+  if (!binding) {
+    await respond({ text: 'Bind this channel to a Cradle workspace before choosing a model.', response_type: 'ephemeral' })
+    return
+  }
+  const sessionTargets = await deps.cradle.listSessionTargets()
+  const selectedTarget = selectedTargetForBinding(binding, sessionTargets)
+  if (!selectedTarget?.providerTargetId) {
+    await respond({ text: 'Choose a Cradle runtime before choosing a model.', response_type: 'ephemeral' })
+    return
+  }
+  const modelId = parseSessionModelValue(selectedValue)
+  if (modelId) {
+    const models = await deps.cradle.listProviderTargetModels(selectedTarget.providerTargetId)
+    if (!models.some(model => model.id === modelId)) {
+      await respond({ text: 'Selected Cradle model is no longer available.', response_type: 'ephemeral' })
+      return
+    }
+  }
+  await deps.store.setWorkspaceSessionModel({
+    teamId,
+    channelId,
+    sessionModelId: modelId,
+  })
   await respondWithStatus({
     teamId,
     channelId,

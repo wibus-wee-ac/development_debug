@@ -19,6 +19,25 @@ export interface SetWorkspaceBindingInput {
   channelId: string
   cradleWorkspaceId: string
   boundBySlackUserId: string
+  sessionAgentId?: string | null
+  sessionProviderTargetId?: string | null
+  sessionRuntimeKind?: string | null
+  sessionModelId?: string | null
+}
+
+export interface SetWorkspaceSessionTemplateInput {
+  teamId: string
+  channelId: string
+  sessionAgentId?: string | null
+  sessionProviderTargetId?: string | null
+  sessionRuntimeKind?: string | null
+  sessionModelId?: string | null
+}
+
+export interface SetWorkspaceSessionModelInput {
+  teamId: string
+  channelId: string
+  sessionModelId?: string | null
 }
 
 export interface ThreadBindingInput {
@@ -101,6 +120,10 @@ export class BridgeStore {
         teamId: input.teamId,
         channelId: input.channelId,
         cradleWorkspaceId: input.cradleWorkspaceId,
+        sessionAgentId: input.sessionAgentId ?? existing?.sessionAgentId ?? null,
+        sessionProviderTargetId: input.sessionProviderTargetId ?? existing?.sessionProviderTargetId ?? null,
+        sessionRuntimeKind: input.sessionRuntimeKind ?? existing?.sessionRuntimeKind ?? null,
+        sessionModelId: input.sessionModelId ?? existing?.sessionModelId ?? null,
         boundBySlackUserId: input.boundBySlackUserId,
         createdAt: existing?.createdAt ?? now,
         updatedAt: now,
@@ -109,12 +132,41 @@ export class BridgeStore {
         target: [workspaceBindings.teamId, workspaceBindings.channelId],
         set: {
           cradleWorkspaceId: input.cradleWorkspaceId,
+          sessionAgentId: input.sessionAgentId ?? existing?.sessionAgentId ?? null,
+          sessionProviderTargetId: input.sessionProviderTargetId ?? existing?.sessionProviderTargetId ?? null,
+          sessionRuntimeKind: input.sessionRuntimeKind ?? existing?.sessionRuntimeKind ?? null,
+          sessionModelId: input.sessionModelId ?? existing?.sessionModelId ?? null,
           boundBySlackUserId: input.boundBySlackUserId,
           updatedAt: now,
         },
       })
       .run()
     return (await this.getWorkspaceBinding(input.teamId, input.channelId))!
+  }
+
+  async setWorkspaceSessionTemplate(input: SetWorkspaceSessionTemplateInput): Promise<WorkspaceBinding | null> {
+    this.database.db.update(workspaceBindings).set({
+      sessionAgentId: input.sessionAgentId ?? null,
+      sessionProviderTargetId: input.sessionProviderTargetId ?? null,
+      sessionRuntimeKind: input.sessionRuntimeKind ?? null,
+      sessionModelId: input.sessionModelId ?? null,
+      updatedAt: Date.now(),
+    }).where(and(
+      eq(workspaceBindings.teamId, input.teamId),
+      eq(workspaceBindings.channelId, input.channelId),
+    )).run()
+    return this.getWorkspaceBinding(input.teamId, input.channelId)
+  }
+
+  async setWorkspaceSessionModel(input: SetWorkspaceSessionModelInput): Promise<WorkspaceBinding | null> {
+    this.database.db.update(workspaceBindings).set({
+      sessionModelId: input.sessionModelId ?? null,
+      updatedAt: Date.now(),
+    }).where(and(
+      eq(workspaceBindings.teamId, input.teamId),
+      eq(workspaceBindings.channelId, input.channelId),
+    )).run()
+    return this.getWorkspaceBinding(input.teamId, input.channelId)
   }
 
   async removeWorkspaceBinding(teamId: string, channelId: string): Promise<void> {

@@ -1,6 +1,6 @@
 import type { BridgeStore } from '../store'
-import type { CradleService, SendMessageResult } from '../cradle/service'
-import type { DeliveryAttempt, ThreadBinding } from '../db/schema'
+import type { CradleService, CradleSessionDefaults, SendMessageResult } from '../cradle/service'
+import type { DeliveryAttempt, ThreadBinding, WorkspaceBinding } from '../db/schema'
 import {
   buildSlackProvenanceText,
   renderMarkdownForSlack,
@@ -8,6 +8,7 @@ import {
   stripBotMention,
   titleFromSlackText,
 } from './format'
+import { buildSessionTargetSelectBlocks } from './session-targets'
 
 export interface SlackMessageEvent {
   type?: string
@@ -42,7 +43,7 @@ export interface SlackPoster {
 
 export interface EventDependencies {
   store: BridgeStore
-  cradle: Pick<CradleService, 'createSlackBackedSession' | 'sendMessageAndCollectResponse'>
+  cradle: Pick<CradleService, 'createSlackBackedSession' | 'sendMessageAndCollectResponse' | 'listSessionTargets'>
   poster: SlackPoster
   botUserId?: string | null
 }
@@ -110,6 +111,23 @@ function blocksFromAttempt(attempt: DeliveryAttempt): SlackBlockMessage['blocks'
   }
 }
 
+function sessionDefaultsFromBinding(binding: WorkspaceBinding): CradleSessionDefaults | null {
+  if (binding.sessionAgentId) {
+    return {
+      agentId: binding.sessionAgentId,
+      modelId: binding.sessionModelId,
+    }
+  }
+  if (binding.sessionProviderTargetId) {
+    return {
+      providerTargetId: binding.sessionProviderTargetId,
+      runtimeKind: binding.sessionRuntimeKind ?? 'standard',
+      modelId: binding.sessionModelId,
+    }
+  }
+  return null
+}
+
 export async function handleSlackMessageEvent(
   envelope: SlackEventEnvelope,
   deps: EventDependencies,
@@ -175,9 +193,26 @@ export async function handleSlackMessageEvent(
         await deps.store.markInboundEventIgnored(id, 'channel has no workspace binding')
         return
       }
+      const sessionDefaults = sessionDefaultsFromBinding(workspaceBinding)
+      if (!sessionDefaults) {
+        const sessionTargets = await deps.cradle.listSessionTargets()
+        await deps.poster.postMessage({
+          channel: channelId,
+          threadTs,
+          text: 'Choose a default Cradle runtime for this Slack channel before starting a new Cradle session.',
+          blocks: buildSessionTargetSelectBlocks({
+            binding: workspaceBinding,
+            targets: sessionTargets,
+            prompt: 'Choose a default Cradle runtime for this Slack channel before starting a new Cradle session.',
+          }),
+        })
+        await deps.store.markInboundEventIgnored(id, 'channel has no session target binding')
+        return
+      }
       const session = await deps.cradle.createSlackBackedSession({
         workspaceId: workspaceBinding.cradleWorkspaceId,
         title: titleFromSlackText(text),
+        sessionDefaults,
       })
       binding = await deps.store.createThreadBinding({
         teamId,

@@ -1,4 +1,7 @@
 import {
+  getAgents,
+  getProviderTargets,
+  getProvidersTargetsByProviderTargetIdModelsCache,
   getSessionsById,
   getSessionsByIdMessages,
   getWorkspaces,
@@ -7,6 +10,9 @@ import {
   type GetSessionsByIdResponse,
   type GetSessionsByIdMessagesResponse,
   type GetWorkspacesResponse,
+  type GetAgentsResponse,
+  type GetProviderTargetsResponse,
+  type GetProvidersTargetsByProviderTargetIdModelsCacheResponse,
 } from '../generated/cradle-api'
 import { collectSseText } from '../slack/sse'
 
@@ -15,6 +21,21 @@ export interface CradleSessionDefaults {
   providerTargetId?: string | null
   runtimeKind?: string | null
   modelId?: string | null
+}
+
+export interface SessionTargetSummary {
+  kind: 'agent' | 'provider-target'
+  id: string
+  label: string
+  description: string | null
+  runtimeKind: string | null
+  providerTargetId: string | null
+  modelId: string | null
+}
+
+export interface ProviderModelSummary {
+  id: string
+  label: string
 }
 
 export interface WorkspaceSummary {
@@ -66,6 +87,34 @@ export function buildSlackSessionCreateBody(
   }
 }
 
+export function enabledAgentTargets(agents: GetAgentsResponse): SessionTargetSummary[] {
+  return agents
+    .filter(agent => agent.enabled && agent.runtimeKind !== 'cli-tui' && Boolean(agent.providerTargetId))
+    .map(agent => ({
+      kind: 'agent',
+      id: agent.id,
+      label: agent.name,
+      description: agent.description,
+      runtimeKind: agent.runtimeKind,
+      providerTargetId: agent.providerTargetId,
+      modelId: agent.modelId,
+    }))
+}
+
+function enabledProviderTargets(targets: GetProviderTargetsResponse): SessionTargetSummary[] {
+  return targets
+    .filter(target => target.enabled)
+    .map(target => ({
+      kind: 'provider-target',
+      id: target.id,
+      label: target.displayName,
+      description: target.providerKind,
+      runtimeKind: 'standard',
+      providerTargetId: target.id,
+      modelId: null,
+    }))
+}
+
 function throwApiError(operation: string, error: unknown): never {
   const detail = typeof error === 'string' ? error : JSON.stringify(error)
   throw new Error(`${operation} failed: ${detail}`)
@@ -91,12 +140,44 @@ export class CradleService {
     return workspaces.some(workspace => workspace.id === workspaceId)
   }
 
+  async listSessionTargets(): Promise<SessionTargetSummary[]> {
+    const [agentsResult, providerTargetsResult] = await Promise.all([
+      getAgents(),
+      getProviderTargets(),
+    ])
+    if ('error' in agentsResult && agentsResult.error) {
+      throwApiError('listAgents', agentsResult.error)
+    }
+    if ('error' in providerTargetsResult && providerTargetsResult.error) {
+      throwApiError('listProviderTargets', providerTargetsResult.error)
+    }
+    return [
+      ...enabledAgentTargets((agentsResult.data ?? []) as GetAgentsResponse),
+      ...enabledProviderTargets((providerTargetsResult.data ?? []) as GetProviderTargetsResponse),
+    ]
+  }
+
+  async listProviderTargetModels(providerTargetId: string): Promise<ProviderModelSummary[]> {
+    const result = await getProvidersTargetsByProviderTargetIdModelsCache({
+      path: { providerTargetId },
+    })
+    if ('error' in result && result.error) {
+      throwApiError('listProviderTargetModels', result.error)
+    }
+    const cache = result.data as GetProvidersTargetsByProviderTargetIdModelsCacheResponse | undefined
+    return (cache?.models ?? []).map(model => ({
+      id: model.id,
+      label: model.label,
+    }))
+  }
+
   async createSlackBackedSession(input: {
     workspaceId: string
     title: string
+    sessionDefaults?: CradleSessionDefaults
   }): Promise<{ id: string }> {
     const result = await postSessions({
-      body: buildSlackSessionCreateBody(input, this.defaults),
+      body: buildSlackSessionCreateBody(input, input.sessionDefaults ?? this.defaults),
     })
     if ('error' in result && result.error) {
       throwApiError('createSlackBackedSession', result.error)
