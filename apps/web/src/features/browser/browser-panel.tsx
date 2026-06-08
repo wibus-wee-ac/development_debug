@@ -29,6 +29,7 @@ import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } fr
 import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
+import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import {
   submitChatComposerFileIngress,
   submitChatPromptIngress,
@@ -74,6 +75,12 @@ import {
   BROWSER_NATIVE_SURFACE_OCCLUSION_SELECTOR,
 } from './native-surface-occlusion'
 import { PlanDocumentViewer } from './plan-document-viewer'
+import type { PlanRefineEditorDirtyDetail, PlanRefineEditorSaveDetail } from './plan-refine-editor'
+import {
+  PLAN_REFINE_EDITOR_DIRTY_EVENT,
+  PLAN_REFINE_EDITOR_SAVE_EVENT,
+  PlanRefineEditor,
+} from './plan-refine-editor'
 import { SideConversationPanel } from './side-conversation-panel'
 import { SubagentOutputPanel } from './subagent-output-panel'
 import { WorkspaceDiffViewer } from './workspace-diff-viewer'
@@ -304,6 +311,26 @@ function getPanelTabTitle(tab: BrowserPanelTab): string {
 
 function isBrowserPanelTab(tab: BrowserPanelTab): tab is BrowserWebTab {
   return tab.kind === 'browser'
+}
+
+function isPlanRefineEditorDirtyEvent(event: Event): event is CustomEvent<PlanRefineEditorDirtyDetail> {
+  return (
+    event instanceof CustomEvent
+    && typeof event.detail === 'object'
+    && event.detail !== null
+    && typeof (event.detail as Partial<PlanRefineEditorDirtyDetail>).tabId === 'string'
+    && typeof (event.detail as Partial<PlanRefineEditorDirtyDetail>).dirty === 'boolean'
+  )
+}
+
+function isPlanRefineEditorSaveEvent(event: Event): event is CustomEvent<PlanRefineEditorSaveDetail> {
+  return (
+    event instanceof CustomEvent
+    && typeof event.detail === 'object'
+    && event.detail !== null
+    && typeof (event.detail as Partial<PlanRefineEditorSaveDetail>).tabId === 'string'
+    && typeof (event.detail as Partial<PlanRefineEditorSaveDetail>).markdown === 'string'
+  )
 }
 
 function isBrowserBlankTab(tab: BrowserWebTab | null): boolean {
@@ -1176,6 +1203,8 @@ export function BrowserPanel({
   const [localServersLoading, setLocalServersLoading] = useState(false)
   const [newTabRequestPending, setNewTabRequestPending] = useState(false)
   const [localServersError, setLocalServersError] = useState<string | null>(null)
+  const [dirtyPlanRefineTabIds, setDirtyPlanRefineTabIds] = useState<Set<string>>(() => new Set())
+  const [discardPromptTabId, setDiscardPromptTabId] = useState<string | null>(null)
   const nativeBrowserAvailable = Boolean(readBrowserBridge())
 
   const tabs = useBrowserPanelStore(
@@ -1701,37 +1730,70 @@ export function BrowserPanel({
     })
   }
 
+  const closeLocalPanelTab = useCallback((tabId: string) => {
+    const tab = useBrowserPanelStore
+      .getState()
+      .owners[resolvedOwnerId]
+      ?.tabs
+      .find(item => item.id === tabId)
+
+    if (tab?.kind === 'side-conversation') {
+      void releaseSideConversation(tab.sideConversationId)
+    }
+
+    const result = closePanelTab(tabId, resolvedOwnerId)
+    setDirtyPlanRefineTabIds((previous) => {
+      if (!previous.has(tabId)) {
+        return previous
+      }
+      const next = new Set(previous)
+      next.delete(tabId)
+      return next
+    })
+    setDiscardPromptTabId(current => current === tabId ? null : current)
+
+    if (result.closedLastTab) {
+      removeOwnerState(resolvedOwnerId)
+      onCloseLastTab?.(resolvedOwnerId)
+      return
+    }
+    const nextOwnerState = useBrowserPanelStore.getState().owners[resolvedOwnerId]
+    const nextActiveBrowserTab = nextOwnerState?.tabs.find(
+      item => item.id === nextOwnerState.activeTabId && item.kind === 'browser',
+    )
+    const bridge = readBrowserBridge()
+    if (nextActiveBrowserTab && bridge) {
+      void runBrowserAction(async () => {
+        upsertOwnerState(
+          await bridge.selectTab({
+            threadId: resolvedOwnerId,
+            tabId: nextActiveBrowserTab.id,
+          }),
+        )
+      })
+    }
+  }, [
+    closePanelTab,
+    onCloseLastTab,
+    removeOwnerState,
+    resolvedOwnerId,
+    runBrowserAction,
+    upsertOwnerState,
+  ])
+
   const handleCloseTab = (tabId: string) => {
       const tab = tabs.find(item => item.id === tabId)
       if (!tab) {
         return
       }
 
+      if (tab.kind === 'plan-refine' && dirtyPlanRefineTabIds.has(tabId)) {
+        setDiscardPromptTabId(tabId)
+        return
+      }
+
       if (tab.kind !== 'browser') {
-        if (tab.kind === 'side-conversation') {
-          void releaseSideConversation(tab.sideConversationId)
-        }
-        const result = closePanelTab(tabId, resolvedOwnerId)
-        if (result.closedLastTab) {
-          removeOwnerState(resolvedOwnerId)
-          onCloseLastTab?.(resolvedOwnerId)
-          return
-        }
-        const nextOwnerState = useBrowserPanelStore.getState().owners[resolvedOwnerId]
-        const nextActiveBrowserTab = nextOwnerState?.tabs.find(
-          item => item.id === nextOwnerState.activeTabId && item.kind === 'browser',
-        )
-        const bridge = readBrowserBridge()
-        if (nextActiveBrowserTab && bridge) {
-          void runBrowserAction(async () => {
-            upsertOwnerState(
-              await bridge.selectTab({
-                threadId: resolvedOwnerId,
-                tabId: nextActiveBrowserTab.id,
-              }),
-            )
-          })
-        }
+        closeLocalPanelTab(tabId)
         return
       }
 
@@ -2329,6 +2391,70 @@ export function BrowserPanel({
     })
   }
 
+  useEffect(() => {
+    const handleDirtyEvent = (event: Event) => {
+      if (!isPlanRefineEditorDirtyEvent(event)) {
+        return
+      }
+      const tabExists = useBrowserPanelStore
+        .getState()
+        .owners[resolvedOwnerId]
+        ?.tabs
+        .some(tab => tab.id === event.detail.tabId && tab.kind === 'plan-refine')
+      if (!tabExists) {
+        return
+      }
+      setDirtyPlanRefineTabIds((previous) => {
+        const hasTab = previous.has(event.detail.tabId)
+        if (event.detail.dirty === hasTab) {
+          return previous
+        }
+        const next = new Set(previous)
+        if (event.detail.dirty) {
+          next.add(event.detail.tabId)
+        }
+        else {
+          next.delete(event.detail.tabId)
+        }
+        return next
+      })
+      if (!event.detail.dirty && discardPromptTabId === event.detail.tabId) {
+        setDiscardPromptTabId(null)
+      }
+    }
+
+    window.addEventListener(PLAN_REFINE_EDITOR_DIRTY_EVENT, handleDirtyEvent)
+    return () => {
+      window.removeEventListener(PLAN_REFINE_EDITOR_DIRTY_EVENT, handleDirtyEvent)
+    }
+  }, [discardPromptTabId, resolvedOwnerId])
+
+  useEffect(() => {
+    const handleSaveEvent = (event: Event) => {
+      if (!isPlanRefineEditorSaveEvent(event)) {
+        return
+      }
+      const tab = useBrowserPanelStore
+        .getState()
+        .owners[resolvedOwnerId]
+        ?.tabs
+        .find(item => item.id === event.detail.tabId && item.kind === 'plan-refine')
+      if (!tab) {
+        return
+      }
+      closeLocalPanelTab(tab.id)
+    }
+
+    window.addEventListener(PLAN_REFINE_EDITOR_SAVE_EVENT, handleSaveEvent)
+    return () => {
+      window.removeEventListener(PLAN_REFINE_EDITOR_SAVE_EVENT, handleSaveEvent)
+    }
+  }, [closeLocalPanelTab, resolvedOwnerId])
+
+  const handleDiscardPlanRefineTab = useCallback((tabId: string) => {
+    closeLocalPanelTab(tabId)
+  }, [closeLocalPanelTab])
+
   return (
     <div
       className="flex min-h-0 flex-1 flex-col overflow-hidden bg-background"
@@ -2387,6 +2513,9 @@ export function BrowserPanel({
                 {tab.kind === 'plan-document' && (
                   <PanelTopIcon className="size-3 shrink-0 text-muted-foreground/60" />
                 )}
+                {tab.kind === 'plan-refine' && (
+                  <PencilIcon className="size-3 shrink-0 text-muted-foreground/60" />
+                )}
                 <span className="truncate">{getPanelTabTitle(tab)}</span>
                 {tab.kind === 'browser'
                   && tab.sessionId
@@ -2400,14 +2529,56 @@ export function BrowserPanel({
                     </span>
                   )}
               </button>
-              <button
-                type="button"
-                className="mr-0.5 flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 opacity-0 transition-colors hover:bg-foreground/8 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
-                onClick={() => handleCloseTab(tab.id)}
-                aria-label={`Close ${getPanelTabTitle(tab)}`}
+              <Popover
+                open={discardPromptTabId === tab.id}
+                onOpenChange={(open) => {
+                  if (!open && discardPromptTabId === tab.id) {
+                    setDiscardPromptTabId(null)
+                  }
+                }}
               >
-                <XIcon className="size-3" />
-              </button>
+                <PopoverTrigger
+                  render={(
+                    <button
+                      type="button"
+                      className="mr-0.5 flex size-5 shrink-0 items-center justify-center rounded-sm text-muted-foreground/60 opacity-0 transition-colors hover:bg-foreground/8 hover:text-foreground focus-visible:opacity-100 group-hover:opacity-100"
+                      onClick={() => handleCloseTab(tab.id)}
+                      aria-label={`Close ${getPanelTabTitle(tab)}`}
+                      aria-haspopup={tab.kind === 'plan-refine' ? 'dialog' : undefined}
+                    >
+                      <XIcon className="size-3" />
+                    </button>
+                  )}
+                />
+                {tab.kind === 'plan-refine' && (
+                  <PopoverContent side="bottom" align="end" className="w-64 gap-2 p-3">
+                    <div className="space-y-1">
+                      <div className="text-xs font-medium text-foreground">Discard changes?</div>
+                      <div className="text-[11px] leading-4 text-muted-foreground">
+                        This plan has unsaved edits.
+                      </div>
+                    </div>
+                    <div className="flex justify-end gap-1.5">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="xs"
+                        onClick={() => setDiscardPromptTabId(null)}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="destructive"
+                        size="xs"
+                        onClick={() => handleDiscardPlanRefineTab(tab.id)}
+                      >
+                        Discard
+                      </Button>
+                    </div>
+                  </PopoverContent>
+                )}
+              </Popover>
             </div>
           ))}
           <button
@@ -2696,6 +2867,14 @@ export function BrowserPanel({
 
         {activePanelTab?.kind === 'plan-document' && (
           <PlanDocumentViewer
+            title={activePanelTab.title}
+            text={activePanelTab.text}
+          />
+        )}
+
+        {activePanelTab?.kind === 'plan-refine' && (
+          <PlanRefineEditor
+            tabId={activePanelTab.id}
             title={activePanelTab.title}
             text={activePanelTab.text}
           />
