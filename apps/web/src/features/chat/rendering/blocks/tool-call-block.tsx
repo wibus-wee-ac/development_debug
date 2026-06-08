@@ -20,19 +20,25 @@ import {
   PanelTopIcon,
   ServerIcon,
   SquareTerminalIcon,
-  XIcon,
+  XIcon
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
-import type { ComponentType, FocusEvent, KeyboardEvent, MouseEvent, PointerEvent, ReactElement, ReactNode } from 'react'
+import type {
+  ComponentType,
+  FocusEvent,
+  KeyboardEvent,
+  MouseEvent,
+  PointerEvent,
+  ReactElement,
+  ReactNode
+} from 'react'
 import { Activity, cloneElement, useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
-import { Input } from '~/components/ui/input'
 import { Progress } from '~/components/ui/progress'
 import { Table, TableBody, TableCell, TableRow } from '~/components/ui/table'
-import { Textarea } from '~/components/ui/textarea'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 import { boundedPercent } from '~/lib/number-format'
@@ -41,12 +47,14 @@ import { useLayoutStore } from '~/store/layout'
 
 import { projectChatTodos, readTodoCompletion } from '../../capabilities/chat-todo-projection'
 import { readTerminalOutputSections } from '../terminal-tool-details'
-import type { RenderableToolPart, ToolPayload, ToolState, ToolUiDescriptor, ToolUiKind } from '../tool-ui-classifier'
-import {
-  describeToolCall,
-  readToolInputPayload,
-  readToolPayload,
+import type {
+  RenderableToolPart,
+  ToolPayload,
+  ToolState,
+  ToolUiDescriptor,
+  ToolUiKind
 } from '../tool-ui-classifier'
+import { describeToolCall, readToolInputPayload, readToolPayload } from '../tool-ui-classifier'
 import { EditFileBlock } from './edit-file-block'
 
 interface ToolCallBlockProps {
@@ -63,30 +71,29 @@ interface ToolCallBlockProps {
   input?: unknown
   output?: unknown
   errorText?: string
-  workspaceDiffTarget?: { workspaceId: string, ownerId?: string | null }
-  onApprovalResponse?: (approval: { id: string, approved: boolean }) => void
-  onUserInputSubmit?: (answers: Record<string, string[]>) => Promise<void> | void
+  workspaceDiffTarget?: { workspaceId: string; ownerId?: string | null }
+  onApprovalResponse?: (approval: { id: string; approved: boolean }) => void
   children?: ReactNode
 }
 
-type IconComponent = ComponentType<{ 'className'?: string, 'aria-hidden'?: boolean }>
+type IconComponent = ComponentType<{ className?: string; 'aria-hidden'?: boolean }>
 
 const TOOL_ICON_MAP: Record<ToolUiKind, IconComponent> = {
   'file-read': FileTextIcon,
   'file-diff': DiffIcon,
   'notebook-diff': NotebookTabsIcon,
-  'terminal': SquareTerminalIcon,
-  'search': FileSearchIcon,
-  'web': GlobeIcon,
-  'subagent': BotIcon,
+  terminal: SquareTerminalIcon,
+  search: FileSearchIcon,
+  web: GlobeIcon,
+  subagent: BotIcon,
   'task-control': ClockIcon,
-  'todo': ListTodoIcon,
-  'plan': PanelTopIcon,
+  todo: ListTodoIcon,
+  plan: PanelTopIcon,
   'plan-implementation': ListChecksIcon,
-  'question': HelpCircleIcon,
-  'mcp': ServerIcon,
-  'worktree': GitBranchIcon,
-  'generic': Code2Icon,
+  question: HelpCircleIcon,
+  mcp: ServerIcon,
+  worktree: GitBranchIcon,
+  generic: Code2Icon
 }
 
 const STATUS_LABELS: Record<ToolState, string> = {
@@ -96,15 +103,16 @@ const STATUS_LABELS: Record<ToolState, string> = {
   'approval-responded': 'Approved',
   'output-available': 'Done',
   'output-error': 'Failed',
-  'output-denied': 'Denied',
+  'output-denied': 'Denied'
 }
 
 const CODE_TEXT_CLASS = 'font-mono text-[11px] leading-relaxed text-muted-foreground'
 const BACKSLASH_PATTERN = /\\/g
-const OTHER_OPTION_VALUE = '__cradle_runtime_other__'
 
 function isRunning(state: ToolState): boolean {
-  return state === 'input-streaming' || state === 'input-available' || state === 'approval-requested'
+  return (
+    state === 'input-streaming' || state === 'input-available' || state === 'approval-requested'
+  )
 }
 
 function isError(state: ToolState): boolean {
@@ -149,21 +157,10 @@ interface EditDiffPreview {
   newContent: string
 }
 
-interface RuntimeQuestionOption {
-  label: string
-  description: string
-}
-
-interface RuntimeQuestion {
-  id: string
-  header: string
-  question: string
-  isOther: boolean
-  isSecret: boolean
-  options: RuntimeQuestionOption[] | null
-}
-
-export function readEditDiffPreview(input: ToolPayload, output: ToolPayload): EditDiffPreview | null {
+export function readEditDiffPreview(
+  input: ToolPayload,
+  output: ToolPayload
+): EditDiffPreview | null {
   const filePath = input.filePath ?? output.filePath
   if (!filePath) {
     return null
@@ -178,7 +175,12 @@ export function readEditDiffPreview(input: ToolPayload, output: ToolPayload): Ed
     return {
       filePath,
       oldContent: originalFile,
-      newContent: applyEditPreview(originalFile, oldString, newString, readReplaceAll(input, output)),
+      newContent: applyEditPreview(
+        originalFile,
+        oldString,
+        newString,
+        readReplaceAll(input, output)
+      )
     }
   }
 
@@ -186,7 +188,7 @@ export function readEditDiffPreview(input: ToolPayload, output: ToolPayload): Ed
     return {
       filePath,
       oldContent: originalFile,
-      newContent: writtenContent,
+      newContent: writtenContent
     }
   }
 
@@ -194,7 +196,7 @@ export function readEditDiffPreview(input: ToolPayload, output: ToolPayload): Ed
     return {
       filePath,
       oldContent: oldString,
-      newContent: newString,
+      newContent: newString
     }
   }
 
@@ -214,50 +216,68 @@ function readEditPayloadSize(input: ToolPayload): number {
   if (streamingText) {
     return streamingText.length
   }
-  const parts = [
-    input.oldString,
-    input.newString,
-    input.contentText,
-  ].filter((value): value is string => value !== null)
+  const parts = [input.oldString, input.newString, input.contentText].filter(
+    (value): value is string => value !== null
+  )
   return parts.reduce((total, value) => total + value.length, 0)
 }
 
-function hasDiffPreviewContent(input: ToolPayload, output: ToolPayload, errorText?: string): boolean {
-  return !!errorText
-    || hasFileDiffPayloadContent(input, output)
+function hasDiffPreviewContent(
+  input: ToolPayload,
+  output: ToolPayload,
+  errorText?: string
+): boolean {
+  return !!errorText || hasFileDiffPayloadContent(input, output)
 }
 
 export function hasFileDiffPayloadContent(input: ToolPayload, output: ToolPayload): boolean {
-  return readEditDiffPreview(input, output) !== null
-    || readEditTarget(input, output) !== null
-    || readEditPayloadSize(input) > 0
-    || output.gitDiff.patch.length > 0
-    || output.structuredPatch.length > 0
+  return (
+    readEditDiffPreview(input, output) !== null ||
+    readEditTarget(input, output) !== null ||
+    readEditPayloadSize(input) > 0 ||
+    output.gitDiff.patch.length > 0 ||
+    output.structuredPatch.length > 0
+  )
 }
 
 export function hasFileDiffInlineContent(input: ToolPayload, output: ToolPayload): boolean {
-  return readEditDiffPreview(input, output) !== null
-    || readEditPayloadSize(input) > 0
-    || output.gitDiff.patch.length > 0
-    || output.structuredPatch.length > 0
+  return (
+    readEditDiffPreview(input, output) !== null ||
+    readEditPayloadSize(input) > 0 ||
+    output.gitDiff.patch.length > 0 ||
+    output.structuredPatch.length > 0
+  )
 }
 
 function hasDiffHeroContent(input: ToolPayload, output: ToolPayload): boolean {
   return hasFileDiffPayloadContent(input, output)
 }
 
-export function readFileDiffPayload(input: unknown, output: unknown, argumentsText?: string): { input: ToolPayload, output: ToolPayload } {
+export function readFileDiffPayload(
+  input: unknown,
+  output: unknown,
+  argumentsText?: string
+): { input: ToolPayload; output: ToolPayload } {
   const inputPayload = readToolInputPayload(input, argumentsText)
   const outputPayload = readToolPayload(output)
   return { input: inputPayload, output: outputPayload }
 }
 
-export function readFileDiffTarget(input: unknown, output: unknown, argumentsText?: string): string | null {
+export function readFileDiffTarget(
+  input: unknown,
+  output: unknown,
+  argumentsText?: string
+): string | null {
   const payload = readFileDiffPayload(input, output, argumentsText)
   return readEditTarget(payload.input, payload.output)
 }
 
-export function hasFileDiffDetails(input: unknown, output: unknown, argumentsText?: string, errorText?: string): boolean {
+export function hasFileDiffDetails(
+  input: unknown,
+  output: unknown,
+  argumentsText?: string,
+  errorText?: string
+): boolean {
   const payload = readFileDiffPayload(input, output, argumentsText)
   return hasDiffPreviewContent(payload.input, payload.output, errorText)
 }
@@ -266,14 +286,21 @@ function readReplaceAll(input: ToolPayload, output: ToolPayload): boolean {
   return input.replaceAll === true || output.replaceAll === true
 }
 
-function applyEditPreview(originalFile: string, oldString: string, newString: string, replaceAll: boolean): string {
+function applyEditPreview(
+  originalFile: string,
+  oldString: string,
+  newString: string,
+  replaceAll: boolean
+): string {
   if (!oldString || !originalFile.includes(oldString)) {
     return newString
   }
-  return replaceAll ? originalFile.split(oldString).join(newString) : originalFile.replace(oldString, newString)
+  return replaceAll
+    ? originalFile.split(oldString).join(newString)
+    : originalFile.replace(oldString, newString)
 }
 
-function RawValue({ value, className }: { value: unknown, className?: string }) {
+function RawValue({ value, className }: { value: unknown; className?: string }) {
   const text = formatValue(value)
   if (!text) {
     return null
@@ -285,7 +312,7 @@ function NativeCodeBlock({
   text,
   destructive = false,
   wrap = true,
-  className,
+  className
 }: {
   text: string
   destructive?: boolean
@@ -297,16 +324,16 @@ function NativeCodeBlock({
       className={cn(
         'max-h-56 overflow-auto overscroll-contain rounded-md bg-muted/35',
         destructive && 'bg-destructive/5',
-        className,
+        className
       )}
-      onClick={event => event.stopPropagation()}
+      onClick={(event) => event.stopPropagation()}
     >
       <pre
         className={cn(
           CODE_TEXT_CLASS,
           wrap ? 'whitespace-pre-wrap break-words' : 'min-w-max whitespace-pre',
           'p-2.5',
-          destructive && 'text-destructive/80',
+          destructive && 'text-destructive/80'
         )}
       >
         {text}
@@ -320,7 +347,7 @@ export function TerminalExecutionDetails({
   output,
   errorText,
   argumentsText,
-  className,
+  className
 }: {
   input: unknown
   output: unknown
@@ -348,7 +375,7 @@ export function TerminalExecutionDetails({
             <KeyValueTable
               rows={[
                 ['Timeout', timeout],
-                ['Background', backgroundTaskId],
+                ['Background', backgroundTaskId]
               ]}
             />
           </div>
@@ -357,18 +384,24 @@ export function TerminalExecutionDetails({
       {sections.length > 0 && (
         <DetailSection title="Output">
           <div className="grid gap-2">
-            {sections.map(section => (
+            {sections.map((section) => (
               <section key={section.label} className="grid gap-1">
                 {sections.length > 1 && (
-                  <div className={cn(
-                    'px-0.5 font-mono text-[10px] font-medium',
-                    section.destructive ? 'text-destructive/70' : 'text-muted-foreground/60',
-                  )}
+                  <div
+                    className={cn(
+                      'px-0.5 font-mono text-[10px] font-medium',
+                      section.destructive ? 'text-destructive/70' : 'text-muted-foreground/60'
+                    )}
                   >
                     {section.label}
                   </div>
                 )}
-                <NativeCodeBlock text={section.text} destructive={section.destructive} wrap={false} className="max-h-44" />
+                <NativeCodeBlock
+                  text={section.text}
+                  destructive={section.destructive}
+                  wrap={false}
+                  className="max-h-44"
+                />
               </section>
             ))}
           </div>
@@ -379,7 +412,9 @@ export function TerminalExecutionDetails({
 }
 
 function KeyValueTable({ rows }: { rows: Array<[string, ReactNode]> }) {
-  const visibleRows = rows.filter(([, value]) => value !== null && value !== undefined && value !== '')
+  const visibleRows = rows.filter(
+    ([, value]) => value !== null && value !== undefined && value !== ''
+  )
   if (visibleRows.length === 0) {
     return null
   }
@@ -401,16 +436,27 @@ function KeyValueTable({ rows }: { rows: Array<[string, ReactNode]> }) {
   )
 }
 
-function PathList({ paths, emptyText = 'No paths returned' }: { paths: string[], emptyText?: string }) {
+function PathList({
+  paths,
+  emptyText = 'No paths returned'
+}: {
+  paths: string[]
+  emptyText?: string
+}) {
   if (paths.length === 0) {
     return <p className="text-xs text-muted-foreground">{emptyText}</p>
   }
   return (
     <div className="grid gap-1">
-      {paths.slice(0, 24).map(path => (
-        <div key={path} className="flex min-w-0 items-center gap-2 rounded-md bg-muted/30 px-2 py-1.5">
+      {paths.slice(0, 24).map((path) => (
+        <div
+          key={path}
+          className="flex min-w-0 items-center gap-2 rounded-md bg-muted/30 px-2 py-1.5"
+        >
           <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
-          <span className="min-w-0 truncate font-mono text-[11px] text-foreground/80" title={path}>{path}</span>
+          <span className="min-w-0 truncate font-mono text-[11px] text-foreground/80" title={path}>
+            {path}
+          </span>
         </div>
       ))}
       {paths.length > 24 && (
@@ -422,7 +468,21 @@ function PathList({ paths, emptyText = 'No paths returned' }: { paths: string[],
   )
 }
 
-function ToolHero({ descriptor, state, input, output, errorText, toolCallId }: { descriptor: ToolUiDescriptor, state: ToolState, input: ToolPayload, output: ToolPayload, errorText?: string, toolCallId: string }) {
+function ToolHero({
+  descriptor,
+  state,
+  input,
+  output,
+  errorText,
+  toolCallId
+}: {
+  descriptor: ToolUiDescriptor
+  state: ToolState
+  input: ToolPayload
+  output: ToolPayload
+  errorText?: string
+  toolCallId: string
+}) {
   switch (descriptor.kind) {
     case 'terminal':
       return <TerminalSummary errorText={errorText} />
@@ -448,10 +508,11 @@ function ToolHero({ descriptor, state, input, output, errorText, toolCallId }: {
       return <QuestionSummary output={output} />
     default:
       return (
-        <div className={cn(
-          'rounded-md bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground',
-          isError(state) && 'bg-destructive/5 text-destructive/80',
-        )}
+        <div
+          className={cn(
+            'rounded-md bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground',
+            isError(state) && 'bg-destructive/5 text-destructive/80'
+          )}
         >
           {errorText || descriptor.summary || 'Tool details are available below.'}
         </div>
@@ -479,15 +540,13 @@ function FileReadSummary({ output }: { output: ToolPayload }) {
   if (outputType === 'image') {
     const mimeType = file.type ?? 'image/png'
     const base64 = file.base64
-    return base64
-      ? (
-          <img
-            src={`data:${mimeType};base64,${base64}`}
-            alt="Tool result preview"
-            className="max-h-64 rounded-md object-contain outline outline-1 outline-black/10 dark:outline-white/10"
-          />
-        )
-      : null
+    return base64 ? (
+      <img
+        src={`data:${mimeType};base64,${base64}`}
+        alt="Tool result preview"
+        className="max-h-64 rounded-md object-contain outline outline-1 outline-black/10 dark:outline-white/10"
+      />
+    ) : null
   }
   if (outputType === 'text') {
     return <RawValue value={file.content} />
@@ -499,13 +558,23 @@ function FileReadSummary({ output }: { output: ToolPayload }) {
         ['Path', file.filePath],
         ['Size', file.originalSize],
         ['Pages', file.count],
-        ['Output', file.outputDir],
+        ['Output', file.outputDir]
       ]}
     />
   )
 }
 
-function DiffSummary({ input, output, state, defaultOpen = false }: { input: ToolPayload, output: ToolPayload, state: ToolState, defaultOpen?: boolean }) {
+function DiffSummary({
+  input,
+  output,
+  state,
+  defaultOpen = false
+}: {
+  input: ToolPayload
+  output: ToolPayload
+  state: ToolState
+  defaultOpen?: boolean
+}) {
   const editPreview = readEditDiffPreview(input, output)
   if (editPreview) {
     return (
@@ -528,7 +597,10 @@ function DiffSummary({ input, output, state, defaultOpen = false }: { input: Too
       >
         <div className="flex min-w-0 items-center gap-2">
           <FilePenLineIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
-          <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground/75" title={filePath ?? undefined}>
+          <span
+            className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground/75"
+            title={filePath ?? undefined}
+          >
             {filePath ?? 'Receiving file edit'}
           </span>
           {payloadSize > 0 && (
@@ -547,10 +619,14 @@ function DiffSummary({ input, output, state, defaultOpen = false }: { input: Too
     return <RawValue value={patch} className="max-h-64" />
   }
   if (output.structuredPatch.length > 0) {
-    const lines = output.structuredPatch.flatMap(hunk => hunk.lines)
+    const lines = output.structuredPatch.flatMap((hunk) => hunk.lines)
     return <RawValue value={lines.join('\n')} className="max-h-64" />
   }
-  return <p className="rounded-md bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground">File change prepared.</p>
+  return (
+    <p className="rounded-md bg-muted/30 px-2.5 py-2 text-xs text-muted-foreground">
+      File change prepared.
+    </p>
+  )
 }
 
 export function FileDiffExecutionDetails({
@@ -559,7 +635,7 @@ export function FileDiffExecutionDetails({
   errorText,
   argumentsText,
   state,
-  className,
+  className
 }: {
   input: unknown
   output: unknown
@@ -595,14 +671,16 @@ function SearchSummary({ output }: { output: ToolPayload }) {
 }
 
 function WebSummary({ output }: { output: ToolPayload }) {
-  const links = output.results.flatMap(item => item.content.map(hit => ({
-    title: hit.title ?? 'Untitled',
-    url: hit.url ?? '',
-  })))
+  const links = output.results.flatMap((item) =>
+    item.content.map((hit) => ({
+      title: hit.title ?? 'Untitled',
+      url: hit.url ?? ''
+    }))
+  )
   if (links.length > 0) {
     return (
       <div className="grid gap-1">
-        {links.slice(0, 8).map(link => (
+        {links.slice(0, 8).map((link) => (
           <a
             key={`${link.title}:${link.url}`}
             href={link.url}
@@ -611,7 +689,9 @@ function WebSummary({ output }: { output: ToolPayload }) {
             className="rounded-md bg-muted/30 px-2 py-1.5 text-xs text-foreground/85 transition-colors hover:bg-muted/60"
           >
             <span className="block truncate">{link.title}</span>
-            <span className="block truncate font-mono text-[10px] text-muted-foreground">{link.url}</span>
+            <span className="block truncate font-mono text-[10px] text-muted-foreground">
+              {link.url}
+            </span>
           </a>
         ))}
       </div>
@@ -622,7 +702,10 @@ function WebSummary({ output }: { output: ToolPayload }) {
 
 function SubagentSummary({ output }: { output: ToolPayload }) {
   const status = output.status
-  const content = output.contentBlocks.map(item => item.text).filter(Boolean).join('\n\n')
+  const content = output.contentBlocks
+    .map((item) => item.text)
+    .filter(Boolean)
+    .join('\n\n')
 
   if (!status && !content) {
     return null
@@ -634,7 +717,9 @@ function SubagentSummary({ output }: { output: ToolPayload }) {
         <Alert className="border-amber-500/20 bg-amber-500/5 text-amber-700 dark:text-amber-300">
           <ClockIcon className="size-4" aria-hidden />
           <AlertTitle>Background agent launched</AlertTitle>
-          <AlertDescription>{output.outputFile ?? 'Output will be available when the task completes.'}</AlertDescription>
+          <AlertDescription>
+            {output.outputFile ?? 'Output will be available when the task completes.'}
+          </AlertDescription>
         </Alert>
       )}
       {content && <RawValue value={content} />}
@@ -642,7 +727,7 @@ function SubagentSummary({ output }: { output: ToolPayload }) {
   )
 }
 
-function TodoSummary({ input, output }: { input: ToolPayload, output: ToolPayload }) {
+function TodoSummary({ input, output }: { input: ToolPayload; output: ToolPayload }) {
   const todos = projectChatTodos(input, output)
   if (todos.length === 0) {
     return <RawValue value={output.rawText ?? input.rawText ?? output} />
@@ -652,19 +737,24 @@ function TodoSummary({ input, output }: { input: ToolPayload, output: ToolPayloa
     <div className="grid gap-2">
       <Progress value={boundedPercent(completed, todos.length)} className="h-1.5" />
       <div className="grid gap-1">
-        {todos.map(todo => (
-          <div key={todo.id ?? todo.content} className="flex items-start gap-2 rounded-md bg-muted/30 px-2 py-1.5">
+        {todos.map((todo) => (
+          <div
+            key={todo.id ?? todo.content}
+            className="flex items-start gap-2 rounded-md bg-muted/30 px-2 py-1.5"
+          >
             <CheckCircle2Icon
               className={cn(
                 'mt-0.5 size-3.5 shrink-0',
-                todo.status === 'completed' ? 'text-emerald-500' : 'text-muted-foreground',
+                todo.status === 'completed' ? 'text-emerald-500' : 'text-muted-foreground'
               )}
               aria-hidden
             />
-            <span className={cn(
-              'min-w-0 flex-1 text-xs text-foreground/85',
-              todo.status === 'completed' && 'text-muted-foreground line-through decoration-muted-foreground/50',
-            )}
+            <span
+              className={cn(
+                'min-w-0 flex-1 text-xs text-foreground/85',
+                todo.status === 'completed' &&
+                  'text-muted-foreground line-through decoration-muted-foreground/50'
+              )}
             >
               {todo.content}
             </span>
@@ -686,10 +776,26 @@ function PlanImplementationSummary() {
   )
 }
 
-function PlanSummary({ input, output, toolCallId }: { input: ToolPayload, output: ToolPayload, toolCallId: string }) {
-  const text = output.planContent ?? input.planContent ?? output.plan ?? input.plan ?? output.text ?? input.text ?? output.rawText ?? input.rawText
-  const openPlanDocumentTab = useBrowserPanelStore(s => s.openPlanDocumentTab)
-  const setBrowserPanelOpen = useLayoutStore(s => s.setBrowserPanelOpen)
+function PlanSummary({
+  input,
+  output,
+  toolCallId
+}: {
+  input: ToolPayload
+  output: ToolPayload
+  toolCallId: string
+}) {
+  const text =
+    output.planContent ??
+    input.planContent ??
+    output.plan ??
+    input.plan ??
+    output.text ??
+    input.text ??
+    output.rawText ??
+    input.rawText
+  const openPlanDocumentTab = useBrowserPanelStore((s) => s.openPlanDocumentTab)
+  const setBrowserPanelOpen = useLayoutStore((s) => s.setBrowserPanelOpen)
 
   if (!text) {
     return null
@@ -728,7 +834,9 @@ function PlanSummary({ input, output, toolCallId }: { input: ToolPayload, output
       <div className="flex h-8 items-center justify-between border-b border-border/60 px-3">
         <div className="flex min-w-0 items-center gap-2">
           <PanelTopIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
-          <span className="min-w-0 truncate text-xs font-medium text-foreground/80">Plan document</span>
+          <span className="min-w-0 truncate text-xs font-medium text-foreground/80">
+            Plan document
+          </span>
         </div>
         <Button
           type="button"
@@ -744,7 +852,8 @@ function PlanSummary({ input, output, toolCallId }: { input: ToolPayload, output
       <div
         className="streamdown-root max-h-64 overflow-y-auto px-3 py-3 text-xs leading-relaxed"
         style={{
-          maskImage: 'linear-gradient(to bottom, transparent, black 18px, black calc(100% - 24px), transparent)',
+          maskImage:
+            'linear-gradient(to bottom, transparent, black 18px, black calc(100% - 24px), transparent)'
         }}
       >
         <StaticRender content={text} />
@@ -765,156 +874,13 @@ function QuestionSummary({ output }: { output: ToolPayload }) {
   )
 }
 
-function readRuntimeQuestions(value: unknown[]): RuntimeQuestion[] {
-  return value.flatMap((item, index) => {
-    const record = isRecord(item) ? item : {}
-    const id = typeof record.id === 'string' && record.id ? record.id : `question-${index + 1}`
-    const options = Array.isArray(record.options)
-      ? record.options.flatMap((option) => {
-          const optionRecord = isRecord(option) ? option : {}
-          const label = typeof optionRecord.label === 'string' ? optionRecord.label : ''
-          if (!label) {
-            return []
-          }
-          return [{
-            label,
-            description: typeof optionRecord.description === 'string' ? optionRecord.description : '',
-          }]
-        })
-      : null
-    return [{
-      id,
-      header: typeof record.header === 'string' ? record.header : '',
-      question: typeof record.question === 'string' ? record.question : '',
-      isOther: record.isOther === true,
-      isSecret: record.isSecret === true,
-      options,
-    }]
-  })
-}
-
-function RuntimeUserInputForm({
-  questions,
-  disabled,
-  onSubmit,
+function _ToolDetails({
+  descriptor,
+  input,
+  output,
+  errorText,
+  children
 }: {
-  questions: RuntimeQuestion[]
-  disabled: boolean
-  onSubmit: (answers: Record<string, string[]>) => Promise<void> | void
-}) {
-  const [drafts, setDrafts] = useState<Record<string, string>>({})
-  const [otherDrafts, setOtherDrafts] = useState<Record<string, string>>({})
-  const [submitting, setSubmitting] = useState(false)
-
-  const updateDraft = (questionId: string, value: string) => {
-    setDrafts(current => ({ ...current, [questionId]: value }))
-  }
-
-  const updateOtherDraft = (questionId: string, value: string) => {
-    setOtherDrafts(current => ({ ...current, [questionId]: value }))
-  }
-
-  const submit = async () => {
-    const answers = Object.fromEntries(
-      questions.map((question) => {
-        const selected = drafts[question.id]?.trim() ?? ''
-        const other = otherDrafts[question.id]?.trim() ?? ''
-        return [question.id, [selected === OTHER_OPTION_VALUE ? other : selected].filter(Boolean)]
-      }),
-    )
-    setSubmitting(true)
-    try {
-      await onSubmit(answers)
-    }
-    finally {
-      setSubmitting(false)
-    }
-  }
-
-  return (
-    <div className="grid gap-3 border-t border-border/60 px-3 py-3" data-testid="runtime-user-input-card">
-      {questions.map(question => (
-        <div key={question.id} className="grid gap-2">
-          <div className="grid gap-0.5">
-            {question.header && <div className="text-[11px] font-medium text-muted-foreground">{question.header}</div>}
-            <div className="text-xs text-foreground/85">{question.question}</div>
-          </div>
-          {question.options && question.options.length > 0
-            ? (
-                <div className="grid gap-2">
-                  <div className="flex flex-wrap gap-1.5">
-                    {question.options.map(option => (
-                      <Button
-                        key={option.label}
-                        type="button"
-                        variant={drafts[question.id] === option.label ? 'secondary' : 'outline'}
-                        size="xs"
-                        disabled={disabled || submitting}
-                        title={option.description}
-                        onClick={() => updateDraft(question.id, option.label)}
-                      >
-                        {option.label}
-                      </Button>
-                    ))}
-                    {question.isOther && (
-                      <Button
-                        type="button"
-                        variant={drafts[question.id] === OTHER_OPTION_VALUE ? 'secondary' : 'outline'}
-                        size="xs"
-                        disabled={disabled || submitting}
-                        onClick={() => updateDraft(question.id, OTHER_OPTION_VALUE)}
-                      >
-                        Other
-                      </Button>
-                    )}
-                  </div>
-                  {question.isOther && drafts[question.id] === OTHER_OPTION_VALUE && (
-                    <Input
-                      value={otherDrafts[question.id] ?? ''}
-                      disabled={disabled || submitting}
-                      className="h-8 text-xs"
-                      placeholder="Other"
-                      onChange={event => updateOtherDraft(question.id, event.target.value)}
-                    />
-                  )}
-                </div>
-              )
-            : question.isSecret
-              ? (
-                  <Input
-                    type="password"
-                    value={drafts[question.id] ?? ''}
-                    disabled={disabled || submitting}
-                    className="h-8 text-xs"
-                    onChange={event => updateDraft(question.id, event.target.value)}
-                  />
-                )
-              : (
-                  <Textarea
-                    value={drafts[question.id] ?? ''}
-                    disabled={disabled || submitting}
-                    rows={3}
-                    className="min-h-9 resize-none text-xs"
-                    onChange={event => updateDraft(question.id, event.target.value)}
-                  />
-                )}
-        </div>
-      ))}
-      <div className="flex justify-end">
-        <Button
-          type="button"
-          size="xs"
-          disabled={disabled || submitting}
-          onClick={() => void submit()}
-        >
-          Submit
-        </Button>
-      </div>
-    </div>
-  )
-}
-
-function _ToolDetails({ descriptor, input, output, errorText, children }: {
   descriptor: ToolUiDescriptor
   input: ToolPayload
   output: ToolPayload
@@ -943,7 +909,15 @@ function _ToolDetails({ descriptor, input, output, errorText, children }: {
   )
 }
 
-function ToolSpecificDetails({ descriptor, input, output }: { descriptor: ToolUiDescriptor, input: ToolPayload, output: ToolPayload }) {
+function ToolSpecificDetails({
+  descriptor,
+  input,
+  output
+}: {
+  descriptor: ToolUiDescriptor
+  input: ToolPayload
+  output: ToolPayload
+}) {
   switch (descriptor.kind) {
     case 'terminal':
       return (
@@ -951,7 +925,7 @@ function ToolSpecificDetails({ descriptor, input, output }: { descriptor: ToolUi
           rows={[
             ['Command', input.command],
             ['Timeout', input.timeout],
-            ['Background', output.backgroundTaskId],
+            ['Background', output.backgroundTaskId]
           ]}
         />
       )
@@ -965,7 +939,7 @@ function ToolSpecificDetails({ descriptor, input, output }: { descriptor: ToolUi
             ['Path', input.filePath],
             ['Mode', output.mode],
             ['Files', output.numFiles],
-            ['Matches', output.numMatches],
+            ['Matches', output.numMatches]
           ]}
         />
       )
@@ -975,7 +949,7 @@ function ToolSpecificDetails({ descriptor, input, output }: { descriptor: ToolUi
           rows={[
             ['URL', input.url ?? output.url],
             ['Query', input.query ?? output.query],
-            ['Status', output.code],
+            ['Status', output.code]
           ]}
         />
       )
@@ -985,7 +959,7 @@ function ToolSpecificDetails({ descriptor, input, output }: { descriptor: ToolUi
           rows={[
             ['Path', output.worktreeTarget ?? input.worktreeTarget],
             ['Branch', output.worktreeBranch],
-            ['Action', output.action],
+            ['Action', output.action]
           ]}
         />
       )
@@ -994,7 +968,7 @@ function ToolSpecificDetails({ descriptor, input, output }: { descriptor: ToolUi
   }
 }
 
-function FileDiffDetails({ input, output }: { input: ToolPayload, output: ToolPayload }) {
+function FileDiffDetails({ input, output }: { input: ToolPayload; output: ToolPayload }) {
   const editPreview = readEditDiffPreview(input, output)
 
   return (
@@ -1004,7 +978,7 @@ function FileDiffDetails({ input, output }: { input: ToolPayload, output: ToolPa
           ['File', input.filePath ?? output.filePath],
           ['Mode', output.type],
           ['Replace all', input.replaceAll === true ? 'Yes' : null],
-          ['User modified', output.userModified === true ? 'Yes' : null],
+          ['User modified', output.userModified === true ? 'Yes' : null]
         ]}
       />
       {editPreview && (
@@ -1019,7 +993,7 @@ function FileDiffDetails({ input, output }: { input: ToolPayload, output: ToolPa
   )
 }
 
-function DetailSection({ title, children }: { title: string, children: ReactNode }) {
+function DetailSection({ title, children }: { title: string; children: ReactNode }) {
   return (
     <section className="grid gap-1.5">
       <div className="text-[10px] font-medium uppercase text-muted-foreground">{title}</div>
@@ -1028,14 +1002,22 @@ function DetailSection({ title, children }: { title: string, children: ReactNode
   )
 }
 
-function StatusIcon({ state, animated = true }: { state: ToolState, animated?: boolean }) {
+function StatusIcon({ state, animated = true }: { state: ToolState; animated?: boolean }) {
   if (isError(state)) {
     return <CircleAlertIcon className="size-3.5 text-destructive" aria-hidden />
   }
   if (state === 'output-available' || state === 'approval-responded') {
     return <CheckCircle2Icon className="size-3.5 text-emerald-500" aria-hidden />
   }
-  return <ClockIcon className={cn('size-3.5 text-muted-foreground', animated && isRunning(state) && 'animate-pulse')} aria-hidden />
+  return (
+    <ClockIcon
+      className={cn(
+        'size-3.5 text-muted-foreground',
+        animated && isRunning(state) && 'animate-pulse'
+      )}
+      aria-hidden
+    />
+  )
 }
 
 type LazyTooltipTriggerProps = {
@@ -1052,7 +1034,7 @@ export function LazyTooltip({
   delayDuration,
   side,
   contentClassName,
-  title,
+  title
 }: {
   children: ReactElement<LazyTooltipTriggerProps>
   content: ReactNode
@@ -1083,7 +1065,7 @@ export function LazyTooltip({
     onBlur: (event: FocusEvent<HTMLElement>) => {
       children.props.onBlur?.(event)
       setOpen(false)
-    },
+    }
   })
 
   if (!active) {
@@ -1092,9 +1074,7 @@ export function LazyTooltip({
 
   return (
     <Tooltip open={open} onOpenChange={setOpen} delayDuration={delayDuration}>
-      <TooltipTrigger asChild>
-        {trigger}
-      </TooltipTrigger>
+      <TooltipTrigger asChild>{trigger}</TooltipTrigger>
       <TooltipContent side={side} className={contentClassName}>
         {content}
       </TooltipContent>
@@ -1102,7 +1082,12 @@ export function LazyTooltip({
   )
 }
 
-function hasHeroContent(descriptor: ToolUiDescriptor, input: ToolPayload, output: ToolPayload, errorText?: string): boolean {
+function hasHeroContent(
+  descriptor: ToolUiDescriptor,
+  input: ToolPayload,
+  output: ToolPayload,
+  errorText?: string
+): boolean {
   if (errorText) {
     return true
   }
@@ -1115,24 +1100,52 @@ function hasHeroContent(descriptor: ToolUiDescriptor, input: ToolPayload, output
     case 'notebook-diff':
       return hasDiffHeroContent(input, output)
     case 'web':
-      return output.results.some(item => item.content.length > 0)
+      return output.results.some((item) => item.content.length > 0)
     case 'subagent':
       return !!(output.status || output.contentBlocks.length > 0)
     case 'todo':
-      return projectChatTodos(input, output).length > 0 || output.rawText !== null || input.rawText !== null
+      return (
+        projectChatTodos(input, output).length > 0 ||
+        output.rawText !== null ||
+        input.rawText !== null
+      )
     case 'plan-implementation':
       return true
     case 'plan':
-      return !!(output.planContent ?? input.planContent ?? output.plan ?? input.plan ?? output.text ?? input.text ?? output.rawText ?? input.rawText)
+      return !!(
+        output.planContent ??
+        input.planContent ??
+        output.plan ??
+        input.plan ??
+        output.text ??
+        input.text ??
+        output.rawText ??
+        input.rawText
+      )
     default:
-      return output.rawText !== null
-        || output.outputText !== null
-        || output.contentText !== null
-        || output.text !== null
+      return (
+        output.rawText !== null ||
+        output.outputText !== null ||
+        output.contentText !== null ||
+        output.text !== null
+      )
   }
 }
 
-export function ToolCallBlock({ toolName, toolCallId, state, animated = true, approval, argumentsText, input, output, errorText, workspaceDiffTarget, onApprovalResponse, onUserInputSubmit, children }: ToolCallBlockProps) {
+export function ToolCallBlock({
+  toolName,
+  toolCallId,
+  state,
+  animated = true,
+  approval,
+  argumentsText,
+  input,
+  output,
+  errorText,
+  workspaceDiffTarget,
+  onApprovalResponse,
+  children
+}: ToolCallBlockProps) {
   const inputPayload = readToolInputPayload(input, argumentsText)
   const outputPayload = readToolPayload(output)
   const descriptor = (() => {
@@ -1144,39 +1157,40 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
       argumentsText,
       input,
       output,
-      errorText,
+      errorText
     }
     return describeToolCall(part)
   })()
 
-  const hasTerminalPanel = descriptor.kind === 'terminal' && (
-    inputPayload.command !== null
-    || inputPayload.timeout !== null
-    || outputPayload.backgroundTaskId !== null
-    || readTerminalOutputSections(outputPayload, errorText).length > 0
-  )
-  const hasDiffPanel = (descriptor.kind === 'file-diff' || descriptor.kind === 'notebook-diff') && (
-    !!errorText || hasFileDiffInlineContent(inputPayload, outputPayload)
-  )
-  const workspaceDiffPath = descriptor.kind === 'file-diff' || descriptor.kind === 'notebook-diff'
-    ? readEditTarget(inputPayload, outputPayload)
-    : null
+  const hasTerminalPanel =
+    descriptor.kind === 'terminal' &&
+    (inputPayload.command !== null ||
+      inputPayload.timeout !== null ||
+      outputPayload.backgroundTaskId !== null ||
+      readTerminalOutputSections(outputPayload, errorText).length > 0)
+  const hasDiffPanel =
+    (descriptor.kind === 'file-diff' || descriptor.kind === 'notebook-diff') &&
+    (!!errorText || hasFileDiffInlineContent(inputPayload, outputPayload))
+  const workspaceDiffPath =
+    descriptor.kind === 'file-diff' || descriptor.kind === 'notebook-diff'
+      ? readEditTarget(inputPayload, outputPayload)
+      : null
   const canOpenWorkspaceDiff = !!workspaceDiffTarget && !!workspaceDiffPath
-  const openWorkspaceDiffTab = useBrowserPanelStore(s => s.openWorkspaceDiffTab)
-  const requestScrollToFilePath = useBrowserPanelStore(s => s.requestScrollToFilePath)
-  const setBrowserPanelOpen = useLayoutStore(s => s.setBrowserPanelOpen)
+  const openWorkspaceDiffTab = useBrowserPanelStore((s) => s.openWorkspaceDiffTab)
+  const requestScrollToFilePath = useBrowserPanelStore((s) => s.requestScrollToFilePath)
+  const setBrowserPanelOpen = useLayoutStore((s) => s.setBrowserPanelOpen)
   const hasChildren = hasRenderableChildren(children)
   const expandable = hasTerminalPanel || hasDiffPanel || hasChildren
   const interactive = expandable || canOpenWorkspaceDiff
-  const [expanded, setExpanded] = useState(() => isError(state) && (hasTerminalPanel || hasDiffPanel))
+  const [expanded, setExpanded] = useState(
+    () => isError(state) && (hasTerminalPanel || hasDiffPanel)
+  )
   const Icon = TOOL_ICON_MAP[descriptor.kind]
   const running = isRunning(state)
   const errored = isError(state)
-  const planImplementationApproval = descriptor.kind === 'plan-implementation' && state === 'approval-requested'
+  const planImplementationApproval =
+    descriptor.kind === 'plan-implementation' && state === 'approval-requested'
   const retainNestedActivity = descriptor.kind === 'subagent' && hasChildren
-  const pendingQuestions = descriptor.kind === 'question' && state === 'input-available'
-    ? readRuntimeQuestions(inputPayload.questions)
-    : []
 
   useEffect(() => {
     if (errored && (hasTerminalPanel || hasDiffPanel)) {
@@ -1191,7 +1205,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
     const tabId = openWorkspaceDiffTab({
       workspaceId: workspaceDiffTarget.workspaceId,
       title: 'All Changes',
-      ownerId: workspaceDiffTarget.ownerId,
+      ownerId: workspaceDiffTarget.ownerId
     })
     setBrowserPanelOpen(true, workspaceDiffTarget.ownerId)
     requestScrollToFilePath({ path: workspaceDiffPath, tabId })
@@ -1199,7 +1213,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
 
   const toggleExpanded = () => {
     if (expandable) {
-      setExpanded(value => !value)
+      setExpanded((value) => !value)
       return
     }
     if (canOpenWorkspaceDiff) {
@@ -1223,7 +1237,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
         className={cn(
           'overflow-hidden rounded-lg mx-1 -px-1 bg-card border-border border',
           errored && 'ring-1 ring-destructive/30',
-          interactive && 'select-none',
+          interactive && 'select-none'
         )}
       >
         <div
@@ -1238,7 +1252,7 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
             className={cn(
               'size-3.5 shrink-0 text-muted-foreground/60',
               running && 'text-amber-500 dark:text-amber-400',
-              errored && 'text-destructive',
+              errored && 'text-destructive'
             )}
             aria-hidden
           />
@@ -1246,35 +1260,41 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
             {descriptor.title}
           </span>
           {(descriptor.target || descriptor.summary) && (
-            <span className={cn(
-              'flex min-w-0 shrink-0 items-center gap-1 text-[11px] text-muted-foreground/50',
-              animated ? 'max-w-48' : 'max-w-none flex-wrap justify-end text-right',
-            )}
+            <span
+              className={cn(
+                'flex min-w-0 shrink-0 items-center gap-1 text-[11px] text-muted-foreground/50',
+                animated ? 'max-w-48' : 'max-w-none flex-wrap justify-end text-right'
+              )}
             >
-              {descriptor.target && (animated
-                ? (
-                    <LazyTooltip
-                      delayDuration={600}
-                      side="bottom"
-                      content={descriptor.target}
-                      contentClassName="font-mono text-[11px]"
-                      title={descriptor.target}
-                    >
-                      <span className="cursor-default truncate font-mono">
-                        {descriptor.kind === 'terminal' ? descriptor.target : basename(descriptor.target)}
-                      </span>
-                    </LazyTooltip>
-                  )
-                : (
-                    <span className="cursor-default break-all font-mono">
-                      {descriptor.kind === 'terminal' ? descriptor.target : basename(descriptor.target)}
+              {descriptor.target &&
+                (animated ? (
+                  <LazyTooltip
+                    delayDuration={600}
+                    side="bottom"
+                    content={descriptor.target}
+                    contentClassName="font-mono text-[11px]"
+                    title={descriptor.target}
+                  >
+                    <span className="cursor-default truncate font-mono">
+                      {descriptor.kind === 'terminal'
+                        ? descriptor.target
+                        : basename(descriptor.target)}
                     </span>
-                  ))}
+                  </LazyTooltip>
+                ) : (
+                  <span className="cursor-default break-all font-mono">
+                    {descriptor.kind === 'terminal'
+                      ? descriptor.target
+                      : basename(descriptor.target)}
+                  </span>
+                ))}
               {descriptor.summary && descriptor.target && (
                 <span className="text-muted-foreground/30">·</span>
               )}
               {descriptor.summary && (
-                <span className={cn(animated ? 'truncate' : 'whitespace-normal break-words')}>{descriptor.summary}</span>
+                <span className={cn(animated ? 'truncate' : 'whitespace-normal break-words')}>
+                  {descriptor.summary}
+                </span>
               )}
             </span>
           )}
@@ -1283,66 +1303,68 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
               className={cn(
                 'size-3 shrink-0 text-muted-foreground/40',
                 animated && 'transition-transform duration-200',
-                expanded && 'rotate-180',
+                expanded && 'rotate-180'
               )}
               aria-hidden
             />
           )}
-          {animated
-            ? (
-                <LazyTooltip
-                  content={(
-                    <>
-                      {descriptor.displayName}
-                      {' '}
-                      ·
-                      {' '}
-                      {STATUS_LABELS[state]}
-                    </>
-                  )}
-                  title={`${descriptor.displayName} · ${STATUS_LABELS[state]}`}
-                >
-                  <span className={cn(
-                    'flex shrink-0 items-center',
-                    isError(state) ? 'text-destructive/70' : 'text-muted-foreground/40',
-                    (state === 'output-available' || state === 'approval-responded') && 'text-emerald-500/80',
-                  )}
-                  >
-                    <StatusIcon state={state} animated={animated} />
-                  </span>
-                </LazyTooltip>
-              )
-            : (
-                <span
-                  className={cn(
-                    'flex shrink-0 items-center',
-                    isError(state) ? 'text-destructive/70' : 'text-muted-foreground/40',
-                    (state === 'output-available' || state === 'approval-responded') && 'text-emerald-500/80',
-                  )}
-                  title={`${descriptor.displayName} · ${STATUS_LABELS[state]}`}
-                >
-                  <StatusIcon state={state} animated={animated} />
-                </span>
+          {animated ? (
+            <LazyTooltip
+              content={
+                <>
+                  {descriptor.displayName} · {STATUS_LABELS[state]}
+                </>
+              }
+              title={`${descriptor.displayName} · ${STATUS_LABELS[state]}`}
+            >
+              <span
+                className={cn(
+                  'flex shrink-0 items-center',
+                  isError(state) ? 'text-destructive/70' : 'text-muted-foreground/40',
+                  (state === 'output-available' || state === 'approval-responded') &&
+                    'text-emerald-500/80'
+                )}
+              >
+                <StatusIcon state={state} animated={animated} />
+              </span>
+            </LazyTooltip>
+          ) : (
+            <span
+              className={cn(
+                'flex shrink-0 items-center',
+                isError(state) ? 'text-destructive/70' : 'text-muted-foreground/40',
+                (state === 'output-available' || state === 'approval-responded') &&
+                  'text-emerald-500/80'
               )}
+              title={`${descriptor.displayName} · ${STATUS_LABELS[state]}`}
+            >
+              <StatusIcon state={state} animated={animated} />
+            </span>
+          )}
         </div>
 
         {running && (
           <div className="h-px overflow-hidden bg-muted">
-            {animated
-              ? (
-                  <m.div
-                    className="h-full w-1/3 rounded-full bg-muted-foreground/25"
-                    animate={{ x: ['-100%', '400%'] }}
-                    transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
-                  />
-                )
-              : <div className="h-full w-1/3 rounded-full bg-muted-foreground/25" />}
+            {animated ? (
+              <m.div
+                className="h-full w-1/3 rounded-full bg-muted-foreground/25"
+                animate={{ x: ['-100%', '400%'] }}
+                transition={{ duration: 1.5, repeat: Infinity, ease: 'linear' }}
+              />
+            ) : (
+              <div className="h-full w-1/3 rounded-full bg-muted-foreground/25" />
+            )}
           </div>
         )}
 
         {hasTerminalPanel && expanded && (
           <div className="px-3 pb-3">
-            <TerminalExecutionDetails input={input} output={output} errorText={errorText} argumentsText={argumentsText} />
+            <TerminalExecutionDetails
+              input={input}
+              output={output}
+              errorText={errorText}
+              argumentsText={argumentsText}
+            />
           </div>
         )}
 
@@ -1358,14 +1380,25 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
           </div>
         )}
 
-        {(!(hasTerminalPanel || hasDiffPanel) || !expanded) && hasHeroContent(descriptor, inputPayload, outputPayload, errorText) && (
-          <div className="px-3 pb-3">
-            <ToolHero descriptor={descriptor} state={state} input={inputPayload} output={outputPayload} errorText={errorText} toolCallId={toolCallId} />
-          </div>
-        )}
+        {(!(hasTerminalPanel || hasDiffPanel) || !expanded) &&
+          hasHeroContent(descriptor, inputPayload, outputPayload, errorText) && (
+            <div className="px-3 pb-3">
+              <ToolHero
+                descriptor={descriptor}
+                state={state}
+                input={inputPayload}
+                output={outputPayload}
+                errorText={errorText}
+                toolCallId={toolCallId}
+              />
+            </div>
+          )}
 
         {state === 'approval-requested' && approval && onApprovalResponse && (
-          <div className="flex items-center justify-end gap-1.5 border-t border-border/60 px-3 py-2" data-testid="approval-card">
+          <div
+            className="flex items-center justify-end gap-1.5 border-t border-border/60 px-3 py-2"
+            data-testid="approval-card"
+          >
             <Button
               type="button"
               variant="ghost"
@@ -1385,33 +1418,31 @@ export function ToolCallBlock({ toolName, toolCallId, state, animated = true, ap
             </Button>
           </div>
         )}
-
-        {pendingQuestions.length > 0 && onUserInputSubmit && (
-          <RuntimeUserInputForm
-            questions={pendingQuestions}
-            disabled={state !== 'input-available'}
-            onSubmit={onUserInputSubmit}
-          />
-        )}
       </div>
 
-      {hasChildren && (retainNestedActivity
-        ? (
-            <Activity name={`tool:${toolCallId}:nested-activity`} mode={expanded ? 'visible' : 'hidden'}>
-              <div className={cn('ml-3 mt-0.5 overflow-y-auto space-y-0', !running && 'max-h-80')}>{children}</div>
-            </Activity>
-          )
-        : expanded
-          ? <div className={cn('ml-3 mt-0.5 overflow-y-auto space-y-0', !running && 'max-h-80')}>{children}</div>
-          : null)}
+      {hasChildren &&
+        (retainNestedActivity ? (
+          <Activity
+            name={`tool:${toolCallId}:nested-activity`}
+            mode={expanded ? 'visible' : 'hidden'}
+          >
+            <div className={cn('ml-3 mt-0.5 overflow-y-auto space-y-0', !running && 'max-h-80')}>
+              {children}
+            </div>
+          </Activity>
+        ) : expanded ? (
+          <div className={cn('ml-3 mt-0.5 overflow-y-auto space-y-0', !running && 'max-h-80')}>
+            {children}
+          </div>
+        ) : null)}
     </>
   )
 
   const frameProps = {
-    'className': 'py-1.5',
+    className: 'py-1.5',
     'data-testid': `chat-tool-call-${toolCallId}`,
     'data-tool-name': toolName,
-    'data-tool-kind': descriptor.kind,
+    'data-tool-kind': descriptor.kind
   }
 
   if (!animated) {

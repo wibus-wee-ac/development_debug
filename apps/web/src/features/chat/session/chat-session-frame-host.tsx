@@ -25,8 +25,10 @@ export interface ChatSessionFrameDescriptor {
 
 export function ChatSessionFrameHost({
   activeSession,
+  active,
 }: {
   activeSession: ChatSessionFrameDescriptor
+  active: boolean
 }): ReactElement {
   const [retainedFrames, setRetainedFrames] = useState<ChatSessionFrameDescriptor[]>(() => [activeSession])
   const candidateFrames = mergeActiveFrame(retainedFrames, activeSession)
@@ -36,6 +38,7 @@ export function ChatSessionFrameHost({
     shallow,
   )
   const streamingSessionIdSet = new Set(streamingSessionIds)
+  const streamingSessionIdsSignature = streamingSessionIds.join('\0')
   const frameDescriptors = trimRetainedFrames(candidateFrames, activeSession, streamingSessionIdSet)
 
   useLayoutEffect(() => {
@@ -47,12 +50,16 @@ export function ChatSessionFrameHost({
       )
       return areFrameListsEqual(currentFrames, nextFrames) ? currentFrames : nextFrames
     })
-  }, [activeSession, streamingSessionIdSet])
+  }, [activeSession, streamingSessionIdsSignature])
 
   return (
     <div className="relative h-full w-full min-h-0 min-w-0 overflow-hidden" data-chat-session-frame-host="">
       {frameDescriptors.map(frame => (
-        <ChatSessionDriverMount key={`driver:${frame.sessionId}`} sessionId={frame.sessionId} />
+        <ChatSessionDriverMount
+          key={`driver:${frame.sessionId}`}
+          sessionId={frame.sessionId}
+          active={active && frame.sessionId === activeSession.sessionId}
+        />
       ))}
       {frameDescriptors.map(frame => (
         <Activity
@@ -70,8 +77,8 @@ export function ChatSessionFrameHost({
   )
 }
 
-const ChatSessionDriverMount = ({ sessionId }: { sessionId: string }) => {
-  useChatSessionDriver(sessionId)
+const ChatSessionDriverMount = ({ sessionId, active }: { sessionId: string, active: boolean }) => {
+  useChatSessionDriver(sessionId, active)
 
   useLayoutEffect(() => {
     retainSessionCache(sessionId)

@@ -1,7 +1,14 @@
 import type { UIMessage } from 'ai'
 
+import { toolNameFromPart } from './chat-tool-entities'
 import type { RenderableToolPart, ToolUiKind } from './tool-ui-classifier'
-import { ChatSkillContextMessagePart, ChatPluginContextMessagePart, isChatSkillContextPart, isChatPluginContextPart } from '../context/chat-context-parts'
+import { normalizeToolName } from './tool-ui-classifier'
+import {
+  ChatSkillContextMessagePart,
+  ChatPluginContextMessagePart,
+  isChatSkillContextPart,
+  isChatPluginContextPart
+} from '../context/chat-context-parts'
 
 export type MessagePart = UIMessage['parts'][number]
 export type FileMessagePart = Extract<MessagePart, { type: 'file' }>
@@ -23,23 +30,23 @@ export interface MessagePartRefBase {
   partIndex: number
 }
 
-export type ChatRenderSegment
-  = | (MessagePartRefBase & { kind: 'text', hasText: boolean })
-    | (MessagePartRefBase & { kind: 'reasoning' })
-    | ({ kind: 'tool-call' } & ToolCallRenderItem)
-    | { kind: 'tool-group', items: ToolCallRenderItem[], uiKind: ToolUiKind, key: string }
-    | (MessagePartRefBase & { kind: 'skill-context' })
-    | (MessagePartRefBase & { kind: 'plugin-context' })
-    | (MessagePartRefBase & { kind: 'file-attachment' })
+export type ChatRenderSegment =
+  | (MessagePartRefBase & { kind: 'text'; hasText: boolean })
+  | (MessagePartRefBase & { kind: 'reasoning' })
+  | ({ kind: 'tool-call' } & ToolCallRenderItem)
+  | { kind: 'tool-group'; items: ToolCallRenderItem[]; uiKind: ToolUiKind; key: string }
+  | (MessagePartRefBase & { kind: 'skill-context' })
+  | (MessagePartRefBase & { kind: 'plugin-context' })
+  | (MessagePartRefBase & { kind: 'file-attachment' })
 
-export type ChatRenderItem
-  = | { kind: 'text', text: string, key: string }
-    | { kind: 'reasoning', text: string, state?: 'streaming' | 'done', key: string }
-    | ({ kind: 'tool-call' } & ToolCallRenderItem)
-    | { kind: 'tool-group', items: ToolCallRenderItem[], uiKind: ToolUiKind, key: string }
-    | { kind: 'skill-context', part: ChatSkillContextMessagePart, key: string }
-    | { kind: 'plugin-context', part: ChatPluginContextMessagePart, key: string }
-    | { kind: 'file-attachment', part: FileMessagePart, key: string }
+export type ChatRenderItem =
+  | { kind: 'text'; text: string; key: string }
+  | { kind: 'reasoning'; text: string; state?: 'streaming' | 'done'; key: string }
+  | ({ kind: 'tool-call' } & ToolCallRenderItem)
+  | { kind: 'tool-group'; items: ToolCallRenderItem[]; uiKind: ToolUiKind; key: string }
+  | { kind: 'skill-context'; part: ChatSkillContextMessagePart; key: string }
+  | { kind: 'plugin-context'; part: ChatPluginContextMessagePart; key: string }
+  | { kind: 'file-attachment'; part: FileMessagePart; key: string }
 
 export interface ExecutionPhaseSplit {
   executionItems: ChatRenderItem[]
@@ -58,7 +65,11 @@ export interface GroupMessagePartsInput {
 }
 
 export function readRenderableToolPart(part: MessagePart): RenderableToolPart | null {
-  if ((part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) || !('toolCallId' in part) || typeof part.toolCallId !== 'string') {
+  if (
+    (part.type !== 'dynamic-tool' && !part.type.startsWith('tool-')) ||
+    !('toolCallId' in part) ||
+    typeof part.toolCallId !== 'string'
+  ) {
     return null
   }
 
@@ -67,8 +78,37 @@ export function readRenderableToolPart(part: MessagePart): RenderableToolPart | 
   return {
     ...part,
     toolCallId: part.toolCallId,
-    state,
+    state
   } as RenderableToolPart
+}
+
+function isRuntimeUserInputToolPart(part: RenderableToolPart): boolean {
+  const normalizedName = normalizeToolName(
+    readBuiltinToolApiName(part.input) ??
+      readBuiltinToolApiName(part.output) ??
+      toolNameFromPart(part)
+  )
+  return (
+    normalizedName === 'askuserquestion' ||
+    normalizedName === 'ask_user_question' ||
+    normalizedName === 'tool.request_user_input' ||
+    normalizedName === 'mcp.elicitation' ||
+    normalizedName === 'server_request_item_tool_requestuserinput' ||
+    normalizedName === 'server_request_mcpserver_elicitation_request'
+  )
+}
+
+function readBuiltinToolApiName(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+  const record = value as Record<string, unknown>
+  return record.type === 'cradle.builtin-tool-call.input.v1' ||
+    record.type === 'cradle.builtin-tool-call.result.v1'
+    ? typeof record.apiName === 'string'
+      ? record.apiName
+      : null
+    : null
 }
 
 export function groupMessagePartRefs(input: GroupMessagePartsInput): ChatRenderSegment[] {
@@ -76,9 +116,10 @@ export function groupMessagePartRefs(input: GroupMessagePartsInput): ChatRenderS
 
   for (let i = 0; i < input.parts?.length; i++) {
     const part = input.parts[i]
-    const key = 'toolCallId' in part
-      ? (part as { toolCallId: string }).toolCallId
-      : `${input.messageId}-${part.type}-${i}`
+    const key =
+      'toolCallId' in part
+        ? (part as { toolCallId: string }).toolCallId
+        : `${input.messageId}-${part.type}-${i}`
 
     if (part.type === 'text') {
       items.push({
@@ -86,48 +127,53 @@ export function groupMessagePartRefs(input: GroupMessagePartsInput): ChatRenderS
         key,
         messageId: input.messageId,
         partIndex: i,
-        hasText: part.text.trim().length > 0,
+        hasText: part.text.trim().length > 0
       })
-    }
-    else if (part.type === 'reasoning') {
+    } else if (part.type === 'reasoning') {
       items.push({
         kind: 'reasoning',
         key,
         messageId: input.messageId,
-        partIndex: i,
+        partIndex: i
       })
-    }
-    else if (part.type === 'file') {
+    } else if (part.type === 'file') {
       items.push({
         kind: 'file-attachment',
         key,
         messageId: input.messageId,
-        partIndex: i,
+        partIndex: i
       })
-    }
-    else if (isChatSkillContextPart(part)) {
+    } else if (isChatSkillContextPart(part)) {
       items.push({
         kind: 'skill-context',
         key,
         messageId: input.messageId,
-        partIndex: i,
+        partIndex: i
       })
-    }
-    else if (isChatPluginContextPart(part)) {
+    } else if (isChatPluginContextPart(part)) {
       items.push({
         kind: 'plugin-context',
         key,
         messageId: input.messageId,
-        partIndex: i,
+        partIndex: i
       })
-    }
-    else {
+    } else {
       const toolPart = readRenderableToolPart(part)
       if (!toolPart) {
         continue
       }
+      if (isRuntimeUserInputToolPart(toolPart)) {
+        continue
+      }
       const toolCallId = toolPart.toolCallId
-      items.push({ kind: 'tool-call', messageId: input.messageId, partIndex: i, toolCallId, key, part: toolPart })
+      items.push({
+        kind: 'tool-call',
+        messageId: input.messageId,
+        partIndex: i,
+        toolCallId,
+        key,
+        part: toolPart
+      })
     }
   }
 
@@ -139,37 +185,43 @@ export function groupMessageParts(input: GroupMessagePartsInput): ChatRenderItem
 
   for (let i = 0; i < input.parts?.length; i++) {
     const part = input.parts[i]
-    const key = 'toolCallId' in part
-      ? (part as { toolCallId: string }).toolCallId
-      : `${input.messageId}-${part.type}-${i}`
+    const key =
+      'toolCallId' in part
+        ? (part as { toolCallId: string }).toolCallId
+        : `${input.messageId}-${part.type}-${i}`
 
     if (part.type === 'text') {
       items.push({ kind: 'text', text: part.text, key })
-    }
-    else if (part.type === 'reasoning') {
+    } else if (part.type === 'reasoning') {
       items.push({
         kind: 'reasoning',
         text: part.text,
         state: (part as { state?: 'streaming' | 'done' }).state,
-        key,
+        key
       })
-    }
-    else if (part.type === 'file') {
+    } else if (part.type === 'file') {
       items.push({ kind: 'file-attachment', part, key })
-    }
-    else if (isChatSkillContextPart(part)) {
+    } else if (isChatSkillContextPart(part)) {
       items.push({ kind: 'skill-context', part: part as ChatSkillContextMessagePart, key })
-    }
-    else if (isChatPluginContextPart(part)) {
+    } else if (isChatPluginContextPart(part)) {
       items.push({ kind: 'plugin-context', part: part as ChatPluginContextMessagePart, key })
-    }
-    else {
+    } else {
       const toolPart = readRenderableToolPart(part)
       if (!toolPart) {
         continue
       }
+      if (isRuntimeUserInputToolPart(toolPart)) {
+        continue
+      }
       const toolCallId = toolPart.toolCallId
-      items.push({ kind: 'tool-call', messageId: input.messageId, partIndex: i, toolCallId, key, part: toolPart })
+      items.push({
+        kind: 'tool-call',
+        messageId: input.messageId,
+        partIndex: i,
+        toolCallId,
+        key,
+        part: toolPart
+      })
     }
   }
 
@@ -180,15 +232,15 @@ const GROUPABLE_KINDS = new Set<ToolUiKind>(['terminal', 'file-read', 'search', 
 
 function groupConsecutiveToolCalls(
   items: ChatRenderItem[],
-  describeToolKind: (part: RenderableToolPart) => ToolUiKind | null,
+  describeToolKind: (part: RenderableToolPart) => ToolUiKind | null
 ): ChatRenderItem[]
 function groupConsecutiveToolCalls(
   items: ChatRenderSegment[],
-  describeToolKind: (part: RenderableToolPart) => ToolUiKind | null,
+  describeToolKind: (part: RenderableToolPart) => ToolUiKind | null
 ): ChatRenderSegment[]
 function groupConsecutiveToolCalls(
   items: Array<ChatRenderItem | ChatRenderSegment>,
-  describeToolKind: (part: RenderableToolPart) => ToolUiKind | null,
+  describeToolKind: (part: RenderableToolPart) => ToolUiKind | null
 ): Array<ChatRenderItem | ChatRenderSegment> {
   const result: Array<ChatRenderItem | ChatRenderSegment> = []
   let i = 0
@@ -205,16 +257,21 @@ function groupConsecutiveToolCalls(
       i++
       continue
     }
-    const group: ToolCallRenderItem[] = [{
-      key: item.key,
-      messageId: item.messageId,
-      partIndex: item.partIndex,
-      toolCallId: item.toolCallId,
-      part: item.part,
-    }]
+    const group: ToolCallRenderItem[] = [
+      {
+        key: item.key,
+        messageId: item.messageId,
+        partIndex: item.partIndex,
+        toolCallId: item.toolCallId,
+        part: item.part
+      }
+    ]
     let j = i + 1
     while (j < items.length && items[j].kind === 'tool-call') {
-      const nextItem = items[j] as Extract<ChatRenderItem | ChatRenderSegment, { kind: 'tool-call' }>
+      const nextItem = items[j] as Extract<
+        ChatRenderItem | ChatRenderSegment,
+        { kind: 'tool-call' }
+      >
       const nextKind = 'part' in nextItem ? describeToolKind(nextItem.part) : null
       if (nextKind !== uiKind) {
         break
@@ -224,7 +281,7 @@ function groupConsecutiveToolCalls(
         messageId: nextItem.messageId,
         partIndex: nextItem.partIndex,
         toolCallId: nextItem.toolCallId,
-        part: nextItem.part,
+        part: nextItem.part
       })
       j++
     }
@@ -233,11 +290,10 @@ function groupConsecutiveToolCalls(
         kind: 'tool-group',
         items: group,
         uiKind,
-        key: group[0].key,
+        key: group[0].key
       })
       i = j
-    }
-    else {
+    } else {
       result.push(item)
       i++
     }
@@ -258,7 +314,7 @@ export function splitExecutionPhase(items: ChatRenderItem[]): ExecutionPhaseSpli
 
     const hasToolBeforeFinalText = items
       .slice(0, index)
-      .some(candidate => candidate.kind === 'tool-call' || candidate.kind === 'tool-group')
+      .some((candidate) => candidate.kind === 'tool-call' || candidate.kind === 'tool-group')
 
     if (!hasToolBeforeFinalText) {
       continue
@@ -266,14 +322,16 @@ export function splitExecutionPhase(items: ChatRenderItem[]): ExecutionPhaseSpli
 
     return {
       executionItems: items.slice(0, index),
-      finalItems: items.slice(index),
+      finalItems: items.slice(index)
     }
   }
 
   return null
 }
 
-export function splitSegmentExecutionPhase(items: ChatRenderSegment[]): SegmentExecutionPhaseSplit | null {
+export function splitSegmentExecutionPhase(
+  items: ChatRenderSegment[]
+): SegmentExecutionPhaseSplit | null {
   for (let index = items.length - 1; index >= 0; index--) {
     const item = items[index]
     if (item.kind !== 'text' || !item.hasText) {
@@ -282,7 +340,7 @@ export function splitSegmentExecutionPhase(items: ChatRenderSegment[]): SegmentE
 
     const hasToolBeforeFinalText = items
       .slice(0, index)
-      .some(candidate => candidate.kind === 'tool-call' || candidate.kind === 'tool-group')
+      .some((candidate) => candidate.kind === 'tool-call' || candidate.kind === 'tool-group')
 
     if (!hasToolBeforeFinalText) {
       continue
@@ -290,7 +348,7 @@ export function splitSegmentExecutionPhase(items: ChatRenderSegment[]): SegmentE
 
     return {
       executionItems: items.slice(0, index),
-      finalItems: items.slice(index),
+      finalItems: items.slice(index)
     }
   }
 

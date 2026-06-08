@@ -4,6 +4,7 @@ import {
   BoxIcon,
   BrainIcon,
   CircleDotIcon,
+  CircleHelpIcon,
   CommandIcon,
   DiffIcon,
   FolderTreeIcon,
@@ -22,7 +23,7 @@ import {
   SparklesIcon,
   SquareTerminalIcon,
   TargetIcon,
-  UsersIcon,
+  UsersIcon
 } from 'lucide-react'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
@@ -47,9 +48,20 @@ interface SlashCommandPanelProps {
 const MAX_RESULTS = 24
 const UNSAFE_OPTION_ID_CHAR_RE = /[^\w-]/g
 
-function formatCommandSubtitle(commands: ChatComposerSlashCommand[], command: ChatComposerSlashCommand): string {
-  const aliases = command.aliases?.length ? `Aliases: ${command.aliases.map(alias => `/${alias}`).join(', ')}` : ''
-  return [command.description, command.availability?.enabled === false ? command.availability.reason : '', aliases].filter(Boolean).join(' · ')
+function formatCommandSubtitle(
+  commands: ChatComposerSlashCommand[],
+  command: ChatComposerSlashCommand
+): string {
+  const aliases = command.aliases?.length
+    ? `Aliases: ${command.aliases.map((alias) => `/${alias}`).join(', ')}`
+    : ''
+  return [
+    command.description,
+    command.availability?.enabled === false ? command.availability.reason : '',
+    aliases
+  ]
+    .filter(Boolean)
+    .join(' · ')
 }
 
 function formatSlashCommandOptionId(command: ChatComposerSlashCommand, index: number): string {
@@ -60,7 +72,10 @@ function formatCommandKey(command: ChatComposerSlashCommand, index: number): str
   return command.id || `${command.source}:${command.name}:${index}`
 }
 
-function getCommandBadge(commands: ChatComposerSlashCommand[], command: ChatComposerSlashCommand): string {
+function getCommandBadge(
+  commands: ChatComposerSlashCommand[],
+  command: ChatComposerSlashCommand
+): string {
   return hasDuplicateSlashCommandName(commands, command) ? getSlashCommandSourceLabel(command) : ''
 }
 
@@ -84,7 +99,10 @@ function getCommandStateClassName(command: ChatComposerSlashCommand): string {
   }
 }
 
-function formatCommandRowSubtitle(commands: ChatComposerSlashCommand[], command: ChatComposerSlashCommand): string {
+function formatCommandRowSubtitle(
+  commands: ChatComposerSlashCommand[],
+  command: ChatComposerSlashCommand
+): string {
   if (command.stateVisual?.kind === 'compactUsage' && command.stateLabel) {
     return `${command.description} (${command.stateLabel.toLowerCase()})`
   }
@@ -148,6 +166,8 @@ function renderCommandIcon(command: ChatComposerSlashCommand): ReactNode {
       return <CircleDotIcon className={className} aria-hidden="true" />
     case 'quick-question':
       return <MessageCircleQuestionIcon className={className} aria-hidden="true" />
+    case 'user-input':
+      return <CircleHelpIcon className={className} aria-hidden="true" />
     case 'plugin':
       return <PuzzleIcon className={className} aria-hidden="true" />
     case 'reasoning':
@@ -171,7 +191,7 @@ function renderCommandIcon(command: ChatComposerSlashCommand): ReactNode {
 
 function SlashCommandIcon({
   command,
-  className,
+  className
 }: {
   command: ChatComposerSlashCommand
   className?: string
@@ -185,7 +205,7 @@ function SlashCommandIcon({
 
 function CompactUsageIcon({
   state,
-  className,
+  className
 }: {
   state: ChatSlashCommandStateVisual
   className?: string
@@ -201,7 +221,7 @@ function CompactUsageIcon({
         'relative mt-px grid size-4 shrink-0 place-items-center',
         readCompactRingClassName(state.status),
         state.status === 'running' && 'animate-pulse',
-        className,
+        className
       )}
       aria-hidden="true"
       data-testid="slash-command-compact-state-ring"
@@ -233,17 +253,28 @@ function CompactUsageIcon({
   )
 }
 
-export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange, query, onSelect, onClose, visible }: SlashCommandPanelProps) {
+export function SlashCommandPanel({
+  commands,
+  listboxId,
+  onActiveOptionIdChange,
+  query,
+  onSelect,
+  onClose,
+  visible
+}: SlashCommandPanelProps) {
   const [selection, setSelection] = useState({ activeIndex: 0, query })
   const listRef = useRef<HTMLMenuElement>(null)
 
   const results = useMemo(
-    () => getSlashCommandPanelItems(commands, query).slice(0, MAX_RESULTS).map(item => ({ item })),
-    [commands, query],
+    () =>
+      getSlashCommandPanelItems(commands, query)
+        .slice(0, MAX_RESULTS)
+        .map((item) => ({ item })),
+    [commands, query]
   )
 
-  const effectiveActiveIndex
-    = results.length === 0
+  const effectiveActiveIndex =
+    results.length === 0
       ? 0
       : Math.min(selection.query === query ? selection.activeIndex : 0, results.length - 1)
 
@@ -267,21 +298,22 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
       e.preventDefault()
       setSelection({
         activeIndex: (effectiveActiveIndex + 1) % Math.max(results.length, 1),
-        query,
+        query
       })
-    }
-    else if (e.key === 'ArrowUp') {
+    } else if (e.key === 'ArrowUp') {
       e.preventDefault()
       setSelection({
         activeIndex: (effectiveActiveIndex - 1 + results.length) % Math.max(results.length, 1),
-        query,
+        query
       })
-    }
-    else if ((e.key === 'Enter' || e.key === 'Tab') && results[effectiveActiveIndex] && isSlashCommandAvailable(results[effectiveActiveIndex].item)) {
+    } else if (
+      (e.key === 'Enter' || e.key === 'Tab') &&
+      results[effectiveActiveIndex] &&
+      isSlashCommandAvailable(results[effectiveActiveIndex].item)
+    ) {
       e.preventDefault()
       onSelect(results[effectiveActiveIndex].item)
-    }
-    else if (e.key === 'Escape') {
+    } else if (e.key === 'Escape') {
       e.preventDefault()
       onClose()
     }
@@ -292,15 +324,20 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
     return () => document.removeEventListener('keydown', handleDocumentKeyDown)
   }, [])
 
-  const handleOptionClick = useCallback((command: ChatComposerSlashCommand) => {
-    if (!isSlashCommandAvailable(command)) {
-      return
-    }
-    onSelect(command)
-  }, [onSelect])
+  const handleOptionClick = useCallback(
+    (command: ChatComposerSlashCommand) => {
+      if (!isSlashCommandAvailable(command)) {
+        return
+      }
+      onSelect(command)
+    },
+    [onSelect]
+  )
 
   const activeCommand = results[effectiveActiveIndex]?.item
-  const activeOptionId = activeCommand ? formatSlashCommandOptionId(activeCommand, effectiveActiveIndex) : undefined
+  const activeOptionId = activeCommand
+    ? formatSlashCommandOptionId(activeCommand, effectiveActiveIndex)
+    : undefined
 
   useEffect(() => {
     onActiveOptionIdChange?.(visible ? activeOptionId : undefined)
@@ -312,11 +349,7 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
 
   return (
     <div className="absolute bottom-full left-0 right-0 z-10 mb-1.5 max-h-72 overflow-hidden rounded-xl border border-border bg-popover shadow-xl backdrop-blur-md">
-      <menu
-        ref={listRef}
-        className="m-0 max-h-72 list-none overflow-y-auto p-1"
-        id={listboxId}
-      >
+      <menu ref={listRef} className="m-0 max-h-72 list-none overflow-y-auto p-1" id={listboxId}>
         {results.map(({ item }, idx) => {
           const subtitle = formatCommandRowSubtitle(commands, item)
           const badge = getCommandBadge(commands, item)
@@ -330,45 +363,55 @@ export function SlashCommandPanel({ commands, listboxId, onActiveOptionIdChange,
                 data-active={formatSlashCommandOptionId(item, idx) === activeOptionId}
                 disabled={!isAvailable}
                 className={cn(
-                'flex w-full items-start gap-2.5 rounded-lg px-2.5 py-1 text-left',
-                isAvailable
-                  ? idx === effectiveActiveIndex
-                    ? 'bg-accent text-accent-foreground'
-                    : 'text-foreground/80 hover:bg-accent/40'
-                  : 'cursor-not-allowed text-muted-foreground/45 opacity-75',
-              )}
+                  'flex w-full items-start gap-2.5 rounded-lg px-2.5 py-1 text-left',
+                  isAvailable
+                    ? idx === effectiveActiveIndex
+                      ? 'bg-accent text-accent-foreground'
+                      : 'text-foreground/80 hover:bg-accent/40'
+                    : 'cursor-not-allowed text-muted-foreground/45 opacity-75'
+                )}
                 onMouseEnter={() => setSelection({ activeIndex: idx, query })}
                 onFocus={() => setSelection({ activeIndex: idx, query })}
                 onClick={() => handleOptionClick(item)}
               >
-              <SlashCommandIcon command={item} />
-              <span className="flex min-w-0 flex-1 flex-row items-center gap-1.5">
-                <span className="flex shrink-0 items-baseline gap-1.5">
-                  <span className="shrink-0 whitespace-nowrap text-xs font-medium">
-                    {readCommandTitle(item)}
+                <SlashCommandIcon command={item} />
+                <span className="flex min-w-0 flex-1 flex-row items-center gap-1.5">
+                  <span className="flex shrink-0 items-baseline gap-1.5">
+                    <span className="shrink-0 whitespace-nowrap text-xs font-medium">
+                      {readCommandTitle(item)}
+                    </span>
+                    {item.argumentHint && (
+                      <span className="truncate text-[11px] text-muted-foreground">
+                        {item.argumentHint}
+                      </span>
+                    )}
+                    {badge && (
+                      <span
+                        className={cn(
+                          'rounded border px-1 py-px text-[9px] font-medium leading-none',
+                          getCommandBadgeClassName(item)
+                        )}
+                      >
+                        {badge}
+                      </span>
+                    )}
+                    {item.stateLabel && item.stateVisual?.kind !== 'compactUsage' && (
+                      <span
+                        className={cn(
+                          'max-w-28 truncate rounded border px-1 py-px text-[9px] font-medium leading-none tabular-nums',
+                          getCommandStateClassName(item)
+                        )}
+                      >
+                        {item.stateLabel}
+                      </span>
+                    )}
                   </span>
-                  {item.argumentHint && (
-                    <span className="truncate text-[11px] text-muted-foreground">
-                      {item.argumentHint}
-                    </span>
-                  )}
-                  {badge && (
-                    <span className={cn('rounded border px-1 py-px text-[9px] font-medium leading-none', getCommandBadgeClassName(item))}>
-                      {badge}
-                    </span>
-                  )}
-                  {item.stateLabel && item.stateVisual?.kind !== 'compactUsage' && (
-                    <span className={cn('max-w-28 truncate rounded border px-1 py-px text-[9px] font-medium leading-none tabular-nums', getCommandStateClassName(item))}>
-                      {item.stateLabel}
+                  {subtitle && (
+                    <span className="mt-0.5 block min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+                      {subtitle}
                     </span>
                   )}
                 </span>
-                {subtitle && (
-                  <span className="mt-0.5 block min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
-                    {subtitle}
-                  </span>
-                )}
-              </span>
               </button>
             </li>
           )

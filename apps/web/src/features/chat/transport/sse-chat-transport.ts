@@ -15,21 +15,14 @@ interface ChatRunSettledPayload {
   status: ChatRunSettledStatus
 }
 
-interface ChatSessionInvalidatedPayload {
-  chatSessionId: string
-}
-
 type RunActivityHandler = (data: ChatRunActivityPayload) => void
 type RunSettledHandler = (data: ChatRunSettledPayload) => void
-type SessionInvalidatedHandler = (data: ChatSessionInvalidatedPayload) => void
 type ChatRunBroadcastEvent
   = | { kind: 'activity', payload: ChatRunActivityPayload }
     | { kind: 'settled', payload: ChatRunSettledPayload }
-    | { kind: 'session-invalidated', payload: ChatSessionInvalidatedPayload }
 
 const globalHandlers = new Set<RunActivityHandler>()
 const settledHandlers = new Set<RunSettledHandler>()
-const sessionInvalidatedHandlers = new Set<SessionInvalidatedHandler>()
 const CHAT_RUN_BROADCAST_CHANNEL = 'cradle:chat-run-events:v1'
 const rendererEventSourceId = createRendererEventSourceId()
 let broadcastChannel: BroadcastChannel | null | undefined
@@ -51,14 +44,6 @@ export function onChatRunSettled(handler: RunSettledHandler): () => void {
   }
 }
 
-export function onChatSessionInvalidated(handler: SessionInvalidatedHandler): () => void {
-  ensureBroadcastListener()
-  sessionInvalidatedHandlers.add(handler)
-  return () => {
-    sessionInvalidatedHandlers.delete(handler)
-  }
-}
-
 export function emitChatRunActivity(data: ChatRunActivityPayload): void {
   for (const handler of globalHandlers) {
     handler(data)
@@ -73,13 +58,6 @@ export function emitChatRunSettled(data: ChatRunSettledPayload): void {
     handler(data)
   }
   publishChatRunBroadcastEvent({ kind: 'settled', payload: data })
-}
-
-export function emitChatSessionInvalidated(data: ChatSessionInvalidatedPayload): void {
-  for (const handler of sessionInvalidatedHandlers) {
-    handler(data)
-  }
-  publishChatRunBroadcastEvent({ kind: 'session-invalidated', payload: data })
 }
 
 function publishChatRunBroadcastEvent(event: ChatRunBroadcastEvent): void {
@@ -106,12 +84,6 @@ function ensureBroadcastListener(): void {
     }
     if (value.event.kind === 'activity') {
       for (const handler of globalHandlers) {
-        handler(value.event.payload)
-      }
-      return
-    }
-    if (value.event.kind === 'session-invalidated') {
-      for (const handler of sessionInvalidatedHandlers) {
         handler(value.event.payload)
       }
       return
@@ -144,7 +116,7 @@ function readBroadcastMessage(value: unknown): { sourceId: string, event: ChatRu
   const kind = (event as { kind?: unknown }).kind
   const payload = (event as { payload?: unknown }).payload
   if (
-    (kind !== 'activity' && kind !== 'settled' && kind !== 'session-invalidated')
+    (kind !== 'activity' && kind !== 'settled')
     || !payload
     || typeof payload !== 'object'
     || Array.isArray(payload)

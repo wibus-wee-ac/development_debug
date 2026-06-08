@@ -1,6 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
 import type { UIMessage } from 'ai'
-import { ActivityIcon, BotIcon, CheckCircle2Icon, CircleIcon, EyeIcon, ListChecksIcon, LoaderCircleIcon, TimerIcon, WrenchIcon } from 'lucide-react'
+import {
+  ActivityIcon,
+  BotIcon,
+  CheckCircle2Icon,
+  CircleIcon,
+  EyeIcon,
+  ListChecksIcon,
+  LoaderCircleIcon,
+  TimerIcon,
+  WrenchIcon
+} from 'lucide-react'
 import { useSyncExternalStore } from 'react'
 
 import type { RuntimeKind } from '~/features/agent-runtime/types'
@@ -10,8 +20,17 @@ import { useBrowserPanelStore } from '~/store/browser-panel'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 
-import type { ChatRuntimeCrewAgentItem, ChatRuntimeCrewCallItem, ChatRuntimeCrewUiSlotState, ChatRuntimePlanUiSlotState, ChatRuntimeUiSlotState } from '../capabilities/chat-capabilities'
-import { getChatRuntimeUiSlotStates, runtimeUiSlotStatesQueryKey } from '../capabilities/chat-capabilities'
+import type {
+  ChatRuntimeCrewAgentItem,
+  ChatRuntimeCrewCallItem,
+  ChatRuntimeCrewUiSlotState,
+  ChatRuntimePlanUiSlotState,
+  ChatRuntimeUiSlotState
+} from '../capabilities/chat-capabilities'
+import {
+  getChatRuntimeUiSlotStates,
+  runtimeUiSlotStatesQueryKey
+} from '../capabilities/chat-capabilities'
 import type { ChatTodoItem, SessionTodoSnapshot } from '../capabilities/chat-todo-projection'
 import type { RuntimeSessionStatusKind } from '../commands/runtime-session-status-command'
 import { readChatAttentionSnapshot, subscribeChatAttentionSnapshots } from '../context/chat-context'
@@ -36,7 +55,7 @@ const TOOL_STATE_LABELS: Record<ToolState, string> = {
   'approval-responded': 'Approved',
   'output-available': 'Done',
   'output-error': 'Error',
-  'output-denied': 'Denied',
+  'output-denied': 'Denied'
 }
 
 const EMPTY_MESSAGES: UIMessage[] = []
@@ -53,36 +72,39 @@ interface ProgressTaskItem {
 export function RuntimeSessionPanel({
   sessionId,
   runtimeKind,
-  providerTargetId,
+  providerTargetId
 }: RuntimeSessionPanelProps) {
-  const visibleStatus = useChatStore(sessionId ? chatSelectors.visibleStatus(sessionId) : () => 'idle' as const)
+  const visibleStatus = useChatStore(
+    sessionId ? chatSelectors.visibleStatus(sessionId) : () => 'idle' as const
+  )
   const { data: runtimeStatus } = useRuntimeSessionStatus(sessionId)
   const attentionSnapshot = useSyncExternalStore(
     subscribeChatAttentionSnapshots,
     () => readChatAttentionSnapshot(sessionId),
-    () => null,
+    () => null
   )
   const { data: runtimeUiSlotStates, isLoading: runtimeUiSlotStatesLoading } = useQuery({
     queryKey: runtimeUiSlotStatesQueryKey(sessionId, runtimeKind),
     queryFn: ({ signal }) => getChatRuntimeUiSlotStates(sessionId!, signal),
     enabled: !!sessionId,
     staleTime: 2_000,
-    refetchInterval: query => statusShouldPoll(runtimeStatus?.status)
-      || shouldPollRuntimeSlotStates(query.state.data?.states ?? [])
-      ? 2_000
-      : false,
-    retry: false,
+    refetchInterval: (query) =>
+      statusShouldPoll(runtimeStatus?.status) ||
+      shouldPollRuntimeSlotStates(query.state.data?.states ?? [])
+        ? 2_000
+        : false,
+    retry: false
   })
   const todoSnapshot = useSessionTodos(sessionId)
   const lastAssistantId = useChatStore(
-    sessionId ? chatSelectors.lastAssistantId(sessionId) : () => undefined,
+    sessionId ? chatSelectors.lastAssistantId(sessionId) : () => undefined
   )
-  const messages = useChatStore(sessionId ? chatSelectors.messages(sessionId) : () => EMPTY_MESSAGES)
+  const messages = useChatStore(
+    sessionId ? chatSelectors.messages(sessionId) : () => EMPTY_MESSAGES
+  )
   const tools = collectSessionToolParts(messages)
   const runMeta = useChatStore(
-    lastAssistantId
-      ? chatSelectors.runDisplayMeta(lastAssistantId)
-      : () => undefined,
+    lastAssistantId ? chatSelectors.runDisplayMeta(lastAssistantId) : () => undefined
   )
   const toolCounts = countToolStates(tools)
   const recentTools = tools.slice(-6).reverse()
@@ -109,20 +131,21 @@ export function RuntimeSessionPanel({
 
       <section className="space-y-2">
         <PanelHeading icon={EyeIcon} label="Attention" />
-        {attentionSnapshot
-          ? (
-            <div className="grid grid-cols-2 gap-2">
-              <Metric label="Visible" value={formatAttentionRange(attentionSnapshot)} />
-              <Metric label="Scroll" value={formatPercentFromRatio(attentionSnapshot.scrollRatio)} />
-              <Metric label="Focus" value={attentionSnapshot.focusedArea ?? 'none'} />
-              <Metric label="Freshness" value={formatSnapshotFreshness(attentionSnapshot.updatedAt)} />
-            </div>
-          )
-          : (
-            <p className="rounded-md bg-muted/30 p-2 text-[11px] text-muted-foreground">
-              No chat attention snapshot for this session
-            </p>
-          )}
+        {attentionSnapshot ? (
+          <div className="grid grid-cols-2 gap-2">
+            <Metric label="Visible" value={formatAttentionRange(attentionSnapshot)} />
+            <Metric label="Scroll" value={formatPercentFromRatio(attentionSnapshot.scrollRatio)} />
+            <Metric label="Focus" value={attentionSnapshot.focusedArea ?? 'none'} />
+            <Metric
+              label="Freshness"
+              value={formatSnapshotFreshness(attentionSnapshot.updatedAt)}
+            />
+          </div>
+        ) : (
+          <p className="rounded-md bg-muted/30 p-2 text-[11px] text-muted-foreground">
+            No chat attention snapshot for this session
+          </p>
+        )}
       </section>
 
       <div className="border-t" />
@@ -134,7 +157,11 @@ export function RuntimeSessionPanel({
           <Metric label="UI status" value={formatStatus(visibleStatus)} tone={visibleStatus} />
           <Metric label="Runtime" value={runtimeStatus?.runtimeKind ?? runtimeKind ?? 'unknown'} />
           <Metric label="Mode" value={formatRuntimeSettings(runtimeStatus?.runtimeSettings)} />
-          <Metric label="Provider" value={runtimeStatus?.providerTargetId ?? providerTargetId ?? 'default'} className="col-span-2" />
+          <Metric
+            label="Provider"
+            value={runtimeStatus?.providerTargetId ?? providerTargetId ?? 'default'}
+            className="col-span-2"
+          />
         </div>
       </section>
 
@@ -143,12 +170,30 @@ export function RuntimeSessionPanel({
         <div className="space-y-1.5 rounded-md bg-muted/40 p-2">
           <KeyValue label="Run ID" value={displayedRun?.runId ?? runMeta?.runId ?? 'none'} />
           <KeyValue label="Run status" value={displayedRun?.status ?? 'none'} />
-          <KeyValue label="Provider session" value={runtimeStatus?.providerSessionId ?? displayedRun?.providerSessionId ?? 'none'} />
-          <KeyValue label="Model" value={runtimeStatus?.modelId ?? displayedRun?.modelId ?? 'none'} />
-          <KeyValue label="First event" value={formatElapsedRangeMs(runMeta?.requestStartedAtMs, runMeta?.firstEventAtMs)} />
-          <KeyValue label="First content" value={formatElapsedRangeMs(runMeta?.requestStartedAtMs, runMeta?.firstContentAtMs)} />
-          <KeyValue label="Total" value={formatElapsedRangeMs(runMeta?.requestStartedAtMs, runMeta?.completedAtMs)} />
-          <KeyValue label="Queue" value={`${runtimeStatus?.queue.running ?? 0} running / ${runtimeStatus?.queue.pending ?? 0} pending`} />
+          <KeyValue
+            label="Provider session"
+            value={runtimeStatus?.providerSessionId ?? displayedRun?.providerSessionId ?? 'none'}
+          />
+          <KeyValue
+            label="Model"
+            value={runtimeStatus?.modelId ?? displayedRun?.modelId ?? 'none'}
+          />
+          <KeyValue
+            label="First event"
+            value={formatElapsedRangeMs(runMeta?.requestStartedAtMs, runMeta?.firstEventAtMs)}
+          />
+          <KeyValue
+            label="First content"
+            value={formatElapsedRangeMs(runMeta?.requestStartedAtMs, runMeta?.firstContentAtMs)}
+          />
+          <KeyValue
+            label="Total"
+            value={formatElapsedRangeMs(runMeta?.requestStartedAtMs, runMeta?.completedAtMs)}
+          />
+          <KeyValue
+            label="Queue"
+            value={`${runtimeStatus?.queue.running ?? 0} running / ${runtimeStatus?.queue.pending ?? 0} pending`}
+          />
         </div>
       </section>
 
@@ -157,7 +202,11 @@ export function RuntimeSessionPanel({
         <div className="grid grid-cols-3 gap-2">
           <Metric label="Total" value={String(tools.length)} />
           <Metric label="Running" value={String(toolCounts.running)} />
-          <Metric label="Failed" value={String(toolCounts.failed)} tone={toolCounts.failed > 0 ? 'error' : 'idle'} />
+          <Metric
+            label="Failed"
+            value={String(toolCounts.failed)}
+            tone={toolCounts.failed > 0 ? 'error' : 'idle'}
+          />
         </div>
         <div className="space-y-1.5">
           {recentTools.length === 0 && (
@@ -171,10 +220,11 @@ export function RuntimeSessionPanel({
             return (
               <div key={tool.toolCallId} className="rounded-md bg-muted/40 px-2 py-1.5">
                 <div className="flex items-center gap-2">
-                  <CircleIcon className={cn(
-                    'size-2.5 shrink-0 fill-current',
-                    tool.state === 'output-error' ? 'text-destructive' : 'text-muted-foreground',
-                  )}
+                  <CircleIcon
+                    className={cn(
+                      'size-2.5 shrink-0 fill-current',
+                      tool.state === 'output-error' ? 'text-destructive' : 'text-muted-foreground'
+                    )}
                   />
                   <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
                     {descriptor.title || formatToolName(toolName)}
@@ -193,12 +243,11 @@ export function RuntimeSessionPanel({
           })}
         </div>
       </section>
-
     </div>
   )
 }
 
-function PanelHeading({ icon: Icon, label }: { icon: typeof ActivityIcon, label: string }) {
+function PanelHeading({ icon: Icon, label }: { icon: typeof ActivityIcon; label: string }) {
   return (
     <div className="flex items-center gap-1.5 text-[11px] font-medium text-muted-foreground">
       <Icon className="size-3.5" aria-hidden="true" />
@@ -207,13 +256,7 @@ function PanelHeading({ icon: Icon, label }: { icon: typeof ActivityIcon, label:
   )
 }
 
-function ProgressPanel({
-  items,
-  loading,
-}: {
-  items: ProgressTaskItem[]
-  loading: boolean
-}) {
+function ProgressPanel({ items, loading }: { items: ProgressTaskItem[]; loading: boolean }) {
   if (items.length === 0) {
     return null
   }
@@ -221,44 +264,46 @@ function ProgressPanel({
     <section className="space-y-2">
       <PanelHeading icon={ListChecksIcon} label="Progress" />
       <div className="space-y-2 rounded-md bg-muted/35 px-1 py-2 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
-        {items.length > 0
-          ? (
-            <div className="space-y-1">
-              {items.map(item => (
-                <ProgressTaskRow key={item.id} item={item} />
-              ))}
-            </div>
-          )
-          : (
-            <p className="rounded bg-background/45 px-2 py-1.5 text-[11px] text-muted-foreground">
-              {loading ? 'Loading session progress...' : 'No Plan or TODO state for this session'}
-            </p>
-          )}
+        {items.length > 0 ? (
+          <div className="space-y-1">
+            {items.map((item) => (
+              <ProgressTaskRow key={item.id} item={item} />
+            ))}
+          </div>
+        ) : (
+          <p className="rounded bg-background/45 px-2 py-1.5 text-[11px] text-muted-foreground">
+            {loading ? 'Loading session progress...' : 'No Plan or TODO state for this session'}
+          </p>
+        )}
       </div>
     </section>
   )
 }
 
 function ProgressTaskRow({ item }: { item: ProgressTaskItem }) {
-  const Icon = item.status === 'completed'
-    ? CheckCircle2Icon
-    : item.status === 'inProgress'
-      ? LoaderCircleIcon
-      : CircleIcon
+  const Icon =
+    item.status === 'completed'
+      ? CheckCircle2Icon
+      : item.status === 'inProgress'
+        ? LoaderCircleIcon
+        : CircleIcon
 
   return (
     <div className="flex min-w-0 items-start gap-2 rounded bg-background/45 px-2 py-1.5">
-      <Icon className={cn(
-        'mt-0.5 size-3.5 shrink-0',
-        item.status === 'completed' && 'text-emerald-500',
-        item.status === 'inProgress' && 'animate-spin text-primary',
-        item.status === 'pending' && 'text-muted-foreground',
-      )}
+      <Icon
+        className={cn(
+          'mt-0.5 size-3.5 shrink-0',
+          item.status === 'completed' && 'text-emerald-500',
+          item.status === 'inProgress' && 'animate-spin text-primary',
+          item.status === 'pending' && 'text-muted-foreground'
+        )}
       />
-      <span className={cn(
-        'min-w-0 flex-1 text-[11px] leading-4 text-foreground/85',
-        item.status === 'completed' && 'text-muted-foreground line-through decoration-muted-foreground/50',
-      )}
+      <span
+        className={cn(
+          'min-w-0 flex-1 text-[11px] leading-4 text-foreground/85',
+          item.status === 'completed' &&
+            'text-muted-foreground line-through decoration-muted-foreground/50'
+        )}
       >
         {item.label}
       </span>
@@ -268,14 +313,14 @@ function ProgressTaskRow({ item }: { item: ProgressTaskItem }) {
 
 function SubagentsPanel({
   sessionId,
-  crewState,
+  crewState
 }: {
   sessionId: string
   crewState: ChatRuntimeCrewUiSlotState | null
 }) {
-  const openSubagentTab = useBrowserPanelStore(state => state.openSubagentTab)
-  const browserPanelOwnerId = useLayoutStore(state => state.activeBrowserPanelOwnerId)
-  const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
+  const openSubagentTab = useBrowserPanelStore((state) => state.openSubagentTab)
+  const browserPanelOwnerId = useLayoutStore((state) => state.activeBrowserPanelOwnerId)
+  const setBrowserPanelOpen = useLayoutStore((state) => state.setBrowserPanelOpen)
   const agents = crewState ? readCrewAgents(crewState) : []
   const openAgent = (agent: ChatRuntimeCrewAgentItem) => {
     openSubagentTab({
@@ -283,7 +328,7 @@ function SubagentsPanel({
       threadId: agent.threadId,
       agentName: readCrewAgentLabel(agent),
       agentRole: agent.agentRole,
-      ownerId: browserPanelOwnerId,
+      ownerId: browserPanelOwnerId
     })
     setBrowserPanelOpen(true, browserPanelOwnerId)
   }
@@ -297,7 +342,7 @@ function SubagentsPanel({
       <PanelHeading icon={BotIcon} label="Subagents" />
       <div className="space-y-2 rounded-md bg-muted/35 p-2 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
         <div className="space-y-1">
-          {agents.map(agent => (
+          {agents.map((agent) => (
             <SubagentRow key={agent.threadId} agent={agent} onOpen={openAgent} />
           ))}
         </div>
@@ -308,7 +353,7 @@ function SubagentsPanel({
 
 function SubagentRow({
   agent,
-  onOpen,
+  onOpen
 }: {
   agent: ChatRuntimeCrewAgentItem
   onOpen: (agent: ChatRuntimeCrewAgentItem) => void
@@ -340,7 +385,7 @@ function Metric({
   label,
   value,
   tone = 'idle',
-  className,
+  className
 }: {
   label: string
   value: string
@@ -350,14 +395,15 @@ function Metric({
   return (
     <div className={cn('min-w-0 rounded-md bg-muted/40 p-2', className)}>
       <p className="text-[10px] text-muted-foreground">{label}</p>
-      <p className={cn(
-        'mt-0.5 truncate text-[11px] font-medium',
-        tone === 'streaming' && 'text-primary',
-        tone === 'pending' && 'text-primary',
-        tone === 'cancelling' && 'text-amber-600 dark:text-amber-400',
-        tone === 'error' && 'text-destructive',
-        tone === 'idle' && 'text-foreground',
-      )}
+      <p
+        className={cn(
+          'mt-0.5 truncate text-[11px] font-medium',
+          tone === 'streaming' && 'text-primary',
+          tone === 'pending' && 'text-primary',
+          tone === 'cancelling' && 'text-amber-600 dark:text-amber-400',
+          tone === 'error' && 'text-destructive',
+          tone === 'idle' && 'text-foreground'
+        )}
       >
         {value}
       </p>
@@ -365,7 +411,7 @@ function Metric({
   )
 }
 
-function KeyValue({ label, value }: { label: string, value: string }) {
+function KeyValue({ label, value }: { label: string; value: string }) {
   return (
     <div className="flex items-center gap-2 text-[11px]">
       <span className="shrink-0 text-muted-foreground">{label}</span>
@@ -386,7 +432,7 @@ function isRuntimeCrewState(state: ChatRuntimeUiSlotState): state is ChatRuntime
 
 function buildProgressItems(
   planState: ChatRuntimePlanUiSlotState | null,
-  todoSnapshot: SessionTodoSnapshot | null,
+  todoSnapshot: SessionTodoSnapshot | null
 ): ProgressTaskItem[] {
   const itemByKey = new Map<string, ProgressTaskItem>()
 
@@ -395,7 +441,7 @@ function buildProgressItems(
       id: `plan:${index}:${step.step}`,
       label: step.step,
       status: step.status,
-      order: index,
+      order: index
     })
   })
 
@@ -404,7 +450,7 @@ function buildProgressItems(
       id: `todo:${todo.id ?? index}:${todo.content}`,
       label: todo.content,
       status: mapTodoProgressStatus(todo),
-      order: (planState?.steps.length ?? 0) + index,
+      order: (planState?.steps.length ?? 0) + index
     })
   })
 
@@ -423,7 +469,7 @@ function mergeProgressItem(itemByKey: Map<string, ProgressTaskItem>, item: Progr
     ...existing,
     id: existing.id,
     status: readDominantProgressStatus(existing.status, item.status),
-    order: Math.min(existing.order, item.order),
+    order: Math.min(existing.order, item.order)
   })
 }
 
@@ -443,7 +489,10 @@ function mapTodoProgressStatus(todo: ChatTodoItem): ProgressTaskStatus {
   }
 }
 
-function readDominantProgressStatus(left: ProgressTaskStatus, right: ProgressTaskStatus): ProgressTaskStatus {
+function readDominantProgressStatus(
+  left: ProgressTaskStatus,
+  right: ProgressTaskStatus
+): ProgressTaskStatus {
   if (left === 'inProgress' || right === 'inProgress') {
     return 'inProgress'
   }
@@ -468,7 +517,7 @@ function readCrewAgents(state: ChatRuntimeCrewUiSlotState): ChatRuntimeCrewAgent
         preview: null,
         modelProvider: null,
         agentNickname: null,
-        agentRole: null,
+        agentRole: null
       })
     }
     for (const agent of readCrewCallAgents(call)) {
@@ -498,16 +547,19 @@ function isActiveCrewAgentStatus(status: string | null): boolean {
   return status === 'pendingInit' || status === 'running' || status === 'active'
 }
 
-function countToolStates(tools: Array<{ state: ToolState }>): { running: number, failed: number } {
-  return tools.reduce((counts, tool) => {
-    if (tool.state === 'output-error' || tool.state === 'output-denied') {
-      return { ...counts, failed: counts.failed + 1 }
-    }
-    if (tool.state !== 'output-available') {
-      return { ...counts, running: counts.running + 1 }
-    }
-    return counts
-  }, { running: 0, failed: 0 })
+function countToolStates(tools: Array<{ state: ToolState }>): { running: number; failed: number } {
+  return tools.reduce(
+    (counts, tool) => {
+      if (tool.state === 'output-error' || tool.state === 'output-denied') {
+        return { ...counts, failed: counts.failed + 1 }
+      }
+      if (tool.state !== 'output-available') {
+        return { ...counts, running: counts.running + 1 }
+      }
+      return counts
+    },
+    { running: 0, failed: 0 }
+  )
 }
 
 function collectSessionToolParts(messages: UIMessage[]): RenderableToolPart[] {
@@ -527,7 +579,9 @@ function formatStatus(status: RuntimeSessionStatusKind | 'error'): string {
   return status.charAt(0).toUpperCase() + status.slice(1)
 }
 
-function formatRuntimeSettings(settings: { accessMode: string, interactionMode: string } | null | undefined): string {
+function formatRuntimeSettings(
+  settings: { accessMode: string; interactionMode: string } | null | undefined
+): string {
   if (!settings) {
     return 'full-access / default'
   }
@@ -541,7 +595,9 @@ function formatThreadId(threadId: string): string {
   return `${threadId.slice(0, 8)}...${threadId.slice(-4)}`
 }
 
-function formatAttentionRange(snapshot: NonNullable<ReturnType<typeof readChatAttentionSnapshot>>): string {
+function formatAttentionRange(
+  snapshot: NonNullable<ReturnType<typeof readChatAttentionSnapshot>>
+): string {
   if (snapshot.firstVisibleIndex === null || snapshot.lastVisibleIndex === null) {
     return `${snapshot.messageCount} messages`
   }
@@ -579,6 +635,9 @@ function shouldPollRuntimeSlotStates(states: ChatRuntimeUiSlotState[]): boolean 
     }
     if (state.kind === 'crew') {
       return typeof state.activeCount === 'number' && state.activeCount > 0
+    }
+    if (state.kind === 'userInput') {
+      return true
     }
     return false
   })

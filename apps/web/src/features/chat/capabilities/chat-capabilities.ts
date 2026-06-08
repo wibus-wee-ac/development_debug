@@ -7,11 +7,16 @@ export function runtimeCapabilitiesQueryKey(sessionId: string | null): readonly 
   return ['chat', 'runtime-capabilities', sessionId ?? 'no-session']
 }
 
-export function draftRuntimeCapabilitiesQueryKey(runtimeKind: string | null | undefined): readonly unknown[] {
+export function draftRuntimeCapabilitiesQueryKey(
+  runtimeKind: string | null | undefined
+): readonly unknown[] {
   return ['chat', 'draft-runtime-capabilities', runtimeKind ?? 'no-runtime']
 }
 
-export function runtimeUiSlotStatesQueryKey(sessionId: string | null, runtimeKind?: string | null): readonly unknown[] {
+export function runtimeUiSlotStatesQueryKey(
+  sessionId: string | null,
+  runtimeKind?: string | null
+): readonly unknown[] {
   const key = ['chat', 'runtime-ui-slot-states', sessionId ?? 'no-session'] as const
   return runtimeKind ? [...key, runtimeKind] : key
 }
@@ -23,42 +28,43 @@ export interface ChatSlashCommand {
   aliases?: string[]
 }
 
-export type ChatRuntimeUiSlotSurface
-  = | 'slashCommand'
-    | 'toolbarPicker'
-    | 'composerState'
-    | 'messageInline'
-    | 'runtimePanel'
-    // Stream evidence is rendered from provider-emitted message/tool chunks, not from polled slot state.
-    | 'streamEvidence'
-    | 'recordOnly'
+export type ChatRuntimeUiSlotSurface =
+  | 'slashCommand'
+  | 'toolbarPicker'
+  | 'composerState'
+  | 'messageInline'
+  | 'runtimePanel'
+  // Stream evidence is rendered from provider-emitted message/tool chunks, not from polled slot state.
+  | 'streamEvidence'
+  | 'recordOnly'
 
-export type ChatRuntimeUiSlotIconKey
-  = | 'alert'
-    | 'approvals'
-    | 'code-review'
-    | 'compact'
-    | 'config'
-    | 'crew'
-    | 'diff'
-    | 'feedback'
-    | 'filesystem'
-    | 'goal'
-    | 'ide-context'
-    | 'mcp'
-    | 'model'
-    | 'personality'
-    | 'plugin'
-    | 'plan'
-    | 'quick-question'
-    | 'reasoning'
-    | 'search'
-    | 'side-chat'
-    | 'skills'
-    | 'status'
-    | 'terminal'
-    | 'tool-activity'
-    | 'usage'
+export type ChatRuntimeUiSlotIconKey =
+  | 'alert'
+  | 'approvals'
+  | 'code-review'
+  | 'compact'
+  | 'config'
+  | 'crew'
+  | 'diff'
+  | 'feedback'
+  | 'filesystem'
+  | 'goal'
+  | 'ide-context'
+  | 'mcp'
+  | 'model'
+  | 'personality'
+  | 'plugin'
+  | 'plan'
+  | 'quick-question'
+  | 'user-input'
+  | 'reasoning'
+  | 'search'
+  | 'side-chat'
+  | 'skills'
+  | 'status'
+  | 'terminal'
+  | 'tool-activity'
+  | 'usage'
 
 export interface ChatRuntimeUiSlot {
   id: string
@@ -79,13 +85,24 @@ export interface ChatRuntimeCapabilities {
   skills: string[]
 }
 
-export type ChatRuntimeGoalStatus = 'active' | 'paused' | 'blocked' | 'usageLimited' | 'budgetLimited' | 'complete'
+export type ChatRuntimeGoalStatus =
+  | 'active'
+  | 'paused'
+  | 'blocked'
+  | 'usageLimited'
+  | 'budgetLimited'
+  | 'complete'
 export type ChatRuntimeCompactStatus = 'idle' | 'running' | 'nearLimit' | 'overLimit' | 'compacted'
 export type ChatRuntimeThreadStatus = 'notLoaded' | 'idle' | 'systemError' | 'active'
 export type ChatRuntimePlanStepStatus = 'pending' | 'inProgress' | 'completed'
 export type ChatRuntimeToolActivityStatus = 'running' | 'completed' | 'failed'
 export type ChatRuntimeMcpServerStatus = 'starting' | 'ready' | 'failed' | 'cancelled' | 'unknown'
-export type ChatRuntimeMcpAuthStatus = 'unsupported' | 'notLoggedIn' | 'bearerToken' | 'oAuth' | 'unknown'
+export type ChatRuntimeMcpAuthStatus =
+  | 'unsupported'
+  | 'notLoggedIn'
+  | 'bearerToken'
+  | 'oAuth'
+  | 'unknown'
 export type ChatRuntimeApprovalStatus = 'pending' | 'approved' | 'denied' | 'timedOut' | 'aborted'
 export type ChatRuntimeAlertSeverity = 'info' | 'warning' | 'error'
 
@@ -157,7 +174,7 @@ export interface ChatRuntimeReasoningUiSlotState {
   threadId: string
   effort: string | null
   summary: string | null
-  supportedEfforts: Array<{ id: string, description: string }>
+  supportedEfforts: Array<{ id: string; description: string }>
   updatedAt: number
 }
 
@@ -411,26 +428,50 @@ export interface ChatRuntimeConfigUiSlotState {
   updatedAt: number
 }
 
-export type ChatRuntimeUiSlotState
-  = | ChatRuntimeAlertUiSlotState
-    | ChatRuntimeApprovalsUiSlotState
-    | ChatRuntimeCompactUiSlotState
-    | ChatRuntimeConfigUiSlotState
-    | ChatRuntimeCrewUiSlotState
-    | ChatRuntimeDiffUiSlotState
-    | ChatRuntimeFilesystemUiSlotState
-    | ChatRuntimeGoalUiSlotState
-    | ChatRuntimeMcpUiSlotState
-    | ChatRuntimeModelUiSlotState
-    | ChatRuntimePlanUiSlotState
-    | ChatRuntimePluginUiSlotState
-    | ChatRuntimeReasoningUiSlotState
-    | ChatRuntimeSearchUiSlotState
-    | ChatRuntimeSkillsUiSlotState
-    | ChatRuntimeStatusUiSlotState
-    | ChatRuntimeTerminalUiSlotState
-    | ChatRuntimeToolActivityUiSlotState
-    | ChatRuntimeUsageUiSlotState
+export interface ChatRuntimeUserInputQuestion {
+  id: string
+  header: string
+  question: string
+  isOther: boolean
+  isSecret: boolean
+  options: Array<{ label: string; description: string }> | null
+}
+
+export interface ChatRuntimeUserInputUiSlotState {
+  kind: 'userInput'
+  slotId: string
+  threadId: string | null
+  runId: string
+  requestId: string
+  providerMethod: string
+  toolCallId: string
+  questionCount: number
+  questions: ChatRuntimeUserInputQuestion[]
+  createdAt: number
+  updatedAt: number
+}
+
+export type ChatRuntimeUiSlotState =
+  | ChatRuntimeAlertUiSlotState
+  | ChatRuntimeApprovalsUiSlotState
+  | ChatRuntimeCompactUiSlotState
+  | ChatRuntimeConfigUiSlotState
+  | ChatRuntimeCrewUiSlotState
+  | ChatRuntimeDiffUiSlotState
+  | ChatRuntimeFilesystemUiSlotState
+  | ChatRuntimeGoalUiSlotState
+  | ChatRuntimeMcpUiSlotState
+  | ChatRuntimeModelUiSlotState
+  | ChatRuntimePlanUiSlotState
+  | ChatRuntimePluginUiSlotState
+  | ChatRuntimeReasoningUiSlotState
+  | ChatRuntimeSearchUiSlotState
+  | ChatRuntimeSkillsUiSlotState
+  | ChatRuntimeStatusUiSlotState
+  | ChatRuntimeTerminalUiSlotState
+  | ChatRuntimeToolActivityUiSlotState
+  | ChatRuntimeUsageUiSlotState
+  | ChatRuntimeUserInputUiSlotState
 
 export interface ChatRuntimeUiSlotStatesResponse {
   runtimeKind: string
@@ -442,16 +483,25 @@ export type ChatRuntimeContextUsage = NonNullable<ChatRuntimeContextUsageRespons
 export type ChatRuntimeContextUsageSection = ChatRuntimeContextUsage['sections'][number]
 export type ChatRuntimeContextUsageItem = ChatRuntimeContextUsageSection['items'][number]
 
-export async function getChatRuntimeCapabilities(sessionId: string, signal?: AbortSignal): Promise<ChatRuntimeCapabilities> {
-  const res = await fetch(`${SERVER_BASE}/chat/sessions/${encodeURIComponent(sessionId)}/capabilities`, { signal })
+export async function getChatRuntimeCapabilities(
+  sessionId: string,
+  signal?: AbortSignal
+): Promise<ChatRuntimeCapabilities> {
+  const res = await fetch(
+    `${SERVER_BASE}/chat/sessions/${encodeURIComponent(sessionId)}/capabilities`,
+    { signal }
+  )
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new Error(`Failed to load chat capabilities: ${res.status} ${body}`)
   }
-  return await res.json() as ChatRuntimeCapabilities
+  return (await res.json()) as ChatRuntimeCapabilities
 }
 
-export async function getDraftChatRuntimeCapabilities(runtimeKind: string, signal?: AbortSignal): Promise<ChatRuntimeCapabilities> {
+export async function getDraftChatRuntimeCapabilities(
+  runtimeKind: string,
+  signal?: AbortSignal
+): Promise<ChatRuntimeCapabilities> {
   const url = new URL(`${SERVER_BASE}/chat/draft-runtime-capabilities`)
   url.searchParams.set('runtimeKind', runtimeKind)
   const res = await fetch(url, { signal })
@@ -459,23 +509,35 @@ export async function getDraftChatRuntimeCapabilities(runtimeKind: string, signa
     const body = await res.text().catch(() => '')
     throw new Error(`Failed to load draft chat capabilities: ${res.status} ${body}`)
   }
-  return await res.json() as ChatRuntimeCapabilities
+  return (await res.json()) as ChatRuntimeCapabilities
 }
 
-export async function getChatRuntimeUiSlotStates(sessionId: string, signal?: AbortSignal): Promise<ChatRuntimeUiSlotStatesResponse> {
-  const res = await fetch(`${SERVER_BASE}/chat/sessions/${encodeURIComponent(sessionId)}/ui-slot-states`, { signal })
+export async function getChatRuntimeUiSlotStates(
+  sessionId: string,
+  signal?: AbortSignal
+): Promise<ChatRuntimeUiSlotStatesResponse> {
+  const res = await fetch(
+    `${SERVER_BASE}/chat/sessions/${encodeURIComponent(sessionId)}/ui-slot-states`,
+    { signal }
+  )
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new Error(`Failed to load chat UI slot states: ${res.status} ${body}`)
   }
-  return await res.json() as ChatRuntimeUiSlotStatesResponse
+  return (await res.json()) as ChatRuntimeUiSlotStatesResponse
 }
 
-export async function getChatRuntimeContextUsage(sessionId: string, signal?: AbortSignal): Promise<ChatRuntimeContextUsageResponse> {
-  const res = await fetch(`${SERVER_BASE}/chat/sessions/${encodeURIComponent(sessionId)}/context-usage`, { signal })
+export async function getChatRuntimeContextUsage(
+  sessionId: string,
+  signal?: AbortSignal
+): Promise<ChatRuntimeContextUsageResponse> {
+  const res = await fetch(
+    `${SERVER_BASE}/chat/sessions/${encodeURIComponent(sessionId)}/context-usage`,
+    { signal }
+  )
   if (!res.ok) {
     const body = await res.text().catch(() => '')
     throw new Error(`Failed to load chat context usage: ${res.status} ${body}`)
   }
-  return await res.json() as ChatRuntimeContextUsageResponse
+  return (await res.json()) as ChatRuntimeContextUsageResponse
 }

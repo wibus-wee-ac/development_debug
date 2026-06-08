@@ -30,7 +30,6 @@ import type { ChatContextPart } from '../context/chat-context-parts'
 import { runtimeSessionStatusQueryKey, useRuntimeSessionStatus } from '../runtime/use-runtime-session-status'
 import { startChatResponseStream, subscribeChatSessionStreamForSession } from '../transport/chat-stream-transport'
 import { ChatStreamingHandler } from '../transport/chat-streaming-handler'
-import { emitChatSessionInvalidated } from '../transport/sse-chat-transport'
 import { buildOptimisticUserMessage, readCodexGoalCommandObjective } from './optimistic-chat-turn'
 
 // ── Message Snapshot Types ──────────────────────────────────
@@ -239,6 +238,23 @@ function releaseStaleSessionStreamingState(sessionId: string): void {
   })
 }
 
+function releasePassiveSessionStreamingState(sessionId: string): void {
+  const state = useChatStore.getState()
+  const meta = state.sessionMetaMap.get(sessionId)
+  const messageIds = new Set((state.messagesMap.get(sessionId) ?? []).map(message => message.id))
+
+  for (const messageId of messageIds) {
+    if (state.passiveStreamingMessageIds.has(messageId)) {
+      state.finishGeneration(messageId)
+    }
+  }
+  state.setPassiveStreamingMessageIds(sessionId, [])
+  state.setSessionMeta(sessionId, {
+    cancelling: meta?.cancelling && meta.locallyDriving,
+    passiveStatus: 'idle',
+  })
+}
+
 interface ChatSessionRuntimeControls {
   queryClient: ReturnType<typeof useQueryClient>
   snapshotRowsQueryKey: ReturnType<typeof getChatSessionsBySessionIdMessagesQueryKey> | null
@@ -275,9 +291,6 @@ function useChatSessionRuntimeControls(chatSessionId: string | null): ChatSessio
     if (!snapshotRowsQueryKey && !sessionBindingQueryKey) {
       return
     }
-    if (chatSessionId) {
-      emitChatSessionInvalidated({ chatSessionId })
-    }
     if (snapshotTimerRef.current) {
       clearTimeout(snapshotTimerRef.current)
     }
@@ -297,9 +310,6 @@ function useChatSessionRuntimeControls(chatSessionId: string | null): ChatSessio
   }, [queryClient])
 
   const refreshQueue = useCallback((delay = 0) => {
-    if (chatSessionId) {
-      emitChatSessionInvalidated({ chatSessionId })
-    }
     if (delay <= 0) {
       void queryClient.invalidateQueries({ queryKey: queueQueryKey })
       void queryClient.refetchQueries({ queryKey: queueQueryKey, type: 'active' })
@@ -332,11 +342,12 @@ function useChatSessionRuntimeControls(chatSessionId: string | null): ChatSessio
   }
 }
 
-export function useChatSessionDriver(chatSessionId: string | null): void {
+export function useChatSessionDriver(chatSessionId: string | null, active = true): void {
   const {
     scheduleSnapshotRefresh,
     refreshQueue,
   } = useChatSessionRuntimeControls(chatSessionId)
+  const driverEnabled = active && !!chatSessionId
   const generatedSnapshotRowsOptions = useMemo(
     () => getChatSessionsBySessionIdMessagesOptions({ path: { sessionId: chatSessionId ?? '' } }),
     [chatSessionId],
@@ -349,10 +360,10 @@ export function useChatSessionDriver(chatSessionId: string | null): void {
   >({
     queryKey: generatedSnapshotRowsOptions.queryKey,
     queryFn: generatedSnapshotRowsOptions.queryFn,
-    enabled: !!chatSessionId,
+    enabled: driverEnabled,
     select: data => data as ChatSessionMessageRow[],
   })
-  const runtimeStatusQuery = useRuntimeSessionStatus(chatSessionId)
+  const runtimeStatusQuery = useRuntimeSessionStatus(driverEnabled ? chatSessionId : null)
   const snapshotRows = snapshotRowsQuery.data
   const runtimeStatus = runtimeStatusQuery.data
   const passiveStreamRef = useRef<{
@@ -364,8 +375,24 @@ export function useChatSessionDriver(chatSessionId: string | null): void {
   const requestedRuntimeActiveRunMessageRef = useRef<string | null>(null)
   const runtimeQueueSignatureRef = useRef<string | null>(null)
 
+  useEffect(() => {
+    if (driverEnabled) {
+      return
+    }
+    if (passiveStreamRef.current) {
+      passiveStreamRef.current.controller.abort()
+      passiveStreamRef.current.handler.dispose()
+      passiveStreamRef.current = null
+    }
+    if (chatSessionId) {
+      releasePassiveSessionStreamingState(chatSessionId)
+    }
+    requestedRuntimeActiveRunMessageRef.current = null
+    runtimeQueueSignatureRef.current = null
+  }, [chatSessionId, driverEnabled])
+
   useLayoutEffect(() => {
-    if (!chatSessionId || !snapshotRows) {
+    if (!driverEnabled || !chatSessionId || !snapshotRows) {
       return
     }
     const meta = useChatStore.getState().sessionMetaMap.get(chatSessionId)
@@ -392,18 +419,18 @@ export function useChatSessionDriver(chatSessionId: string | null): void {
     if (failedRow?.errorText) {
       useChatStore.getState().failGeneration(failedRow.messageId, failedRow.errorText)
     }
-  }, [chatSessionId, snapshotRows])
+  }, [chatSessionId, driverEnabled, snapshotRows])
 
   useEffect(() => {
-    if (!chatSessionId || !snapshotRowsQuery.isError) {
+    if (!driverEnabled || !chatSessionId || !snapshotRowsQuery.isError) {
       return
     }
     useChatStore.getState().setSessionHydrated(chatSessionId, true)
     useChatStore.getState().setPassiveStatus(chatSessionId, 'error')
-  }, [chatSessionId, snapshotRowsQuery.isError])
+  }, [chatSessionId, driverEnabled, snapshotRowsQuery.isError])
 
   useEffect(() => {
-    if (!chatSessionId || !runtimeStatus || runtimeStatus.status !== 'idle' || runtimeStatus.activeRun) {
+    if (!driverEnabled || !chatSessionId || !runtimeStatus || runtimeStatus.status !== 'idle' || runtimeStatus.activeRun) {
       return
     }
 
@@ -426,7 +453,7 @@ export function useChatSessionDriver(chatSessionId: string | null): void {
     releaseStaleSessionStreamingState(chatSessionId)
     scheduleSnapshotRefresh(0)
     refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
-  }, [chatSessionId, refreshQueue, runtimeStatus, scheduleSnapshotRefresh, snapshotRows])
+  }, [chatSessionId, driverEnabled, refreshQueue, runtimeStatus, scheduleSnapshotRefresh, snapshotRows])
 
   useEffect(() => {
     return () => {
@@ -441,7 +468,7 @@ export function useChatSessionDriver(chatSessionId: string | null): void {
   }, [chatSessionId])
 
   useEffect(() => {
-    if (!chatSessionId || !runtimeStatus) {
+    if (!driverEnabled || !chatSessionId || !runtimeStatus) {
       runtimeQueueSignatureRef.current = null
       return
     }
@@ -465,10 +492,10 @@ export function useChatSessionDriver(chatSessionId: string | null): void {
     ) {
       refreshQueue(0)
     }
-  }, [chatSessionId, refreshQueue, runtimeStatus])
+  }, [chatSessionId, driverEnabled, refreshQueue, runtimeStatus])
 
   useEffect(() => {
-    if (!chatSessionId) {
+    if (!driverEnabled || !chatSessionId) {
       return
     }
 
@@ -489,10 +516,10 @@ export function useChatSessionDriver(chatSessionId: string | null): void {
 
     requestedRuntimeActiveRunMessageRef.current = activeRunMessageId
     scheduleSnapshotRefresh(0)
-  }, [chatSessionId, runtimeStatus?.activeRun?.messageId, scheduleSnapshotRefresh, snapshotRows])
+  }, [chatSessionId, driverEnabled, runtimeStatus?.activeRun?.messageId, scheduleSnapshotRefresh, snapshotRows])
 
   useEffect(() => {
-    if (!chatSessionId || !snapshotRows) {
+    if (!driverEnabled || !chatSessionId || !snapshotRows) {
       return
     }
 
@@ -565,7 +592,7 @@ export function useChatSessionDriver(chatSessionId: string | null): void {
     })()
 
     return undefined
-  }, [chatSessionId, refreshQueue, scheduleSnapshotRefresh, snapshotRows])
+  }, [chatSessionId, driverEnabled, refreshQueue, scheduleSnapshotRefresh, snapshotRows])
 }
 
 export function useChatSession(chatSessionId: string | null) {

@@ -15,24 +15,39 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle,
+  DialogTitle
 } from '~/components/ui/dialog'
 import { Textarea } from '~/components/ui/textarea'
 import { toastManager } from '~/components/ui/toast'
 import type { ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
 import { getServerUrl } from '~/lib/electron'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
+import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 
+import type { PlanRefineEditorSaveDetail } from '../browser/plan-refine-editor'
+import { PLAN_REFINE_EDITOR_SAVE_EVENT } from '../browser/plan-refine-editor'
 import type { MentionItem } from '.'
-import type { ChatRuntimeGoalUiSlotState, ChatRuntimePlanUiSlotState } from './capabilities/chat-capabilities'
+import type {
+  ChatRuntimeGoalUiSlotState,
+  ChatRuntimePlanUiSlotState
+} from './capabilities/chat-capabilities'
 import { runtimeUiSlotStatesQueryKey } from './capabilities/chat-capabilities'
 import { useQuickQuestion } from './capabilities/use-quick-question'
 import type { ChatQueueItem } from './commands/chat-response-command'
 import type { ComposerRuntimeSettingsController } from './composer/composer'
 import { Composer } from './composer/composer'
-import type { ComposerSlashCommandActionContext, ComposerSlashCommandActionResult, ComposerSlashCommandActionTools } from './composer/composer-action-context'
-import type { ComposerPlanSlotActions, ComposerQuickQuestionSlotActions, ComposerReviewSlotActions, ComposerUsageSlotActions } from './composer/composer-slot-states'
+import type {
+  ComposerSlashCommandActionContext,
+  ComposerSlashCommandActionResult,
+  ComposerSlashCommandActionTools
+} from './composer/composer-action-context'
+import type {
+  ComposerPlanSlotActions,
+  ComposerQuickQuestionSlotActions,
+  ComposerReviewSlotActions,
+  ComposerUsageSlotActions
+} from './composer/composer-slot-states'
 import { ComposerSlotStates } from './composer/composer-slot-states'
 import type { ChatComposerRuntime } from './composer/use-chat-composer-runtime'
 import { useChatComposerRuntime } from './composer/use-chat-composer-runtime'
@@ -40,7 +55,10 @@ import type { ComposerAppshotRuntime } from './composer/use-composer-appshot-cap
 import { useComposerAppshotCapture } from './composer/use-composer-appshot-capture'
 import type { PluginMentionItem } from './mentions/mention-panel'
 import type { SkillMentionItem } from './mentions/skill-mention-panel'
-import { registerChatComposerFileIngressHandler, registerChatPromptIngressHandler } from './prompt-ingress'
+import {
+  registerChatComposerFileIngressHandler,
+  registerChatPromptIngressHandler
+} from './prompt-ingress'
 import { MessageBubbleById } from './rendering/message-bubble'
 import { RuntimeDiagnosticsPopover } from './runtime/runtime-diagnostics-popover'
 import { RuntimeSettingsControl } from './runtime/runtime-settings-control'
@@ -49,18 +67,36 @@ import type { SendMessageOptions } from './session/use-chat-session'
 import { useChatSession } from './session/use-chat-session'
 import { useSessionAwaitSummary } from './session/use-session-await'
 import type { ChatComposerSlashCommand } from './slash-commands/chat-slash-commands'
-import { CODEX_REVIEW_SLASH_ACTION_ID, CODEX_USAGE_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_ACTION_ID } from './slash-commands/chat-slash-commands'
+import {
+  CODEX_REVIEW_SLASH_ACTION_ID,
+  CODEX_USAGE_SLASH_ACTION_ID,
+  CRADLE_APPSHOT_SLASH_ACTION_ID
+} from './slash-commands/chat-slash-commands'
 import { ChatMinimap } from './ui/chat-minimap'
 import { ChatQueueList } from './ui/chat-queue-list'
 import type { ChatScrollRuntime } from './ui/use-chat-scroll-runtime'
 import { useChatScrollRuntime } from './ui/use-chat-scroll-runtime'
 
 const CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX = 'PLEASE IMPLEMENT THIS PLAN:'
+const CODEX_PLAN_REFINE_PROMPT_PREFIX = 'PLEASE REFINE THIS PLAN:'
+
+function hashPlanRefineRequestContent(content: string): string {
+  let hash = 0
+  for (let index = 0; index < content.length; index++) {
+    hash = (Math.imul(31, hash) + content.charCodeAt(index)) | 0
+  }
+  return Math.abs(hash).toString(36)
+}
 
 function readPlanSlotContent(state: ChatRuntimePlanUiSlotState): string {
-  return state.content?.trim()
-    || state.explanation?.trim()
-    || state.steps.map(step => step.step).join('\n').trim()
+  return (
+    state.content?.trim() ||
+    state.explanation?.trim() ||
+    state.steps
+      .map((step) => step.step)
+      .join('\n')
+      .trim()
+  )
 }
 
 interface ChatViewProps {
@@ -93,120 +129,122 @@ interface ChatViewProps {
 
 const EMPTY_FILES: MentionItem[] = []
 
-const ChatMessageListPane = memo(({
-  sessionId,
-  messageIds,
-  messageCount,
-  status,
-  error,
-  isReady,
-  scrollContainerRef,
-  viewportRef,
-  virtualizerRef,
-  minimapRef,
-  keepMountedIndices,
-  scrollMetrics,
-  onVirtualScroll,
-  onScrollToMessageIndex,
-  onScrollToOffset,
-  onToolApprovalResponse,
-  onRuntimeUserInputSubmit,
-  composerStack,
-}: {
-  sessionId: string | null
-  messageIds: ReturnType<typeof useChatSession>['messageIds']
-  messageCount: ReturnType<typeof useChatSession>['messageCount']
-  status: ReturnType<typeof useChatSession>['status']
-  error: ReturnType<typeof useChatSession>['error']
-  isReady: boolean
-  scrollContainerRef: ChatScrollRuntime['scrollContainerRef']
-  viewportRef: ChatScrollRuntime['viewportRef']
-  virtualizerRef: ChatScrollRuntime['virtualizerRef']
-  minimapRef: ChatScrollRuntime['minimapRef']
-  keepMountedIndices: ChatScrollRuntime['keepMountedIndices']
-  scrollMetrics: ChatScrollRuntime['metrics']
-  onVirtualScroll: ChatScrollRuntime['handleVirtualScroll']
-  onScrollToMessageIndex: ChatScrollRuntime['scrollToMessageIndex']
-  onScrollToOffset: ChatScrollRuntime['scrollToOffset']
-  onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
-  onRuntimeUserInputSubmit: ReturnType<typeof useChatSession>['submitPendingUserInput']
-  composerStack: React.ReactNode
-}) => {
-  const { t } = useTranslation('chat')
+const ChatMessageListPane = memo(
+  ({
+    sessionId,
+    messageIds,
+    messageCount,
+    status,
+    error,
+    isReady,
+    scrollContainerRef,
+    viewportRef,
+    virtualizerRef,
+    minimapRef,
+    keepMountedIndices,
+    scrollMetrics,
+    onVirtualScroll,
+    onScrollToMessageIndex,
+    onScrollToOffset,
+    onToolApprovalResponse,
+    composerStack
+  }: {
+    sessionId: string | null
+    messageIds: ReturnType<typeof useChatSession>['messageIds']
+    messageCount: ReturnType<typeof useChatSession>['messageCount']
+    status: ReturnType<typeof useChatSession>['status']
+    error: ReturnType<typeof useChatSession>['error']
+    isReady: boolean
+    scrollContainerRef: ChatScrollRuntime['scrollContainerRef']
+    viewportRef: ChatScrollRuntime['viewportRef']
+    virtualizerRef: ChatScrollRuntime['virtualizerRef']
+    minimapRef: ChatScrollRuntime['minimapRef']
+    keepMountedIndices: ChatScrollRuntime['keepMountedIndices']
+    scrollMetrics: ChatScrollRuntime['metrics']
+    onVirtualScroll: ChatScrollRuntime['handleVirtualScroll']
+    onScrollToMessageIndex: ChatScrollRuntime['scrollToMessageIndex']
+    onScrollToOffset: ChatScrollRuntime['scrollToOffset']
+    onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
+    composerStack: React.ReactNode
+  }) => {
+    const { t } = useTranslation('chat')
 
-  return (
-    <div ref={scrollContainerRef} className="relative min-h-0 flex-1 overflow-hidden">
-      <div
-        ref={viewportRef}
-        className="h-full overflow-x-hidden overflow-y-auto outline-none [scrollbar-gutter:stable]"
-      >
-        <div className="mx-auto flex min-h-full max-w-[90%] flex-col px-4 pr-12 pt-4">
-          <div className="flex-1">
-            {messageCount === 0 && isReady && (
-              <div className="flex h-full items-center justify-center py-32">
-                <p className="select-none text-sm text-muted-foreground">
-                  {t('empty.startConversation')}
-                </p>
-              </div>
-            )}
+    return (
+      <div ref={scrollContainerRef} className="relative min-h-0 flex-1 overflow-hidden">
+        <div
+          ref={viewportRef}
+          className="h-full overflow-x-hidden overflow-y-auto outline-none [scrollbar-gutter:stable]"
+        >
+          <div className="mx-auto flex min-h-full max-w-[90%] flex-col px-4 pr-12 pt-4">
+            <div className="flex-1">
+              {messageCount === 0 && isReady && (
+                <div className="flex h-full items-center justify-center py-32">
+                  <p className="select-none text-sm text-muted-foreground">
+                    {t('empty.startConversation')}
+                  </p>
+                </div>
+              )}
 
-            <Virtualizer
-              ref={virtualizerRef}
-              scrollRef={viewportRef}
-              startMargin={24}
-              keepMounted={keepMountedIndices}
-              onScroll={onVirtualScroll}
-            >
-              {messageIds.map(messageId => (
-                <MessageBubbleById
-                  key={messageId}
-                  sessionId={sessionId}
-                  messageId={messageId}
-                  onToolApprovalResponse={onToolApprovalResponse}
-                  onRuntimeUserInputSubmit={onRuntimeUserInputSubmit}
-                />
-              ))}
-            </Virtualizer>
-
-            {status === 'error' && (
-              <m.div
-                data-testid="chat-error-banner"
-                initial={{ opacity: 0, y: 4 }}
-                animate={{ opacity: 1, y: 0 }}
-                exit={{ opacity: 0 }}
-                transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
-                className="flex items-start gap-2 pl-1 pt-4"
+              <Virtualizer
+                ref={virtualizerRef}
+                scrollRef={viewportRef}
+                startMargin={24}
+                keepMounted={keepMountedIndices}
+                onScroll={onVirtualScroll}
               >
-                <AlertCircleIcon className="size-3.5 shrink-0 text-destructive/70" aria-hidden="true" />
-                <span className="min-w-0 break-all text-xs text-destructive/70">
-                  {error ?? t('error.loadMessages')}
-                </span>
-              </m.div>
-            )}
-          </div>
+                {messageIds.map((messageId) => (
+                  <MessageBubbleById
+                    key={messageId}
+                    sessionId={sessionId}
+                    messageId={messageId}
+                    onToolApprovalResponse={onToolApprovalResponse}
+                  />
+                ))}
+              </Virtualizer>
 
-          <div className="pointer-events-none sticky bottom-0 z-10 pt-4 pb-3">
-            {composerStack}
+              {status === 'error' && (
+                <m.div
+                  data-testid="chat-error-banner"
+                  initial={{ opacity: 0, y: 4 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+                  className="flex items-start gap-2 pl-1 pt-4"
+                >
+                  <AlertCircleIcon
+                    className="size-3.5 shrink-0 text-destructive/70"
+                    aria-hidden="true"
+                  />
+                  <span className="min-w-0 break-all text-xs text-destructive/70">
+                    {error ?? t('error.loadMessages')}
+                  </span>
+                </m.div>
+              )}
+            </div>
+
+            <div className="pointer-events-none sticky bottom-0 z-10 pt-4 pb-3">
+              {composerStack}
+            </div>
           </div>
         </div>
-      </div>
 
-      <ChatMinimap
-        ref={minimapRef}
-        sessionId={sessionId}
-        messageIds={messageIds}
-        scrollHeight={scrollMetrics.scrollHeight}
-        viewportHeight={scrollMetrics.viewportHeight}
-        onScrollToIndex={onScrollToMessageIndex}
-        onScrollTo={onScrollToOffset}
-      />
-    </div>
-  )
-})
+        <ChatMinimap
+          ref={minimapRef}
+          sessionId={sessionId}
+          messageIds={messageIds}
+          scrollHeight={scrollMetrics.scrollHeight}
+          viewportHeight={scrollMetrics.viewportHeight}
+          onScrollToIndex={onScrollToMessageIndex}
+          onScrollTo={onScrollToOffset}
+        />
+      </div>
+    )
+  }
+)
 ChatMessageListPane.displayName = 'ChatMessageListPane'
 
 function ChatAwaitBanner({
-  awaitSummary,
+  awaitSummary
 }: {
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
 }) {
@@ -220,7 +258,10 @@ function ChatAwaitBanner({
     <div className="mb-2 flex items-center gap-2 rounded-md bg-muted/50 backdrop-blur-3xl px-3 py-2 text-xs text-muted-foreground">
       <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin" />
       <span className="min-w-0 truncate">
-        {(awaitSummary.reason as string) ?? t('await.waitingFor', { source: (awaitSummary.primarySource as string) ?? t('await.source.event') })}
+        {(awaitSummary.reason as string) ??
+          t('await.waitingFor', {
+            source: (awaitSummary.primarySource as string) ?? t('await.source.event')
+          })}
       </span>
       <button
         type="button"
@@ -258,14 +299,18 @@ function ChatComposerSection({
   reviewSlot,
   usageSlot,
   onQuickQuestion,
-  onComposerFocusChange,
+  onComposerFocusChange
 }: {
   sessionId: string | null
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
   queueItems: ChatQueueItem[]
   onCancelQueueItem: (queueItemId: string) => void
   onReorderQueueItems: (queueItemIds: string[]) => void
-  onSlashCommandAction?: (command: ChatComposerSlashCommand, context: ComposerSlashCommandActionContext, tools?: ComposerSlashCommandActionTools) => Promise<void | ComposerSlashCommandActionResult> | void | ComposerSlashCommandActionResult
+  onSlashCommandAction?: (
+    command: ChatComposerSlashCommand,
+    context: ComposerSlashCommandActionContext,
+    tools?: ComposerSlashCommandActionTools
+  ) => Promise<void | ComposerSlashCommandActionResult> | void | ComposerSlashCommandActionResult
   composerRuntime: ChatComposerRuntime
   appshotRuntime: ComposerAppshotRuntime
   placeholder?: string
@@ -276,7 +321,7 @@ function ChatComposerSection({
   toolbar?: React.ReactNode
   runtimeSettings?: ComposerRuntimeSettingsController
   contextBar?: React.ReactNode
-  droppedPath: { text: string, ts: number } | null
+  droppedPath: { text: string; ts: number } | null
   goalActions: {
     busy: boolean
     onEdit: (state: ChatRuntimeGoalUiSlotState) => void
@@ -291,47 +336,103 @@ function ChatComposerSection({
   onQuickQuestion?: (question: string) => void
   onComposerFocusChange?: (focused: boolean) => void
 }) {
+  const activeBrowserPanelOwnerId = useLayoutStore((s) => s.activeBrowserPanelOwnerId)
+  const setBrowserPanelOpen = useLayoutStore((s) => s.setBrowserPanelOpen)
+  const openPlanRefineTab = useBrowserPanelStore((s) => s.openPlanRefineTab)
   const [composerReplaceText, setComposerReplaceText] = useState<string | undefined>(undefined)
   const [composerReplaceTextKey, setComposerReplaceTextKey] = useState(0)
   const [dismissPlanSignal, setDismissPlanSignal] = useState(0)
-  const planState = composerRuntime.slotStates.find((state): state is ChatRuntimePlanUiSlotState => state.kind === 'plan') ?? null
+  const [composerHasDraft, setComposerHasDraft] = useState(false)
+  const [activePlanRefineTabId, setActivePlanRefineTabId] = useState<string | null>(null)
+  const planState =
+    composerRuntime.slotStates.find(
+      (state): state is ChatRuntimePlanUiSlotState => state.kind === 'plan'
+    ) ?? null
+  const planRefineEditorOpen = useBrowserPanelStore(
+    (state) =>
+      activePlanRefineTabId !== null &&
+      state.owners[activeBrowserPanelOwnerId]?.tabs.some(
+        (tab) => tab.id === activePlanRefineTabId
+      ) === true
+  )
 
-  const dismissCurrentPlanSlot = useCallback(() => {
-    if (planState) {
-      setDismissPlanSignal(signal => signal + 1)
+  const submitComposerMessage = useCallback(
+    async (...args: Parameters<ChatComposerRuntime['send']>) => {
+      const result = await composerRuntime.send(...args)
+      if (planState) {
+        setDismissPlanSignal((signal) => signal + 1)
+      }
+      return result
+    },
+    [composerRuntime, planState]
+  )
+
+  const handleComposerDraftChange = useCallback((value: string) => {
+    setComposerHasDraft(Boolean(value.trim()))
+  }, [])
+
+  useEffect(() => {
+    if (!activePlanRefineTabId || planRefineEditorOpen) {
+      return
     }
-  }, [planState])
+    setActivePlanRefineTabId(null)
+  }, [activePlanRefineTabId, planRefineEditorOpen])
 
-  const submitComposerMessage = useCallback(async (...args: Parameters<ChatComposerRuntime['send']>) => {
-    const result = await composerRuntime.send(...args)
-    dismissCurrentPlanSlot()
-    return result
-  }, [composerRuntime, dismissCurrentPlanSlot])
+  useEffect(() => {
+    const handlePlanRefineSave = (event: Event) => {
+      if (
+        !(event instanceof CustomEvent) ||
+        typeof event.detail !== 'object' ||
+        event.detail === null
+      ) {
+        return
+      }
+      const detail = event.detail as Partial<PlanRefineEditorSaveDetail>
+      if (
+        typeof detail.tabId !== 'string' ||
+        typeof detail.markdown !== 'string' ||
+        detail.tabId !== activePlanRefineTabId
+      ) {
+        return
+      }
+      setComposerReplaceText(`${CODEX_PLAN_REFINE_PROMPT_PREFIX}\n${detail.markdown}`.trimEnd())
+      setComposerReplaceTextKey((key) => key + 1)
+      setActivePlanRefineTabId(null)
+    }
+
+    window.addEventListener(PLAN_REFINE_EDITOR_SAVE_EVENT, handlePlanRefineSave)
+    return () => {
+      window.removeEventListener(PLAN_REFINE_EDITOR_SAVE_EVENT, handlePlanRefineSave)
+    }
+  }, [activePlanRefineTabId])
 
   const planSlotActions = useMemo<ComposerPlanSlotActions>(() => {
     const sendPlanFollowUp = async (
       prompt: string,
-      options?: { runtimeSettings?: SendMessageOptions['runtimeSettings'] },
+      options?: { runtimeSettings?: SendMessageOptions['runtimeSettings'] }
     ) => {
       try {
         await submitComposerMessage(prompt, [], [], options)
-      }
-      catch (error) {
+      } catch (error) {
         toastManager.add({
           type: 'error',
           title: 'Plan action failed',
-          description: error instanceof Error ? error.message : 'Unknown plan action error.',
+          description: error instanceof Error ? error.message : 'Unknown plan action error.'
         })
         return false
       }
       setComposerReplaceText('')
-      setComposerReplaceTextKey(key => key + 1)
+      setComposerReplaceTextKey((key) => key + 1)
       return true
     }
 
     return {
       ...planActions,
-      disabled: planActions?.disabled || composerRuntime.disabled || composerRuntime.isStreaming,
+      disabled:
+        planActions?.disabled ||
+        composerRuntime.disabled ||
+        composerRuntime.isStreaming ||
+        planRefineEditorOpen,
       onImplement: (state) => {
         const handled = planActions?.onImplement?.(state)
         if (handled !== undefined) {
@@ -339,7 +440,7 @@ function ChatComposerSection({
         }
         runtimeSettings?.onChange({ interactionMode: 'default' })
         return sendPlanFollowUp(CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX, {
-          runtimeSettings: { interactionMode: 'default' },
+          runtimeSettings: { interactionMode: 'default' }
         })
       },
       onRefine: (state) => {
@@ -348,12 +449,36 @@ function ChatComposerSection({
           return handled
         }
         const content = readPlanSlotContent(state)
-        setComposerReplaceText(`${CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX}\n${content}`.trimEnd())
-        setComposerReplaceTextKey(key => key + 1)
-        return true
-      },
+        const requestId = [
+          sessionId ?? 'global',
+          state.slotId,
+          String(state.updatedAt),
+          hashPlanRefineRequestContent(content)
+        ].join(':')
+        const tabId = openPlanRefineTab({
+          sessionId,
+          requestId,
+          title: 'Refine plan',
+          text: content,
+          ownerId: activeBrowserPanelOwnerId
+        })
+        setActivePlanRefineTabId(tabId)
+        setBrowserPanelOpen(true, activeBrowserPanelOwnerId)
+        return false
+      }
     }
-  }, [composerRuntime.disabled, composerRuntime.isStreaming, planActions, runtimeSettings, submitComposerMessage])
+  }, [
+    activeBrowserPanelOwnerId,
+    composerRuntime.disabled,
+    composerRuntime.isStreaming,
+    openPlanRefineTab,
+    planActions,
+    planRefineEditorOpen,
+    runtimeSettings,
+    sessionId,
+    setBrowserPanelOpen,
+    submitComposerMessage
+  ])
 
   return (
     <div className="pointer-events-auto mx-auto w-full max-w-208 bg-transparent">
@@ -365,6 +490,7 @@ function ChatComposerSection({
         className="mb-2"
       />
       <ComposerSlotStates
+        sessionId={sessionId}
         slots={composerRuntime.uiSlots}
         states={composerRuntime.slotStates}
         actions={goalActions}
@@ -373,36 +499,37 @@ function ChatComposerSection({
         review={reviewSlot}
         usage={usageSlot}
         dismissPlanSignal={dismissPlanSignal}
+        hidePlan={composerHasDraft}
       />
       <Composer
         send={{
           submit: submitComposerMessage,
           stop: composerRuntime.stop,
           isStreaming: composerRuntime.isStreaming,
-          disabled: composerRuntime.disabled,
-          onQuickQuestion,
+          disabled: composerRuntime.disabled || planRefineEditorOpen,
+          onQuickQuestion
         }}
         commands={{
           commands: composerRuntime.slashCommands,
-          runAction: onSlashCommandAction,
+          runAction: onSlashCommandAction
         }}
         attachments={{
           supportsAttachments: composerRuntime.supportsAttachments,
           appendFileParts: appshotRuntime.externalFileParts,
           appendFilePartsKey: appshotRuntime.externalFilePartsKey,
           pendingAppshots: appshotRuntime.pendingAppshots,
-          onActionTargetElementChange: appshotRuntime.setActionTargetElement,
+          onActionTargetElementChange: appshotRuntime.setActionTargetElement
         }}
         runtimeSettings={runtimeSettings}
         slots={{
           toolbar,
-          contextBar,
+          contextBar
         }}
         externalSignals={{
           appendText: droppedPath ? `${droppedPath.text}` : undefined,
           appendTextKey: droppedPath?.ts,
           replaceText: composerReplaceText,
-          replaceTextKey: composerReplaceTextKey,
+          replaceTextKey: composerReplaceTextKey
         }}
         view={{
           placeholder,
@@ -411,11 +538,12 @@ function ChatComposerSection({
           searchPlugins,
           searchSkills,
           textareaRows: 3,
+          onDraftChange: handleComposerDraftChange,
           onFocusChange: onComposerFocusChange,
           sessionId,
           sessionTokens: composerRuntime.tokenUsage?.tokens,
           sessionContextWindow: composerRuntime.tokenUsage?.contextWindow,
-          compactState: composerRuntime.compactState,
+          compactState: composerRuntime.compactState
         }}
       />
     </div>
@@ -434,7 +562,7 @@ export function ChatView({
   composerModel,
   placeholder,
   runtimeKind: _runtimeKind,
-  workspaceId,
+  workspaceId
 }: ChatViewProps) {
   const queryClient = useQueryClient()
   const {
@@ -450,10 +578,10 @@ export function ChatView({
     isReady,
     queueItems,
     cancelQueueItem,
-    reorderQueueItems,
+    reorderQueueItems
   } = useChatSession(sessionId)
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
-  const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
+  const [droppedPath, setDroppedPath] = useState<{ text: string; ts: number } | null>(null)
   const [editingGoal, setEditingGoal] = useState<ChatRuntimeGoalUiSlotState | null>(null)
   const [goalObjectiveDraft, setGoalObjectiveDraft] = useState('')
   const [goalActionBusy, setGoalActionBusy] = useState(false)
@@ -470,31 +598,46 @@ export function ChatView({
     runtimeSettings: runtimeSettings.loaded ? runtimeSettings.settings : undefined,
     sendOverridesRef,
     sendMessage,
-    stop,
+    stop
   })
   const scrollRuntime = useChatScrollRuntime({ sessionId, messageIds, status })
   const appshotRuntime = useComposerAppshotCapture({
     active: tabFrameActive,
-    supportsAttachments: composerRuntime.supportsAttachments,
+    supportsAttachments: composerRuntime.supportsAttachments
   })
   const quickQuestion = useQuickQuestion({
     sessionId: sessionId ?? '',
-    apiBaseUrl: getServerUrl(),
+    apiBaseUrl: getServerUrl()
   })
   const hasQuickQuestionSlot = useMemo(() => {
-    return composerRuntime.uiSlots.some(slot => slot.iconKey === 'quick-question' && slot.surfaces.includes('composerState'))
+    return composerRuntime.uiSlots.some(
+      (slot) => slot.iconKey === 'quick-question' && slot.surfaces.includes('composerState')
+    )
   }, [composerRuntime.uiSlots])
-  const quickQuestionSlot = useMemo<ComposerQuickQuestionSlotActions>(() => ({
-    open: Boolean(sessionId) && hasQuickQuestionSlot && quickQuestion.open,
-    question: quickQuestion.question,
-    sessionId: sessionId ?? '',
-    apiBaseUrl: quickQuestion.apiBaseUrl,
-    onDismiss: quickQuestion.closeQuickQuestion,
-  }), [hasQuickQuestionSlot, quickQuestion.apiBaseUrl, quickQuestion.closeQuickQuestion, quickQuestion.open, quickQuestion.question, sessionId])
+  const quickQuestionSlot = useMemo<ComposerQuickQuestionSlotActions>(
+    () => ({
+      open: Boolean(sessionId) && hasQuickQuestionSlot && quickQuestion.open,
+      question: quickQuestion.question,
+      sessionId: sessionId ?? '',
+      apiBaseUrl: quickQuestion.apiBaseUrl,
+      onDismiss: quickQuestion.closeQuickQuestion
+    }),
+    [
+      hasQuickQuestionSlot,
+      quickQuestion.apiBaseUrl,
+      quickQuestion.closeQuickQuestion,
+      quickQuestion.open,
+      quickQuestion.question,
+      sessionId
+    ]
+  )
   const composerSend = composerRuntime.send
-  const navigableComposerRuntime = useMemo<ChatComposerRuntime>(() => ({
-    ...composerRuntime,
-  }), [composerRuntime])
+  const navigableComposerRuntime = useMemo<ChatComposerRuntime>(
+    () => ({
+      ...composerRuntime
+    }),
+    [composerRuntime]
+  )
 
   useEffect(() => {
     if (!sessionId) {
@@ -520,62 +663,78 @@ export function ChatView({
     void queryClient.invalidateQueries({ queryKey: ['chat', 'runtime-session-status', sessionId] })
   }, [queryClient, sessionId])
 
-  const invokeCodexGoalAction = useCallback(async (
-    method: 'thread/goal/set' | 'thread/goal/clear',
-    params: Record<string, unknown>,
-    failureTitle: string,
-  ) => {
-    if (!sessionId) {
-      return
-    }
+  const invokeCodexGoalAction = useCallback(
+    async (
+      method: 'thread/goal/set' | 'thread/goal/clear',
+      params: Record<string, unknown>,
+      failureTitle: string
+    ) => {
+      if (!sessionId) {
+        return
+      }
 
-    setGoalActionBusy(true)
-    try {
-      await postChatSessionsBySessionIdCodexAppServerInvoke({
-        path: { sessionId },
-        body: { method, params },
-        throwOnError: true,
-      })
-      refreshGoalRuntimeState()
-      return true
-    }
-    catch (error) {
-      toastManager.add({
-        type: 'error',
-        title: failureTitle,
-        description: error instanceof Error ? error.message : 'Unknown goal action error.',
-      })
-      return false
-    }
-    finally {
-      setGoalActionBusy(false)
-    }
-  }, [refreshGoalRuntimeState, sessionId])
+      setGoalActionBusy(true)
+      try {
+        await postChatSessionsBySessionIdCodexAppServerInvoke({
+          path: { sessionId },
+          body: { method, params },
+          throwOnError: true
+        })
+        refreshGoalRuntimeState()
+        return true
+      } catch (error) {
+        toastManager.add({
+          type: 'error',
+          title: failureTitle,
+          description: error instanceof Error ? error.message : 'Unknown goal action error.'
+        })
+        return false
+      } finally {
+        setGoalActionBusy(false)
+      }
+    },
+    [refreshGoalRuntimeState, sessionId]
+  )
 
-  const goalActions = useMemo(() => ({
-    busy: goalActionBusy,
-    onEdit: (state: ChatRuntimeGoalUiSlotState) => {
-      setEditingGoal(state)
-      setGoalObjectiveDraft(state.objective)
-    },
-    onPause: (state: ChatRuntimeGoalUiSlotState) => {
-      void invokeCodexGoalAction('thread/goal/set', {
-        threadId: state.threadId,
-        status: 'paused',
-      }, 'Goal pause failed')
-    },
-    onResume: (state: ChatRuntimeGoalUiSlotState) => {
-      void invokeCodexGoalAction('thread/goal/set', {
-        threadId: state.threadId,
-        status: 'active',
-      }, 'Goal resume failed')
-    },
-    onClear: (state: ChatRuntimeGoalUiSlotState) => {
-      void invokeCodexGoalAction('thread/goal/clear', {
-        threadId: state.threadId,
-      }, 'Goal clear failed')
-    },
-  }), [goalActionBusy, invokeCodexGoalAction])
+  const goalActions = useMemo(
+    () => ({
+      busy: goalActionBusy,
+      onEdit: (state: ChatRuntimeGoalUiSlotState) => {
+        setEditingGoal(state)
+        setGoalObjectiveDraft(state.objective)
+      },
+      onPause: (state: ChatRuntimeGoalUiSlotState) => {
+        void invokeCodexGoalAction(
+          'thread/goal/set',
+          {
+            threadId: state.threadId,
+            status: 'paused'
+          },
+          'Goal pause failed'
+        )
+      },
+      onResume: (state: ChatRuntimeGoalUiSlotState) => {
+        void invokeCodexGoalAction(
+          'thread/goal/set',
+          {
+            threadId: state.threadId,
+            status: 'active'
+          },
+          'Goal resume failed'
+        )
+      },
+      onClear: (state: ChatRuntimeGoalUiSlotState) => {
+        void invokeCodexGoalAction(
+          'thread/goal/clear',
+          {
+            threadId: state.threadId
+          },
+          'Goal clear failed'
+        )
+      }
+    }),
+    [goalActionBusy, invokeCodexGoalAction]
+  )
 
   const closeGoalEditor = useCallback(() => {
     if (goalActionBusy) {
@@ -585,126 +744,153 @@ export function ChatView({
     setGoalObjectiveDraft('')
   }, [goalActionBusy])
 
-  const submitGoalEditor = useCallback((event: React.FormEvent<HTMLFormElement>) => {
-    event.preventDefault()
-    if (!editingGoal) {
-      return
-    }
-
-    const objective = goalObjectiveDraft.trim()
-    if (!objective) {
-      toastManager.add({
-        type: 'error',
-        title: 'Goal update failed',
-        description: 'Goal objective cannot be empty.',
-      })
-      return
-    }
-
-    if (objective === editingGoal.objective) {
-      closeGoalEditor()
-      return
-    }
-
-    void invokeCodexGoalAction('thread/goal/set', {
-      threadId: editingGoal.threadId,
-      objective,
-    }, 'Goal update failed').then((updated) => {
-      if (updated) {
-        closeGoalEditor()
+  const submitGoalEditor = useCallback(
+    (event: React.FormEvent<HTMLFormElement>) => {
+      event.preventDefault()
+      if (!editingGoal) {
+        return
       }
-    })
-  }, [closeGoalEditor, editingGoal, goalObjectiveDraft, invokeCodexGoalAction])
 
-  const handleSlashCommandAction = useCallback(async (
-    command: ChatComposerSlashCommand,
-    context: ComposerSlashCommandActionContext,
-    tools?: ComposerSlashCommandActionTools,
-  ): Promise<void | ComposerSlashCommandActionResult> => {
-    if (command.action.kind !== 'uiAction') {
-      return
-    }
-    if (command.action.actionId === CODEX_REVIEW_SLASH_ACTION_ID) {
-      setReviewModeOpen(true)
-      return { insertText: '' }
-    }
-    if (command.action.actionId === CODEX_USAGE_SLASH_ACTION_ID) {
-      setUsageSlotSessionId(sessionId)
-      return { insertText: '' }
-    }
-    if (command.action.actionId !== CRADLE_APPSHOT_SLASH_ACTION_ID) {
-      return
-    }
-    if (!appshotRuntime.hasNativeCapture) {
-      toastManager.add({
-        type: 'error',
-        title: 'Appshot is unavailable',
-        description: 'Appshot capture requires the Electron desktop app.',
+      const objective = goalObjectiveDraft.trim()
+      if (!objective) {
+        toastManager.add({
+          type: 'error',
+          title: 'Goal update failed',
+          description: 'Goal objective cannot be empty.'
+        })
+        return
+      }
+
+      if (objective === editingGoal.objective) {
+        closeGoalEditor()
+        return
+      }
+
+      void invokeCodexGoalAction(
+        'thread/goal/set',
+        {
+          threadId: editingGoal.threadId,
+          objective
+        },
+        'Goal update failed'
+      ).then((updated) => {
+        if (updated) {
+          closeGoalEditor()
+        }
       })
-      return
-    }
-    if (!composerRuntime.supportsAttachments) {
-      toastManager.add({
-        type: 'error',
-        title: 'Appshot attachment is unavailable',
-        description: 'The selected model does not accept image attachments.',
+    },
+    [closeGoalEditor, editingGoal, goalObjectiveDraft, invokeCodexGoalAction]
+  )
+
+  const handleSlashCommandAction = useCallback(
+    async (
+      command: ChatComposerSlashCommand,
+      context: ComposerSlashCommandActionContext,
+      tools?: ComposerSlashCommandActionTools
+    ): Promise<void | ComposerSlashCommandActionResult> => {
+      if (command.action.kind !== 'uiAction') {
+        return
+      }
+      if (command.action.actionId === CODEX_REVIEW_SLASH_ACTION_ID) {
+        setReviewModeOpen(true)
+        return { insertText: '' }
+      }
+      if (command.action.actionId === CODEX_USAGE_SLASH_ACTION_ID) {
+        setUsageSlotSessionId(sessionId)
+        return { insertText: '' }
+      }
+      if (command.action.actionId !== CRADLE_APPSHOT_SLASH_ACTION_ID) {
+        return
+      }
+      if (!appshotRuntime.hasNativeCapture) {
+        toastManager.add({
+          type: 'error',
+          title: 'Appshot is unavailable',
+          description: 'Appshot capture requires the Electron desktop app.'
+        })
+        return
+      }
+      if (!composerRuntime.supportsAttachments) {
+        toastManager.add({
+          type: 'error',
+          title: 'Appshot attachment is unavailable',
+          description: 'The selected model does not accept image attachments.'
+        })
+        return
+      }
+
+      try {
+        await appshotRuntime.capture({ tools })
+        return { insertText: '' }
+      } catch (error) {
+        toastManager.add({
+          type: 'error',
+          title: 'Appshot capture failed',
+          description: error instanceof Error ? error.message : 'Unknown Appshot capture error.'
+        })
+      }
+    },
+    [appshotRuntime, composerRuntime.supportsAttachments, sessionId]
+  )
+
+  const submitCodexReviewPrompt = useCallback(
+    (prompt: string) => {
+      void composerSend(prompt, [], [])
+    },
+    [composerSend]
+  )
+
+  const resolveCodexReviewMergeBase = useCallback(
+    async (baseBranch: string) => {
+      if (!workspaceId) {
+        return null
+      }
+      const url = new URL(
+        `/workspaces/${encodeURIComponent(workspaceId)}/git/merge-base`,
+        getServerUrl()
+      )
+      url.searchParams.set('baseBranch', baseBranch)
+      const response = await fetch(url)
+      if (!response.ok) {
+        throw new Error(`Failed to resolve merge base (${response.status}).`)
+      }
+      const payload = (await response.json()) as { mergeBaseSha?: unknown }
+      return typeof payload.mergeBaseSha === 'string' ? payload.mergeBaseSha : null
+    },
+    [workspaceId]
+  )
+
+  const reviewSlot = useMemo<ComposerReviewSlotActions>(
+    () => ({
+      open: reviewModeOpen,
+      workspaceId,
+      onDismiss: () => setReviewModeOpen(false),
+      onSubmitPrompt: submitCodexReviewPrompt,
+      resolveMergeBase: resolveCodexReviewMergeBase
+    }),
+    [resolveCodexReviewMergeBase, reviewModeOpen, submitCodexReviewPrompt, workspaceId]
+  )
+
+  const usageSlot = useMemo<ComposerUsageSlotActions>(
+    () => ({
+      open: Boolean(sessionId) && usageSlotSessionId === sessionId,
+      onDismiss: () => setUsageSlotSessionId(null)
+    }),
+    [sessionId, usageSlotSessionId]
+  )
+
+  const updateRuntimeSettings = useCallback(
+    (patch: Parameters<typeof runtimeSettings.update>[0]) => {
+      void runtimeSettings.update(patch).catch((error) => {
+        toastManager.add({
+          type: 'error',
+          title: 'Runtime settings update failed',
+          description: error instanceof Error ? error.message : 'Unknown runtime settings error.'
+        })
       })
-      return
-    }
-
-    try {
-      await appshotRuntime.capture({ tools })
-      return { insertText: '' }
-    }
-    catch (error) {
-      toastManager.add({
-        type: 'error',
-        title: 'Appshot capture failed',
-        description: error instanceof Error ? error.message : 'Unknown Appshot capture error.',
-      })
-    }
-  }, [appshotRuntime, composerRuntime.supportsAttachments, sessionId])
-
-  const submitCodexReviewPrompt = useCallback((prompt: string) => {
-    void composerSend(prompt, [], [])
-  }, [composerSend])
-
-  const resolveCodexReviewMergeBase = useCallback(async (baseBranch: string) => {
-    if (!workspaceId) {
-      return null
-    }
-    const url = new URL(`/workspaces/${encodeURIComponent(workspaceId)}/git/merge-base`, getServerUrl())
-    url.searchParams.set('baseBranch', baseBranch)
-    const response = await fetch(url)
-    if (!response.ok) {
-      throw new Error(`Failed to resolve merge base (${response.status}).`)
-    }
-    const payload = await response.json() as { mergeBaseSha?: unknown }
-    return typeof payload.mergeBaseSha === 'string' ? payload.mergeBaseSha : null
-  }, [workspaceId])
-
-  const reviewSlot = useMemo<ComposerReviewSlotActions>(() => ({
-    open: reviewModeOpen,
-    workspaceId,
-    onDismiss: () => setReviewModeOpen(false),
-    onSubmitPrompt: submitCodexReviewPrompt,
-    resolveMergeBase: resolveCodexReviewMergeBase,
-  }), [resolveCodexReviewMergeBase, reviewModeOpen, submitCodexReviewPrompt, workspaceId])
-
-  const usageSlot = useMemo<ComposerUsageSlotActions>(() => ({
-    open: Boolean(sessionId) && usageSlotSessionId === sessionId,
-    onDismiss: () => setUsageSlotSessionId(null),
-  }), [sessionId, usageSlotSessionId])
-
-  const updateRuntimeSettings = useCallback((patch: Parameters<typeof runtimeSettings.update>[0]) => {
-    void runtimeSettings.update(patch).catch((error) => {
-      toastManager.add({
-        type: 'error',
-        title: 'Runtime settings update failed',
-        description: error instanceof Error ? error.message : 'Unknown runtime settings error.',
-      })
-    })
-  }, [runtimeSettings])
+    },
+    [runtimeSettings]
+  )
 
   const runtimeSettingsToolbar = useMemo(() => {
     if (!sessionId) {
@@ -722,15 +908,31 @@ export function ChatView({
         {composerToolbar}
       </div>
     )
-  }, [composerToolbar, isReady, runtimeSettings.applied, runtimeSettings.loaded, runtimeSettings.loading, runtimeSettings.saving, runtimeSettings.settings, sessionId, updateRuntimeSettings])
+  }, [
+    composerToolbar,
+    isReady,
+    runtimeSettings.applied,
+    runtimeSettings.loaded,
+    runtimeSettings.loading,
+    runtimeSettings.saving,
+    runtimeSettings.settings,
+    sessionId,
+    updateRuntimeSettings
+  ])
 
-  const headerActions = useMemo(() => (
-    <div className="flex items-center gap-0.5">
-      {import.meta.env.DEV && (
-        <RuntimeDiagnosticsPopover slots={composerRuntime.uiSlots} states={composerRuntime.slotStates} />
-      )}
-    </div>
-  ), [composerRuntime.slotStates, composerRuntime.uiSlots])
+  const headerActions = useMemo(
+    () => (
+      <div className="flex items-center gap-0.5">
+        {import.meta.env.DEV && (
+          <RuntimeDiagnosticsPopover
+            slots={composerRuntime.uiSlots}
+            states={composerRuntime.slotStates}
+          />
+        )}
+      </div>
+    ),
+    [composerRuntime.slotStates, composerRuntime.uiSlots]
+  )
 
   const layoutSlots = useMemo(() => ({ headerActions }), [headerActions])
 
@@ -751,7 +953,7 @@ export function ChatView({
           setDroppedPath({ text: path, ts: Date.now() })
         }
       }}
-      onDragOver={e => e.preventDefault()}
+      onDragOver={(e) => e.preventDefault()}
     >
       <ChatMessageListPane
         sessionId={sessionId}
@@ -770,14 +972,13 @@ export function ChatView({
         onScrollToMessageIndex={scrollRuntime.scrollToMessageIndex}
         onScrollToOffset={scrollRuntime.scrollToOffset}
         onToolApprovalResponse={respondToToolApproval}
-        onRuntimeUserInputSubmit={submitPendingUserInput}
-        composerStack={(
+        composerStack={
           <ChatComposerSection
             sessionId={sessionId}
             awaitSummary={awaitSummary}
             queueItems={queueItems}
-            onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
-            onReorderQueueItems={queueItemIds => void reorderQueueItems(queueItemIds)}
+            onCancelQueueItem={(queueItemId) => void cancelQueueItem(queueItemId)}
+            onReorderQueueItems={(queueItemIds) => void reorderQueueItems(queueItemIds)}
             onSlashCommandAction={handleSlashCommandAction}
             composerRuntime={navigableComposerRuntime}
             appshotRuntime={appshotRuntime}
@@ -790,7 +991,7 @@ export function ChatView({
             runtimeSettings={{
               settings: runtimeSettings.settings,
               disabled: !isReady || !runtimeSettings.loaded || runtimeSettings.loading,
-              onChange: updateRuntimeSettings,
+              onChange: updateRuntimeSettings
             }}
             contextBar={composerContextBar}
             droppedPath={droppedPath}
@@ -798,13 +999,15 @@ export function ChatView({
             quickQuestionSlot={quickQuestionSlot}
             reviewSlot={reviewSlot}
             usageSlot={usageSlot}
-            onQuickQuestion={sessionId && hasQuickQuestionSlot ? quickQuestion.openQuickQuestion : undefined}
+            onQuickQuestion={
+              sessionId && hasQuickQuestionSlot ? quickQuestion.openQuickQuestion : undefined
+            }
             onComposerFocusChange={scrollRuntime.handleComposerFocusChange}
           />
-        )}
+        }
       />
 
-      <Dialog open={editingGoal !== null} onOpenChange={open => !open && closeGoalEditor()}>
+      <Dialog open={editingGoal !== null} onOpenChange={(open) => !open && closeGoalEditor()}>
         <DialogContent className="sm:max-w-md">
           <form className="grid gap-4" onSubmit={submitGoalEditor}>
             <DialogHeader>
@@ -815,7 +1018,7 @@ export function ChatView({
             </DialogHeader>
             <Textarea
               value={goalObjectiveDraft}
-              onChange={event => setGoalObjectiveDraft(event.target.value)}
+              onChange={(event) => setGoalObjectiveDraft(event.target.value)}
               disabled={goalActionBusy}
               autoFocus
               rows={4}
@@ -823,17 +1026,24 @@ export function ChatView({
               aria-label="Goal objective"
             />
             <DialogFooter variant="bare">
-              <Button type="button" variant="outline" disabled={goalActionBusy} onClick={closeGoalEditor}>
+              <Button
+                type="button"
+                variant="outline"
+                disabled={goalActionBusy}
+                onClick={closeGoalEditor}
+              >
                 Cancel
               </Button>
-              <Button type="submit" disabled={goalActionBusy || goalObjectiveDraft.trim().length === 0}>
+              <Button
+                type="submit"
+                disabled={goalActionBusy || goalObjectiveDraft.trim().length === 0}
+              >
                 Save
               </Button>
             </DialogFooter>
           </form>
         </DialogContent>
       </Dialog>
-
     </div>
   )
 }
