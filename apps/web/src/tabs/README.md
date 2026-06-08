@@ -11,8 +11,8 @@ The registry exports the store instance consumed by the rest of the app.
 - **use-cradle-navigation.ts**: App navigation wrapper; ordinary `openTab()` navigates in the current tab unless a matching app tab already exists, while `openNewTab()` keeps explicit fresh-tab behavior. Chat targets call the chat-owned session prefetch boundary before navigation so transcript hydration can start before the Chat tab renders.
 - **tearoff-tabs.ts**: Main-window tear-off lifecycle helpers; reserve one active tear-off per chat session across drag/menu entry points, detach a chat tab from the main tab bar after the Electron tear-off opens, release the reservation when the window reports closed, and restore the tab.
 - **tearoff-tabs.test.ts**: Unit coverage for detaching torn-off chat tabs, restoring them on close, keeping the main tab bar non-empty, and session tear-off reservation release.
-- **terminal-panel-tab-lifecycle.ts**: Tab lifecycle bridge that derives chat/workspace terminal owner ids from tab params and stops bottom-panel terminal owners after their final owning tab closes.
-- **terminal-panel-tab-lifecycle.test.ts**: Regression coverage for owner derivation, final-owner close cleanup, and duplicate-tab preservation.
+- **tab-resource-lifecycle.ts**: Top-level tab lifecycle bridge that releases owner-scoped resources when their final owning tab closes; terminal owners are derived from chat/workspace params while BrowserPanel owners use the top-level tab id.
+- **tab-resource-lifecycle.test.ts**: Regression coverage for terminal owner derivation, final-owner cleanup, duplicate-tab preservation, and BrowserPanel owner release.
 - **reconcile-persisted-tabs.ts**: 启动时清理 dangling chat/workspace tabs 的纯函数，防止 localStorage 里的旧 session/workspace 引用继续污染 UI
 - **reconcile-persisted-tabs.test.ts**: 验证无效 chat/workspace tabs 会被剔除并修复 active tab
 - **home.tab.tsx**: Home/dashboard tab (pinned, no params)

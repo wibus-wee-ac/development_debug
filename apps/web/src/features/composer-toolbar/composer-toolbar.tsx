@@ -36,6 +36,7 @@ export function ComposerToolbar({ context, state }: ComposerToolbarProps) {
         onChange={setRuntimeKind}
         readOnly={context === 'chat'}
         options={runtimeOptions}
+        occludeNativeBrowserSurface
       />
       {boundChatAgent
         ? <ChatAgentIdentity agent={boundChatAgent} />
@@ -45,6 +46,7 @@ export function ComposerToolbar({ context, state }: ComposerToolbarProps) {
                 agents={agents}
                 selectedAgentId={selection.agentId}
                 onSelectAgent={setAgentId}
+                occludeNativeBrowserSurface
               />
             )
           : (

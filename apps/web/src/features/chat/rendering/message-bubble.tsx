@@ -41,6 +41,8 @@ const ACTIVE_TOOL_STATES = new Set(['input-streaming', 'input-available', 'appro
 const CODEX_GOAL_COMMAND_PREFIX = '/goal '
 const STEER_MESSAGE_CONTAINER_CLASS = 'max-w-[78%]'
 const STEER_MESSAGE_BUBBLE_CLASS = 'rounded-br-sm bg-background px-3 py-2 text-muted-foreground shadow-[inset_0_0_0_1px_hsl(var(--border)/0.45)]'
+const FILE_ATTACHMENT_CLASS = 'my-1 block w-full min-w-0 max-w-full overflow-hidden rounded-md border border-border/60 bg-background/60'
+const IMAGE_ATTACHMENT_GRID_ITEM_CLASS = 'min-w-0 max-w-[300px] flex-1 basis-[calc(50%-0.25rem)]'
 
 function SteerMessageLabel() {
   const { t } = useTranslation('chat')
@@ -122,7 +124,7 @@ function FileAttachmentBlock({ part, onClick }: { part: FileMessagePart, onClick
         <img
           src={part.url}
           alt={label}
-          className="max-h-48 w-full object-cover"
+          className="h-auto max-h-48 w-full max-w-full object-cover"
           loading="lazy"
           data-testid="chat-file-attachment-image"
         />
@@ -131,7 +133,7 @@ function FileAttachmentBlock({ part, onClick }: { part: FileMessagePart, onClick
         {isImage
           ? <ImageIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
           : <FileIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
-        <div className="min-w-0">
+        <div className="min-w-0 flex-1">
           <div className="truncate font-medium text-foreground">{label}</div>
           <div className="truncate text-[11px] text-muted-foreground">{part.mediaType}</div>
         </div>
@@ -143,7 +145,7 @@ function FileAttachmentBlock({ part, onClick }: { part: FileMessagePart, onClick
     return (
       <button
         type="button"
-        className="my-1 overflow-hidden rounded-md border border-border/60 bg-background/60 text-left transition-opacity hover:opacity-80"
+        className={cn(FILE_ATTACHMENT_CLASS, 'text-left transition-opacity hover:opacity-80')}
         data-testid="chat-file-attachment"
         onClick={onClick}
         aria-label={`Preview ${label}`}
@@ -155,7 +157,7 @@ function FileAttachmentBlock({ part, onClick }: { part: FileMessagePart, onClick
 
   return (
     <div
-      className="my-1 overflow-hidden rounded-md border border-border/60 bg-background/60"
+      className={FILE_ATTACHMENT_CLASS}
       data-testid="chat-file-attachment"
     >
       {content}
@@ -1270,9 +1272,9 @@ const MessageBubbleSegmentsView = ({
  else {
         if (imageBuffer.length > 0) {
           result.push(
-            <div key={`image-grid-${imageBuffer[0].index}`} className="flex flex-wrap gap-2 my-1">
+            <div key={`image-grid-${imageBuffer[0].index}`} className="my-1 flex min-w-0 flex-wrap gap-2">
               {imageBuffer.map(({ segment: imgSegment, index: imgIndex }) => (
-                <div key={imgSegment.key} className="w-[calc(50%-0.25rem)] min-w-[200px] max-w-[300px]">
+                <div key={imgSegment.key} className={IMAGE_ATTACHMENT_GRID_ITEM_CLASS}>
                   {renderSegment(imgSegment, imgIndex)}
                 </div>
               ))}
@@ -1286,9 +1288,9 @@ const MessageBubbleSegmentsView = ({
 
     if (imageBuffer.length > 0) {
       result.push(
-        <div key={`image-grid-${imageBuffer[0].index}`} className="flex flex-wrap gap-2 my-1">
+        <div key={`image-grid-${imageBuffer[0].index}`} className="my-1 flex min-w-0 flex-wrap gap-2">
           {imageBuffer.map(({ segment: imgSegment, index: imgIndex }) => (
-            <div key={imgSegment.key} className="w-[calc(50%-0.25rem)] min-w-[200px] max-w-[300px]">
+            <div key={imgSegment.key} className={IMAGE_ATTACHMENT_GRID_ITEM_CLASS}>
               {renderSegment(imgSegment, imgIndex)}
             </div>
           ))}

@@ -108,6 +108,7 @@ export function ProviderModelSelector({
       isLoadingSelectedModels={isLoadingModels}
       emptyProviderTargetsLabel={t('model.noProviderTargets')}
       showProviderLabel
+      occludeNativeBrowserSurface
       getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, thinkingOptions)}
       onRequestProviderTargetModels={requestProfileModels}
       onSelectProviderTarget={(id) => {

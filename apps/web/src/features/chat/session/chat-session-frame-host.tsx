@@ -10,6 +10,8 @@ import { useChatSessionDriver } from './use-chat-session'
 import { ChatRuntimeView } from '../chat-runtime-view'
 
 const IDLE_FRAME_LIMIT = 6
+const mountedSessionFrameCounts = new Map<string, number>()
+const pendingSessionCacheReleaseDisposers = new Map<string, () => void>()
 type ChatStoreSnapshot = ReturnType<typeof useChatStore.getState>
 
 export interface ChatSessionFrameDescriptor {
@@ -70,9 +72,58 @@ export function ChatSessionFrameHost({
 
 const ChatSessionDriverMount = ({ sessionId }: { sessionId: string }) => {
   useChatSessionDriver(sessionId)
+
+  useLayoutEffect(() => {
+    retainSessionCache(sessionId)
+    return () => releaseSessionCache(sessionId)
+  }, [sessionId])
+
   return null
 }
 ChatSessionDriverMount.displayName = 'ChatSessionDriverMount'
+
+function retainSessionCache(sessionId: string): void {
+  pendingSessionCacheReleaseDisposers.get(sessionId)?.()
+  pendingSessionCacheReleaseDisposers.delete(sessionId)
+  mountedSessionFrameCounts.set(sessionId, (mountedSessionFrameCounts.get(sessionId) ?? 0) + 1)
+}
+
+function releaseSessionCache(sessionId: string): void {
+  const nextCount = (mountedSessionFrameCounts.get(sessionId) ?? 1) - 1
+  if (nextCount > 0) {
+    mountedSessionFrameCounts.set(sessionId, nextCount)
+    return
+  }
+
+  mountedSessionFrameCounts.delete(sessionId)
+  releaseSessionCacheWhenIdle(sessionId)
+}
+
+function releaseSessionCacheWhenIdle(sessionId: string): void {
+  const release = () => {
+    pendingSessionCacheReleaseDisposers.get(sessionId)?.()
+    pendingSessionCacheReleaseDisposers.delete(sessionId)
+    useChatStore.getState().clearSession(sessionId)
+  }
+
+  if (!chatSelectors.isSessionStreaming(sessionId)(useChatStore.getState())) {
+    release()
+    return
+  }
+
+  const unsubscribe = useChatStore.subscribe((state) => {
+    if ((mountedSessionFrameCounts.get(sessionId) ?? 0) > 0) {
+      unsubscribe()
+      pendingSessionCacheReleaseDisposers.delete(sessionId)
+      return
+    }
+    if (chatSelectors.isSessionStreaming(sessionId)(state)) {
+      return
+    }
+    release()
+  })
+  pendingSessionCacheReleaseDisposers.set(sessionId, unsubscribe)
+}
 
 const ChatSessionFrame = ({
   descriptor,

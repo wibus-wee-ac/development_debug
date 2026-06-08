@@ -141,6 +141,18 @@ export function useChatScrollRuntime({
     }
   }, [])
 
+  const readCachedScrollMetrics = useCallback((offset: number): ChatScrollMetrics | null => {
+    const cachedMetrics = metricsRef.current
+    if (cachedMetrics.scrollHeight > 0 || cachedMetrics.viewportHeight > 0) {
+      return {
+        offset,
+        scrollHeight: cachedMetrics.scrollHeight,
+        viewportHeight: cachedMetrics.viewportHeight,
+      }
+    }
+    return readScrollMetrics()
+  }, [readScrollMetrics])
+
   const writeChatAttentionSnapshot = useCallback((nextMetrics: ChatScrollMetrics | null) => {
     const currentSessionId = sessionIdRef.current
     const currentMessageIds = messageIdsRef.current
@@ -251,10 +263,10 @@ export function useChatScrollRuntime({
     const viewport = viewportRef.current
     if (viewport) {
       markProgrammaticScroll()
-      viewport.scrollTop = viewport.scrollHeight
+      viewport.scrollTop = Number.MAX_SAFE_INTEGER
       isAtBottomRef.current = true
       shouldFollowBottomRef.current = true
-      lastScrollOffsetRef.current = viewport.scrollTop
+      lastScrollOffsetRef.current = Math.max(metricsRef.current.scrollHeight - metricsRef.current.viewportHeight, 0)
     }
   }, [markProgrammaticScroll])
 
@@ -270,12 +282,12 @@ export function useChatScrollRuntime({
       }
 
       scrollToBottom()
-      const nextMetrics = readScrollMetrics()
+      const nextMetrics = readCachedScrollMetrics(lastScrollOffsetRef.current)
       if (nextMetrics) {
         commitScrollMetrics(nextMetrics, { source: 'programmatic' })
       }
     })
-  }, [commitScrollMetrics, readScrollMetrics, scrollToBottom])
+  }, [commitScrollMetrics, readCachedScrollMetrics, scrollToBottom])
 
   useEffect(() => {
     const viewport = viewportRef.current
@@ -311,16 +323,12 @@ export function useChatScrollRuntime({
   }, [messageIds.length, status, scheduleFollowBottom])
 
   const handleVirtualScroll = useCallback((offset: number) => {
-    const viewport = viewportRef.current
-    if (!viewport) {
+    const nextMetrics = readCachedScrollMetrics(offset)
+    if (!nextMetrics) {
       return
     }
-    commitScrollMetrics({
-      offset,
-      scrollHeight: viewport.scrollHeight,
-      viewportHeight: viewport.offsetHeight,
-    }, { source: 'scroll' })
-  }, [commitScrollMetrics])
+    commitScrollMetrics(nextMetrics, { source: 'scroll' })
+  }, [commitScrollMetrics, readCachedScrollMetrics])
 
   const syncCurrentMetrics = useCallback(() => {
     const nextMetrics = readScrollMetrics()
@@ -382,11 +390,10 @@ export function useChatScrollRuntime({
     }
 
     const onScroll = () => {
-      commitScrollMetrics({
-        offset: viewport.scrollTop,
-        scrollHeight: viewport.scrollHeight,
-        viewportHeight: viewport.offsetHeight,
-      }, { source: 'scroll' })
+      const nextMetrics = readCachedScrollMetrics(viewport.scrollTop)
+      if (nextMetrics) {
+        commitScrollMetrics(nextMetrics, { source: 'scroll' })
+      }
     }
 
     const onResize = () => {
@@ -398,7 +405,7 @@ export function useChatScrollRuntime({
       }
       lastScrollHeight = scrollHeight
 
-      commitScrollMetrics({ offset: viewport.scrollTop, scrollHeight: viewport.scrollHeight, viewportHeight }, { source: 'layout' })
+      commitScrollMetrics({ offset: viewport.scrollTop, scrollHeight, viewportHeight }, { source: 'layout' })
     }
 
     const resizeObserver = new ResizeObserver(onResize)
@@ -478,6 +485,7 @@ export function useChatScrollRuntime({
     detachFromBottomFollow,
     getTranscriptContentElement,
     handleTranscriptLayoutChange,
+    readCachedScrollMetrics,
     syncCurrentMetrics,
   ])
 

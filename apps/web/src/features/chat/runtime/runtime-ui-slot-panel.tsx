@@ -738,6 +738,9 @@ function readApprovalTone(status: ChatRuntimeApprovalStatus): SlotTone {
 }
 
 function readCrewAgents(state: ChatRuntimeCrewUiSlotState): ChatRuntimeCrewAgentItem[] {
+  if (Array.isArray(state.agents) && state.agents.length > 0) {
+    return state.agents
+  }
   const agents = new Map<string, ChatRuntimeCrewAgentItem>()
   for (const call of readCrewCalls(state)) {
     for (const threadId of readCrewCallReceiverThreadIds(call)) {

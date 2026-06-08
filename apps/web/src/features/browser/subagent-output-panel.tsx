@@ -1,12 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import { BotIcon, CheckCircle2Icon, LoaderCircleIcon, XCircleIcon } from 'lucide-react'
-import { useEffect, useLayoutEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
 
 import { cn } from '~/lib/cn'
 import { chatSelectors, useChatStore } from '~/store/chat'
-import { providerThreadQueryKey, getProviderThread, providerThreadTurnsQueryKey, getProviderThreadTurns, subscribeProviderThreadStream } from '../chat/commands/provider-thread-command'
+
+import { getProviderThread, getProviderThreadTurns, providerThreadQueryKey, providerThreadTurnsQueryKey, subscribeProviderThreadStream } from '../chat/commands/provider-thread-command'
 import { MessageBubble } from '../chat/rendering/message-bubble'
+import { SubagentIdenticon } from '../chat/rendering/subagent-identicon'
 import { ChatStreamingHandler } from '../chat/transport/chat-streaming-handler'
 import { buildUIMessageChunkStreamFromResponse } from '../chat/transport/sse-chat-transport'
 
@@ -23,18 +26,28 @@ export function SubagentOutputPanel({
   agentName,
   agentRole,
 }: SubagentOutputPanelProps) {
+  const { t } = useTranslation('chat')
   const outputScrollRef = useRef<HTMLDivElement | null>(null)
+  const scrollFrameRef = useRef<number | null>(null)
+  const scrollMeasureFrameRef = useRef<number | null>(null)
   const shouldStickToBottomRef = useRef(true)
   const viewSessionId = buildProviderThreadViewSessionId(sessionId, threadId)
 
-  const threadQuery = useQuery({
+  const {
+    data: threadData,
+    isError: isThreadError,
+  } = useQuery({
     queryKey: providerThreadQueryKey(sessionId, threadId),
     queryFn: ({ signal }) => getProviderThread(sessionId, threadId, signal),
     enabled: !!sessionId && !!threadId,
     retry: false,
   })
 
-  const turnsQuery = useQuery({
+  const {
+    data: turnsData,
+    isError: isTurnsError,
+    isLoading: isTurnsLoading,
+  } = useQuery({
     queryKey: providerThreadTurnsQueryKey(sessionId, threadId),
     queryFn: ({ signal }) => getProviderThreadTurns(sessionId, threadId, signal),
     enabled: !!sessionId && !!threadId,
@@ -42,23 +55,23 @@ export function SubagentOutputPanel({
   })
 
   useEffect(() => {
-    const messages = turnsQuery.data?.messages
+    const messages = turnsData?.messages
     if (!messages) {
       return
     }
     const store = useChatStore.getState()
     const hydratedIds = new Set(messages.map(message => message.id))
     const liveMessages = (store.messagesMap.get(viewSessionId) ?? [])
-      .filter(message => !hydratedIds.has(message.id))
+      .filter(message => !hydratedIds.has(message.id) && !isProviderThreadLiveFallbackMessageId(message.id, sessionId, threadId))
     store.setMessages(viewSessionId, [...messages, ...liveMessages])
-  }, [turnsQuery.data?.messages, viewSessionId])
+  }, [sessionId, threadId, turnsData?.messages, viewSessionId])
 
   useEffect(() => {
     if (!sessionId || !threadId) {
       return
     }
     const controller = new AbortController()
-    const placeholderMessageId = `provider-thread:${sessionId}:${threadId}:live`
+    const placeholderMessageId = providerThreadLiveFallbackMessageId(threadId)
     const handler = new ChatStreamingHandler(
       viewSessionId,
       placeholderMessageId,
@@ -76,7 +89,8 @@ export function SubagentOutputPanel({
         })
         if (!response.ok) {
           const body = await response.text().catch(() => '')
-          throw new Error(`Failed to subscribe provider thread stream: ${response.status} ${body}`)
+          handler.fail(`Failed to subscribe provider thread stream: ${response.status} ${body}`)
+          return
         }
         const stream = buildUIMessageChunkStreamFromResponse(response, viewSessionId)
         await handler.consume(stream)
@@ -97,45 +111,70 @@ export function SubagentOutputPanel({
   }, [sessionId, threadId, viewSessionId])
 
   const messages = useChatStore(useShallow(chatSelectors.messages(viewSessionId)))
-  const thread = threadQuery.data?.thread ?? null
+  const thread = threadData?.thread ?? null
   const displayName = thread?.agentNickname ?? thread?.name ?? agentName
   const displayRole = thread?.agentRole ?? agentRole
-  const status = thread?.status ?? (turnsQuery.isLoading ? 'active' : 'idle')
+  const status = thread?.status ?? (isTurnsLoading ? 'active' : 'idle')
   const statusLabel = formatAgentStatus(status)
-  const hasError = threadQuery.isError || turnsQuery.isError
+  const hasError = isThreadError || isTurnsError
 
-  const scrollOutputToBottom = () => {
-    const viewport = outputScrollRef.current
-    if (!viewport) {
+  const cancelScheduledScroll = useCallback(() => {
+    if (scrollFrameRef.current === null) {
       return
     }
-    viewport.scrollTop = viewport.scrollHeight
-  }
+    window.cancelAnimationFrame(scrollFrameRef.current)
+    scrollFrameRef.current = null
+  }, [])
 
-  const handleOutputScroll = () => {
-    const viewport = outputScrollRef.current
-    if (!viewport) {
+  const cancelScheduledScrollMeasure = useCallback(() => {
+    if (scrollMeasureFrameRef.current === null) {
       return
     }
-    const distanceFromBottom = viewport.scrollHeight - viewport.scrollTop - viewport.clientHeight
-    shouldStickToBottomRef.current = distanceFromBottom < 48
-  }
+    window.cancelAnimationFrame(scrollMeasureFrameRef.current)
+    scrollMeasureFrameRef.current = null
+  }, [])
 
-  useLayoutEffect(() => {
+  const scheduleScrollOutputToBottom = useCallback(() => {
+    if (scrollFrameRef.current !== null) {
+      return
+    }
+    scrollFrameRef.current = window.requestAnimationFrame(() => {
+      scrollFrameRef.current = null
+      const viewport = outputScrollRef.current
+      if (!viewport) {
+        return
+      }
+      viewport.scrollTop = Number.MAX_SAFE_INTEGER
+    })
+  }, [])
+
+  const handleOutputScroll = useCallback(() => {
+    if (scrollMeasureFrameRef.current !== null) {
+      return
+    }
+    scrollMeasureFrameRef.current = window.requestAnimationFrame(() => {
+      scrollMeasureFrameRef.current = null
+      const viewport = outputScrollRef.current
+      if (!viewport) {
+        return
+      }
+      const scrollBottom = viewport.scrollTop + viewport.clientHeight
+      shouldStickToBottomRef.current = scrollBottom >= viewport.scrollHeight - 48
+    })
+  }, [])
+
+  useEffect(() => {
     shouldStickToBottomRef.current = true
-    scrollOutputToBottom()
-    const frame = window.requestAnimationFrame(scrollOutputToBottom)
-    return () => window.cancelAnimationFrame(frame)
-  }, [scrollOutputToBottom, viewSessionId])
+    scheduleScrollOutputToBottom()
+    return cancelScheduledScroll
+  }, [cancelScheduledScroll, scheduleScrollOutputToBottom, viewSessionId])
 
-  useLayoutEffect(() => {
+  useEffect(() => {
     if (!shouldStickToBottomRef.current) {
       return
     }
-    scrollOutputToBottom()
-    const frame = window.requestAnimationFrame(scrollOutputToBottom)
-    return () => window.cancelAnimationFrame(frame)
-  }, [hasError, messages.length, scrollOutputToBottom])
+    scheduleScrollOutputToBottom()
+  }, [hasError, messages.length, scheduleScrollOutputToBottom])
 
   useEffect(() => {
     const viewport = outputScrollRef.current
@@ -143,25 +182,56 @@ export function SubagentOutputPanel({
       return
     }
 
+    let observedContent: Element | null = null
     const observer = new ResizeObserver(() => {
       if (shouldStickToBottomRef.current) {
-        scrollOutputToBottom()
+        scheduleScrollOutputToBottom()
       }
     })
-    observer.observe(viewport)
-    const content = viewport.firstElementChild
-    if (content instanceof HTMLElement) {
-      observer.observe(content)
+
+    const observeCurrentContent = () => {
+      const content = viewport.firstElementChild
+      if (content === observedContent) {
+        return
+      }
+      if (observedContent) {
+        observer.unobserve(observedContent)
+      }
+      observedContent = content
+      if (observedContent) {
+        observer.observe(observedContent)
+      }
     }
 
-    return () => observer.disconnect()
-  }, [messages.length, scrollOutputToBottom])
+    const mutationObserver = new MutationObserver(() => {
+      observeCurrentContent()
+      if (shouldStickToBottomRef.current) {
+        scheduleScrollOutputToBottom()
+      }
+    })
+
+    observer.observe(viewport)
+    observeCurrentContent()
+    mutationObserver.observe(viewport, { childList: true })
+
+    return () => {
+      observer.disconnect()
+      mutationObserver.disconnect()
+      cancelScheduledScroll()
+      cancelScheduledScrollMeasure()
+    }
+  }, [cancelScheduledScroll, cancelScheduledScrollMeasure, scheduleScrollOutputToBottom, viewSessionId])
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" data-testid="subagent-output-panel">
       <div className="flex shrink-0 items-center gap-2 border-b border-border/50 bg-card px-3 py-2">
-        <div className="flex size-6 shrink-0 items-center rounded-md bg-primary/10">
-          <BotIcon className="mx-auto size-3.5 text-primary" />
+        <div className="flex size-6 shrink-0 items-center justify-center rounded-md bg-background">
+          <SubagentIdenticon
+            active={false}
+            seed={threadId}
+            className="size-5"
+            aria-hidden="true"
+          />
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-medium text-foreground">{displayName}</p>
@@ -173,12 +243,15 @@ export function SubagentOutputPanel({
       </div>
 
       <div ref={outputScrollRef} className="min-h-0 flex-1 overflow-y-auto px-3 py-3" onScroll={handleOutputScroll}>
-        {hasError ? (
+        {hasError
+          ? (
           <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground/60">
             <XCircleIcon className="size-8 text-destructive/70" />
             <p className="text-[11px]">Unable to load subagent thread</p>
           </div>
-        ) : messages.length > 0 ? (
+        )
+          : messages.length > 0
+            ? (
           <div className="space-y-3">
             {messages.map(message => (
               <ProviderThreadMessage
@@ -188,14 +261,19 @@ export function SubagentOutputPanel({
               />
             ))}
           </div>
-        ) : (
+        )
+            : (
           <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground/60">
             <BotIcon className="size-8 opacity-40" />
             <p className="text-[11px]">
-              {turnsQuery.isLoading ? 'Loading output...' : 'No output yet'}
+              {isTurnsLoading ? 'Loading output...' : 'No output yet'}
             </p>
           </div>
         )}
+      </div>
+
+      <div className="shrink-0 bg-background px-3 py-2 text-center text-[11px] text-muted-foreground">
+        {t('subagent.output.readOnly')}
       </div>
     </div>
   )
@@ -250,6 +328,15 @@ function AgentStatusBadge({
 
 function buildProviderThreadViewSessionId(sessionId: string, threadId: string): string {
   return `provider-thread:${sessionId}:${threadId}`
+}
+
+function providerThreadLiveFallbackMessageId(threadId: string): string {
+  return `provider-thread:${threadId}:live`
+}
+
+function isProviderThreadLiveFallbackMessageId(messageId: string, sessionId: string, threadId: string): boolean {
+  return messageId === providerThreadLiveFallbackMessageId(threadId)
+    || messageId === `provider-thread:${sessionId}:${threadId}:live`
 }
 
 function formatAgentStatus(status: string): string {

@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import { getRuntimeIconKey, PROVIDER_ICONS } from '~/components/common/provider-icons'
 import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
+import { BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS } from '~/features/browser/native-surface-occlusion'
 import { cn } from '~/lib/cn'
 import type { BuiltinRuntimeKind, RuntimeKind } from '~/features/agent-runtime/types'
 
@@ -75,9 +76,17 @@ interface RuntimeSelectorProps {
   readOnly?: boolean
   options?: RuntimeKindOption[]
   disabled?: boolean
+  occludeNativeBrowserSurface?: boolean
 }
 
-export function RuntimeSelector({ value, onChange, readOnly, options = RUNTIME_KIND_OPTIONS, disabled }: RuntimeSelectorProps) {
+export function RuntimeSelector({
+  value,
+  onChange,
+  readOnly,
+  options = RUNTIME_KIND_OPTIONS,
+  disabled,
+  occludeNativeBrowserSurface = false,
+}: RuntimeSelectorProps) {
   const { t } = useTranslation('common')
   const current = options.find(o => o.value === value) ?? RUNTIME_KIND_OPTIONS.find(o => o.value === value)
   const Icon = PROVIDER_ICONS[current?.iconKey ?? getRuntimeIconKey(value)] ?? PROVIDER_ICONS.custom!
@@ -112,7 +121,12 @@ export function RuntimeSelector({ value, onChange, readOnly, options = RUNTIME_K
         </span>
         <ChevronDownIcon className="size-2.5 shrink-0 text-muted-foreground/50" />
       </MenuTrigger>
-      <MenuPopup align="start" side="top" sideOffset={4}>
+      <MenuPopup
+        align="start"
+        side="top"
+        sideOffset={4}
+        {...(occludeNativeBrowserSurface ? BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS : {})}
+      >
         {options.map((opt) => {
           const OptIcon = PROVIDER_ICONS[opt.iconKey ?? getRuntimeIconKey(opt.value)] ?? PROVIDER_ICONS.custom!
           return (

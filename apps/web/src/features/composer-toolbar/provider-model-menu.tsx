@@ -5,8 +5,9 @@ import { useTranslation } from 'react-i18next'
 
 import { ProviderIcon } from '~/components/common/provider-icons'
 import { MenuItem, MenuSeparator, MenuSub, MenuSubPopup, MenuSubTrigger } from '~/components/ui/menu'
-import { cn } from '~/lib/cn'
 import type { ModelDescriptor } from '~/features/agent-runtime/types'
+import { BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS } from '~/features/browser/native-surface-occlusion'
+import { cn } from '~/lib/cn'
 
 import { presetForProviderKind } from '../agent-management/provider-settings-utils'
 import type { ProviderModelOption } from './types'
@@ -30,6 +31,7 @@ interface ProviderModelMenuProps<TThinking extends string | null> {
   getThinkingOptionsForModel?: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
   emptyProviderTargetsLabel?: string
   isProviderTargetSelectionDisabled?: boolean
+  occludeNativeBrowserSurface?: boolean
   leadingSelection?: {
     label: string
     description?: string
@@ -51,6 +53,7 @@ interface ProviderTargetGroupProps<TThinking extends string | null> {
   getThinkingOptionsForModel: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
   isLoadingModels: boolean
   isProviderTargetSelectionDisabled: boolean
+  occludeNativeBrowserSurface?: boolean
   onRequestProviderTargetModels?: (id: string) => void
   onSelectProviderTarget: (id: string) => void
   onSelectModel: (id: string | null, providerTargetId: string) => void
@@ -64,6 +67,7 @@ interface CurrentProviderModelListProps<TThinking extends string | null> {
   getThinkingOptionsForModel: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
   isLoadingModels: boolean
   leadingContent?: ReactNode
+  occludeNativeBrowserSurface?: boolean
   onSelectModel: (id: string) => void
   onSelectThinking: (value: TThinking) => void
 }
@@ -94,6 +98,7 @@ export function CurrentProviderModelList<TThinking extends string | null>({
   getThinkingOptionsForModel,
   isLoadingModels,
   leadingContent,
+  occludeNativeBrowserSurface = false,
   onSelectModel,
   onSelectThinking,
 }: CurrentProviderModelListProps<TThinking>) {
@@ -149,6 +154,7 @@ export function CurrentProviderModelList<TThinking extends string | null>({
               isModelSelected={isModelSelected}
               thinkingValue={thinkingValue}
               thinkingOptions={getThinkingOptionsForModel(model)}
+              occludeNativeBrowserSurface={occludeNativeBrowserSurface}
               onSelectModel={() => onSelectModel(model.id)}
               onSelectThinking={onSelectThinking}
             />
@@ -177,6 +183,7 @@ function ProviderTargetGroup<TThinking extends string | null>({
   getThinkingOptionsForModel,
   isLoadingModels,
   isProviderTargetSelectionDisabled,
+  occludeNativeBrowserSurface,
   onRequestProviderTargetModels,
   onSelectProviderTarget,
   onSelectModel,
@@ -201,13 +208,14 @@ function ProviderTargetGroup<TThinking extends string | null>({
         <ProviderIcon iconSlug={providerTarget.iconSlug} presetId={preset.id} className="size-3.5 shrink-0" />
         <span>{providerTarget.name}</span>
       </MenuSubTrigger>
-      <MenuSubPopup>
+      <MenuSubPopup {...(occludeNativeBrowserSurface ? BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS : {})}>
         <CurrentProviderModelList
           models={models}
           selectedModelId={selectedModelId}
           thinkingValue={thinkingValue}
           getThinkingOptionsForModel={getThinkingOptionsForModel}
           isLoadingModels={isLoadingModels}
+          occludeNativeBrowserSurface={occludeNativeBrowserSurface}
           onSelectModel={modelId => onSelectModel(modelId, providerTarget.id)}
           onSelectThinking={onSelectThinking}
         />
@@ -222,6 +230,7 @@ function ModelSubmenu<TThinking extends string | null>({
   isModelSelected,
   thinkingValue,
   thinkingOptions,
+  occludeNativeBrowserSurface,
   onSelectModel,
   onSelectThinking,
 }: {
@@ -232,6 +241,7 @@ function ModelSubmenu<TThinking extends string | null>({
   thinkingOptions: Array<ThinkingOption<TThinking>>
   onSelectModel: () => void
   onSelectThinking: (value: TThinking) => void
+  occludeNativeBrowserSurface: boolean
 }) {
   const { t } = useTranslation('common')
   const caps = model.capabilities
@@ -294,7 +304,7 @@ function ModelSubmenu<TThinking extends string | null>({
       >
         {content}
       </MenuSubTrigger>
-      <MenuSubPopup>
+      <MenuSubPopup {...(occludeNativeBrowserSurface ? BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS : {})}>
         {thinkingOptions.map(option => (
           <MenuItem
             key={option.value ?? 'none'}
@@ -324,6 +334,7 @@ export function ProviderModelMenu<TThinking extends string | null>({
   getThinkingOptionsForModel,
   emptyProviderTargetsLabel,
   isProviderTargetSelectionDisabled = false,
+  occludeNativeBrowserSurface = false,
   leadingSelection,
   onRequestProviderTargetModels,
   onSelectProviderTarget,
@@ -363,6 +374,7 @@ export function ProviderModelMenu<TThinking extends string | null>({
           getThinkingOptionsForModel={resolveThinkingOptions}
           isLoadingModels={loadingProviderTargetIds.has(providerTarget.id)}
           isProviderTargetSelectionDisabled={isProviderTargetSelectionDisabled}
+          occludeNativeBrowserSurface={occludeNativeBrowserSurface}
           onRequestProviderTargetModels={onRequestProviderTargetModels}
           onSelectProviderTarget={onSelectProviderTarget}
           onSelectModel={onSelectModel}

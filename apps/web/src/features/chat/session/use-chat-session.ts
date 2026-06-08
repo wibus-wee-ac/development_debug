@@ -933,7 +933,6 @@ export function useChatSession(chatSessionId: string | null) {
               staleTime: 0,
             }).catch(() => null)
             releaseStaleSessionStreamingState(chatSessionId)
-            scheduleSnapshotRefresh(0)
             void queryClient.invalidateQueries({ queryKey: runtimeSessionStatusQueryKey(chatSessionId) })
             if (
               !runtimeStatus
@@ -946,6 +945,7 @@ export function useChatSession(chatSessionId: string | null) {
               return
             }
 
+            scheduleSnapshotRefresh(0)
             await enqueueChatSessionQueueItem({
               sessionId: chatSessionId,
               body,

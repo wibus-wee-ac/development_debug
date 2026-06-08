@@ -5,6 +5,7 @@ import { ProviderIcon } from '~/components/common/provider-icons'
 import { Button } from '~/components/ui/button'
 import { Menu, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import type { ModelDescriptor } from '~/features/agent-runtime/types'
+import { BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS } from '~/features/browser/native-surface-occlusion'
 
 import { presetForProviderKind } from '../agent-management/provider-settings-utils'
 import type { ModelsByProviderTargetId, ThinkingOption } from './provider-model-menu'
@@ -29,6 +30,7 @@ interface ProviderModelPickerProps<TThinking extends string | null> {
   triggerTestId?: string
   disabled?: boolean
   showProviderLabel?: boolean
+  occludeNativeBrowserSurface?: boolean
   leadingSelection?: {
     label: string
     description?: string
@@ -60,6 +62,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
   triggerTestId = 'provider-model-selector',
   disabled = false,
   showProviderLabel = false,
+  occludeNativeBrowserSurface = false,
   leadingSelection,
   getThinkingOptionsForModel,
   onRequestProviderTargetModels,
@@ -115,7 +118,11 @@ export function ProviderModelPicker<TThinking extends string | null>({
           </>
         )}
       </MenuTrigger>
-      <MenuPopup side={menuSide} align={menuAlign}>
+      <MenuPopup
+        side={menuSide}
+        align={menuAlign}
+        {...(occludeNativeBrowserSurface ? BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS : {})}
+      >
         <ProviderModelMenu
           providerTargets={providerTargets}
           selectedProviderTargetId={selectedProviderTargetId}
@@ -126,6 +133,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
           thinkingOptions={thinkingOptions}
           getThinkingOptionsForModel={getThinkingOptionsForModel}
           emptyProviderTargetsLabel={emptyProviderTargetsLabel}
+          occludeNativeBrowserSurface={occludeNativeBrowserSurface}
           leadingSelection={leadingSelection}
           onRequestProviderTargetModels={onRequestProviderTargetModels}
           onSelectProviderTarget={onSelectProviderTarget}

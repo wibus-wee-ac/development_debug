@@ -2,9 +2,13 @@ import type { NavigateTabOptions, TabInstance, TabLocation, TabStoreState } from
 import type { StoreApi, UseBoundStore } from 'zustand'
 
 import { stopTerminalPanelOwners } from '~/features/tui/terminal-panel-cleanup'
+import { useBrowserPanelStore } from '~/store/browser-panel'
+import { useLayoutStore } from '~/store/layout'
 
 type CradleTabStore = UseBoundStore<StoreApi<TabStoreState>>
+type ResourceTab = Pick<TabInstance, 'id' | 'type' | 'params'>
 type TerminalPanelStopper = (ownerIds: string[]) => void
+type BrowserPanelOwnerReleaser = (ownerIds: string[]) => void
 
 const installedStores = new WeakSet<CradleTabStore>()
 
@@ -43,20 +47,51 @@ export function selectClosedTerminalPanelOwnerIds(
   return Array.from(previousOwnerIds).filter(ownerId => !nextOwnerIds.has(ownerId))
 }
 
-function stopOwnersReleasedByTabChange(
-  previousTabs: readonly Pick<TabInstance, 'type' | 'params'>[],
-  nextTabs: readonly Pick<TabInstance, 'type' | 'params'>[],
-  stopOwners: TerminalPanelStopper,
-): void {
-  const closedOwnerIds = selectClosedTerminalPanelOwnerIds(previousTabs, nextTabs)
-  if (closedOwnerIds.length > 0) {
-    stopOwners(closedOwnerIds)
+export function selectBrowserPanelOwnerIds(tabs: readonly Pick<TabInstance, 'id'>[]): Set<string> {
+  return new Set(tabs.map(tab => tab.id))
+}
+
+export function selectClosedBrowserPanelOwnerIds(
+  previousTabs: readonly Pick<TabInstance, 'id'>[],
+  nextTabs: readonly Pick<TabInstance, 'id'>[],
+): string[] {
+  const nextOwnerIds = selectBrowserPanelOwnerIds(nextTabs)
+  return Array.from(selectBrowserPanelOwnerIds(previousTabs)).filter(ownerId => !nextOwnerIds.has(ownerId))
+}
+
+function releaseBrowserPanelOwners(ownerIds: string[]): void {
+  const browserStore = useBrowserPanelStore.getState()
+  const layoutStore = useLayoutStore.getState()
+  const browserBridge = window.cradle?.browser
+
+  for (const ownerId of ownerIds) {
+    layoutStore.setBrowserPanelOpen(false, ownerId)
+    browserStore.removeOwnerState(ownerId)
+    void browserBridge?.close({ threadId: ownerId }).catch(() => {})
   }
 }
 
-export function installTerminalPanelTabLifecycle(
+function releaseOwnersByTabChange(
+  previousTabs: readonly ResourceTab[],
+  nextTabs: readonly ResourceTab[],
+  stopOwners: TerminalPanelStopper,
+  releaseBrowserOwners: BrowserPanelOwnerReleaser,
+): void {
+  const closedTerminalOwnerIds = selectClosedTerminalPanelOwnerIds(previousTabs, nextTabs)
+  if (closedTerminalOwnerIds.length > 0) {
+    stopOwners(closedTerminalOwnerIds)
+  }
+
+  const closedBrowserOwnerIds = selectClosedBrowserPanelOwnerIds(previousTabs, nextTabs)
+  if (closedBrowserOwnerIds.length > 0) {
+    releaseBrowserOwners(closedBrowserOwnerIds)
+  }
+}
+
+export function installTabResourceLifecycle(
   store: CradleTabStore,
   stopOwners: TerminalPanelStopper = stopTerminalPanelOwners,
+  releaseBrowserOwners: BrowserPanelOwnerReleaser = releaseBrowserPanelOwners,
 ): void {
   if (installedStores.has(store)) {
     return
@@ -72,14 +107,14 @@ export function installTerminalPanelTabLifecycle(
 
       closeTab(tabId)
 
-      stopOwnersReleasedByTabChange(previousTabs, store.getState().tabs, stopOwners)
+      releaseOwnersByTabChange(previousTabs, store.getState().tabs, stopOwners, releaseBrowserOwners)
     },
     navigateTab: (tabId: string, location: TabLocation, options?: NavigateTabOptions) => {
       const previousTabs = store.getState().tabs
 
       navigateTab(tabId, location, options)
 
-      stopOwnersReleasedByTabChange(previousTabs, store.getState().tabs, stopOwners)
+      releaseOwnersByTabChange(previousTabs, store.getState().tabs, stopOwners, releaseBrowserOwners)
     },
   })
 }

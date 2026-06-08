@@ -10,7 +10,7 @@ import { kanbanBoardTab } from './kanban-board.tab'
 import { newChatTab } from './new-chat.tab'
 import { onboardingTab } from './onboarding.tab'
 import { pluginPanelTab } from './plugin-panel.tab'
-import { installTerminalPanelTabLifecycle } from './terminal-panel-tab-lifecycle'
+import { installTabResourceLifecycle } from './tab-resource-lifecycle'
 import { usageTab } from './usage.tab'
 import { workspaceDetailTab } from './workspace-detail.tab'
 
@@ -41,4 +41,4 @@ if (import.meta.env.DEV) {
   window.__CRADLE_TAB_STORE__ = cradleTabStore
 }
 
-installTerminalPanelTabLifecycle(cradleTabStore)
+installTabResourceLifecycle(cradleTabStore)

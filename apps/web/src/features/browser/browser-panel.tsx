@@ -68,6 +68,11 @@ import {
   resolveBrowserChromeStatus,
 } from './browser-panel.logic'
 import { ContextUsageReport } from './context-usage-report'
+import {
+  BROWSER_NATIVE_SURFACE_OCCLUSION_ATTRIBUTE,
+  BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS,
+  BROWSER_NATIVE_SURFACE_OCCLUSION_SELECTOR,
+} from './native-surface-occlusion'
 import { PlanDocumentViewer } from './plan-document-viewer'
 import { SideConversationPanel } from './side-conversation-panel'
 import { SubagentOutputPanel } from './subagent-output-panel'
@@ -119,13 +124,12 @@ interface BrowserAnnotationRuntimeEvent {
     | 'delete'
     | 'edit'
     | 'layout-sync'
-    | 'send'
   anchor?: BrowserAnnotationAnchor
   annotationId?: string
+  runtimeAnnotationId?: string
   selectedElement?: BrowserAnnotationElement | null
   body?: string
   output?: string
-  webhookUrl?: string
   annotations?: Array<{
     id: string
     anchor: BrowserAnnotationAnchor
@@ -147,6 +151,8 @@ interface BrowserAnnotationRuntimeEvent {
 
 const BROWSER_BOUNDS_SYNC_STABLE_FRAME_TARGET = 2
 const BROWSER_SCREENSHOT_CHUNK_SIZE = 0x8000
+const BROWSER_NATIVE_OCCLUSION_MARGIN = 6
+const BROWSER_NATIVE_OCCLUSION_MIN_SIZE = 32
 const EMPTY_BROWSER_PANEL_TABS: BrowserPanelTab[] = []
 const EMPTY_BROWSER_LOCAL_SERVERS: BrowserLocalServer[] = []
 const EMPTY_BROWSER_ANNOTATION_LAYOUT_HINTS: BrowserAnnotationLayoutHint[] = []
@@ -157,12 +163,6 @@ const EMPTY_BROWSER_ANNOTATION_LAYOUT_HINTS_BY_TAB_ID: Record<
 interface BrowserAnnotationRuntimeSession {
   tabId: string
   editingAnnotationId: string | null
-}
-
-interface BrowserNativeBoundsPreview {
-  tabId: string
-  url: string
-  imageDataUrl: string
 }
 
 interface BrowserAnnotationCropRect {
@@ -198,11 +198,81 @@ function normalizeBrowserNativeBounds(rect: DOMRect): BrowserNativeBounds | null
   }
 }
 
+function browserNativeBoundsFromEdges(input: {
+  left: number
+  top: number
+  right: number
+  bottom: number
+}): BrowserNativeBounds | null {
+  const x = Math.max(0, Math.floor(input.left))
+  const y = Math.max(0, Math.floor(input.top))
+  const right = Math.max(x, Math.ceil(input.right))
+  const bottom = Math.max(y, Math.ceil(input.bottom))
+  const width = right - x
+  const height = bottom - y
+
+  if (width < BROWSER_NATIVE_OCCLUSION_MIN_SIZE || height < BROWSER_NATIVE_OCCLUSION_MIN_SIZE) {
+    return null
+  }
+
+  return { x, y, width, height }
+}
+
 function browserNativeBoundsSignature(bounds: BrowserNativeBounds | null): string {
   if (!bounds) {
     return 'hidden'
   }
   return `${bounds.x}:${bounds.y}:${bounds.width}:${bounds.height}`
+}
+
+function rectsIntersect(
+  a: { left: number, top: number, right: number, bottom: number },
+  b: { left: number, top: number, right: number, bottom: number },
+): boolean {
+  return a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top
+}
+
+function applyBrowserNativeSurfaceOcclusions(
+  bounds: BrowserNativeBounds,
+  viewportRect: DOMRect,
+): BrowserNativeBounds | null {
+  if (typeof document === 'undefined') {
+    return bounds
+  }
+
+  const left = bounds.x
+  let top = bounds.y
+  const right = bounds.x + bounds.width
+  let bottom = bounds.y + bounds.height
+  const viewportCenterY = bounds.y + bounds.height / 2
+  const occluders = document.querySelectorAll<HTMLElement>(BROWSER_NATIVE_SURFACE_OCCLUSION_SELECTOR)
+
+  for (const occluder of occluders) {
+    const rect = occluder.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0) {
+      continue
+    }
+
+    const expandedRect = {
+      left: rect.left - BROWSER_NATIVE_OCCLUSION_MARGIN,
+      top: rect.top - BROWSER_NATIVE_OCCLUSION_MARGIN,
+      right: rect.right + BROWSER_NATIVE_OCCLUSION_MARGIN,
+      bottom: rect.bottom + BROWSER_NATIVE_OCCLUSION_MARGIN,
+    }
+
+    if (!rectsIntersect(viewportRect, expandedRect)) {
+      continue
+    }
+
+    if ((expandedRect.top + expandedRect.bottom) / 2 >= viewportCenterY) {
+      bottom = Math.min(bottom, expandedRect.top)
+      continue
+    }
+
+    top = Math.max(top, expandedRect.bottom)
+  }
+
+  return browserNativeBoundsFromEdges({ left, top, right, bottom })
 }
 
 function formatBrowserActionError(error: unknown): string | null {
@@ -477,7 +547,6 @@ function isBrowserAnnotationRuntimeEvent(value: unknown): value is BrowserAnnota
       || candidate.type === 'delete'
       || candidate.type === 'edit'
       || candidate.type === 'layout-sync'
-      || candidate.type === 'send'
     )
 }
 
@@ -866,16 +935,19 @@ function BrowserAnnotationRail({
 
   if (collapsed) {
     return (
-      <div className="absolute right-3 top-3 z-20 flex max-h-[calc(100%-1.5rem)] items-start justify-end">
+      <div
+        {...BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS}
+        className="absolute right-3 top-3 z-20 flex max-h-[calc(100%-1.5rem)] items-start justify-end"
+      >
         <button
           type="button"
-          className="relative flex size-10 animate-[browser-annotation-popup-enter_200ms_cubic-bezier(0.34,1.56,0.64,1)_both] items-center justify-center rounded-lg bg-popover/95 text-popover-foreground shadow-[0_10px_34px_rgba(0,0,0,0.16)] ring-1 ring-foreground/10 backdrop-blur-md transition-[scale,background-color,color] duration-150 ease-out hover:bg-popover active:scale-[0.96] motion-reduce:animate-none dark:shadow-[0_12px_40px_rgba(0,0,0,0.45)]"
+          className="relative flex size-10 animate-[browser-annotation-popup-enter_200ms_cubic-bezier(0.34,1.56,0.64,1)_both] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-[0_10px_34px_rgba(0,0,0,0.16),inset_0_0_0_1px_rgba(0,0,0,0.04)] backdrop-blur-md transition-[scale,background-color,color] duration-150 ease-out hover:scale-105 hover:bg-primary/90 active:scale-[0.96] motion-reduce:animate-none dark:shadow-[0_12px_40px_rgba(0,0,0,0.45),inset_0_0_0_1px_rgba(255,255,255,0.12)]"
           onClick={() => onCollapsedChange(false)}
           aria-label={`Show ${annotations.length} browser annotations`}
           aria-expanded="false"
         >
-          <MessageSquarePlusIcon className="size-4 text-primary" />
-          <span className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-primary px-1.5 text-[10px] font-medium text-primary-foreground tabular-nums shadow-sm ring-2 ring-background">
+          <MessageSquarePlusIcon className="size-4" />
+          <span className="absolute -right-1 -top-1 flex min-w-5 items-center justify-center rounded-full bg-background px-1.5 text-[10px] font-medium text-primary tabular-nums shadow-sm ring-2 ring-primary">
             {annotations.length}
           </span>
         </button>
@@ -884,7 +956,10 @@ function BrowserAnnotationRail({
   }
 
   return (
-    <div className="absolute right-3 top-3 z-20 flex max-h-[calc(100%-1.5rem)] items-start justify-end">
+    <div
+      {...BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS}
+      className="absolute right-3 top-3 z-20 flex max-h-[calc(100%-1.5rem)] items-start justify-end"
+    >
       <div className="flex max-h-full w-72 origin-top-right animate-[browser-annotation-popup-enter_200ms_cubic-bezier(0.34,1.56,0.64,1)_both] flex-col overflow-hidden rounded-2xl bg-popover/95 text-popover-foreground shadow-[0_4px_24px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.06)] backdrop-blur-md motion-reduce:animate-none dark:bg-[#1a1a1a]/95 dark:shadow-[0_4px_24px_rgba(0,0,0,0.34),0_0_0_1px_rgba(255,255,255,0.08)]">
         <div className="flex h-10 shrink-0 items-center justify-between gap-2 px-2">
           <button
@@ -1032,7 +1107,6 @@ export function BrowserPanel({
   ownerId = null,
   activeSessionId = null,
   activeSessionTitle = null,
-  nativeBoundsPaused = false,
   onCloseLastTab,
 }: BrowserPanelProps) {
   const resolvedOwnerId = ownerId ?? DEFAULT_BROWSER_PANEL_OWNER_ID
@@ -1086,8 +1160,6 @@ export function BrowserPanel({
   const animationFrameRef = useRef<number | null>(null)
   const lastNativeBoundsSignatureRef = useRef<string | null>(null)
   const localServerDiscoveryRequestRef = useRef(0)
-  const nativeBoundsPreviewRequestRef = useRef(0)
-  const nativeBoundsPausedRef = useRef(nativeBoundsPaused)
   const newTabRequestInFlightRef = useRef(false)
 
   const [addressValue, setAddressValue] = useState('')
@@ -1098,18 +1170,11 @@ export function BrowserPanel({
     null,
   )
   const [, setAnnotationSubmitting] = useState(false)
-  const [nativeBoundsPreview, setNativeBoundsPreview] = useState<BrowserNativeBoundsPreview | null>(
-    null,
-  )
   const [localServers, setLocalServers] = useState<BrowserLocalServer[]>(
     EMPTY_BROWSER_LOCAL_SERVERS,
   )
   const [localServersLoading, setLocalServersLoading] = useState(false)
   const [newTabRequestPending, setNewTabRequestPending] = useState(false)
-
-  useEffect(() => {
-    nativeBoundsPausedRef.current = nativeBoundsPaused
-  }, [nativeBoundsPaused])
   const [localServersError, setLocalServersError] = useState<string | null>(null)
   const nativeBrowserAvailable = Boolean(readBrowserBridge())
 
@@ -1195,7 +1260,6 @@ export function BrowserPanel({
   useEffect(() => {
     return () => {
       localServerDiscoveryRequestRef.current += 1
-      nativeBoundsPreviewRequestRef.current += 1
     }
   }, [])
 
@@ -1279,6 +1343,11 @@ export function BrowserPanel({
   ])
 
   const hideNativeBrowserSurface = useCallback(() => {
+    if (animationFrameRef.current !== null) {
+      window.cancelAnimationFrame(animationFrameRef.current)
+      animationFrameRef.current = null
+      stableBoundsFrameCountRef.current = 0
+    }
     const nextSignature = `${resolvedOwnerId}:${browserNativeBoundsSignature(null)}`
     if (lastNativeBoundsSignatureRef.current === nextSignature) {
       return
@@ -1291,13 +1360,11 @@ export function BrowserPanel({
     Boolean(
       browserState?.open
       && activePanelTab?.kind === 'browser'
-      && !activeBrowserTabIsBlank
-      && (!nativeBoundsPausedRef.current || hasActiveAnnotationSession),
+      && !activeBrowserTabIsBlank,
     ), [
     activeBrowserTabIsBlank,
     activePanelTab?.kind,
     browserState?.open,
-    hasActiveAnnotationSession,
   ])
 
   const syncBounds = useCallback(() => {
@@ -1312,7 +1379,13 @@ export function BrowserPanel({
       return
     }
 
-    const bounds = normalizeBrowserNativeBounds(element.getBoundingClientRect())
+    const viewportRect = element.getBoundingClientRect()
+    const rawBounds = normalizeBrowserNativeBounds(viewportRect)
+    if (!rawBounds) {
+      hideNativeBrowserSurface()
+      return
+    }
+    const bounds = applyBrowserNativeSurfaceOcclusions(rawBounds, viewportRect)
     if (!bounds) {
       hideNativeBrowserSurface()
       return
@@ -1378,6 +1451,10 @@ export function BrowserPanel({
     hideNativeBrowserSurface()
   })
 
+  const scheduleStableBoundsSyncFromOcclusionObserver = useEffectEvent(() => {
+    scheduleStableBoundsSync()
+  })
+
   useLayoutEffect(() => {
     const element = viewportRef.current
     if (!element || !shouldShowNativeBrowserSurface()) {
@@ -1407,69 +1484,54 @@ export function BrowserPanel({
   ])
 
   useEffect(() => {
-    if (!nativeBoundsPaused || hasActiveAnnotationSession) {
-      nativeBoundsPreviewRequestRef.current += 1
-      scheduleStableBoundsSync()
+    if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') {
       return
     }
 
-    const bridge = readBrowserBridge()
-    if (
-      !bridge
-      || !browserState?.open
-      || activePanelTab?.kind !== 'browser'
-      || !activeBrowserTabId
-      || !activeBrowserTabUrl
-      || activeBrowserTabIsBlank
-    ) {
-      nativeBoundsPreviewRequestRef.current += 1
-      hideNativeBrowserSurface()
-      return
+    const observedOccluders = new Set<HTMLElement>()
+    const resizeObserver = typeof ResizeObserver === 'undefined'
+      ? null
+      : new ResizeObserver(scheduleStableBoundsSyncFromOcclusionObserver)
+
+    const syncObservedOccluders = () => {
+      const nextOccluders = new Set(
+        document.querySelectorAll<HTMLElement>(BROWSER_NATIVE_SURFACE_OCCLUSION_SELECTOR),
+      )
+
+      for (const occluder of observedOccluders) {
+        if (nextOccluders.has(occluder)) {
+          continue
+        }
+        resizeObserver?.unobserve(occluder)
+        observedOccluders.delete(occluder)
+      }
+
+      for (const occluder of nextOccluders) {
+        if (observedOccluders.has(occluder)) {
+          continue
+        }
+        resizeObserver?.observe(occluder)
+        observedOccluders.add(occluder)
+      }
+
+      scheduleStableBoundsSyncFromOcclusionObserver()
     }
 
-    const requestId = nativeBoundsPreviewRequestRef.current + 1
-    nativeBoundsPreviewRequestRef.current = requestId
-    const tabId = activeBrowserTabId
-    const url = activeBrowserTabUrl
+    const mutationObserver = new MutationObserver(syncObservedOccluders)
+    mutationObserver.observe(document.body, {
+      attributes: true,
+      attributeFilter: [BROWSER_NATIVE_SURFACE_OCCLUSION_ATTRIBUTE],
+      childList: true,
+      subtree: true,
+    })
+    syncObservedOccluders()
 
-    void bridge
-      .captureScreenshot({ threadId: resolvedOwnerId, tabId })
-      .then((screenshot) => {
-        if (nativeBoundsPreviewRequestRef.current !== requestId) {
-          return
-        }
-
-        setNativeBoundsPreview({
-          tabId,
-          url,
-          imageDataUrl: `data:${screenshot.mimeType};base64,${bytesToBase64(screenshot.bytes)}`,
-        })
-        window.requestAnimationFrame(() => {
-          if (nativeBoundsPreviewRequestRef.current !== requestId) {
-            return
-          }
-          hideNativeBrowserSurface()
-        })
-      })
-      .catch(() => {
-        if (nativeBoundsPreviewRequestRef.current !== requestId) {
-          return
-        }
-        setNativeBoundsPreview(null)
-        hideNativeBrowserSurface()
-      })
-  }, [
-    activeBrowserTabId,
-    activeBrowserTabIsBlank,
-    activeBrowserTabUrl,
-    activePanelTab?.kind,
-    hasActiveAnnotationSession,
-    browserState?.open,
-    hideNativeBrowserSurface,
-    nativeBoundsPaused,
-    resolvedOwnerId,
-    scheduleStableBoundsSync,
-  ])
+    return () => {
+      mutationObserver.disconnect()
+      resizeObserver?.disconnect()
+      scheduleStableBoundsSyncFromOcclusionObserver()
+    }
+  }, [])
 
   useEffect(() => {
     const bridge = readBrowserBridge()
@@ -1701,6 +1763,7 @@ export function BrowserPanel({
         return
       }
       if (tab.kind !== 'browser') {
+        hideNativeBrowserSurface()
         setActiveTab(tabId, resolvedOwnerId)
         return
       }
@@ -1941,11 +2004,30 @@ export function BrowserPanel({
       }
       const annotationId = saveAnnotation({
         ...recordInput,
-        id: annotationSession?.editingAnnotationId ?? undefined,
+        id: annotationSession?.editingAnnotationId ?? event.runtimeAnnotationId ?? undefined,
         status: 'saved',
       }, resolvedOwnerId)
+      const nextAnnotations = useBrowserPanelStore
+        .getState()
+        .owners[resolvedOwnerId]
+        ?.annotations
+        .filter(annotation => annotation.tabId === event.tabId)
+        .map(annotation => ({
+          id: annotation.id,
+          anchor: annotation.anchor,
+          body: annotation.body,
+          designChange: annotation.designChange,
+          status: annotation.status,
+        })) ?? []
+      void readBrowserBridge()?.startAnnotationRuntime({
+        threadId: resolvedOwnerId,
+        tabId: event.tabId,
+        annotations: nextAnnotations,
+        layoutHints: activeBrowserAnnotationLayoutHints,
+      }).catch(() => { })
       if (event.type === 'save') {
-        closeAnnotationSession()
+        setAnnotationSubmitting(false)
+        setAnnotationAdjustmentSession(null)
         return
       }
       const now = Date.now()
@@ -1962,7 +2044,8 @@ export function BrowserPanel({
         return
       }
       markAnnotationSent(annotationId, resolvedOwnerId)
-      closeAnnotationSession()
+      setAnnotationSubmitting(false)
+      setAnnotationAdjustmentSession(null)
     })()
   }
 
@@ -2113,143 +2196,6 @@ export function BrowserPanel({
             hints: event.layoutHints,
           }, resolvedOwnerId)
         }
-        return
-      }
-      if (event.type === 'send') {
-        if (event.layoutHints) {
-          syncAnnotationLayoutHints({
-            tabId: event.tabId,
-            hints: event.layoutHints,
-          }, resolvedOwnerId)
-        }
-        const webhookUrl = event.webhookUrl?.trim()
-        if (!webhookUrl) {
-          setLocalError('Configure a browser annotation webhook URL before sending.')
-          void bridge.notifyAnnotationRuntime?.({
-            threadId: event.threadId,
-            tabId: event.tabId,
-            message: 'Configure a webhook URL',
-            tone: 'error',
-          })
-          return
-        }
-        let parsedUrl: URL
-        try {
-          parsedUrl = new URL(webhookUrl)
-        }
-        catch {
-          setLocalError('The browser annotation webhook URL is invalid.')
-          void bridge.notifyAnnotationRuntime?.({
-            threadId: event.threadId,
-            tabId: event.tabId,
-            message: 'Invalid webhook URL',
-            tone: 'error',
-          })
-          return
-        }
-        if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
-          setLocalError('Browser annotation webhooks must use http or https.')
-          void bridge.notifyAnnotationRuntime?.({
-            threadId: event.threadId,
-            tabId: event.tabId,
-            message: 'Webhook must use http or https',
-            tone: 'error',
-          })
-          return
-        }
-        const annotations = useBrowserPanelStore
-          .getState()
-          .owners[resolvedOwnerId]
-          ?.annotations
-          .filter(annotation => annotation.tabId === event.tabId) ?? []
-        const annotationSignature = (input: {
-          body: string
-          anchor: BrowserAnnotationAnchor
-          designChange?: BrowserAnnotationDesignChange | null
-        }) => JSON.stringify({
-          body: input.body,
-          anchor: input.anchor,
-          designChange: input.designChange ?? null,
-        })
-        const webhookAnnotationsById = new Map<string, {
-          id: string
-          body: string
-          anchor: BrowserAnnotationAnchor
-          designChange: BrowserAnnotationDesignChange | null
-          status: 'saved' | 'sent'
-          createdAt: number | null
-          updatedAt: number | null
-        }>()
-        const savedAnnotationIdBySignature = new Map<string, string>()
-        for (const annotation of annotations) {
-          const signature = annotationSignature(annotation)
-          savedAnnotationIdBySignature.set(signature, annotation.id)
-          webhookAnnotationsById.set(annotation.id, {
-            id: annotation.id,
-            body: annotation.body,
-            anchor: annotation.anchor,
-            designChange: annotation.designChange,
-            status: annotation.status,
-            createdAt: annotation.createdAt,
-            updatedAt: annotation.updatedAt,
-          })
-        }
-        for (const annotation of event.annotations ?? []) {
-          const signature = annotationSignature(annotation)
-          if (annotation.id.startsWith('pending-') && savedAnnotationIdBySignature.has(signature)) {
-            continue
-          }
-          webhookAnnotationsById.set(annotation.id, {
-            id: annotation.id,
-            body: annotation.body,
-            anchor: annotation.anchor,
-            designChange: annotation.designChange ?? null,
-            status: annotation.status ?? 'saved',
-            createdAt: null,
-            updatedAt: null,
-          })
-        }
-        void (async () => {
-          try {
-            const response = await fetch(parsedUrl.toString(), {
-              method: 'POST',
-              headers: {
-                'content-type': 'application/json',
-              },
-              body: JSON.stringify({
-                type: 'browser-annotations',
-                sourceUrl: event.sourceUrl,
-                sourceTitle: event.sourceTitle,
-                output: event.output ?? '',
-                annotations: Array.from(webhookAnnotationsById.values()),
-                layoutHints: event.layoutHints ?? [],
-                surfaceSize: event.surfaceSize ?? null,
-                sentAt: new Date().toISOString(),
-              }),
-            })
-            if (!response.ok) {
-              throw new Error(`Webhook returned ${response.status}`)
-            }
-            void bridge.notifyAnnotationRuntime?.({
-              threadId: event.threadId,
-              tabId: event.tabId,
-              message: 'Annotations sent',
-              tone: 'success',
-            })
-          }
-          catch (error: unknown) {
-            const message = error instanceof Error
-              ? `Failed to send browser annotations: ${error.message}`
-              : 'Failed to send browser annotations.'
-            setLocalError(message)
-            void bridge.notifyAnnotationRuntime?.({
-              threadId: event.threadId,
-              tabId: event.tabId,
-              message: 'Webhook send failed',
-              tone: 'error',
-            })
-          }
-        })()
         return
       }
       if (event.type === 'clear') {
@@ -2678,19 +2624,6 @@ export function BrowserPanel({
                   onOpenUrl={navigateActiveTab}
                   onRefreshLocalServers={refreshLocalServers}
                 />
-              )}
-              {nativeBoundsPaused && !activeBrowserTabIsBlank && !hasActiveAnnotationSession && (
-                <div className="pointer-events-none absolute inset-0 z-10 overflow-hidden bg-background">
-                  {nativeBoundsPreview?.tabId === activeBrowserTabId
-                    && nativeBoundsPreview.url === activeBrowserTabUrl && (
-                    <img
-                      src={nativeBoundsPreview.imageDataUrl}
-                      alt=""
-                      className="size-full object-fill"
-                      draggable={false}
-                    />
-                  )}
-                </div>
               )}
               {!hasActiveAnnotationSession && (
                 <BrowserAnnotationRail

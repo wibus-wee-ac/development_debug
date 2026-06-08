@@ -3,23 +3,25 @@ import type { UIMessage } from 'ai'
 import { ActivityIcon, BotIcon, CheckCircle2Icon, CircleIcon, EyeIcon, ListChecksIcon, LoaderCircleIcon, TimerIcon, WrenchIcon } from 'lucide-react'
 import { useSyncExternalStore } from 'react'
 
+import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { cn } from '~/lib/cn'
 import { formatElapsedRangeMs, formatPercentFromRatio } from '~/lib/number-format'
-import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 
-import { useRuntimeSessionStatus } from './use-runtime-session-status'
-import { runtimeUiSlotStatesQueryKey, getChatRuntimeUiSlotStates, ChatRuntimeCompactUiSlotState, ChatRuntimeCrewUiSlotState, ChatRuntimeCrewAgentItem, ChatRuntimeUiSlotState, ChatRuntimePlanUiSlotState, ChatRuntimeCrewCallItem } from '../capabilities/chat-capabilities'
-import { SessionTodoSnapshot, ChatTodoItem } from '../capabilities/chat-todo-projection'
-import { RuntimeSessionStatusKind } from '../commands/runtime-session-status-command'
-import { subscribeChatAttentionSnapshots, readChatAttentionSnapshot } from '../context/chat-context'
+import type { ChatRuntimeCrewAgentItem, ChatRuntimeCrewCallItem, ChatRuntimeCrewUiSlotState, ChatRuntimePlanUiSlotState, ChatRuntimeUiSlotState } from '../capabilities/chat-capabilities'
+import { getChatRuntimeUiSlotStates, runtimeUiSlotStatesQueryKey } from '../capabilities/chat-capabilities'
+import type { ChatTodoItem, SessionTodoSnapshot } from '../capabilities/chat-todo-projection'
+import type { RuntimeSessionStatusKind } from '../commands/runtime-session-status-command'
+import { readChatAttentionSnapshot, subscribeChatAttentionSnapshots } from '../context/chat-context'
 import { readRenderableToolPart } from '../rendering/chat-render-plan'
 import { toolNameFromPart } from '../rendering/chat-tool-entities'
 import { SubagentIdenticon } from '../rendering/subagent-identicon'
-import { ToolState, describeToolCall, formatToolName, RenderableToolPart } from '../rendering/tool-ui-classifier'
+import type { RenderableToolPart, ToolState } from '../rendering/tool-ui-classifier'
+import { describeToolCall, formatToolName } from '../rendering/tool-ui-classifier'
 import { useSessionTodos } from '../session/use-session-todos'
+import { useRuntimeSessionStatus } from './use-runtime-session-status'
 
 interface RuntimeSessionPanelProps {
   sessionId: string | null
@@ -88,7 +90,6 @@ export function RuntimeSessionPanel({
   const displayedRun = runtimeStatus?.activeRun ?? runtimeStatus?.latestRun ?? null
   const planState = runtimeUiSlotStates?.states.find(isRuntimePlanState) ?? null
   const crewState = runtimeUiSlotStates?.states.find(isRuntimeCrewState) ?? null
-  const compactState = runtimeUiSlotStates?.states.find((state): state is ChatRuntimeCompactUiSlotState => state.kind === 'compact') ?? null
   const progressItems = buildProgressItems(planState, todoSnapshot)
 
   if (!sessionId) {
@@ -296,7 +297,7 @@ function SubagentsPanel({
       <PanelHeading icon={BotIcon} label="Subagents" />
       <div className="space-y-2 rounded-md bg-muted/35 p-2 shadow-[0_1px_0_rgba(0,0,0,0.04)]">
         <div className="space-y-1">
-          {agents.slice(0, 6).map(agent => (
+          {agents.map(agent => (
             <SubagentRow key={agent.threadId} agent={agent} onOpen={openAgent} />
           ))}
         </div>
@@ -453,6 +454,9 @@ function readDominantProgressStatus(left: ProgressTaskStatus, right: ProgressTas
 }
 
 function readCrewAgents(state: ChatRuntimeCrewUiSlotState): ChatRuntimeCrewAgentItem[] {
+  if (Array.isArray(state.agents) && state.agents.length > 0) {
+    return state.agents
+  }
   const agents = new Map<string, ChatRuntimeCrewAgentItem>()
   for (const call of readCrewCalls(state)) {
     for (const threadId of readCrewCallReceiverThreadIds(call)) {
@@ -491,7 +495,7 @@ function readCrewAgentLabel(agent: ChatRuntimeCrewAgentItem): string {
 }
 
 function isActiveCrewAgentStatus(status: string | null): boolean {
-  return status === 'pendingInit' || status === 'running'
+  return status === 'pendingInit' || status === 'running' || status === 'active'
 }
 
 function countToolStates(tools: Array<{ state: ToolState }>): { running: number, failed: number } {

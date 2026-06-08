@@ -17,7 +17,6 @@ import {
   DialogHeader,
   DialogTitle,
 } from '~/components/ui/dialog'
-import { ScrollArea } from '~/components/ui/scroll-area'
 import { Textarea } from '~/components/ui/textarea'
 import { toastManager } from '~/components/ui/toast'
 import type { ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
@@ -112,6 +111,7 @@ const ChatMessageListPane = memo(({
   onScrollToOffset,
   onToolApprovalResponse,
   onRuntimeUserInputSubmit,
+  composerStack,
 }: {
   sessionId: string | null
   messageIds: ReturnType<typeof useChatSession>['messageIds']
@@ -130,61 +130,66 @@ const ChatMessageListPane = memo(({
   onScrollToOffset: ChatScrollRuntime['scrollToOffset']
   onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
   onRuntimeUserInputSubmit: ReturnType<typeof useChatSession>['submitPendingUserInput']
+  composerStack: React.ReactNode
 }) => {
   const { t } = useTranslation('chat')
 
   return (
     <div ref={scrollContainerRef} className="relative min-h-0 flex-1 overflow-hidden">
-      <ScrollArea
-        viewportRef={viewportRef}
-        className="h-full **:data-[slot=scroll-area-scrollbar]:flex **:data-[slot=scroll-area-scrollbar]:opacity-100 **:data-[slot=scroll-area-thumb]:bg-foreground/25"
+      <div
+        ref={viewportRef}
+        className="h-full overflow-x-hidden overflow-y-auto outline-none [scrollbar-gutter:stable]"
       >
-        <div className="mx-auto max-w-[90%] px-4 pr-12 pt-4">
-          {messageCount === 0 && isReady && (
-            <div className="flex h-full items-center justify-center py-32">
-              <p className="select-none text-sm text-muted-foreground">
-                {t('empty.startConversation')}
-              </p>
-            </div>
-          )}
+        <div className="mx-auto flex min-h-full max-w-[90%] flex-col px-4 pr-12 pt-4">
+          <div className="flex-1">
+            {messageCount === 0 && isReady && (
+              <div className="flex h-full items-center justify-center py-32">
+                <p className="select-none text-sm text-muted-foreground">
+                  {t('empty.startConversation')}
+                </p>
+              </div>
+            )}
 
-          <Virtualizer
-            ref={virtualizerRef}
-            scrollRef={viewportRef}
-            startMargin={24}
-            keepMounted={keepMountedIndices}
-            onScroll={onVirtualScroll}
-          >
-            {messageIds.map(messageId => (
-              <MessageBubbleById
-                key={messageId}
-                sessionId={sessionId}
-                messageId={messageId}
-                onToolApprovalResponse={onToolApprovalResponse}
-                onRuntimeUserInputSubmit={onRuntimeUserInputSubmit}
-              />
-            ))}
-          </Virtualizer>
-
-          {status === 'error' && (
-            <m.div
-              data-testid="chat-error-banner"
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
-              className="flex items-start gap-2 pl-1 pt-4"
+            <Virtualizer
+              ref={virtualizerRef}
+              scrollRef={viewportRef}
+              startMargin={24}
+              keepMounted={keepMountedIndices}
+              onScroll={onVirtualScroll}
             >
-              <AlertCircleIcon className="size-3.5 shrink-0 text-destructive/70" aria-hidden="true" />
-              <span className="min-w-0 break-all text-xs text-destructive/70">
-                {error ?? t('error.loadMessages')}
-              </span>
-            </m.div>
-          )}
+              {messageIds.map(messageId => (
+                <MessageBubbleById
+                  key={messageId}
+                  sessionId={sessionId}
+                  messageId={messageId}
+                  onToolApprovalResponse={onToolApprovalResponse}
+                  onRuntimeUserInputSubmit={onRuntimeUserInputSubmit}
+                />
+              ))}
+            </Virtualizer>
 
-          <div className="h-36" aria-hidden="true" />
+            {status === 'error' && (
+              <m.div
+                data-testid="chat-error-banner"
+                initial={{ opacity: 0, y: 4 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0 }}
+                transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+                className="flex items-start gap-2 pl-1 pt-4"
+              >
+                <AlertCircleIcon className="size-3.5 shrink-0 text-destructive/70" aria-hidden="true" />
+                <span className="min-w-0 break-all text-xs text-destructive/70">
+                  {error ?? t('error.loadMessages')}
+                </span>
+              </m.div>
+            )}
+          </div>
+
+          <div className="pointer-events-none sticky bottom-0 z-10 pt-4 pb-3">
+            {composerStack}
+          </div>
         </div>
-      </ScrollArea>
+      </div>
 
       <ChatMinimap
         ref={minimapRef}
@@ -351,70 +356,68 @@ function ChatComposerSection({
   }, [composerRuntime.disabled, composerRuntime.isStreaming, planActions, runtimeSettings, submitComposerMessage])
 
   return (
-    <div className="pointer-events-none absolute inset-x-0 bottom-3 z-10 px-4">
-      <div className="pointer-events-auto mx-auto w-full max-w-208 bg-transparent">
-        <ChatAwaitBanner awaitSummary={awaitSummary} />
-        <ChatQueueList
-          items={queueItems}
-          onCancel={onCancelQueueItem}
-          onReorder={onReorderQueueItems}
-          className="mb-2"
-        />
-        <ComposerSlotStates
-          slots={composerRuntime.uiSlots}
-          states={composerRuntime.slotStates}
-          actions={goalActions}
-          plan={planSlotActions}
-          quickQuestion={quickQuestionSlot}
-          review={reviewSlot}
-          usage={usageSlot}
-          dismissPlanSignal={dismissPlanSignal}
-        />
-        <Composer
-          send={{
-            submit: submitComposerMessage,
-            stop: composerRuntime.stop,
-            isStreaming: composerRuntime.isStreaming,
-            disabled: composerRuntime.disabled,
-            onQuickQuestion,
-          }}
-          commands={{
-            commands: composerRuntime.slashCommands,
-            runAction: onSlashCommandAction,
-          }}
-          attachments={{
-            supportsAttachments: composerRuntime.supportsAttachments,
-            appendFileParts: appshotRuntime.externalFileParts,
-            appendFilePartsKey: appshotRuntime.externalFilePartsKey,
-            pendingAppshots: appshotRuntime.pendingAppshots,
-            onActionTargetElementChange: appshotRuntime.setActionTargetElement,
-          }}
-          runtimeSettings={runtimeSettings}
-          slots={{
-            toolbar,
-            contextBar,
-          }}
-          externalSignals={{
-            appendText: droppedPath ? `${droppedPath.text}` : undefined,
-            appendTextKey: droppedPath?.ts,
-            replaceText: composerReplaceText,
-            replaceTextKey: composerReplaceTextKey,
-          }}
-          view={{
-            placeholder,
-            availableFiles,
-            searchFiles,
-            searchPlugins,
-            searchSkills,
-            textareaRows: 3,
-            onFocusChange: onComposerFocusChange,
-            sessionId,
-            sessionTokens: composerRuntime.tokenUsage?.tokens,
-            sessionContextWindow: composerRuntime.tokenUsage?.contextWindow,
-            compactState: composerRuntime.compactState,
-          }}
-        />
-      </div>
+    <div className="pointer-events-auto mx-auto w-full max-w-208 bg-transparent">
+      <ChatAwaitBanner awaitSummary={awaitSummary} />
+      <ChatQueueList
+        items={queueItems}
+        onCancel={onCancelQueueItem}
+        onReorder={onReorderQueueItems}
+        className="mb-2"
+      />
+      <ComposerSlotStates
+        slots={composerRuntime.uiSlots}
+        states={composerRuntime.slotStates}
+        actions={goalActions}
+        plan={planSlotActions}
+        quickQuestion={quickQuestionSlot}
+        review={reviewSlot}
+        usage={usageSlot}
+        dismissPlanSignal={dismissPlanSignal}
+      />
+      <Composer
+        send={{
+          submit: submitComposerMessage,
+          stop: composerRuntime.stop,
+          isStreaming: composerRuntime.isStreaming,
+          disabled: composerRuntime.disabled,
+          onQuickQuestion,
+        }}
+        commands={{
+          commands: composerRuntime.slashCommands,
+          runAction: onSlashCommandAction,
+        }}
+        attachments={{
+          supportsAttachments: composerRuntime.supportsAttachments,
+          appendFileParts: appshotRuntime.externalFileParts,
+          appendFilePartsKey: appshotRuntime.externalFilePartsKey,
+          pendingAppshots: appshotRuntime.pendingAppshots,
+          onActionTargetElementChange: appshotRuntime.setActionTargetElement,
+        }}
+        runtimeSettings={runtimeSettings}
+        slots={{
+          toolbar,
+          contextBar,
+        }}
+        externalSignals={{
+          appendText: droppedPath ? `${droppedPath.text}` : undefined,
+          appendTextKey: droppedPath?.ts,
+          replaceText: composerReplaceText,
+          replaceTextKey: composerReplaceTextKey,
+        }}
+        view={{
+          placeholder,
+          availableFiles,
+          searchFiles,
+          searchPlugins,
+          searchSkills,
+          textareaRows: 3,
+          onFocusChange: onComposerFocusChange,
+          sessionId,
+          sessionTokens: composerRuntime.tokenUsage?.tokens,
+          sessionContextWindow: composerRuntime.tokenUsage?.contextWindow,
+          compactState: composerRuntime.compactState,
+        }}
+      />
     </div>
   )
 }
@@ -768,36 +771,37 @@ export function ChatView({
         onScrollToOffset={scrollRuntime.scrollToOffset}
         onToolApprovalResponse={respondToToolApproval}
         onRuntimeUserInputSubmit={submitPendingUserInput}
-      />
-
-      <ChatComposerSection
-        sessionId={sessionId}
-        awaitSummary={awaitSummary}
-        queueItems={queueItems}
-        onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
-        onReorderQueueItems={queueItemIds => void reorderQueueItems(queueItemIds)}
-        onSlashCommandAction={handleSlashCommandAction}
-        composerRuntime={navigableComposerRuntime}
-        appshotRuntime={appshotRuntime}
-        placeholder={placeholder}
-        availableFiles={availableFiles}
-        searchFiles={searchFiles}
-        searchPlugins={searchPlugins}
-        searchSkills={searchSkills}
-        toolbar={runtimeSettingsToolbar}
-        runtimeSettings={{
-          settings: runtimeSettings.settings,
-          disabled: !isReady || !runtimeSettings.loaded || runtimeSettings.loading,
-          onChange: updateRuntimeSettings,
-        }}
-        contextBar={composerContextBar}
-        droppedPath={droppedPath}
-        goalActions={goalActions}
-        quickQuestionSlot={quickQuestionSlot}
-        reviewSlot={reviewSlot}
-        usageSlot={usageSlot}
-        onQuickQuestion={sessionId && hasQuickQuestionSlot ? quickQuestion.openQuickQuestion : undefined}
-        onComposerFocusChange={scrollRuntime.handleComposerFocusChange}
+        composerStack={(
+          <ChatComposerSection
+            sessionId={sessionId}
+            awaitSummary={awaitSummary}
+            queueItems={queueItems}
+            onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
+            onReorderQueueItems={queueItemIds => void reorderQueueItems(queueItemIds)}
+            onSlashCommandAction={handleSlashCommandAction}
+            composerRuntime={navigableComposerRuntime}
+            appshotRuntime={appshotRuntime}
+            placeholder={placeholder}
+            availableFiles={availableFiles}
+            searchFiles={searchFiles}
+            searchPlugins={searchPlugins}
+            searchSkills={searchSkills}
+            toolbar={runtimeSettingsToolbar}
+            runtimeSettings={{
+              settings: runtimeSettings.settings,
+              disabled: !isReady || !runtimeSettings.loaded || runtimeSettings.loading,
+              onChange: updateRuntimeSettings,
+            }}
+            contextBar={composerContextBar}
+            droppedPath={droppedPath}
+            goalActions={goalActions}
+            quickQuestionSlot={quickQuestionSlot}
+            reviewSlot={reviewSlot}
+            usageSlot={usageSlot}
+            onQuickQuestion={sessionId && hasQuickQuestionSlot ? quickQuestion.openQuickQuestion : undefined}
+            onComposerFocusChange={scrollRuntime.handleComposerFocusChange}
+          />
+        )}
       />
 
       <Dialog open={editingGoal !== null} onOpenChange={open => !open && closeGoalEditor()}>

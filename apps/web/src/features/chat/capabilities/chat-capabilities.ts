@@ -372,6 +372,7 @@ export interface ChatRuntimeCrewUiSlotState {
   completedCount: number
   failedCount: number
   recentItems: ChatRuntimeToolActivityItem[]
+  agents: ChatRuntimeCrewAgentItem[]
   collaborationModeCount: number
   collaborationModes: ChatRuntimeCrewCollaborationMode[]
   calls: ChatRuntimeCrewCallItem[]
