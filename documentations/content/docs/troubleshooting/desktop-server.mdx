@@ -25,11 +25,27 @@ Desktop server 故障会影响大部分产品能力。先判断是整个 server 
 | --- | --- | --- | --- |
 | `The Cradle server has stopped unexpectedly.` | Server child process crashed after desktop already started it | 在 dialog 中选择 `Restart App`，或关闭后重新打开 desktop app | Server Health 显示 `Status`，Web workspace route 恢复 |
 | `Exit code: ...` | Server process exited with a non-zero code, or exited before desktop could classify the module failure | 记录 exit code，重启 desktop app；如果再次出现，导出 Devtools data | Devtools export 包含 desktop logs、server stderr 和 health snapshot |
-| `[desktop] Server process exited unexpectedly (code=..., signal=...)` | Server process received an unexpected exit or signal | 等待 desktop 自动 restart；不要同时启动第二个 packaged app | 后续 log 出现 `[desktop] Restarting server (attempt .../3)...` 或 Server Health 恢复 |
+| `[desktop] Server process exited unexpectedly (pid=..., code=..., signal=..., classification=..., diagnostics=...)` | Server process crashed, exited, or received a signal that Desktop did not mark as its own shutdown request | 等待 desktop 自动 restart；不要同时启动第二个 packaged app；保留 `diagnostics` 指向的文件 | 后续 log 出现 `[desktop] Restarting server (attempt .../3)...` 或 Server Health 恢复 |
 | `[desktop] Server restart failed:` | 自动 restart 后 `/health` 仍不可用，或 forked server 无法再次启动 | 关闭 desktop app，确认没有残留 Cradle server process，再重新打开 | Server Health 不再显示 fetch error；desktop log 出现 `[desktop] Server started on ...` |
 | `Server failed to start within ...ms` | Server process 存在但 `/health` 在 timeout 内没有 ready | 重启 desktop app；如果开发环境中出现，确认 server entry、port 和 data dir 可写 | Devtools Server Health 能读取 `status`、`uptime` 和 memory rows |
 | `Failed to fetch server health: HTTP ...` | `/health` route 返回非-2xx，server 可达但健康检查失败 | 打开 Observability，查找同一时间的 incident；按 HTTP status 定位 server module | Server Health 下次轮询清除 error |
 | `Failed to fetch server health: TypeError...` | Web layer 无法连到 `SERVER_BASE`，通常是 server 未启动、port 失效或 desktop bridge 未注入 | 重启 desktop app；如果只影响 plugin command，再检查 Plugins panel | Server Health 从 error view 变成 health table |
+
+## Server 退出归因
+
+当 chat streaming 中出现 `Response interrupted because the Cradle server process exited while the run was streaming.`，先看 desktop log 中同一时间的 server exit 行。
+
+Desktop 现在只把自己显式发起的 shutdown 标记为 `classification=desktop-requested`。如果没有这个标记，但 child process 退出时带 signal，或 server 自己先记录了 `received process signal`，Desktop 会标记为 `classification=external-signal-or-os-kill`。如果没有 signal，则标记为 `classification=process-exit-or-crash`。
+
+每次 server child process 退出都会追加一行 NDJSON 到：
+
+```txt
+<Cradle userData>/data/server-process-exits.ndjson
+```
+
+这行记录包含 `pid`、`code`、`signal`、`classification`、`desktopPid`、`serverUrl`、启动命令、最近 server stdout/stderr，以及 Desktop 是否发起过 `SIGTERM` 或 `SIGKILL`。server 收到 `SIGTERM` 或 `SIGINT` 时，也会在 server log 中记录 `signal`、`pid`、`ppid` 和 `desktopPid`。
+
+边界：应用内记录可以确认“是不是 Desktop 自己这条代码路径杀的”。如果 `classification=external-signal-or-os-kill`，要精确知道外部哪个进程发了 kill，需要系统级审计，例如 macOS 上用 `sudo dtrace`/EndpointSecurity/统一日志策略，或在复现窗口内运行专门的 kill/exec 监控工具。
 
 ## 什么时候导出诊断
 

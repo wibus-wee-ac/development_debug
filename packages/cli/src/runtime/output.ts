@@ -166,8 +166,51 @@ function printNdjson(result: ResultProjection): void {
   console.log(JSON.stringify(result.raw))
 }
 
+function isRecord(value: unknown): value is Record<string, unknown> {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+function countExistingFields(record: Record<string, unknown>, fields: string[]): number {
+  return fields.filter(field => Object.hasOwn(record, field)).length
+}
+
 function selectFieldsFromRecord(record: Record<string, unknown>, fields: string[]): Record<string, unknown> {
-  return Object.fromEntries(fields.map(field => [field, record[field]]))
+  return Object.fromEntries(fields.flatMap((field) => {
+    return Object.hasOwn(record, field) ? [[field, record[field]]] : []
+  }))
+}
+
+function selectFieldsFromArray(items: unknown[], fields: string[]): unknown[] {
+  return items.map(item => isRecord(item) ? selectFieldsFromRecord(item, fields) : item)
+}
+
+function findWrappedArrayForFields(record: Record<string, unknown>, fields: string[]): unknown[] | null {
+  const directScore = countExistingFields(record, fields)
+  const candidates = Object.values(record).flatMap((value) => {
+    if (!Array.isArray(value) || value.some(item => !isRecord(item))) {
+      return []
+    }
+    const score = value.reduce((highestScore, item) => {
+      return Math.max(highestScore, countExistingFields(item, fields))
+    }, 0)
+    return [{ score, value }]
+  })
+
+  if (candidates.length === 0) {
+    return null
+  }
+
+  const ranked = candidates.slice().sort((a, b) => b.score - a.score)
+  const best = ranked[0]
+  const second = ranked[1]
+  if (best.value.length === 0 && directScore === 0 && candidates.length === 1) {
+    return best.value
+  }
+  if (best.score > directScore && best.score > 0 && (!second || second.score < best.score)) {
+    return best.value
+  }
+
+  return null
 }
 
 function selectJsonFields(result: unknown, fields: string[] | undefined): unknown {
@@ -175,14 +218,16 @@ function selectJsonFields(result: unknown, fields: string[] | undefined): unknow
     return result
   }
 
-  const projection = ResultProjectionSchema.parse(result)
-
-  if (projection.kind === 'array') {
-    return projection.items.map(item => item.kind === 'record' ? selectFieldsFromRecord(item.record.raw, fields) : item.raw)
+  if (Array.isArray(result)) {
+    return selectFieldsFromArray(result, fields)
   }
 
-  if (projection.kind === 'record') {
-    return selectFieldsFromRecord(projection.record.raw, fields)
+  if (isRecord(result)) {
+    const wrappedArray = findWrappedArrayForFields(result, fields)
+    if (wrappedArray) {
+      return selectFieldsFromArray(wrappedArray, fields)
+    }
+    return selectFieldsFromRecord(result, fields)
   }
 
   return result
