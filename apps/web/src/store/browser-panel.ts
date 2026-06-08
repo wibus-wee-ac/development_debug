@@ -207,12 +207,14 @@ export interface BrowserAnnotationElement {
   styles: BrowserAnnotationElementStyle
   pageUrl?: string
   nearbyText?: string
+  reactComponents?: string | null
 }
 
 export interface BrowserAnnotationPoint {
   kind: 'point'
   x: number
   y: number
+  scrollY?: number
 }
 
 export interface BrowserAnnotationRegion {
@@ -221,6 +223,17 @@ export interface BrowserAnnotationRegion {
   y: number
   width: number
   height: number
+  scrollY?: number
+}
+
+export interface BrowserAnnotationTextAnchor {
+  kind: 'text'
+  text: string
+  x: number
+  y: number
+  width: number
+  height: number
+  scrollY?: number
 }
 
 export interface BrowserAnnotationElementAnchor {
@@ -231,7 +244,30 @@ export interface BrowserAnnotationElementAnchor {
 export type BrowserAnnotationAnchor
   = | BrowserAnnotationPoint
     | BrowserAnnotationRegion
+    | BrowserAnnotationTextAnchor
     | BrowserAnnotationElementAnchor
+
+export type BrowserAnnotationLayoutHint =
+  | {
+      id: string
+      kind: 'placement'
+      componentType: string
+      label: string
+      x: number
+      y: number
+      width: number
+      height: number
+      scrollY: number
+    }
+  | {
+      id: string
+      kind: 'rearrange'
+      selector: string
+      label: string
+      from: { x: number, y: number, width: number, height: number }
+      to: { x: number, y: number, width: number, height: number }
+      scrollY: number
+    }
 
 export interface BrowserAnnotationDesignChange {
   comment?: string
@@ -318,6 +354,7 @@ interface BrowserPanelOwnerState {
   } | null
   scrollToFilePath: { path: string, tabId: string, nonce: number } | null
   annotations: BrowserAnnotationRecord[]
+  annotationLayoutHintsByTabId: Record<string, BrowserAnnotationLayoutHint[] | undefined>
 }
 
 interface BrowserPanelState {
@@ -397,6 +434,10 @@ interface BrowserPanelState {
   markAnnotationSent: (id: string, ownerId?: string | null) => void
   deleteAnnotation: (id: string, ownerId?: string | null) => void
   clearAnnotations: (input?: { ownerId?: string | null, tabId?: string | null }) => void
+  syncAnnotationLayoutHints: (
+    input: { tabId: string, hints: BrowserAnnotationLayoutHint[] },
+    ownerId?: string | null,
+  ) => void
   setAnnotationInteractionMode: (
     mode: BrowserAnnotationInteractionMode,
     ownerId?: string | null,
@@ -436,6 +477,7 @@ function createEmptyOwnerState(ownerId: string): BrowserPanelOwnerState {
     requestedTab: null,
     scrollToFilePath: null,
     annotations: [],
+    annotationLayoutHintsByTabId: {},
   }
 }
 
@@ -506,6 +548,10 @@ function projectThreadState(
     scrollToFilePath: null,
     annotations: (previousOwnerState?.annotations ?? []).filter(annotation =>
       nextBrowserTabIds.has(annotation.tabId)),
+    annotationLayoutHintsByTabId: Object.fromEntries(
+      Object.entries(previousOwnerState?.annotationLayoutHintsByTabId ?? {})
+        .filter(([tabId]) => nextBrowserTabIds.has(tabId)),
+    ),
   }
 }
 
@@ -644,7 +690,10 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
         set((state) => {
           const ownerId = normalizeBrowserPanelOwnerId(threadState.threadId)
           const previousOwnerState = state.owners[ownerId]
-          if (previousOwnerState?.threadState?.version === threadState.version) {
+          if (
+            previousOwnerState?.threadState
+            && previousOwnerState.threadState.version >= threadState.version
+          ) {
             return state
           }
 
@@ -1074,9 +1123,29 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
           const annotations = tabId
             ? ownerState.annotations.filter(annotation => annotation.tabId !== tabId)
             : []
+          const annotationLayoutHintsByTabId = tabId
+            ? {
+                ...ownerState.annotationLayoutHintsByTabId,
+                [tabId]: [],
+              }
+            : {}
           return applyOwnerState(state, ownerId, {
             ...ownerState,
             annotations,
+            annotationLayoutHintsByTabId,
+          })
+        })
+      },
+      syncAnnotationLayoutHints: (input, ownerIdInput) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            annotationLayoutHintsByTabId: {
+              ...ownerState.annotationLayoutHintsByTabId,
+              [input.tabId]: input.hints,
+            },
           })
         })
       },

@@ -2,6 +2,7 @@ import type { FileUIPart, UIMessage } from 'ai'
 import { BotIcon, SendIcon, XCircleIcon } from 'lucide-react'
 import { useState } from 'react'
 
+import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'
 import { chatSelectors, useChatStore } from '~/store/chat'
@@ -76,6 +77,10 @@ export async function submitSideConversationMessage(input: SubmitSideConversatio
       const body = await response.text().catch(() => '')
       throw new Error(`Failed to start side response: ${response.status} ${body}`)
     }
+    const runId = response.headers.get('x-cradle-run-id')
+    if (runId) {
+      useChatStore.getState().setRunDisplayId(assistantMessageId, runId)
+    }
     await handler.consume(buildUIMessageChunkStreamFromResponse(response, viewSessionId))
     handler.finish()
   }
@@ -93,9 +98,11 @@ export function SideConversationPanel({
 }: SideConversationPanelProps) {
   const viewSessionId = buildSideConversationViewId(sideConversationId)
   const messages = useChatStore(chatSelectors.messages(viewSessionId))
+  const latestError = useChatStore(chatSelectors.latestError(viewSessionId))
   const [draft, setDraft] = useState('')
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const errorMessage = error ?? latestError?.message ?? null
 
   const submit = async () => {
     const text = draft.trim()
@@ -145,11 +152,18 @@ export function SideConversationPanel({
         )}
       </div>
 
-      {error && (
-        <div className="mx-3 mb-2 flex items-center gap-1.5 rounded-md border border-destructive/20 bg-destructive/5 px-2 py-1.5 text-[11px] text-destructive">
-          <XCircleIcon className="size-3.5 shrink-0" />
-          <span className="min-w-0 truncate">{error}</span>
-        </div>
+      {errorMessage && (
+        <Alert
+          variant="destructive"
+          className="mx-3 mb-2 w-auto rounded-md border-destructive/20 bg-destructive/5 px-2 py-1.5 text-xs"
+          data-testid="side-conversation-error-banner"
+        >
+          <XCircleIcon className="size-3.5" />
+          <AlertTitle className="text-xs">Side response failed</AlertTitle>
+          <AlertDescription className="max-h-24 overflow-y-auto break-words text-[11px]">
+            {errorMessage}
+          </AlertDescription>
+        </Alert>
       )}
 
       <form

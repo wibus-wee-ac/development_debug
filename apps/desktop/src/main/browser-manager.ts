@@ -140,6 +140,7 @@ export interface BrowserAnnotationElement {
   styles: BrowserAnnotationElementStyle
   pageUrl?: string
   nearbyText?: string
+  reactComponents?: string | null
 }
 
 export interface BrowserAnnotationDesignChange {
@@ -176,20 +177,78 @@ export interface BrowserAnnotationDesignInput extends BrowserTabInput {
   designChange: BrowserAnnotationDesignChange
 }
 
-export interface BrowserAnnotationRuntimeInput extends BrowserTabInput {}
-
 export type BrowserAnnotationAnchor =
-  | { kind: 'point', x: number, y: number }
-  | { kind: 'region', x: number, y: number, width: number, height: number }
+  | { kind: 'point', x: number, y: number, scrollY?: number }
+  | { kind: 'region', x: number, y: number, width: number, height: number, scrollY?: number }
+  | { kind: 'text', text: string, x: number, y: number, width: number, height: number, scrollY?: number }
   | { kind: 'element', element: BrowserAnnotationElement }
+
+export interface BrowserAnnotationRuntimeAnnotation {
+  id: string
+  anchor: BrowserAnnotationAnchor
+  body: string
+  designChange?: BrowserAnnotationDesignChange | null
+  status?: 'saved' | 'sent'
+}
+
+export type BrowserAnnotationLayoutHint =
+  | {
+      id: string
+      kind: 'placement'
+      componentType: string
+      label: string
+      x: number
+      y: number
+      width: number
+      height: number
+      scrollY: number
+    }
+  | {
+      id: string
+      kind: 'rearrange'
+      selector: string
+      label: string
+      from: { x: number, y: number, width: number, height: number }
+      to: { x: number, y: number, width: number, height: number }
+      scrollY: number
+    }
+
+export interface BrowserAnnotationRuntimeInput extends BrowserTabInput {
+  annotations?: BrowserAnnotationRuntimeAnnotation[]
+  editAnnotationId?: string | null
+  layoutHints?: BrowserAnnotationLayoutHint[]
+}
+
+export interface BrowserAnnotationRuntimeNotificationInput extends BrowserTabInput {
+  message: string
+  tone?: 'neutral' | 'success' | 'error'
+}
 
 export interface BrowserAnnotationRuntimeEvent {
   threadId: ThreadId
   tabId: string
-  type: 'ready' | 'selected-element' | 'save' | 'submit' | 'cancel' | 'closed' | 'toggle'
+  type:
+    | 'ready'
+    | 'selected-element'
+    | 'save'
+    | 'submit'
+    | 'cancel'
+    | 'closed'
+    | 'toggle'
+    | 'copy'
+    | 'clear'
+    | 'delete'
+    | 'edit'
+    | 'layout-sync'
+    | 'send'
   anchor?: BrowserAnnotationAnchor
+  annotationId?: string
   selectedElement?: BrowserAnnotationElement | null
   body?: string
+  output?: string
+  webhookUrl?: string
+  annotations?: BrowserAnnotationRuntimeAnnotation[]
+  layoutHints?: BrowserAnnotationLayoutHint[]
   attachedImages?: BrowserPromptAttachmentInput[]
   designChange?: BrowserAnnotationDesignChange | null
   elements?: BrowserAnnotationElement[]
@@ -1076,6 +1135,7 @@ export class DesktopBrowserManager {
     const results = await Promise.all(LOCAL_SERVER_CANDIDATE_PORTS.map(probeLocalServer))
     return results
       .filter((server): server is BrowserLocalServer => server !== null)
+      .filter(server => server.statusCode !== null && server.statusCode >= 200 && server.statusCode < 300)
       .slice(0, LOCAL_SERVER_DISCOVERY_LIMIT)
   }
 
@@ -1404,6 +1464,12 @@ export class DesktopBrowserManager {
       && candidate.type !== 'cancel'
       && candidate.type !== 'closed'
       && candidate.type !== 'toggle'
+      && candidate.type !== 'copy'
+      && candidate.type !== 'clear'
+      && candidate.type !== 'delete'
+      && candidate.type !== 'edit'
+      && candidate.type !== 'layout-sync'
+      && candidate.type !== 'send'
     ) {
       return null
     }
@@ -1425,12 +1491,28 @@ export class DesktopBrowserManager {
 
   async startAnnotationRuntime(input: BrowserAnnotationRuntimeInput): Promise<void> {
     const runtime = await this.resolveLiveRuntimeForCommand(input)
-    runtime.webContents.send(BROWSER_ANNOTATION_RUNTIME_COMMAND_CHANNEL, { type: 'start' })
+    runtime.webContents.send(BROWSER_ANNOTATION_RUNTIME_COMMAND_CHANNEL, {
+      type: 'start',
+      annotations: input.annotations ?? [],
+      editAnnotationId: input.editAnnotationId ?? null,
+      layoutHints: input.layoutHints ?? [],
+    })
   }
 
   async stopAnnotationRuntime(input: BrowserAnnotationRuntimeInput): Promise<void> {
     const runtime = await this.resolveLiveRuntimeForCommand(input)
     runtime.webContents.send(BROWSER_ANNOTATION_RUNTIME_COMMAND_CHANNEL, { type: 'stop' })
+  }
+
+  async notifyAnnotationRuntime(input: BrowserAnnotationRuntimeNotificationInput): Promise<void> {
+    const runtime = await this.resolveLiveRuntimeForCommand(input)
+    runtime.webContents.send(BROWSER_ANNOTATION_RUNTIME_COMMAND_CHANNEL, {
+      type: 'notify',
+      notification: {
+        message: input.message,
+        tone: input.tone ?? 'neutral',
+      },
+    })
   }
 
   // Ensures the requested tab is active/live, then returns a fresh PNG capture

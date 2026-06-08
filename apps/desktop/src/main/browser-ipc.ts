@@ -8,6 +8,7 @@ import type { IpcMain, WebContents } from 'electron'
 import type {
   BrowserAnnotationDesignInput,
   BrowserAnnotationElement,
+  BrowserAnnotationRuntimeNotificationInput,
   BrowserAnnotationRuntimeEvent,
   BrowserAnnotationRuntimeInput,
   BrowserCaptureScreenshotResult,
@@ -38,6 +39,7 @@ export const BROWSER_IPC_CHANNELS = {
   clearAnnotationDesign: 'desktop:browser-clear-annotation-design',
   startAnnotationRuntime: 'desktop:browser-start-annotation-runtime',
   stopAnnotationRuntime: 'desktop:browser-stop-annotation-runtime',
+  notifyAnnotationRuntime: 'desktop:browser-notify-annotation-runtime',
   annotationRuntimeEvent: 'desktop:browser-annotation-runtime-event',
   annotationRuntimeEvented: 'desktop:browser-annotation-runtime-evented',
   executeCdp: 'desktop:browser-execute-cdp',
@@ -155,6 +157,14 @@ export function registerBrowserIpcHandlers(
     BROWSER_IPC_CHANNELS.stopAnnotationRuntime,
     async (_event, input: BrowserAnnotationRuntimeInput) => {
       await browserManager.stopAnnotationRuntime(input)
+    },
+  )
+
+  ipcMain.removeHandler(BROWSER_IPC_CHANNELS.notifyAnnotationRuntime)
+  ipcMain.handle(
+    BROWSER_IPC_CHANNELS.notifyAnnotationRuntime,
+    async (_event, input: BrowserAnnotationRuntimeNotificationInput) => {
+      await browserManager.notifyAnnotationRuntime(input)
     },
   )
 

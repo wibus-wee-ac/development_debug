@@ -1,16 +1,18 @@
 import type { FileUIPart } from 'ai'
 import {
+  ArrowUpIcon,
   CheckIcon,
   ChevronRightIcon,
   ImagePlusIcon,
   Maximize2Icon,
-  MousePointer2Icon,
+  PlusIcon,
   XIcon,
 } from 'lucide-react'
 import type {
   ChangeEvent,
   ClipboardEvent as ReactClipboardEvent,
   DragEvent as ReactDragEvent,
+  KeyboardEvent as ReactKeyboardEvent,
   PointerEvent as ReactPointerEvent,
 } from 'react'
 import { useCallback, useEffect, useRef, useState } from 'react'
@@ -126,6 +128,9 @@ function anchorSummary(anchor: BrowserAnnotationAnchor | null): string {
   if (anchor.kind === 'element') {
     return `<${anchor.element.tagName.toLowerCase()}> ${anchor.element.label || anchor.element.role}`
   }
+  if (anchor.kind === 'text') {
+    return `Text "${anchor.text.slice(0, 80)}${anchor.text.length > 80 ? '...' : ''}"`
+  }
   return `Region ${Math.round(anchor.width)} x ${Math.round(anchor.height)}`
 }
 
@@ -139,6 +144,9 @@ function anchorTokenLabel(anchor: BrowserAnnotationAnchor | null): string {
   if (anchor.kind === 'region') {
     return 'Area selection'
   }
+  if (anchor.kind === 'text') {
+    return 'Text selection'
+  }
   return `<${anchor.element.tagName.toLowerCase()}> ${anchor.element.label || anchor.element.role || anchor.element.selector}`
 }
 
@@ -148,11 +156,11 @@ function computedStyleRows(element: BrowserAnnotationElement) {
       property,
       value: element.styles[key],
     }))
-    .filter(row =>
-      typeof row.value === 'string'
-      && row.value.trim().length > 0
-      && row.value !== 'rgba(0, 0, 0, 0)',
-    )
+    .filter((row) => {
+      return typeof row.value === 'string'
+        && row.value.trim().length > 0
+        && row.value !== 'rgba(0, 0, 0, 0)'
+    })
 }
 
 function editorPosition(anchor: BrowserAnnotationAnchor | null, surface: BrowserAnnotationSurfaceSize) {
@@ -484,6 +492,27 @@ export function BrowserAnnotationOverlay({
     }
   }, [activeDesignChange, anchor, attachedImages, canSubmit, draft])
 
+  const handleTextareaKeyDown = useCallback((event: ReactKeyboardEvent<HTMLTextAreaElement>) => {
+    event.stopPropagation()
+    if (event.nativeEvent.isComposing) {
+      return
+    }
+    if (event.key === 'Enter' && !event.shiftKey) {
+      event.preventDefault()
+      const input = buildSubmitInput()
+      if (!input) {
+        shakeEditor()
+        return
+      }
+      onSubmit(input)
+      return
+    }
+    if (event.key === 'Escape') {
+      event.preventDefault()
+      cancelWithExit()
+    }
+  }, [buildSubmitInput, cancelWithExit, onSubmit, shakeEditor])
+
   const appendImageFiles = async (files: File[]) => {
     if (files.length === 0) {
       return
@@ -629,11 +658,11 @@ export function BrowserAnnotationOverlay({
         )}
         {anchor?.kind === 'point' && (
           <span
-            className="pointer-events-none absolute flex size-6 -translate-x-1/2 -translate-y-1/2 animate-[browser-annotation-marker-in_250ms_cubic-bezier(0.22,1,0.36,1)_both] items-center justify-center rounded-full bg-primary text-primary-foreground shadow-sm ring-2 ring-primary/25 transition-[left,top,transform] duration-200 ease-out motion-reduce:animate-none"
+            className="pointer-events-none absolute flex size-[22px] -translate-x-1/2 -translate-y-1/2 animate-[browser-annotation-marker-in_250ms_cubic-bezier(0.22,1,0.36,1)_both] items-center justify-center rounded-full bg-primary text-primary-foreground text-[11px] font-semibold shadow-[0_2px_6px_rgba(0,0,0,0.20),inset_0_0_0_1px_rgba(0,0,0,0.04)] transition-[left,top,transform] duration-150 ease-out motion-reduce:animate-none"
             style={{ left: anchor.x, top: anchor.y }}
             aria-hidden="true"
           >
-            <MousePointer2Icon className="size-3.5" />
+            <PlusIcon className="size-3" />
           </span>
         )}
         {visibleRegion && (
@@ -806,6 +835,7 @@ export function BrowserAnnotationOverlay({
             placeholder="What should change?"
             rows={2}
             className="min-h-16 resize-none rounded-lg bg-background/70 text-sm shadow-none transition-[border-color,box-shadow] duration-150 focus-visible:ring-primary/45 dark:bg-white/5"
+            onKeyDown={handleTextareaKeyDown}
           />
           {attachedImages.length > 0 && (
             <div className="mt-2 flex gap-2 overflow-x-auto pb-1">
@@ -843,52 +873,70 @@ export function BrowserAnnotationOverlay({
               })}
             </div>
           )}
-          <div className="mt-2 space-y-2">
-            <span className="block min-w-0 truncate text-xs text-muted-foreground">
-              {anchorSummary(anchor)}
+          <div className="mt-2 flex items-center gap-1.5">
+            <input
+              ref={imageInputRef}
+              type="file"
+              aria-label="Attached images"
+              accept="image/*"
+              multiple
+              className="hidden"
+              onChange={handleImagesSelected}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 min-w-7 rounded-full px-2 text-[11px] text-muted-foreground transition-[background-color,color,scale] duration-150 ease-out active:scale-[0.96]"
+              onClick={() => imageInputRef.current?.click()}
+              aria-label="Attach images"
+              title={anchorSummary(anchor)}
+            >
+              <ImagePlusIcon className="size-3.5" />
+              Attach
+            </Button>
+            <span className="min-w-0 flex-1 truncate text-[11px] leading-4 text-muted-foreground/70">
+              {attachedImages.length === 0
+                ? 'No files'
+                : `${attachedImages.length} file${attachedImages.length === 1 ? '' : 's'}`}
             </span>
-            <div className="flex items-center justify-end gap-1">
-              <input
-                ref={imageInputRef}
-                type="file"
-                aria-label="Attached images"
-                accept="image/*"
-                multiple
-                className="hidden"
-                onChange={handleImagesSelected}
-              />
-              <Button
-                type="button"
-                variant="ghost"
-                size="sm"
-                className="gap-1.5"
-                onClick={() => imageInputRef.current?.click()}
-                aria-label="Attach images"
-              >
-                <ImagePlusIcon className="size-3.5" />
-                Attach
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                disabled={!canSubmit}
-                onClick={() => {
-                  const input = buildSubmitInput()
-                  if (input) {
-                    onSave(input)
-                    return
-                  }
-                  shakeEditor()
-                }}
-              >
-                Save
-              </Button>
-              <Button type="submit" size="sm" disabled={!canSubmit} className="gap-1.5">
-                {!submitting && <CheckIcon className="size-3.5" />}
-                {submitting ? 'Sending...' : 'Send'}
-              </Button>
-            </div>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 rounded-full bg-foreground/6 px-2.5 text-[11px] text-muted-foreground transition-[background-color,color,scale] duration-150 ease-out hover:bg-foreground/10 active:scale-[0.96]"
+              onClick={cancelWithExit}
+            >
+              Cancel
+            </Button>
+            <Button
+              type="button"
+              variant="ghost"
+              size="sm"
+              className="h-7 rounded-full bg-foreground/6 px-2.5 text-[11px] text-muted-foreground transition-[background-color,color,scale] duration-150 ease-out hover:bg-foreground/10 active:scale-[0.96]"
+              disabled={!canSubmit}
+              onClick={() => {
+                const input = buildSubmitInput()
+                if (input) {
+                  onSave(input)
+                  return
+                }
+                shakeEditor()
+              }}
+            >
+              Save
+            </Button>
+            <Button
+              type="submit"
+              size="icon-sm"
+              disabled={!canSubmit}
+              className="ml-auto size-7 rounded-full bg-primary p-0 text-primary-foreground shadow-none transition-[background-color,color,scale,opacity] duration-150 ease-out hover:bg-primary/90 active:scale-[0.96]"
+              aria-label={submitting ? 'Sending browser annotation' : 'Send browser annotation'}
+            >
+              {submitting
+                ? <CheckIcon className="size-3.5 animate-pulse motion-reduce:animate-none" />
+                : <ArrowUpIcon className="size-4" />}
+            </Button>
           </div>
         </form>
       )}

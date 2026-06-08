@@ -19,6 +19,7 @@
   "header.action.toggleRightPanel": "Toggle right panel",
   "header.tab.settings": "Settings",
   "rightAside.issue.empty": "No session selected",
+  "rightAside.tab.adjustment": "Adjust",
   "rightAside.tab.await": "Feed",
   "rightAside.tab.changes": "Changes",
   "rightAside.tab.files": "Files",

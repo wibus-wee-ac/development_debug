@@ -125,6 +125,8 @@ const cradleElectron = {
       ipcRenderer.invoke('desktop:browser-start-annotation-runtime', input),
     stopAnnotationRuntime: (input: unknown) =>
       ipcRenderer.invoke('desktop:browser-stop-annotation-runtime', input),
+    notifyAnnotationRuntime: (input: unknown) =>
+      ipcRenderer.invoke('desktop:browser-notify-annotation-runtime', input),
     executeCdp: (input: unknown) => ipcRenderer.invoke('desktop:browser-execute-cdp', input),
     discoverLocalServers: () => ipcRenderer.invoke('desktop:browser-discover-local-servers'),
     navigate: (input: unknown) => ipcRenderer.invoke('desktop:browser-navigate', input),

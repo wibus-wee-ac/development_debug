@@ -26,7 +26,7 @@ import {
   XIcon,
 } from 'lucide-react'
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import {
@@ -36,11 +36,11 @@ import {
 import { WorkspaceFileEditor } from '~/features/workspace/workspace-file-editor'
 import { WorkspaceFilePreview } from '~/features/workspace/workspace-file-preview'
 import { cn } from '~/lib/cn'
-import { isElectron } from '~/lib/electron'
 import type {
   BrowserAnnotationAnchor,
   BrowserAnnotationDesignChange,
   BrowserAnnotationElement,
+  BrowserAnnotationLayoutHint,
   BrowserAnnotationRecord,
   BrowserPanelTab,
   BrowserTabState,
@@ -106,10 +106,34 @@ interface BrowserPromptRequest {
 interface BrowserAnnotationRuntimeEvent {
   threadId: string
   tabId: string
-  type: 'ready' | 'selected-element' | 'save' | 'submit' | 'cancel' | 'closed' | 'toggle'
+  type:
+    | 'ready'
+    | 'selected-element'
+    | 'save'
+    | 'submit'
+    | 'cancel'
+    | 'closed'
+    | 'toggle'
+    | 'copy'
+    | 'clear'
+    | 'delete'
+    | 'edit'
+    | 'layout-sync'
+    | 'send'
   anchor?: BrowserAnnotationAnchor
+  annotationId?: string
   selectedElement?: BrowserAnnotationElement | null
   body?: string
+  output?: string
+  webhookUrl?: string
+  annotations?: Array<{
+    id: string
+    anchor: BrowserAnnotationAnchor
+    body: string
+    designChange?: BrowserAnnotationDesignChange | null
+    status?: 'saved' | 'sent'
+  }>
+  layoutHints?: BrowserAnnotationLayoutHint[]
   attachedImages?: BrowserPromptAttachment[]
   designChange?: BrowserAnnotationDesignChange | null
   elements?: BrowserAnnotationElement[]
@@ -125,6 +149,11 @@ const BROWSER_BOUNDS_SYNC_STABLE_FRAME_TARGET = 2
 const BROWSER_SCREENSHOT_CHUNK_SIZE = 0x8000
 const EMPTY_BROWSER_PANEL_TABS: BrowserPanelTab[] = []
 const EMPTY_BROWSER_LOCAL_SERVERS: BrowserLocalServer[] = []
+const EMPTY_BROWSER_ANNOTATION_LAYOUT_HINTS: BrowserAnnotationLayoutHint[] = []
+const EMPTY_BROWSER_ANNOTATION_LAYOUT_HINTS_BY_TAB_ID: Record<
+  string,
+  BrowserAnnotationLayoutHint[] | undefined
+> = {}
 interface BrowserAnnotationRuntimeSession {
   tabId: string
   editingAnnotationId: string | null
@@ -143,8 +172,37 @@ interface BrowserAnnotationCropRect {
   height: number
 }
 
+interface BrowserNativeBounds {
+  x: number
+  y: number
+  width: number
+  height: number
+}
+
 function readBrowserBridge() {
   return window.cradle?.browser ?? null
+}
+
+function normalizeBrowserNativeBounds(rect: DOMRect): BrowserNativeBounds | null {
+  const width = Math.max(0, Math.floor(rect.width))
+  const height = Math.max(0, Math.floor(rect.height))
+  if (width === 0 || height === 0) {
+    return null
+  }
+
+  return {
+    x: Math.max(0, Math.floor(rect.x)),
+    y: Math.max(0, Math.floor(rect.y)),
+    width,
+    height,
+  }
+}
+
+function browserNativeBoundsSignature(bounds: BrowserNativeBounds | null): string {
+  if (!bounds) {
+    return 'hidden'
+  }
+  return `${bounds.x}:${bounds.y}:${bounds.width}:${bounds.height}`
 }
 
 function formatBrowserActionError(error: unknown): string | null {
@@ -193,6 +251,10 @@ function localServerStatusLabel(statusCode: number | null): string {
     return `${statusCode} redirect`
   }
   return `${statusCode}`
+}
+
+function isReadyLocalServer(server: BrowserLocalServer): boolean {
+  return server.statusCode !== null && server.statusCode >= 200 && server.statusCode < 300
 }
 
 interface BrowserNewTabSurfaceProps {
@@ -410,6 +472,12 @@ function isBrowserAnnotationRuntimeEvent(value: unknown): value is BrowserAnnota
       || candidate.type === 'cancel'
       || candidate.type === 'closed'
       || candidate.type === 'toggle'
+      || candidate.type === 'copy'
+      || candidate.type === 'clear'
+      || candidate.type === 'delete'
+      || candidate.type === 'edit'
+      || candidate.type === 'layout-sync'
+      || candidate.type === 'send'
     )
 }
 
@@ -426,6 +494,16 @@ function isBrowserAnnotationAdjustmentApplyEvent(
     && typeof (detail as BrowserAnnotationAdjustmentApplyDetail).ownerId === 'string'
     && typeof (detail as BrowserAnnotationAdjustmentApplyDetail).tabId === 'string',
   )
+}
+
+function toBrowserAnnotationRuntimeAnnotation(annotation: BrowserAnnotationRecord) {
+  return {
+    id: annotation.id,
+    anchor: annotation.anchor,
+    body: annotation.body,
+    designChange: annotation.designChange,
+    status: annotation.status,
+  }
 }
 
 function screenshotFileNameForBrowserAnnotationUrl(url: string): string {
@@ -498,6 +576,9 @@ function formatBrowserAnnotationAnchor(anchor: BrowserAnnotationAnchor): string 
     const rect = anchor.element.rect
     return `element <${anchor.element.tagName.toLowerCase()}> (${Math.round(rect.x)}, ${Math.round(rect.y)}, ${Math.round(rect.width)} x ${Math.round(rect.height)})`
   }
+  if (anchor.kind === 'text') {
+    return `text "${anchor.text.slice(0, 96)}${anchor.text.length > 96 ? '...' : ''}" (${Math.round(anchor.x)}, ${Math.round(anchor.y)}, ${Math.round(anchor.width)} x ${Math.round(anchor.height)})`
+  }
   return `region (${Math.round(anchor.x)}, ${Math.round(anchor.y)}, ${Math.round(anchor.width)} x ${Math.round(anchor.height)})`
 }
 
@@ -507,6 +588,14 @@ function getBrowserAnnotationCropRect(anchor: BrowserAnnotationAnchor): BrowserA
   }
   if (anchor.kind === 'element') {
     return anchor.element.rect
+  }
+  if (anchor.kind === 'text') {
+    return {
+      x: anchor.x,
+      y: anchor.y,
+      width: anchor.width,
+      height: anchor.height,
+    }
   }
   return {
     x: anchor.x,
@@ -578,12 +667,18 @@ async function createBrowserAnnotationCropFilePart(input: {
 }
 
 function formatBrowserAnnotationElementDetails(anchor: BrowserAnnotationAnchor): string[] {
+  if (anchor.kind === 'text') {
+    return [
+      `Selected text: "${anchor.text}"`,
+    ]
+  }
   if (anchor.kind !== 'element') {
     return []
   }
   const element = anchor.element
   return [
     `Element selector: ${element.selector}`,
+    element.reactComponents ? `React components: ${element.reactComponents}` : null,
     element.label ? `Element text: ${element.label}` : null,
     element.description ? `Element description: ${element.description}` : null,
     element.role ? `Element role: ${element.role}` : null,
@@ -952,6 +1047,7 @@ export function BrowserPanel({
   const setActiveOwner = useBrowserPanelStore(state => state.setActiveOwner)
   const upsertOwnerState = useBrowserPanelStore(state => state.upsertOwnerState)
   const fulfillRequestedTab = useBrowserPanelStore(state => state.fulfillRequestedTab)
+  const createBrowserTab = useBrowserPanelStore(state => state.createTab)
   const removeOwnerState = useBrowserPanelStore(state => state.removeOwnerState)
   const setActiveTab = useBrowserPanelStore(state => state.setActiveTab)
   const closePanelTab = useBrowserPanelStore(state => state.closeTab)
@@ -963,6 +1059,7 @@ export function BrowserPanel({
   const markAnnotationSent = useBrowserPanelStore(state => state.markAnnotationSent)
   const deleteAnnotation = useBrowserPanelStore(state => state.deleteAnnotation)
   const clearAnnotations = useBrowserPanelStore(state => state.clearAnnotations)
+  const syncAnnotationLayoutHints = useBrowserPanelStore(state => state.syncAnnotationLayoutHints)
   const annotationAdjustmentSession = useBrowserPanelStore(state => state.annotationAdjustmentSession)
   const setAnnotationAdjustmentSession = useBrowserPanelStore(
     state => state.setAnnotationAdjustmentSession,
@@ -971,6 +1068,11 @@ export function BrowserPanel({
     state => state.setAnnotationTrayCollapsed,
   )
   const ownerAnnotations = useBrowserPanelStore(selectBrowserAnnotations)
+  const ownerAnnotationLayoutHintsByTabId = useBrowserPanelStore(
+    state =>
+      state.owners[resolvedOwnerId]?.annotationLayoutHintsByTabId
+      ?? EMPTY_BROWSER_ANNOTATION_LAYOUT_HINTS_BY_TAB_ID,
+  )
   const annotationTrayCollapsed = useBrowserPanelStore(
     state => state.annotationTrayCollapsedByOwnerId[resolvedOwnerId] ?? true,
   )
@@ -982,9 +1084,11 @@ export function BrowserPanel({
   const previousAnnotationRuntimeTabIdRef = useRef<string | null>(null)
   const stableBoundsFrameCountRef = useRef(0)
   const animationFrameRef = useRef<number | null>(null)
+  const lastNativeBoundsSignatureRef = useRef<string | null>(null)
   const localServerDiscoveryRequestRef = useRef(0)
   const nativeBoundsPreviewRequestRef = useRef(0)
   const nativeBoundsPausedRef = useRef(nativeBoundsPaused)
+  const newTabRequestInFlightRef = useRef(false)
 
   const [addressValue, setAddressValue] = useState('')
   const [isEditingAddress, setIsEditingAddress] = useState(false)
@@ -1001,11 +1105,13 @@ export function BrowserPanel({
     EMPTY_BROWSER_LOCAL_SERVERS,
   )
   const [localServersLoading, setLocalServersLoading] = useState(false)
+  const [newTabRequestPending, setNewTabRequestPending] = useState(false)
 
   useEffect(() => {
     nativeBoundsPausedRef.current = nativeBoundsPaused
   }, [nativeBoundsPaused])
   const [localServersError, setLocalServersError] = useState<string | null>(null)
+  const nativeBrowserAvailable = Boolean(readBrowserBridge())
 
   const tabs = useBrowserPanelStore(
     state => state.owners[resolvedOwnerId]?.tabs ?? EMPTY_BROWSER_PANEL_TABS,
@@ -1020,6 +1126,12 @@ export function BrowserPanel({
   const activeBrowserTabUrl = activeBrowserTab?.lastCommittedUrl ?? activeBrowserTab?.url ?? null
   const activeBrowserTabIsBlank = isBrowserBlankTab(activeBrowserTab)
   const activeBrowserAnnotations = ownerAnnotations.filter(annotation => annotation.tabId === activeBrowserTabId)
+  const activeBrowserAnnotationLayoutHints = activeBrowserTabId
+    ? (
+        ownerAnnotationLayoutHintsByTabId[activeBrowserTabId]
+        ?? EMPTY_BROWSER_ANNOTATION_LAYOUT_HINTS
+      )
+    : EMPTY_BROWSER_ANNOTATION_LAYOUT_HINTS
   const activeAnnotationSession = annotationSession?.tabId === activeBrowserTabId
     ? annotationSession
     : null
@@ -1042,7 +1154,7 @@ export function BrowserPanel({
   const chromeStatusLabel = chromeStatus?.label ?? null
   const chromeStatusTone = chromeStatus?.tone ?? null
 
-  const refreshLocalServers = () => {
+  const refreshLocalServers = useCallback(() => {
     const bridge = readBrowserBridge()
     const requestId = localServerDiscoveryRequestRef.current + 1
     localServerDiscoveryRequestRef.current = requestId
@@ -1062,7 +1174,7 @@ export function BrowserPanel({
         if (localServerDiscoveryRequestRef.current !== requestId) {
           return
         }
-        setLocalServers(servers)
+        setLocalServers(servers.filter(isReadyLocalServer))
       })
       .catch((error) => {
         if (localServerDiscoveryRequestRef.current !== requestId) {
@@ -1078,7 +1190,7 @@ export function BrowserPanel({
         }
         setLocalServersLoading(false)
       })
-  }
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -1130,6 +1242,10 @@ export function BrowserPanel({
 
     const bridge = readBrowserBridge()
     if (!bridge) {
+      createBrowserTab(requestedTab.url ?? 'about:blank', {
+        sessionId: requestedTab.sessionId,
+        sessionTitle: requestedTab.sessionTitle,
+      }, resolvedOwnerId)
       fulfillRequestedTab(requestedTab.id, resolvedOwnerId)
       return
     }
@@ -1154,6 +1270,7 @@ export function BrowserPanel({
       })
   }, [
     browserState?.open,
+    createBrowserTab,
     fulfillRequestedTab,
     requestedTab,
     resolvedOwnerId,
@@ -1161,12 +1278,31 @@ export function BrowserPanel({
     upsertOwnerState,
   ])
 
-  const hideNativeBrowserSurface = () => {
+  const hideNativeBrowserSurface = useCallback(() => {
+    const nextSignature = `${resolvedOwnerId}:${browserNativeBoundsSignature(null)}`
+    if (lastNativeBoundsSignatureRef.current === nextSignature) {
+      return
+    }
+    lastNativeBoundsSignatureRef.current = nextSignature
     readBrowserBridge()?.setBounds({ threadId: resolvedOwnerId, bounds: null, surface: 'native' })
-  }
+  }, [resolvedOwnerId])
 
-  const syncBounds = () => {
-    if (nativeBoundsPausedRef.current && !hasActiveAnnotationSession) {
+  const shouldShowNativeBrowserSurface = useCallback(() =>
+    Boolean(
+      browserState?.open
+      && activePanelTab?.kind === 'browser'
+      && !activeBrowserTabIsBlank
+      && (!nativeBoundsPausedRef.current || hasActiveAnnotationSession),
+    ), [
+    activeBrowserTabIsBlank,
+    activePanelTab?.kind,
+    browserState?.open,
+    hasActiveAnnotationSession,
+  ])
+
+  const syncBounds = useCallback(() => {
+    if (!shouldShowNativeBrowserSurface()) {
+      hideNativeBrowserSurface()
       return
     }
 
@@ -1176,35 +1312,35 @@ export function BrowserPanel({
       return
     }
 
-    const rect = element.getBoundingClientRect()
-    const visible
-      = rect.width > 0
-        && rect.height > 0
-        && browserState?.open
-        && activePanelTab?.kind === 'browser'
-        && !activeBrowserTabIsBlank
-    if (!visible) {
+    const bounds = normalizeBrowserNativeBounds(element.getBoundingClientRect())
+    if (!bounds) {
       hideNativeBrowserSurface()
       return
     }
 
+    const nextSignature = `${resolvedOwnerId}:${activeBrowserTabId ?? 'none'}:${browserNativeBoundsSignature(bounds)}`
+    if (lastNativeBoundsSignatureRef.current === nextSignature) {
+      return
+    }
+    lastNativeBoundsSignatureRef.current = nextSignature
     bridge.setBounds({
       threadId: resolvedOwnerId,
       surface: 'native',
-      bounds: {
-        x: rect.x,
-        y: rect.y,
-        width: rect.width,
-        height: rect.height,
-      },
+      bounds,
     })
-  }
+  }, [
+    hideNativeBrowserSurface,
+    activeBrowserTabId,
+    resolvedOwnerId,
+    shouldShowNativeBrowserSurface,
+  ])
 
-  const scheduleStableBoundsSync = () => {
+  const scheduleStableBoundsSync = useCallback(() => {
     if (typeof window === 'undefined') {
       return
     }
-    if (nativeBoundsPausedRef.current && !hasActiveAnnotationSession) {
+    if (!shouldShowNativeBrowserSurface()) {
+      hideNativeBrowserSurface()
       return
     }
     if (animationFrameRef.current !== null) {
@@ -1228,7 +1364,11 @@ export function BrowserPanel({
     }
 
     animationFrameRef.current = window.requestAnimationFrame(tick)
-  }
+  }, [
+    hideNativeBrowserSurface,
+    shouldShowNativeBrowserSurface,
+    syncBounds,
+  ])
 
   const scheduleStableBoundsSyncFromObserver = useEffectEvent(() => {
     scheduleStableBoundsSync()
@@ -1240,7 +1380,7 @@ export function BrowserPanel({
 
   useLayoutEffect(() => {
     const element = viewportRef.current
-    if (!element) {
+    if (!element || !shouldShowNativeBrowserSurface()) {
       hideNativeBrowserSurfaceFromObserver()
       return
     }
@@ -1261,7 +1401,10 @@ export function BrowserPanel({
       }
       hideNativeBrowserSurfaceFromObserver()
     }
-  }, [activePanelTab?.kind])
+  }, [
+    activePanelTab?.kind,
+    shouldShowNativeBrowserSurface,
+  ])
 
   useEffect(() => {
     if (!nativeBoundsPaused || hasActiveAnnotationSession) {
@@ -1466,9 +1609,18 @@ export function BrowserPanel({
 
   const handleNewTab = () => {
     const bridge = readBrowserBridge()
-    if (!bridge) {
+    if (newTabRequestInFlightRef.current) {
       return
     }
+    if (!bridge) {
+      createBrowserTab('about:blank', {
+        sessionId: activeSessionId,
+        sessionTitle: activeSessionTitle,
+      }, resolvedOwnerId)
+      return
+    }
+    newTabRequestInFlightRef.current = true
+    setNewTabRequestPending(true)
     void runBrowserAction(async () => {
       const nextState = browserState?.open
         ? await bridge.newTab({
@@ -1481,6 +1633,9 @@ export function BrowserPanel({
       if (nextState.activeTabId) {
         setActiveTab(nextState.activeTabId, resolvedOwnerId)
       }
+    }).finally(() => {
+      newTabRequestInFlightRef.current = false
+      setNewTabRequestPending(false)
     })
   }
 
@@ -1648,6 +1803,8 @@ export function BrowserPanel({
       await bridge.startAnnotationRuntime({
         threadId: resolvedOwnerId,
         tabId: activeBrowserTabId,
+        annotations: activeBrowserAnnotations.map(toBrowserAnnotationRuntimeAnnotation),
+        layoutHints: activeBrowserAnnotationLayoutHints,
       })
       setAnnotationAdjustmentSession(null)
       setAnnotationSession({
@@ -1868,6 +2025,48 @@ export function BrowserPanel({
     }
   }, [handleApplyAnnotationAdjustment])
 
+  const handleEditSavedAnnotation = useCallback((annotation: BrowserAnnotationRecord) => {
+    if (activeBrowserTabId !== annotation.tabId) {
+      return
+    }
+    const bridge = readBrowserBridge()
+    if (!bridge) {
+      return
+    }
+    void runBrowserAction(async () => {
+      await bridge.startAnnotationRuntime({
+        threadId: resolvedOwnerId,
+        tabId: annotation.tabId,
+        annotations: activeBrowserAnnotations.map(toBrowserAnnotationRuntimeAnnotation),
+        editAnnotationId: annotation.id,
+        layoutHints: activeBrowserAnnotationLayoutHints,
+      })
+    })
+    if (annotation.anchor.kind === 'element') {
+      setAnnotationAdjustmentSession({
+        ownerId: resolvedOwnerId,
+        tabId: annotation.tabId,
+        annotationId: annotation.id,
+        selectedElement: annotation.anchor.element,
+        designChanges: annotation.designChange ?? {},
+      })
+    }
+    else {
+      setAnnotationAdjustmentSession(null)
+    }
+    setAnnotationSession({
+      tabId: annotation.tabId,
+      editingAnnotationId: annotation.id,
+    })
+  }, [
+    activeBrowserAnnotations,
+    activeBrowserAnnotationLayoutHints,
+    activeBrowserTabId,
+    resolvedOwnerId,
+    runBrowserAction,
+    setAnnotationAdjustmentSession,
+  ])
+
   useEffect(() => {
     const bridge = readBrowserBridge()
     if (!bridge?.onAnnotationRuntimeEvent) {
@@ -1907,6 +2106,193 @@ export function BrowserPanel({
         }
         return
       }
+      if (event.type === 'copy') {
+        if (event.layoutHints) {
+          syncAnnotationLayoutHints({
+            tabId: event.tabId,
+            hints: event.layoutHints,
+          }, resolvedOwnerId)
+        }
+        return
+      }
+      if (event.type === 'send') {
+        if (event.layoutHints) {
+          syncAnnotationLayoutHints({
+            tabId: event.tabId,
+            hints: event.layoutHints,
+          }, resolvedOwnerId)
+        }
+        const webhookUrl = event.webhookUrl?.trim()
+        if (!webhookUrl) {
+          setLocalError('Configure a browser annotation webhook URL before sending.')
+          void bridge.notifyAnnotationRuntime?.({
+            threadId: event.threadId,
+            tabId: event.tabId,
+            message: 'Configure a webhook URL',
+            tone: 'error',
+          })
+          return
+        }
+        let parsedUrl: URL
+        try {
+          parsedUrl = new URL(webhookUrl)
+        }
+        catch {
+          setLocalError('The browser annotation webhook URL is invalid.')
+          void bridge.notifyAnnotationRuntime?.({
+            threadId: event.threadId,
+            tabId: event.tabId,
+            message: 'Invalid webhook URL',
+            tone: 'error',
+          })
+          return
+        }
+        if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') {
+          setLocalError('Browser annotation webhooks must use http or https.')
+          void bridge.notifyAnnotationRuntime?.({
+            threadId: event.threadId,
+            tabId: event.tabId,
+            message: 'Webhook must use http or https',
+            tone: 'error',
+          })
+          return
+        }
+        const annotations = useBrowserPanelStore
+          .getState()
+          .owners[resolvedOwnerId]
+          ?.annotations
+          .filter(annotation => annotation.tabId === event.tabId) ?? []
+        const annotationSignature = (input: {
+          body: string
+          anchor: BrowserAnnotationAnchor
+          designChange?: BrowserAnnotationDesignChange | null
+        }) => JSON.stringify({
+          body: input.body,
+          anchor: input.anchor,
+          designChange: input.designChange ?? null,
+        })
+        const webhookAnnotationsById = new Map<string, {
+          id: string
+          body: string
+          anchor: BrowserAnnotationAnchor
+          designChange: BrowserAnnotationDesignChange | null
+          status: 'saved' | 'sent'
+          createdAt: number | null
+          updatedAt: number | null
+        }>()
+        const savedAnnotationIdBySignature = new Map<string, string>()
+        for (const annotation of annotations) {
+          const signature = annotationSignature(annotation)
+          savedAnnotationIdBySignature.set(signature, annotation.id)
+          webhookAnnotationsById.set(annotation.id, {
+            id: annotation.id,
+            body: annotation.body,
+            anchor: annotation.anchor,
+            designChange: annotation.designChange,
+            status: annotation.status,
+            createdAt: annotation.createdAt,
+            updatedAt: annotation.updatedAt,
+          })
+        }
+        for (const annotation of event.annotations ?? []) {
+          const signature = annotationSignature(annotation)
+          if (annotation.id.startsWith('pending-') && savedAnnotationIdBySignature.has(signature)) {
+            continue
+          }
+          webhookAnnotationsById.set(annotation.id, {
+            id: annotation.id,
+            body: annotation.body,
+            anchor: annotation.anchor,
+            designChange: annotation.designChange ?? null,
+            status: annotation.status ?? 'saved',
+            createdAt: null,
+            updatedAt: null,
+          })
+        }
+        void (async () => {
+          try {
+            const response = await fetch(parsedUrl.toString(), {
+              method: 'POST',
+              headers: {
+                'content-type': 'application/json',
+              },
+              body: JSON.stringify({
+                type: 'browser-annotations',
+                sourceUrl: event.sourceUrl,
+                sourceTitle: event.sourceTitle,
+                output: event.output ?? '',
+                annotations: Array.from(webhookAnnotationsById.values()),
+                layoutHints: event.layoutHints ?? [],
+                surfaceSize: event.surfaceSize ?? null,
+                sentAt: new Date().toISOString(),
+              }),
+            })
+            if (!response.ok) {
+              throw new Error(`Webhook returned ${response.status}`)
+            }
+            void bridge.notifyAnnotationRuntime?.({
+              threadId: event.threadId,
+              tabId: event.tabId,
+              message: 'Annotations sent',
+              tone: 'success',
+            })
+          }
+          catch (error: unknown) {
+            const message = error instanceof Error
+              ? `Failed to send browser annotations: ${error.message}`
+              : 'Failed to send browser annotations.'
+            setLocalError(message)
+            void bridge.notifyAnnotationRuntime?.({
+              threadId: event.threadId,
+              tabId: event.tabId,
+              message: 'Webhook send failed',
+              tone: 'error',
+            })
+          }
+        })()
+        return
+      }
+      if (event.type === 'clear') {
+        clearAnnotations({ ownerId: resolvedOwnerId, tabId: event.tabId })
+        setAnnotationAdjustmentSession(null)
+        return
+      }
+      if (event.type === 'layout-sync') {
+        syncAnnotationLayoutHints({
+          tabId: event.tabId,
+          hints: event.layoutHints ?? [],
+        }, resolvedOwnerId)
+        return
+      }
+      if (event.type === 'delete') {
+        if (event.annotationId) {
+          deleteAnnotation(event.annotationId, resolvedOwnerId)
+        }
+        return
+      }
+      if (event.type === 'edit') {
+        const annotation = useBrowserPanelStore
+          .getState()
+          .owners[resolvedOwnerId]
+          ?.annotations
+          .find(candidate => candidate.id === event.annotationId && candidate.tabId === event.tabId)
+        if (annotation && event.annotationId && event.anchor && typeof event.body === 'string') {
+          saveAnnotation({
+            ...annotation,
+            anchor: event.anchor,
+            body: event.body,
+            designChange: event.designChange ?? annotation.designChange,
+            elements: event.elements ?? annotation.elements,
+            surfaceSize: event.surfaceSize ?? annotation.surfaceSize,
+          }, resolvedOwnerId)
+          setAnnotationAdjustmentSession(null)
+          return
+        }
+        if (annotation) {
+          handleEditSavedAnnotation(annotation)
+        }
+        return
+      }
       if (event.type === 'save' || event.type === 'submit') {
         handleRuntimeAnnotationCommit(event)
         return
@@ -1919,43 +2305,16 @@ export function BrowserPanel({
     activeBrowserTabId,
     annotationSession?.editingAnnotationId,
     closeAnnotationSession,
+    clearAnnotations,
+    deleteAnnotation,
+    handleEditSavedAnnotation,
     handleToggleAnnotation,
     handleRuntimeAnnotationCommit,
     resolvedOwnerId,
+    saveAnnotation,
     setAnnotationAdjustmentSession,
+    syncAnnotationLayoutHints,
   ])
-
-  const handleEditSavedAnnotation = (annotation: BrowserAnnotationRecord) => {
-    if (activeBrowserTabId !== annotation.tabId) {
-      return
-    }
-    const bridge = readBrowserBridge()
-    if (!bridge) {
-      return
-    }
-    void runBrowserAction(async () => {
-      await bridge.startAnnotationRuntime({
-        threadId: resolvedOwnerId,
-        tabId: annotation.tabId,
-      })
-    })
-    if (annotation.anchor.kind === 'element') {
-      setAnnotationAdjustmentSession({
-        ownerId: resolvedOwnerId,
-        tabId: annotation.tabId,
-        annotationId: annotation.id,
-        selectedElement: annotation.anchor.element,
-        designChanges: annotation.designChange ?? {},
-      })
-    }
-    else {
-      setAnnotationAdjustmentSession(null)
-    }
-    setAnnotationSession({
-      tabId: annotation.tabId,
-      editingAnnotationId: annotation.id,
-    })
-  }
 
   const handleSendSavedAnnotation = (annotation: BrowserAnnotationRecord) => {
     void (async () => {
@@ -1968,11 +2327,10 @@ export function BrowserPanel({
 
   const handlePanelKeyDown = (event: ReactKeyboardEvent<HTMLDivElement>) => {
       const isAnnotationToggle
-        = event.nativeEvent.metaKey
+        = (event.nativeEvent.metaKey || event.nativeEvent.ctrlKey)
           && event.nativeEvent.shiftKey
           && !event.nativeEvent.altKey
-          && !event.nativeEvent.ctrlKey
-          && event.nativeEvent.key.toLowerCase() === 'd'
+          && event.nativeEvent.key.toLowerCase() === 'f'
       if (isAnnotationToggle) {
         event.preventDefault()
         event.stopPropagation()
@@ -2023,17 +2381,6 @@ export function BrowserPanel({
       sessionTitle: activeSessionTitle,
       ownerId: resolvedOwnerId,
     })
-  }
-
-  if (!isElectron) {
-    return (
-      <div
-        className="flex flex-1 items-center justify-center text-xs text-muted-foreground"
-        data-testid="browser-panel"
-      >
-        Browser Panel is available in the desktop app.
-      </div>
-    )
   }
 
   return (
@@ -2119,11 +2466,14 @@ export function BrowserPanel({
           ))}
           <button
             type="button"
-            className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground"
+            className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-40"
             onClick={handleNewTab}
+            disabled={newTabRequestPending}
             aria-label="New browser tab"
           >
-            <PlusIcon className="size-3.5" />
+            {newTabRequestPending
+              ? <LoaderCircleIcon className="size-3.5 animate-spin" />
+              : <PlusIcon className="size-3.5" />}
           </button>
         </div>
         <button
@@ -2184,7 +2534,7 @@ export function BrowserPanel({
               <button
                 type="button"
                 className="flex size-7 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground"
-                disabled={!activeBrowserTabId}
+                disabled={!nativeBrowserAvailable || !activeBrowserTabId}
                 onClick={() => {
                   const bridge = readBrowserBridge()
                   if (bridge && activeBrowserTabId) {
@@ -2212,7 +2562,7 @@ export function BrowserPanel({
                 value={addressValue}
                 placeholder="Search or enter address"
                 aria-label="Search or enter address"
-                disabled={!activeBrowserTab}
+                disabled={!nativeBrowserAvailable || !activeBrowserTab}
                 className="h-7 w-full rounded-md bg-foreground/5 px-3 text-xs text-foreground outline-none transition-colors placeholder:text-muted-foreground/50 focus:bg-foreground/8"
                 onFocus={() => {
                   setIsEditingAddress(true)
@@ -2271,7 +2621,7 @@ export function BrowserPanel({
             <button
               type="button"
               className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-30"
-              disabled={!activeBrowserTabId}
+              disabled={!nativeBrowserAvailable || !activeBrowserTabId}
               onClick={handleCaptureScreenshot}
               aria-label="Attach screenshot to composer"
             >
@@ -2285,10 +2635,10 @@ export function BrowserPanel({
                   ? 'bg-primary/12 text-primary hover:bg-primary/16'
                   : 'text-muted-foreground/70 hover:bg-foreground/5 hover:text-foreground',
               )}
-              disabled={!activeBrowserTabId}
+              disabled={!nativeBrowserAvailable || !activeBrowserTabId}
               onClick={hasActiveAnnotationSession ? handleCancelAnnotation : handleStartAnnotation}
               aria-label={hasActiveAnnotationSession ? 'Cancel annotation' : 'Comment on browser'}
-              title="Toggle browser comments (Command Shift D)"
+              title="Toggle browser comments (Command/Ctrl Shift F)"
             >
               <MessageSquarePlusIcon className="size-3.5" />
               <span>Comment</span>
@@ -2314,7 +2664,13 @@ export function BrowserPanel({
         {activePanelTab?.kind === 'browser' && (
           <div className="absolute inset-0 flex min-h-0 flex-col bg-background">
             <div ref={viewportRef} className="relative min-h-0 flex-1 bg-background">
-              {activeBrowserTabIsBlank && (
+              {!nativeBrowserAvailable && (
+                <div className="absolute inset-0 flex flex-col items-center justify-center gap-2 bg-background px-6 text-center text-xs text-muted-foreground">
+                  <GlobeIcon className="size-9 opacity-40" />
+                  <p>Native browser pages are available in the desktop app.</p>
+                </div>
+              )}
+              {nativeBrowserAvailable && activeBrowserTabIsBlank && (
                 <BrowserNewTabSurface
                   localServers={localServers}
                   localServersLoading={localServersLoading}
@@ -2418,7 +2774,8 @@ export function BrowserPanel({
             <button
               type="button"
               onClick={handleNewTab}
-              className="rounded-md bg-foreground/5 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-foreground/10"
+              disabled={newTabRequestPending}
+              className="rounded-md bg-foreground/5 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-foreground/10 disabled:opacity-40"
             >
               New Tab
             </button>

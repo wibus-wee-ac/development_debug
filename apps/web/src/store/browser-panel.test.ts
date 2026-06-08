@@ -3,7 +3,7 @@ import { act, cleanup, render } from '@testing-library/react'
 import { createElement } from 'react'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
-import type { BrowserAnnotationRecord } from './browser-panel'
+import type { BrowserAnnotationRecord, ThreadBrowserState } from './browser-panel'
 import {
   DEFAULT_BROWSER_PANEL_OWNER_ID,
   handleBrowserPanelTabShortcut,
@@ -42,6 +42,28 @@ function annotationInput(
     },
     elements: overrides.elements ?? [],
     surfaceSize: overrides.surfaceSize ?? { width: 800, height: 600 },
+  }
+}
+
+function threadState(version: number, activeTabId: string | null, tabIds: string[]): ThreadBrowserState {
+  return {
+    threadId: DEFAULT_BROWSER_PANEL_OWNER_ID,
+    version,
+    open: tabIds.length > 0,
+    activeTabId,
+    tabs: tabIds.map(id => ({
+      id,
+      url: 'about:blank',
+      title: 'New tab',
+      status: 'live',
+      isLoading: false,
+      canGoBack: false,
+      canGoForward: false,
+      faviconUrl: null,
+      lastCommittedUrl: null,
+      lastError: null,
+    })),
+    lastError: null,
   }
 }
 
@@ -114,6 +136,15 @@ describe('browser panel shortcuts', () => {
       sessionId: 'session-a',
       sessionTitle: 'Session A',
     })
+  })
+
+  it('ignores stale native snapshots after a newer tab state is applied', () => {
+    useBrowserPanelStore.getState().upsertOwnerState(threadState(2, 'tab-2', ['tab-1', 'tab-2']))
+    useBrowserPanelStore.getState().upsertOwnerState(threadState(3, 'tab-1', ['tab-1']))
+    useBrowserPanelStore.getState().upsertOwnerState(threadState(2, 'tab-2', ['tab-1', 'tab-2']))
+
+    expect(useBrowserPanelStore.getState().tabs.map(tab => tab.id)).toEqual(['tab-1'])
+    expect(useBrowserPanelStore.getState().activeTabId).toBe('tab-1')
   })
 
   it('stores enabled script ids per browser tab', () => {

@@ -151,6 +151,7 @@ async function createManager() {
 
 afterEach(() => {
   vi.useRealTimers()
+  vi.unstubAllGlobals()
   vi.resetModules()
   vi.clearAllMocks()
   electronMocks.__reset()
@@ -163,6 +164,45 @@ afterEach(() => {
 })
 
 describe('desktop browser manager tab runtime retention', () => {
+  it('only returns ready local servers from discovery', async () => {
+    vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+      const port = Number(new URL(url).port)
+      if (port === 3000) {
+        return {
+          status: 200,
+          headers: { get: () => 'text/html' },
+          text: async () => '<title>Ready App</title>',
+        }
+      }
+      if (port === 3001) {
+        return {
+          status: 302,
+          headers: { get: () => 'text/html' },
+          text: async () => '<title>Redirect App</title>',
+        }
+      }
+      if (port === 3002) {
+        return {
+          status: 404,
+          headers: { get: () => 'text/html' },
+          text: async () => '<title>Missing App</title>',
+        }
+      }
+      throw new Error('closed')
+    }))
+
+    const manager = await createManager()
+
+    expect(await manager.discoverLocalServers()).toEqual([{
+      port: 3000,
+      url: 'http://localhost:3000/',
+      title: 'Ready App',
+      statusCode: 200,
+    }])
+
+    manager.dispose()
+  })
+
   it('keeps inactive browser tab runtimes across ordinary tab switches', async () => {
     vi.useFakeTimers()
     const manager = await createManager()
