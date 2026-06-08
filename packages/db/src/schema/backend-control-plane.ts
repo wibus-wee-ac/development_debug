@@ -128,6 +128,35 @@ export const backendRunSnapshotEvents = sqliteTable(
   }),
 )
 
+export const chatRuntimeEvents = sqliteTable(
+  'chat_runtime_events',
+  {
+    id: textPk(),
+    streamId: text('stream_id')
+      .notNull()
+      .references(() => sessions.id, { onDelete: 'cascade' }),
+    seq: int('seq').notNull(),
+    type: text('type').notNull(),
+    commandId: text('command_id'),
+    actorKind: text('actor_kind'),
+    actorId: text('actor_id'),
+    runId: text('run_id'),
+    messageId: text('message_id'),
+    queueItemId: text('queue_item_id'),
+    occurredAt: int('occurred_at').notNull(),
+    payloadJson: text('payload_json').notNull().default('{}'),
+  },
+  table => ({
+    byStreamSeq: uniqueIndex('chat_runtime_events_stream_seq_unique').on(table.streamId, table.seq),
+    byStream: index('chat_runtime_events_stream_id_idx').on(table.streamId),
+    byRun: index('chat_runtime_events_run_id_idx').on(table.runId),
+    byMessage: index('chat_runtime_events_message_id_idx').on(table.messageId),
+    byQueueItem: index('chat_runtime_events_queue_item_id_idx').on(table.queueItemId),
+    byType: index('chat_runtime_events_type_idx').on(table.type),
+    byOccurredAt: index('chat_runtime_events_occurred_at_idx').on(table.occurredAt),
+  }),
+)
+
 export const backendCapabilitySnapshots = sqliteTable('backend_capability_snapshots', {
   id: textPk(),
   providerTargetId: text('provider_target_id').references(() => providerTargets.id, {
@@ -151,5 +180,7 @@ export type BackendRunSnapshot = typeof backendRunSnapshots.$inferSelect
 export type NewBackendRunSnapshot = typeof backendRunSnapshots.$inferInsert
 export type BackendRunSnapshotEvent = typeof backendRunSnapshotEvents.$inferSelect
 export type NewBackendRunSnapshotEvent = typeof backendRunSnapshotEvents.$inferInsert
+export type ChatRuntimeEvent = typeof chatRuntimeEvents.$inferSelect
+export type NewChatRuntimeEvent = typeof chatRuntimeEvents.$inferInsert
 export type BackendCapabilitySnapshot = typeof backendCapabilitySnapshots.$inferSelect
 export type NewBackendCapabilitySnapshot = typeof backendCapabilitySnapshots.$inferInsert

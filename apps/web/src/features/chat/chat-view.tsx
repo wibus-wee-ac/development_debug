@@ -15,7 +15,7 @@ import {
   DialogDescription,
   DialogFooter,
   DialogHeader,
-  DialogTitle
+  DialogTitle,
 } from '~/components/ui/dialog'
 import { Textarea } from '~/components/ui/textarea'
 import { toastManager } from '~/components/ui/toast'
@@ -30,7 +30,7 @@ import { PLAN_REFINE_EDITOR_SAVE_EVENT } from '../browser/plan-refine-editor'
 import type { MentionItem } from '.'
 import type {
   ChatRuntimeGoalUiSlotState,
-  ChatRuntimePlanUiSlotState
+  ChatRuntimePlanUiSlotState,
 } from './capabilities/chat-capabilities'
 import { runtimeUiSlotStatesQueryKey } from './capabilities/chat-capabilities'
 import { useQuickQuestion } from './capabilities/use-quick-question'
@@ -40,13 +40,13 @@ import { Composer } from './composer/composer'
 import type {
   ComposerSlashCommandActionContext,
   ComposerSlashCommandActionResult,
-  ComposerSlashCommandActionTools
+  ComposerSlashCommandActionTools,
 } from './composer/composer-action-context'
 import type {
   ComposerPlanSlotActions,
   ComposerQuickQuestionSlotActions,
   ComposerReviewSlotActions,
-  ComposerUsageSlotActions
+  ComposerUsageSlotActions,
 } from './composer/composer-slot-states'
 import { ComposerSlotStates } from './composer/composer-slot-states'
 import type { ChatComposerRuntime } from './composer/use-chat-composer-runtime'
@@ -57,7 +57,7 @@ import type { PluginMentionItem } from './mentions/mention-panel'
 import type { SkillMentionItem } from './mentions/skill-mention-panel'
 import {
   registerChatComposerFileIngressHandler,
-  registerChatPromptIngressHandler
+  registerChatPromptIngressHandler,
 } from './prompt-ingress'
 import { MessageBubbleById } from './rendering/message-bubble'
 import { RuntimeDiagnosticsPopover } from './runtime/runtime-diagnostics-popover'
@@ -70,7 +70,7 @@ import type { ChatComposerSlashCommand } from './slash-commands/chat-slash-comma
 import {
   CODEX_REVIEW_SLASH_ACTION_ID,
   CODEX_USAGE_SLASH_ACTION_ID,
-  CRADLE_APPSHOT_SLASH_ACTION_ID
+  CRADLE_APPSHOT_SLASH_ACTION_ID,
 } from './slash-commands/chat-slash-commands'
 import { ChatMinimap } from './ui/chat-minimap'
 import { ChatQueueList } from './ui/chat-queue-list'
@@ -78,6 +78,7 @@ import type { ChatScrollRuntime } from './ui/use-chat-scroll-runtime'
 import { useChatScrollRuntime } from './ui/use-chat-scroll-runtime'
 
 const CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX = 'PLEASE IMPLEMENT THIS PLAN:'
+const CODEX_PLAN_MAKE_GOAL_PROMPT_PREFIX = 'PLEASE MAKE A GOAL TO IMPLEMENT THIS PLAN:'
 const CODEX_PLAN_REFINE_PROMPT_PREFIX = 'PLEASE REFINE THIS PLAN:'
 
 function hashPlanRefineRequestContent(content: string): string {
@@ -90,10 +91,10 @@ function hashPlanRefineRequestContent(content: string): string {
 
 function readPlanSlotContent(state: ChatRuntimePlanUiSlotState): string {
   return (
-    state.content?.trim() ||
-    state.explanation?.trim() ||
-    state.steps
-      .map((step) => step.step)
+    state.content?.trim()
+    || state.explanation?.trim()
+    || state.steps
+      .map(step => step.step)
       .join('\n')
       .trim()
   )
@@ -147,7 +148,7 @@ const ChatMessageListPane = memo(
     onScrollToMessageIndex,
     onScrollToOffset,
     onToolApprovalResponse,
-    composerStack
+    composerStack,
   }: {
     sessionId: string | null
     messageIds: ReturnType<typeof useChatSession>['messageIds']
@@ -192,7 +193,7 @@ const ChatMessageListPane = memo(
                 keepMounted={keepMountedIndices}
                 onScroll={onVirtualScroll}
               >
-                {messageIds.map((messageId) => (
+                {messageIds.map(messageId => (
                   <MessageBubbleById
                     key={messageId}
                     sessionId={sessionId}
@@ -239,12 +240,12 @@ const ChatMessageListPane = memo(
         />
       </div>
     )
-  }
+  },
 )
 ChatMessageListPane.displayName = 'ChatMessageListPane'
 
 function ChatAwaitBanner({
-  awaitSummary
+  awaitSummary,
 }: {
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
 }) {
@@ -258,9 +259,9 @@ function ChatAwaitBanner({
     <div className="mb-2 flex items-center gap-2 rounded-md bg-muted/50 backdrop-blur-3xl px-3 py-2 text-xs text-muted-foreground">
       <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin" />
       <span className="min-w-0 truncate">
-        {(awaitSummary.reason as string) ??
-          t('await.waitingFor', {
-            source: (awaitSummary.primarySource as string) ?? t('await.source.event')
+        {(awaitSummary.reason as string)
+          ?? t('await.waitingFor', {
+            source: (awaitSummary.primarySource as string) ?? t('await.source.event'),
           })}
       </span>
       <button
@@ -299,7 +300,7 @@ function ChatComposerSection({
   reviewSlot,
   usageSlot,
   onQuickQuestion,
-  onComposerFocusChange
+  onComposerFocusChange,
 }: {
   sessionId: string | null
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
@@ -309,7 +310,7 @@ function ChatComposerSection({
   onSlashCommandAction?: (
     command: ChatComposerSlashCommand,
     context: ComposerSlashCommandActionContext,
-    tools?: ComposerSlashCommandActionTools
+    tools?: ComposerSlashCommandActionTools,
   ) => Promise<void | ComposerSlashCommandActionResult> | void | ComposerSlashCommandActionResult
   composerRuntime: ChatComposerRuntime
   appshotRuntime: ComposerAppshotRuntime
@@ -321,7 +322,7 @@ function ChatComposerSection({
   toolbar?: React.ReactNode
   runtimeSettings?: ComposerRuntimeSettingsController
   contextBar?: React.ReactNode
-  droppedPath: { text: string; ts: number } | null
+  droppedPath: { text: string, ts: number } | null
   goalActions: {
     busy: boolean
     onEdit: (state: ChatRuntimeGoalUiSlotState) => void
@@ -336,35 +337,35 @@ function ChatComposerSection({
   onQuickQuestion?: (question: string) => void
   onComposerFocusChange?: (focused: boolean) => void
 }) {
-  const activeBrowserPanelOwnerId = useLayoutStore((s) => s.activeBrowserPanelOwnerId)
-  const setBrowserPanelOpen = useLayoutStore((s) => s.setBrowserPanelOpen)
-  const openPlanRefineTab = useBrowserPanelStore((s) => s.openPlanRefineTab)
+  const activeBrowserPanelOwnerId = useLayoutStore(s => s.activeBrowserPanelOwnerId)
+  const setBrowserPanelOpen = useLayoutStore(s => s.setBrowserPanelOpen)
+  const openPlanRefineTab = useBrowserPanelStore(s => s.openPlanRefineTab)
   const [composerReplaceText, setComposerReplaceText] = useState<string | undefined>(undefined)
   const [composerReplaceTextKey, setComposerReplaceTextKey] = useState(0)
   const [dismissPlanSignal, setDismissPlanSignal] = useState(0)
   const [composerHasDraft, setComposerHasDraft] = useState(false)
   const [activePlanRefineTabId, setActivePlanRefineTabId] = useState<string | null>(null)
-  const planState =
-    composerRuntime.slotStates.find(
-      (state): state is ChatRuntimePlanUiSlotState => state.kind === 'plan'
+  const planState
+    = composerRuntime.slotStates.find(
+      (state): state is ChatRuntimePlanUiSlotState => state.kind === 'plan',
     ) ?? null
   const planRefineEditorOpen = useBrowserPanelStore(
-    (state) =>
-      activePlanRefineTabId !== null &&
-      state.owners[activeBrowserPanelOwnerId]?.tabs.some(
-        (tab) => tab.id === activePlanRefineTabId
-      ) === true
+    state =>
+      activePlanRefineTabId !== null
+      && state.owners[activeBrowserPanelOwnerId]?.tabs.some(
+        tab => tab.id === activePlanRefineTabId,
+      ) === true,
   )
 
   const submitComposerMessage = useCallback(
     async (...args: Parameters<ChatComposerRuntime['send']>) => {
       const result = await composerRuntime.send(...args)
       if (planState) {
-        setDismissPlanSignal((signal) => signal + 1)
+        setDismissPlanSignal(signal => signal + 1)
       }
       return result
     },
-    [composerRuntime, planState]
+    [composerRuntime, planState],
   )
 
   const handleComposerDraftChange = useCallback((value: string) => {
@@ -381,22 +382,22 @@ function ChatComposerSection({
   useEffect(() => {
     const handlePlanRefineSave = (event: Event) => {
       if (
-        !(event instanceof CustomEvent) ||
-        typeof event.detail !== 'object' ||
-        event.detail === null
+        !(event instanceof CustomEvent)
+        || typeof event.detail !== 'object'
+        || event.detail === null
       ) {
         return
       }
       const detail = event.detail as Partial<PlanRefineEditorSaveDetail>
       if (
-        typeof detail.tabId !== 'string' ||
-        typeof detail.markdown !== 'string' ||
-        detail.tabId !== activePlanRefineTabId
+        typeof detail.tabId !== 'string'
+        || typeof detail.markdown !== 'string'
+        || detail.tabId !== activePlanRefineTabId
       ) {
         return
       }
       setComposerReplaceText(`${CODEX_PLAN_REFINE_PROMPT_PREFIX}\n${detail.markdown}`.trimEnd())
-      setComposerReplaceTextKey((key) => key + 1)
+      setComposerReplaceTextKey(key => key + 1)
       setActivePlanRefineTabId(null)
     }
 
@@ -409,30 +410,31 @@ function ChatComposerSection({
   const planSlotActions = useMemo<ComposerPlanSlotActions>(() => {
     const sendPlanFollowUp = async (
       prompt: string,
-      options?: { runtimeSettings?: SendMessageOptions['runtimeSettings'] }
+      options?: { runtimeSettings?: SendMessageOptions['runtimeSettings'] },
     ) => {
       try {
         await submitComposerMessage(prompt, [], [], options)
-      } catch (error) {
+      }
+ catch (error) {
         toastManager.add({
           type: 'error',
           title: 'Plan action failed',
-          description: error instanceof Error ? error.message : 'Unknown plan action error.'
+          description: error instanceof Error ? error.message : 'Unknown plan action error.',
         })
         return false
       }
       setComposerReplaceText('')
-      setComposerReplaceTextKey((key) => key + 1)
+      setComposerReplaceTextKey(key => key + 1)
       return true
     }
 
     return {
       ...planActions,
       disabled:
-        planActions?.disabled ||
-        composerRuntime.disabled ||
-        composerRuntime.isStreaming ||
-        planRefineEditorOpen,
+        planActions?.disabled
+        || composerRuntime.disabled
+        || composerRuntime.isStreaming
+        || planRefineEditorOpen,
       onImplement: (state) => {
         const handled = planActions?.onImplement?.(state)
         if (handled !== undefined) {
@@ -440,7 +442,17 @@ function ChatComposerSection({
         }
         runtimeSettings?.onChange({ interactionMode: 'default' })
         return sendPlanFollowUp(CODEX_PLAN_IMPLEMENTATION_PROMPT_PREFIX, {
-          runtimeSettings: { interactionMode: 'default' }
+          runtimeSettings: { interactionMode: 'default' },
+        })
+      },
+      onMakeGoal: (state) => {
+        const handled = planActions?.onMakeGoal?.(state)
+        if (handled !== undefined) {
+          return handled
+        }
+        runtimeSettings?.onChange({ interactionMode: 'default' })
+        return sendPlanFollowUp(CODEX_PLAN_MAKE_GOAL_PROMPT_PREFIX, {
+          runtimeSettings: { interactionMode: 'default' },
         })
       },
       onRefine: (state) => {
@@ -453,19 +465,19 @@ function ChatComposerSection({
           sessionId ?? 'global',
           state.slotId,
           String(state.updatedAt),
-          hashPlanRefineRequestContent(content)
+          hashPlanRefineRequestContent(content),
         ].join(':')
         const tabId = openPlanRefineTab({
           sessionId,
           requestId,
           title: 'Refine plan',
           text: content,
-          ownerId: activeBrowserPanelOwnerId
+          ownerId: activeBrowserPanelOwnerId,
         })
         setActivePlanRefineTabId(tabId)
         setBrowserPanelOpen(true, activeBrowserPanelOwnerId)
         return false
-      }
+      },
     }
   }, [
     activeBrowserPanelOwnerId,
@@ -477,7 +489,7 @@ function ChatComposerSection({
     runtimeSettings,
     sessionId,
     setBrowserPanelOpen,
-    submitComposerMessage
+    submitComposerMessage,
   ])
 
   return (
@@ -507,29 +519,29 @@ function ChatComposerSection({
           stop: composerRuntime.stop,
           isStreaming: composerRuntime.isStreaming,
           disabled: composerRuntime.disabled || planRefineEditorOpen,
-          onQuickQuestion
+          onQuickQuestion,
         }}
         commands={{
           commands: composerRuntime.slashCommands,
-          runAction: onSlashCommandAction
+          runAction: onSlashCommandAction,
         }}
         attachments={{
           supportsAttachments: composerRuntime.supportsAttachments,
           appendFileParts: appshotRuntime.externalFileParts,
           appendFilePartsKey: appshotRuntime.externalFilePartsKey,
           pendingAppshots: appshotRuntime.pendingAppshots,
-          onActionTargetElementChange: appshotRuntime.setActionTargetElement
+          onActionTargetElementChange: appshotRuntime.setActionTargetElement,
         }}
         runtimeSettings={runtimeSettings}
         slots={{
           toolbar,
-          contextBar
+          contextBar,
         }}
         externalSignals={{
           appendText: droppedPath ? `${droppedPath.text}` : undefined,
           appendTextKey: droppedPath?.ts,
           replaceText: composerReplaceText,
-          replaceTextKey: composerReplaceTextKey
+          replaceTextKey: composerReplaceTextKey,
         }}
         view={{
           placeholder,
@@ -543,7 +555,7 @@ function ChatComposerSection({
           sessionId,
           sessionTokens: composerRuntime.tokenUsage?.tokens,
           sessionContextWindow: composerRuntime.tokenUsage?.contextWindow,
-          compactState: composerRuntime.compactState
+          compactState: composerRuntime.compactState,
         }}
       />
     </div>
@@ -562,7 +574,7 @@ export function ChatView({
   composerModel,
   placeholder,
   runtimeKind: _runtimeKind,
-  workspaceId
+  workspaceId,
 }: ChatViewProps) {
   const queryClient = useQueryClient()
   const {
@@ -573,15 +585,14 @@ export function ChatView({
     error,
     sendMessage,
     respondToToolApproval,
-    submitPendingUserInput,
     stop,
     isReady,
     queueItems,
     cancelQueueItem,
-    reorderQueueItems
+    reorderQueueItems,
   } = useChatSession(sessionId)
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
-  const [droppedPath, setDroppedPath] = useState<{ text: string; ts: number } | null>(null)
+  const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
   const [editingGoal, setEditingGoal] = useState<ChatRuntimeGoalUiSlotState | null>(null)
   const [goalObjectiveDraft, setGoalObjectiveDraft] = useState('')
   const [goalActionBusy, setGoalActionBusy] = useState(false)
@@ -598,20 +609,20 @@ export function ChatView({
     runtimeSettings: runtimeSettings.loaded ? runtimeSettings.settings : undefined,
     sendOverridesRef,
     sendMessage,
-    stop
+    stop,
   })
   const scrollRuntime = useChatScrollRuntime({ sessionId, messageIds, status })
   const appshotRuntime = useComposerAppshotCapture({
     active: tabFrameActive,
-    supportsAttachments: composerRuntime.supportsAttachments
+    supportsAttachments: composerRuntime.supportsAttachments,
   })
   const quickQuestion = useQuickQuestion({
     sessionId: sessionId ?? '',
-    apiBaseUrl: getServerUrl()
+    apiBaseUrl: getServerUrl(),
   })
   const hasQuickQuestionSlot = useMemo(() => {
     return composerRuntime.uiSlots.some(
-      (slot) => slot.iconKey === 'quick-question' && slot.surfaces.includes('composerState')
+      slot => slot.iconKey === 'quick-question' && slot.surfaces.includes('composerState'),
     )
   }, [composerRuntime.uiSlots])
   const quickQuestionSlot = useMemo<ComposerQuickQuestionSlotActions>(
@@ -620,7 +631,7 @@ export function ChatView({
       question: quickQuestion.question,
       sessionId: sessionId ?? '',
       apiBaseUrl: quickQuestion.apiBaseUrl,
-      onDismiss: quickQuestion.closeQuickQuestion
+      onDismiss: quickQuestion.closeQuickQuestion,
     }),
     [
       hasQuickQuestionSlot,
@@ -628,15 +639,15 @@ export function ChatView({
       quickQuestion.closeQuickQuestion,
       quickQuestion.open,
       quickQuestion.question,
-      sessionId
-    ]
+      sessionId,
+    ],
   )
   const composerSend = composerRuntime.send
   const navigableComposerRuntime = useMemo<ChatComposerRuntime>(
     () => ({
-      ...composerRuntime
+      ...composerRuntime,
     }),
-    [composerRuntime]
+    [composerRuntime],
   )
 
   useEffect(() => {
@@ -667,7 +678,7 @@ export function ChatView({
     async (
       method: 'thread/goal/set' | 'thread/goal/clear',
       params: Record<string, unknown>,
-      failureTitle: string
+      failureTitle: string,
     ) => {
       if (!sessionId) {
         return
@@ -678,22 +689,24 @@ export function ChatView({
         await postChatSessionsBySessionIdCodexAppServerInvoke({
           path: { sessionId },
           body: { method, params },
-          throwOnError: true
+          throwOnError: true,
         })
         refreshGoalRuntimeState()
         return true
-      } catch (error) {
+      }
+ catch (error) {
         toastManager.add({
           type: 'error',
           title: failureTitle,
-          description: error instanceof Error ? error.message : 'Unknown goal action error.'
+          description: error instanceof Error ? error.message : 'Unknown goal action error.',
         })
         return false
-      } finally {
+      }
+ finally {
         setGoalActionBusy(false)
       }
     },
-    [refreshGoalRuntimeState, sessionId]
+    [refreshGoalRuntimeState, sessionId],
   )
 
   const goalActions = useMemo(
@@ -708,9 +721,9 @@ export function ChatView({
           'thread/goal/set',
           {
             threadId: state.threadId,
-            status: 'paused'
+            status: 'paused',
           },
-          'Goal pause failed'
+          'Goal pause failed',
         )
       },
       onResume: (state: ChatRuntimeGoalUiSlotState) => {
@@ -718,22 +731,22 @@ export function ChatView({
           'thread/goal/set',
           {
             threadId: state.threadId,
-            status: 'active'
+            status: 'active',
           },
-          'Goal resume failed'
+          'Goal resume failed',
         )
       },
       onClear: (state: ChatRuntimeGoalUiSlotState) => {
         void invokeCodexGoalAction(
           'thread/goal/clear',
           {
-            threadId: state.threadId
+            threadId: state.threadId,
           },
-          'Goal clear failed'
+          'Goal clear failed',
         )
-      }
+      },
     }),
-    [goalActionBusy, invokeCodexGoalAction]
+    [goalActionBusy, invokeCodexGoalAction],
   )
 
   const closeGoalEditor = useCallback(() => {
@@ -756,7 +769,7 @@ export function ChatView({
         toastManager.add({
           type: 'error',
           title: 'Goal update failed',
-          description: 'Goal objective cannot be empty.'
+          description: 'Goal objective cannot be empty.',
         })
         return
       }
@@ -770,23 +783,23 @@ export function ChatView({
         'thread/goal/set',
         {
           threadId: editingGoal.threadId,
-          objective
+          objective,
         },
-        'Goal update failed'
+        'Goal update failed',
       ).then((updated) => {
         if (updated) {
           closeGoalEditor()
         }
       })
     },
-    [closeGoalEditor, editingGoal, goalObjectiveDraft, invokeCodexGoalAction]
+    [closeGoalEditor, editingGoal, goalObjectiveDraft, invokeCodexGoalAction],
   )
 
   const handleSlashCommandAction = useCallback(
     async (
       command: ChatComposerSlashCommand,
       context: ComposerSlashCommandActionContext,
-      tools?: ComposerSlashCommandActionTools
+      tools?: ComposerSlashCommandActionTools,
     ): Promise<void | ComposerSlashCommandActionResult> => {
       if (command.action.kind !== 'uiAction') {
         return
@@ -806,7 +819,7 @@ export function ChatView({
         toastManager.add({
           type: 'error',
           title: 'Appshot is unavailable',
-          description: 'Appshot capture requires the Electron desktop app.'
+          description: 'Appshot capture requires the Electron desktop app.',
         })
         return
       }
@@ -814,7 +827,7 @@ export function ChatView({
         toastManager.add({
           type: 'error',
           title: 'Appshot attachment is unavailable',
-          description: 'The selected model does not accept image attachments.'
+          description: 'The selected model does not accept image attachments.',
         })
         return
       }
@@ -822,22 +835,23 @@ export function ChatView({
       try {
         await appshotRuntime.capture({ tools })
         return { insertText: '' }
-      } catch (error) {
+      }
+ catch (error) {
         toastManager.add({
           type: 'error',
           title: 'Appshot capture failed',
-          description: error instanceof Error ? error.message : 'Unknown Appshot capture error.'
+          description: error instanceof Error ? error.message : 'Unknown Appshot capture error.',
         })
       }
     },
-    [appshotRuntime, composerRuntime.supportsAttachments, sessionId]
+    [appshotRuntime, composerRuntime.supportsAttachments, sessionId],
   )
 
   const submitCodexReviewPrompt = useCallback(
     (prompt: string) => {
       void composerSend(prompt, [], [])
     },
-    [composerSend]
+    [composerSend],
   )
 
   const resolveCodexReviewMergeBase = useCallback(
@@ -847,7 +861,7 @@ export function ChatView({
       }
       const url = new URL(
         `/workspaces/${encodeURIComponent(workspaceId)}/git/merge-base`,
-        getServerUrl()
+        getServerUrl(),
       )
       url.searchParams.set('baseBranch', baseBranch)
       const response = await fetch(url)
@@ -857,7 +871,7 @@ export function ChatView({
       const payload = (await response.json()) as { mergeBaseSha?: unknown }
       return typeof payload.mergeBaseSha === 'string' ? payload.mergeBaseSha : null
     },
-    [workspaceId]
+    [workspaceId],
   )
 
   const reviewSlot = useMemo<ComposerReviewSlotActions>(
@@ -866,17 +880,17 @@ export function ChatView({
       workspaceId,
       onDismiss: () => setReviewModeOpen(false),
       onSubmitPrompt: submitCodexReviewPrompt,
-      resolveMergeBase: resolveCodexReviewMergeBase
+      resolveMergeBase: resolveCodexReviewMergeBase,
     }),
-    [resolveCodexReviewMergeBase, reviewModeOpen, submitCodexReviewPrompt, workspaceId]
+    [resolveCodexReviewMergeBase, reviewModeOpen, submitCodexReviewPrompt, workspaceId],
   )
 
   const usageSlot = useMemo<ComposerUsageSlotActions>(
     () => ({
       open: Boolean(sessionId) && usageSlotSessionId === sessionId,
-      onDismiss: () => setUsageSlotSessionId(null)
+      onDismiss: () => setUsageSlotSessionId(null),
     }),
-    [sessionId, usageSlotSessionId]
+    [sessionId, usageSlotSessionId],
   )
 
   const updateRuntimeSettings = useCallback(
@@ -885,11 +899,11 @@ export function ChatView({
         toastManager.add({
           type: 'error',
           title: 'Runtime settings update failed',
-          description: error instanceof Error ? error.message : 'Unknown runtime settings error.'
+          description: error instanceof Error ? error.message : 'Unknown runtime settings error.',
         })
       })
     },
-    [runtimeSettings]
+    [runtimeSettings],
   )
 
   const runtimeSettingsToolbar = useMemo(() => {
@@ -917,7 +931,7 @@ export function ChatView({
     runtimeSettings.saving,
     runtimeSettings.settings,
     sessionId,
-    updateRuntimeSettings
+    updateRuntimeSettings,
   ])
 
   const headerActions = useMemo(
@@ -931,7 +945,7 @@ export function ChatView({
         )}
       </div>
     ),
-    [composerRuntime.slotStates, composerRuntime.uiSlots]
+    [composerRuntime.slotStates, composerRuntime.uiSlots],
   )
 
   const layoutSlots = useMemo(() => ({ headerActions }), [headerActions])
@@ -953,7 +967,7 @@ export function ChatView({
           setDroppedPath({ text: path, ts: Date.now() })
         }
       }}
-      onDragOver={(e) => e.preventDefault()}
+      onDragOver={e => e.preventDefault()}
     >
       <ChatMessageListPane
         sessionId={sessionId}
@@ -972,13 +986,13 @@ export function ChatView({
         onScrollToMessageIndex={scrollRuntime.scrollToMessageIndex}
         onScrollToOffset={scrollRuntime.scrollToOffset}
         onToolApprovalResponse={respondToToolApproval}
-        composerStack={
+        composerStack={(
           <ChatComposerSection
             sessionId={sessionId}
             awaitSummary={awaitSummary}
             queueItems={queueItems}
-            onCancelQueueItem={(queueItemId) => void cancelQueueItem(queueItemId)}
-            onReorderQueueItems={(queueItemIds) => void reorderQueueItems(queueItemIds)}
+            onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
+            onReorderQueueItems={queueItemIds => void reorderQueueItems(queueItemIds)}
             onSlashCommandAction={handleSlashCommandAction}
             composerRuntime={navigableComposerRuntime}
             appshotRuntime={appshotRuntime}
@@ -991,7 +1005,7 @@ export function ChatView({
             runtimeSettings={{
               settings: runtimeSettings.settings,
               disabled: !isReady || !runtimeSettings.loaded || runtimeSettings.loading,
-              onChange: updateRuntimeSettings
+              onChange: updateRuntimeSettings,
             }}
             contextBar={composerContextBar}
             droppedPath={droppedPath}
@@ -1004,10 +1018,10 @@ export function ChatView({
             }
             onComposerFocusChange={scrollRuntime.handleComposerFocusChange}
           />
-        }
+        )}
       />
 
-      <Dialog open={editingGoal !== null} onOpenChange={(open) => !open && closeGoalEditor()}>
+      <Dialog open={editingGoal !== null} onOpenChange={open => !open && closeGoalEditor()}>
         <DialogContent className="sm:max-w-md">
           <form className="grid gap-4" onSubmit={submitGoalEditor}>
             <DialogHeader>
@@ -1018,7 +1032,7 @@ export function ChatView({
             </DialogHeader>
             <Textarea
               value={goalObjectiveDraft}
-              onChange={(event) => setGoalObjectiveDraft(event.target.value)}
+              onChange={event => setGoalObjectiveDraft(event.target.value)}
               disabled={goalActionBusy}
               autoFocus
               rows={4}

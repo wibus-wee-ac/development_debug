@@ -40,16 +40,23 @@ export interface PaintSnapshot {
 const BUFFER_CAP = 200
 const SAMPLE_INTERVAL_MS = 30_000
 const LEAK_THRESHOLD = 10
+const USER_TIMING_CLEANUP_INTERVAL_MS = 5_000
+const USER_TIMING_ENTRY_LIMIT = 1_000
 
 const snapshots: MemorySnapshot[] = []
 const vitals: VitalEntry[] = []
 const longTasks: LongTaskSnapshot[] = []
 const paints: PaintSnapshot[] = []
 let intervalId: ReturnType<typeof setInterval> | null = null
+let userTimingCleanupIntervalId: ReturnType<typeof setInterval> | null = null
 let longTaskObserver: PerformanceObserver | null = null
 let paintObserver: PerformanceObserver | null = null
 let consecutiveIncreases = 0
 let lastHeapUsed = 0
+let lastMeasureEntryCount = 0
+let lastMarkEntryCount = 0
+let clearedMeasureEntryCount = 0
+let clearedMarkEntryCount = 0
 
 function hasPerformanceMemory(perf: Performance): perf is Performance & { memory: NonNullable<Performance['memory']> } {
   return 'memory' in perf
@@ -166,6 +173,24 @@ function collectPaints() {
   }
 }
 
+function cleanupUserTimingEntries() {
+  const measureCount = performance.getEntriesByType('measure').length
+  const markCount = performance.getEntriesByType('mark').length
+  lastMeasureEntryCount = measureCount
+  lastMarkEntryCount = markCount
+
+  if (measureCount > USER_TIMING_ENTRY_LIMIT) {
+    performance.clearMeasures()
+    clearedMeasureEntryCount += measureCount
+    lastMeasureEntryCount = 0
+  }
+  if (markCount > USER_TIMING_ENTRY_LIMIT) {
+    performance.clearMarks()
+    clearedMarkEntryCount += markCount
+    lastMarkEntryCount = 0
+  }
+}
+
 export function getPerfSnapshots(): MemorySnapshot[] {
   return [...snapshots]
 }
@@ -182,6 +207,17 @@ export function getPaintSnapshots(): PaintSnapshot[] {
   return [...paints]
 }
 
+export function getUserTimingStats(): Record<string, number> {
+  cleanupUserTimingEntries()
+  return {
+    measureEntryCount: lastMeasureEntryCount,
+    markEntryCount: lastMarkEntryCount,
+    clearedMeasureEntryCount,
+    clearedMarkEntryCount,
+    entryLimit: USER_TIMING_ENTRY_LIMIT,
+  }
+}
+
 export function initPerfMonitor() {
   if (intervalId !== null) {
     return
@@ -189,6 +225,8 @@ export function initPerfMonitor() {
 
   sampleMemory()
   intervalId = setInterval(sampleMemory, SAMPLE_INTERVAL_MS)
+  cleanupUserTimingEntries()
+  userTimingCleanupIntervalId = setInterval(cleanupUserTimingEntries, USER_TIMING_CLEANUP_INTERVAL_MS)
   collectWebVitals()
   collectLongTasks()
   collectPaints()

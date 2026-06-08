@@ -1,10 +1,10 @@
 import type { UIMessageChunk } from 'ai'
 
-import { AppError } from '../../errors/app-error'
-import { createDedupeKey, OBSERVABILITY_CODES } from '../observability/contract'
-import * as Observability from '../observability/service'
-import type { RuntimeKind } from '../provider-contracts/types'
-import { ProviderRuntimeError } from './runtime-provider-types'
+import { AppError } from '../../../errors/app-error'
+import { createDedupeKey, OBSERVABILITY_CODES } from '../../observability/contract'
+import * as Observability from '../../observability/service'
+import type { RuntimeKind } from '../../provider-contracts/types'
+import { ProviderRuntimeError } from '../runtime-provider-types'
 
 export interface SerializedChatError {
   text: string

@@ -8,7 +8,7 @@ import type {
   ChatRuntimeUiSlot,
   ChatRuntimeUiSlotState,
   ChatRuntimeUsageUiSlotState,
-  ChatRuntimeUserInputUiSlotState
+  ChatRuntimeUserInputUiSlotState,
 } from '../capabilities/chat-capabilities'
 import { GoalSlotState } from './composer-slots/goal-slot-state'
 import { PlanSlotState } from './composer-slots/plan-slot-state'
@@ -19,7 +19,7 @@ import type {
   ComposerPlanSlotActions,
   ComposerQuickQuestionSlotActions,
   ComposerReviewSlotActions,
-  ComposerUsageSlotActions
+  ComposerUsageSlotActions,
 } from './composer-slots/types'
 import { UsageSlotState } from './composer-slots/usage-slot-state'
 import { UserInputSlotState } from './composer-slots/user-input-slot-state'
@@ -29,20 +29,20 @@ export type {
   ComposerPlanSlotActions,
   ComposerQuickQuestionSlotActions,
   ComposerReviewSlotActions,
-  ComposerUsageSlotActions
+  ComposerUsageSlotActions,
 } from './composer-slots/types'
 
 const COMPOSER_SLOT_LAYOUT_TRANSITION = { duration: 0.36, ease: [0.22, 1, 0.36, 1] } as const
 const COMPOSER_SLOT_CONTENT_ENTER_TRANSITION = {
   type: 'spring',
   duration: 0.42,
-  bounce: 0
+  bounce: 0,
 } as const
 const COMPOSER_SLOT_CONTENT_EXIT_TRANSITION = { duration: 0.18, ease: [0.4, 0, 0.2, 1] } as const
 const COMPOSER_SLOT_REDUCED_TRANSITION = { duration: 0 } as const
 const COMPOSER_SLOT_STAGGER_SECONDS = 0.035
 
-type ComposerSlotEntry = { key: string; node: ReactNode }
+type ComposerSlotEntry = { key: string, node: ReactNode }
 
 interface ComposerSlotStatesProps {
   sessionId?: string | null
@@ -69,15 +69,16 @@ export function ComposerSlotStates({
   usage,
   className,
   dismissPlanSignal,
-  hidePlan
+  hidePlan,
 }: ComposerSlotStatesProps) {
+  const [retainedPlanState, setRetainedPlanState] = useState<ChatRuntimePlanUiSlotState | null>(null)
   const [dismissedPlanKey, setDismissedPlanKey] = useState<string | null>(null)
   const composerSlotIds = useMemo(
     () =>
       new Set(
-        slots.filter((slot) => slot.surfaces.includes('composerState')).map((slot) => slot.id)
+        slots.filter(slot => slot.surfaces.includes('composerState')).map(slot => slot.id),
       ),
-    [slots]
+    [slots],
   )
   const usageState = states.find((state): state is ChatRuntimeUsageUiSlotState => {
     return state.kind === 'usage' && usage?.open === true
@@ -90,23 +91,34 @@ export function ComposerSlotStates({
       state.kind === 'plan' && composerSlotIds.has(state.slotId) && isComposerPlanReadyState(state)
     )
   })
-  const userInputState =
-    states.find((state): state is ChatRuntimeUserInputUiSlotState => {
+  const userInputState
+    = states.find((state): state is ChatRuntimeUserInputUiSlotState => {
       return state.kind === 'userInput' && composerSlotIds.has(state.slotId)
     }) ?? null
-  const planKey = planState ? readPlanSlotKey(planState) : null
+  const renderedPlanState = planState ?? retainedPlanState
+  const planKey = renderedPlanState ? readPlanSlotKey(renderedPlanState) : null
   const planKeyRef = useRef<string | null>(planKey)
+  const retainedPlanKeyRef = useRef<string | null>(planKey)
   const dismissPlanSignalRef = useRef<number | undefined>(dismissPlanSignal)
-  const visiblePlanState = planState && dismissedPlanKey !== planKey && !hidePlan ? planState : null
+  const visiblePlanState = renderedPlanState && dismissedPlanKey !== planKey && !hidePlan
+    ? renderedPlanState
+    : null
+
+  useEffect(() => {
+    if (!planState) {
+      return
+    }
+    const nextPlanKey = readPlanSlotKey(planState)
+    const previousPlanKey = retainedPlanKeyRef.current
+    retainedPlanKeyRef.current = nextPlanKey
+    setRetainedPlanState(planState)
+    if (previousPlanKey !== nextPlanKey) {
+      setDismissedPlanKey(current => current === nextPlanKey ? null : current)
+    }
+  }, [planState])
 
   useEffect(() => {
     planKeyRef.current = planKey
-  }, [planKey])
-
-  useEffect(() => {
-    if (!planKey) {
-      setDismissedPlanKey(null)
-    }
   }, [planKey])
 
   useEffect(() => {
@@ -124,13 +136,13 @@ export function ComposerSlotStates({
     usageState
       ? {
           key: 'usage',
-          node: <UsageSlotState state={usageState} usage={usage} className={className} />
+          node: <UsageSlotState state={usageState} usage={usage} className={className} />,
         }
       : null,
     goalState
       ? {
           key: 'goal',
-          node: <GoalSlotState state={goalState} actions={actions} className={className} />
+          node: <GoalSlotState state={goalState} actions={actions} className={className} />,
         }
       : null,
     visiblePlanState
@@ -141,9 +153,11 @@ export function ComposerSlotStates({
               state={visiblePlanState}
               actions={plan}
               className={className}
-              onDismiss={() => setDismissedPlanKey(planKey)}
+              onDismiss={() => {
+                setDismissedPlanKey(planKey)
+              }}
             />
-          )
+          ),
         }
       : null,
     userInputState && sessionId
@@ -155,21 +169,21 @@ export function ComposerSlotStates({
               sessionId={sessionId}
               className={className}
             />
-          )
+          ),
         }
       : null,
     quickQuestion?.open
       ? {
           key: 'quick-question',
-          node: <QuickQuestionSlotState quickQuestion={quickQuestion} className={className} />
+          node: <QuickQuestionSlotState quickQuestion={quickQuestion} className={className} />,
         }
       : null,
     review?.open
       ? {
           key: 'review',
-          node: <ReviewSlotState review={review} className={className} />
+          node: <ReviewSlotState review={review} className={className} />,
         }
-      : null
+      : null,
   ]
   const entries = entryCandidates.filter((entry): entry is ComposerSlotEntry => entry !== null)
 
@@ -184,14 +198,14 @@ export function ComposerSlotStates({
   )
 }
 
-function ComposerSlotMotionItem({ index, children }: { index: number; children: ReactNode }) {
+function ComposerSlotMotionItem({ index, children }: { index: number, children: ReactNode }) {
   const shouldReduceMotion = useReducedMotion()
   const hiddenState = shouldReduceMotion
-    ? { y: 0, '--composer-slot-content-blur': '0px', '--composer-slot-content-opacity': 0 }
-    : { y: 18, '--composer-slot-content-blur': '2px', '--composer-slot-content-opacity': 0 }
+    ? { 'y': 0, '--composer-slot-content-blur': '0px', '--composer-slot-content-opacity': 0 }
+    : { 'y': 18, '--composer-slot-content-blur': '2px', '--composer-slot-content-opacity': 0 }
   const visibleState = shouldReduceMotion
-    ? { y: 0, '--composer-slot-content-blur': '0px', '--composer-slot-content-opacity': 1 }
-    : { y: 0, '--composer-slot-content-blur': '0px', '--composer-slot-content-opacity': 1 }
+    ? { 'y': 0, '--composer-slot-content-blur': '0px', '--composer-slot-content-opacity': 1 }
+    : { 'y': 0, '--composer-slot-content-blur': '0px', '--composer-slot-content-opacity': 1 }
 
   return (
     <m.div
@@ -211,14 +225,14 @@ function ComposerSlotMotionItem({ index, children }: { index: number; children: 
             ? COMPOSER_SLOT_REDUCED_TRANSITION
             : {
                 ...COMPOSER_SLOT_CONTENT_ENTER_TRANSITION,
-                delay: index * COMPOSER_SLOT_STAGGER_SECONDS
-              }
+                delay: index * COMPOSER_SLOT_STAGGER_SECONDS,
+              },
         }}
         exit={{
           ...hiddenState,
           transition: shouldReduceMotion
             ? COMPOSER_SLOT_REDUCED_TRANSITION
-            : COMPOSER_SLOT_CONTENT_EXIT_TRANSITION
+            : COMPOSER_SLOT_CONTENT_EXIT_TRANSITION,
         }}
       >
         {children}

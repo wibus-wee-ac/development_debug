@@ -2,6 +2,10 @@ import { readFileSync } from 'node:fs'
 import { resolve } from 'node:path'
 import { parseEnv } from 'node:util'
 
+import { app } from 'electron'
+
+const DEFAULT_DEV_CHROMIUM_ARGS = ['--remote-debugging-port=9222']
+
 /**
  * Load `apps/desktop/.env` into the main process `process.env` during development.
  *
@@ -36,5 +40,25 @@ export function loadDesktopDevEnv(): void {
     if (value !== undefined && process.env[key] === undefined) {
       process.env[key] = value
     }
+  }
+}
+
+export function applyDesktopDevChromiumArgs(): void {
+  if (!process.env.ELECTRON_RENDERER_URL) {
+    return
+  }
+
+  const configuredArgs = process.env.CRADLE_DESKTOP_DEV_CHROMIUM_ARGS?.trim().split(/\s+/).filter(Boolean) ?? []
+  for (const arg of [...DEFAULT_DEV_CHROMIUM_ARGS, ...configuredArgs]) {
+    if (!arg.startsWith('--')) {
+      continue
+    }
+    const body = arg.slice(2)
+    const separatorIndex = body.indexOf('=')
+    if (separatorIndex === -1) {
+      app.commandLine.appendSwitch(body)
+      continue
+    }
+    app.commandLine.appendSwitch(body.slice(0, separatorIndex), body.slice(separatorIndex + 1))
   }
 }

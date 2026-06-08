@@ -1,6 +1,6 @@
 import { getChatStoreTelemetrySnapshot } from '~/store/chat'
 
-import { getLongTaskSnapshots, getPaintSnapshots, getPerfSnapshots, getWebVitals } from './perf-monitor'
+import { getLongTaskSnapshots, getPaintSnapshots, getPerfSnapshots, getUserTimingStats, getWebVitals } from './perf-monitor'
 
 declare global {
   interface Window {
@@ -62,6 +62,7 @@ export function readRendererDiagnostics(): Record<string, unknown> {
       webVitals: getWebVitals().slice(-20),
       longTasks: getLongTaskSnapshots().slice(-20),
       paints: getPaintSnapshots().slice(-20),
+      userTiming: getUserTimingStats(),
     },
     document: readDocumentMetrics(),
     chatStore: getChatStoreTelemetrySnapshot(),

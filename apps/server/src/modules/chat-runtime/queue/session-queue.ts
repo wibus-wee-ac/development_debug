@@ -1,20 +1,23 @@
 import type { FileUIPart, UIMessage } from 'ai'
 
 import { chatSessionQueueItems } from '@cradle/db'
+import { and, eq, isNull } from 'drizzle-orm'
 
-import { AppError } from '../../errors/app-error'
-import type { ChatContextPart } from './context-parts'
+import { AppError } from '../../../errors/app-error'
+import { currentUnixSeconds } from '../../../helpers/time'
+import { db } from '../../../infra'
+import type { ChatContextPart } from '../context-parts'
 import type {
   ChatRuntimeSettings,
   ChatRuntimeSettingsPatch,
   ChatThinkingEffort
-} from './runtime-provider-types'
+} from '../runtime-provider-types'
 import {
   DEFAULT_RUNTIME_SETTINGS,
   mergeRuntimeSettings,
   normalizeRuntimeAccessMode,
   normalizeRuntimeInteractionMode
-} from './runtime-settings'
+} from '../runtime-settings'
 
 export type PersistedThinkingEffort = Extract<ChatThinkingEffort, 'low' | 'medium' | 'high' | 'xhigh'>
 export type ChatSessionContinuationMode = 'queue' | 'steer'
@@ -173,4 +176,54 @@ export function compareQueueRows(left: QueueItemRow, right: QueueItemRow): numbe
     return left.position - right.position || left.createdAt - right.createdAt
   }
   return right.createdAt - left.createdAt || right.updatedAt - left.updatedAt
+}
+
+export function listPendingQueueRows(sessionId: string): QueueItemRow[] {
+  return db()
+    .select()
+    .from(chatSessionQueueItems)
+    .where(
+      and(
+        eq(chatSessionQueueItems.sessionId, sessionId),
+        eq(chatSessionQueueItems.mode, 'queue'),
+        eq(chatSessionQueueItems.status, 'pending')
+      )
+    )
+    .orderBy(chatSessionQueueItems.position, chatSessionQueueItems.createdAt)
+    .all()
+}
+
+export function recoverOrphanedRunningQueueItems(sessionId: string): void {
+  db()
+    .update(chatSessionQueueItems)
+    .set({
+      status: 'pending',
+      errorText: null,
+      updatedAt: currentUnixSeconds()
+    })
+    .where(
+      and(
+        eq(chatSessionQueueItems.sessionId, sessionId),
+        eq(chatSessionQueueItems.mode, 'queue'),
+        eq(chatSessionQueueItems.status, 'running'),
+        isNull(chatSessionQueueItems.startedRunId)
+      )
+    )
+    .run()
+}
+
+export function normalizePendingQueuePositions(sessionId: string): void {
+  const pendingRows = listPendingQueueRows(sessionId)
+  const now = currentUnixSeconds()
+  db().transaction((tx) => {
+    pendingRows.forEach((row, index) => {
+      const position = index + 1
+      if (row.position !== position) {
+        tx.update(chatSessionQueueItems)
+          .set({ position, updatedAt: now })
+          .where(eq(chatSessionQueueItems.id, row.id))
+          .run()
+      }
+    })
+  })
 }

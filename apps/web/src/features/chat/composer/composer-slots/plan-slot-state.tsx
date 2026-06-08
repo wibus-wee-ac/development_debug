@@ -4,14 +4,27 @@
  * The provider owns the plan state. This rail only offers composer-level
  * follow-up actions and local dismissal for the current plan snapshot.
  */
-import { CheckIcon, ListChecksIcon, PencilIcon, XIcon } from 'lucide-react'
-import { useMemo, useState } from 'react'
+import { CheckIcon, ChevronDownIcon, ListChecksIcon, PencilIcon, TargetIcon, XIcon } from 'lucide-react'
+import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
+import { ButtonGroup } from '~/components/ui/button-group'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuRadioGroup,
+  DropdownMenuRadioItem,
+  DropdownMenuTrigger,
+} from '~/components/ui/dropdown-menu'
 
 import type { ChatRuntimePlanUiSlotState } from '../../capabilities/chat-capabilities'
 import { ComposerSlotIconAction, ComposerSlotShell } from './composer-slot-shell'
 import type { ComposerPlanSlotActions } from './types'
+
+type PrimaryPlanAction = 'implement' | 'makeGoal'
+type PlanAction = PrimaryPlanAction | 'refine'
+
+const PRIMARY_PLAN_ACTION_STORAGE_KEY = 'cradle:chat:plan-slot:primary-action:v1'
 
 export function PlanSlotState({
   state,
@@ -24,9 +37,22 @@ export function PlanSlotState({
   className?: string
   onDismiss: () => void
 }) {
-  const [pendingAction, setPendingAction] = useState<'implement' | 'refine' | null>(null)
+  const [pendingAction, setPendingAction] = useState<PlanAction | null>(null)
+  const [primaryAction, setPrimaryAction] = useState<PrimaryPlanAction>(() => readStoredPrimaryPlanAction())
   const summary = useMemo(() => readPlanSummary(state), [state])
   const disabled = actions?.disabled || actions?.busy || pendingAction !== null
+  const primaryActionConfig = primaryPlanActionConfigs[primaryAction]
+  const primaryHandler = readPrimaryPlanActionHandler(actions, primaryAction)
+  const PrimaryIcon = primaryActionConfig.icon
+
+  useEffect(() => {
+    try {
+      window.localStorage.setItem(PRIMARY_PLAN_ACTION_STORAGE_KEY, primaryAction)
+    }
+    catch {
+      // Preference persistence is best-effort.
+    }
+  }, [primaryAction])
 
   return (
     <ComposerSlotShell stateName="plan" testId="plan-slot" className={className}>
@@ -44,18 +70,52 @@ export function PlanSlotState({
           )}
         </div>
         <div className="ml-auto flex shrink-0 items-center gap-1">
-          <Button
-            type="button"
-            size="xs"
-            disabled={disabled || !actions?.onImplement}
-            onClick={() => {
-              void runPlanAction('implement', state, actions?.onImplement, setPendingAction, onDismiss)
-            }}
-            className="h-6 gap-1 px-2"
-          >
-            <CheckIcon className="size-3" aria-hidden="true" />
-            <span>Implement Plan</span>
-          </Button>
+          <ButtonGroup>
+            <Button
+              type="button"
+              size="xs"
+              disabled={disabled || !primaryHandler}
+              onClick={() => {
+                void runPlanAction(primaryAction, state, primaryHandler, setPendingAction, onDismiss)
+              }}
+              className="h-6 gap-1 px-2"
+            >
+              <PrimaryIcon className="size-3" aria-hidden="true" />
+              <span>{primaryActionConfig.label}</span>
+            </Button>
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  type="button"
+                  size="icon-xs"
+                  disabled={disabled}
+                  className="h-6 w-6 px-0"
+                  aria-label="Select plan action"
+                >
+                  <ChevronDownIcon className="size-3" aria-hidden="true" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-44">
+                <DropdownMenuRadioGroup
+                  value={primaryAction}
+                  onValueChange={(value) => {
+                    if (value === 'implement' || value === 'makeGoal') {
+                      setPrimaryAction(value)
+                    }
+                  }}
+                >
+                  <DropdownMenuRadioItem value="implement" disabled={!actions?.onImplement}>
+                    <CheckIcon className="size-3.5" aria-hidden="true" />
+                    <span>Implement Plan</span>
+                  </DropdownMenuRadioItem>
+                  <DropdownMenuRadioItem value="makeGoal" disabled={!actions?.onMakeGoal}>
+                    <TargetIcon className="size-3.5" aria-hidden="true" />
+                    <span>Make Goal</span>
+                  </DropdownMenuRadioItem>
+                </DropdownMenuRadioGroup>
+              </DropdownMenuContent>
+            </DropdownMenu>
+          </ButtonGroup>
           <Button
             type="button"
             variant="outline"
@@ -83,10 +143,14 @@ export function PlanSlotState({
 }
 
 async function runPlanAction(
-  action: 'implement' | 'refine',
+  action: PlanAction,
   state: ChatRuntimePlanUiSlotState,
-  handler: ComposerPlanSlotActions['onImplement'] | ComposerPlanSlotActions['onRefine'] | undefined,
-  setPendingAction: (action: 'implement' | 'refine' | null) => void,
+  handler:
+    | ComposerPlanSlotActions['onImplement']
+    | ComposerPlanSlotActions['onRefine']
+    | ComposerPlanSlotActions['onMakeGoal']
+    | undefined,
+  setPendingAction: (action: PlanAction | null) => void,
   onHandled: () => void,
 ) {
   if (!handler) {
@@ -105,6 +169,37 @@ async function runPlanAction(
   }
   finally {
     setPendingAction(null)
+  }
+}
+
+const primaryPlanActionConfigs: Record<PrimaryPlanAction, {
+  icon: typeof CheckIcon
+  label: string
+}> = {
+  implement: {
+    icon: CheckIcon,
+    label: 'Implement Plan',
+  },
+  makeGoal: {
+    icon: TargetIcon,
+    label: 'Make Goal',
+  },
+}
+
+function readPrimaryPlanActionHandler(
+  actions: ComposerPlanSlotActions | undefined,
+  action: PrimaryPlanAction,
+) {
+  return action === 'makeGoal' ? actions?.onMakeGoal : actions?.onImplement
+}
+
+function readStoredPrimaryPlanAction(): PrimaryPlanAction {
+  try {
+    const stored = window.localStorage.getItem(PRIMARY_PLAN_ACTION_STORAGE_KEY)
+    return stored === 'makeGoal' ? 'makeGoal' : 'implement'
+  }
+  catch {
+    return 'implement'
   }
 }
 

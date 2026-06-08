@@ -1,6 +1,6 @@
 import type { UIMessageChunk } from 'ai'
 
-import type { ProviderThreadEvent } from './runtime-provider-types'
+import type { ProviderThreadEvent } from '../runtime-provider-types'
 
 const DEFAULT_PROVIDER_THREAD_REPLAY_CHUNKS = 1_000
 

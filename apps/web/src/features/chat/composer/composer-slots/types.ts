@@ -19,6 +19,7 @@ export interface ComposerPlanSlotActions {
   disabled?: boolean
   onImplement?: (state: ChatRuntimePlanUiSlotState) => void | boolean | Promise<void | boolean>
   onRefine?: (state: ChatRuntimePlanUiSlotState) => void | boolean | Promise<void | boolean>
+  onMakeGoal?: (state: ChatRuntimePlanUiSlotState) => void | boolean | Promise<void | boolean>
 }
 
 export interface ComposerReviewSlotActions {
