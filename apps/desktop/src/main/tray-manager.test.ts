@@ -334,6 +334,7 @@ describe('trayManager', () => {
       expect(electronMocks.Tray.instances[0]?.popupMenu).toBeTruthy()
     })
 
+    expect(electronMocks.Tray.instances[0]?.popupPosition).toBeUndefined()
     expect(electronMocks.Tray.instances[0]?.tooltip).toBe('Cradle - 1 issue: 1 running, 3 awaits')
     expect(electronMocks.Tray.instances[0]?.ignoreDoubleClickEvents).toBe(true)
     expect(electronMocks.Tray.instances[0]?.image).toBeTruthy()

@@ -27,6 +27,7 @@ import type {
   MacAppshotFrontmostContext,
   MacCaptureFrontmostWindowResult,
   MacCaptureWindowTarget,
+  MacInputBareModifier,
   MacPermissionSettingsRequest,
   MacPermissionSettingsResult,
   MacPermissionsRequest,
@@ -65,6 +66,9 @@ const DEFAULT_PRIVACY_SENSITIVE_TITLE_PATTERNS = [
 export interface DesktopPreferences {
   requireDoubleCommandQToQuit: boolean
   appshotHotkeyEnabled: boolean
+  appshotHotkeyTrigger: MacInputBareModifier
+  autoCheckForUpdates: boolean
+  autoDownloadUpdates: boolean
 }
 
 const MAX_CODEX_APP_CAPTURE_BYTES = 25 * 1024 * 1024
@@ -271,7 +275,7 @@ class NativeService extends IpcService {
     const manager = getMacBridgeManager()
     if (manager && process.platform === 'darwin') {
       await manager.configureInput({
-        trigger: 'bothCommand',
+        trigger: preferences.appshotHotkeyTrigger,
         enabled: preferences.appshotHotkeyEnabled,
       })
     }
@@ -712,7 +716,7 @@ class MacCaptureService extends IpcService {
   async configureBothCommandHotkey(enabled: boolean) {
     const manager = this.readManager()
     return manager.configureInput({
-      trigger: 'bothCommand',
+      trigger: 'DoubleCommand',
       enabled,
     })
   }

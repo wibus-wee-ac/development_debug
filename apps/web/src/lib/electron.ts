@@ -210,6 +210,9 @@ export interface DesktopCliStatus {
 export interface DesktopPreferences {
   requireDoubleCommandQToQuit: boolean
   appshotHotkeyEnabled: boolean
+  appshotHotkeyTrigger: MacInputBareModifier
+  autoCheckForUpdates: boolean
+  autoDownloadUpdates: boolean
 }
 
 interface WindowServiceMethods {
@@ -311,6 +314,8 @@ export interface MacPermissionSettingsResult {
   opened: boolean
 }
 
+export type MacInputBareModifier = 'DoubleCommand' | 'DoubleOption' | 'DoubleShift'
+
 export interface MacCaptureResponse {
   capture: {
     filePath: string
@@ -388,7 +393,7 @@ export interface MacAppshotFrontmostContext {
 }
 
 export interface MacAppshotHotkeyEvent {
-  trigger: 'bothCommand'
+  trigger: MacInputBareModifier
   capturedAt: string
   targetWindow?: MacCaptureWindowTarget
   sourceWindow?: MacCaptureResponse['capture']['window']
@@ -457,7 +462,7 @@ interface MacCaptureServiceMethods {
   getPermissions: () => Promise<MacPermissionsStatus>
   requestPermissions: (options?: { permissions?: MacPermissionKind[] }) => Promise<MacPermissionsRequestResult>
   openPermissionSettings: (options?: { target?: MacPermissionSettingsTarget }) => Promise<MacPermissionSettingsResult>
-  configureBothCommandHotkey: (enabled: boolean) => Promise<{ trigger: 'bothCommand', enabled: boolean }>
+  configureBothCommandHotkey: (enabled: boolean) => Promise<{ trigger: 'DoubleCommand', enabled: boolean }>
   captureFrontmostWindow: (options?: {
     sink?: 'file' | 'clipboard' | 'cleanshot'
     targetWindow?: MacCaptureWindowTarget

@@ -1,6 +1,6 @@
 import { join, resolve } from 'node:path'
 
-import { app, BrowserWindow, dialog, ipcMain, screen } from 'electron'
+import { app, BrowserWindow, dialog, ipcMain, net, screen } from 'electron'
 import windowStateKeeper from 'electron-window-state'
 
 import {
@@ -13,10 +13,12 @@ import { DesktopBrowserManager } from './browser-manager'
 import { ChatStreamBroker } from './chat-stream-broker'
 import { DesktopAppBadgeManager } from './desktop-app-badge-manager'
 import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath } from './desktop-assets'
+import { installExternalLinkPolicy } from './external-link-policy'
 import { MacBridgeManager } from './mac-bridge-manager'
+import type { MacInputBareModifier } from './mac-bridge-protocol'
 import { createNativeServices } from './native-services'
 import { NotificationCenterManager } from './notification-center-manager'
-import { bindDesktopObservabilityServerUrl } from './observability-reporter'
+import { bindDesktopObservabilityServerUrl, startDesktopResourceReporting } from './observability-reporter'
 import type { PluginInstallResult, PluginInstallSummary } from './plugin-install-links'
 import {
   collectPluginInstallUrls,
@@ -44,6 +46,11 @@ let trayManager: TrayManager | null = null
 let desktopAppBadgeManager: DesktopAppBadgeManager | null = null
 let macBridgeManager: MacBridgeManager | null = null
 let chatStreamBroker: ChatStreamBroker | null = null
+
+function fetchWithElectronNet(input: RequestInfo | URL, init?: RequestInit): Promise<Response> {
+  const requestInput = input instanceof URL ? input.toString() : input
+  return net.fetch(requestInput, init) as Promise<Response>
+}
 let notificationCenterManager: NotificationCenterManager | null = null
 let isQuitting = false
 let shutdownPromise: Promise<void> | null = null
@@ -64,6 +71,7 @@ const browserManager = new DesktopBrowserManager()
 interface DesktopRuntimePreferences {
   requireDoubleCommandQToQuit: boolean
   appshotHotkeyEnabled: boolean
+  appshotHotkeyTrigger?: MacInputBareModifier
 }
 
 async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
@@ -111,6 +119,7 @@ async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
     show: false,
   })
   mainWindowState.manage(win)
+  installExternalLinkPolicy(win.webContents)
 
   win.once('ready-to-show', () => {
     win.show()
@@ -357,20 +366,20 @@ function registerProcessShutdownHandlers(): void {
   process.once('SIGTERM', handleSignal)
 }
 
-async function applyAppshotHotkeyPreference(enabled: boolean): Promise<void> {
+async function applyAppshotHotkeyPreference(enabled: boolean, trigger: MacInputBareModifier = 'DoubleCommand'): Promise<void> {
   if (process.platform !== 'darwin' || !macBridgeManager) {
     return
   }
 
   const inputConfiguration = await macBridgeManager
-    .configureInput({ trigger: 'bothCommand', enabled })
+    .configureInput({ trigger, enabled })
     .catch((error) => {
-      console.warn('[mac-bridge] both-command hotkey unavailable:', error)
+      console.warn('[mac-bridge] AppShot hotkey unavailable:', error)
       return null
     })
 
   if (inputConfiguration) {
-    console.debug('[mac-bridge] both-command hotkey configured:', inputConfiguration)
+    console.debug('[mac-bridge] AppShot hotkey configured:', inputConfiguration)
   }
 }
 
@@ -385,7 +394,10 @@ async function syncDesktopPreferencesFromServer(serverUrl: string): Promise<void
     quitGuard.updatePreferences({
       requireDoubleCommandQToQuit: preferences.requireDoubleCommandQToQuit,
     })
-    await applyAppshotHotkeyPreference(preferences.appshotHotkeyEnabled)
+    await applyAppshotHotkeyPreference(
+      preferences.appshotHotkeyEnabled,
+      preferences.appshotHotkeyTrigger ?? 'DoubleCommand',
+    )
   }
   catch (error) {
     console.warn('[preferences] failed to read desktop preferences:', error)
@@ -471,8 +483,9 @@ export async function startDesktopApp(): Promise<void> {
 
     const serverUrl = await startServer()
     bindDesktopObservabilityServerUrl(serverUrl)
+    startDesktopResourceReporting()
     await syncDesktopPreferencesFromServer(serverUrl)
-    chatStreamBroker = new ChatStreamBroker({ serverUrl })
+    chatStreamBroker = new ChatStreamBroker({ serverUrl, fetchFn: fetchWithElectronNet })
 
     windowManager = new WindowManager(serverUrl)
     appBadgeManager.initialize()

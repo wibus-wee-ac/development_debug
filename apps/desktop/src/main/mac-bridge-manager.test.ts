@@ -33,14 +33,14 @@ rl.on('line', (line) => {
     process.stdout.write(JSON.stringify({
       id: request.id,
       result: {
-        trigger: 'bothCommand',
+        trigger: request.params.trigger,
         enabled: request.params.enabled
       }
     }) + '\\n')
     process.stdout.write(JSON.stringify({
       method: 'event.mac.hotkeyTriggered',
       params: {
-        trigger: 'bothCommand',
+        trigger: request.params.trigger,
         capturedAt: '2026-05-22T15:56:22Z',
         targetWindow: {
           windowId: 42,
@@ -418,8 +418,8 @@ describe('macBridgeManager', () => {
       version: 'test',
       platform: 'darwin',
     })
-    await expect(manager.configureInput({ trigger: 'bothCommand', enabled: true })).resolves.toEqual({
-      trigger: 'bothCommand',
+    await expect(manager.configureInput({ trigger: 'DoubleOption', enabled: true })).resolves.toEqual({
+      trigger: 'DoubleOption',
       enabled: true,
     })
     await expect(manager.synthesizeBothCommandHotkey({ holdMilliseconds: 140 })).resolves.toEqual({
@@ -566,7 +566,7 @@ describe('macBridgeManager', () => {
     })
     await new Promise(resolve => setTimeout(resolve, 50))
     expect(events).toEqual([{
-      trigger: 'bothCommand',
+      trigger: 'DoubleOption',
       capturedAt: '2026-05-22T15:56:22Z',
       targetWindow: {
         windowId: 42,

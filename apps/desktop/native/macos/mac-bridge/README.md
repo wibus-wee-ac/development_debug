@@ -22,7 +22,7 @@ Supported methods:
 - `mac.permissions.status`: Returns Accessibility, Screen Recording, and Input Monitoring status.
 - `mac.permissions.request`: Asks macOS to show permission prompts for Accessibility, Screen Recording, and Input Monitoring.
 - `mac.permissions.openSettings`: Opens the relevant Privacy & Security pane in System Settings.
-- `mac.input.configure`: Enables or disables the `bothCommand` trigger.
+- `mac.input.configure`: Enables or disables the selected bare-modifier trigger (`DoubleCommand`, `DoubleOption`, or `DoubleShift`).
 - `mac.input.syntheticBothCommand`: Explicit parity-test helper that posts public CGEvent both-Command key down/up events. It is opt-in, intended for Codex-vs-Cradle Appshot recording automation, and does not call Codex private Apple Event protocols.
 - `mac.capture.frontmostWindow`: Captures the current frontmost window, or an explicit `targetWindow` selected by `windowId` plus optional `processId` and `bundleId`, to the provided output directory and shows a native top-center feedback indicator on the captured window's screen.
 - `mac.appshot.captureFrontmostWindow`: Captures the current frontmost window, or an explicit `targetWindow` selected by `windowId` plus optional `processId` and `bundleId`, writes Cradle-owned Appshot artifacts, and presents the native Appshot transition overlay.

@@ -3,6 +3,7 @@ import { join } from 'node:path'
 import { app, BrowserWindow, screen } from 'electron'
 
 import { resolveDesktopPreloadPath, resolveDesktopRendererIndexPath, resolveDesktopRendererTearoffPath } from './desktop-assets'
+import { installExternalLinkPolicy } from './external-link-policy'
 import { readStoredWindowSize, resolveWindowBoundsNearPoint, resolveWindowSize, writeStoredWindowSize } from './window-state'
 
 const TEAROFF_WINDOW_DEFAULT_WIDTH = 720
@@ -88,6 +89,7 @@ export class WindowManager {
     })
 
     this.sessionWindows.set(sessionId, win)
+    installExternalLinkPolicy(win.webContents)
     this.trackAppshotCaptureWindow(win)
 
     let lastTearoffWindowSize = { width: targetBounds.width, height: targetBounds.height }
@@ -224,6 +226,7 @@ export class WindowManager {
       show: false,
     })
 
+    installExternalLinkPolicy(win.webContents)
     win.once('ready-to-show', () => {
       win.show()
     })

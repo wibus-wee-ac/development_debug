@@ -71,13 +71,19 @@ export const MacPermissionSettingsResultSchema = z.object({
   opened: z.boolean(),
 })
 
+export const MacInputBareModifierSchema = z.enum([
+  'DoubleCommand',
+  'DoubleOption',
+  'DoubleShift',
+])
+
 export const MacInputConfigureRequestSchema = z.object({
-  trigger: z.literal('bothCommand'),
+  trigger: MacInputBareModifierSchema,
   enabled: z.boolean(),
 })
 
 export const MacInputConfigureResultSchema = z.object({
-  trigger: z.literal('bothCommand'),
+  trigger: MacInputBareModifierSchema,
   enabled: z.boolean(),
   diagnostics: z.unknown().optional(),
 })
@@ -92,12 +98,6 @@ export const MacInputSyntheticBothCommandResultSchema = z.object({
   postedEventCount: z.number().int().nonnegative(),
   postedAt: z.string(),
 })
-
-export const MacInputBareModifierSchema = z.enum([
-  'DoubleCommand',
-  'DoubleOption',
-  'DoubleShift',
-])
 
 export const MacInputSyntheticBareModifierRequestSchema = z.object({
   modifier: MacInputBareModifierSchema,
@@ -338,7 +338,7 @@ export const MacScreenCaptureKitDiagnosticsSchema = z.object({
 }).passthrough()
 
 export const MacHotkeyTriggeredEventSchema = z.object({
-  trigger: z.literal('bothCommand'),
+  trigger: MacInputBareModifierSchema,
   capturedAt: z.string(),
   targetWindow: MacCaptureWindowTargetSchema.optional(),
   sourceWindow: MacCapturedWindowSchema.optional(),

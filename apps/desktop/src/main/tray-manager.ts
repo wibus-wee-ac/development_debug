@@ -191,7 +191,12 @@ export class TrayManager {
 
     const snapshot = await this.readTrayData()
     const menu = this.updateNativeMenus(snapshot)
-    this.tray.popUpContextMenu(menu, this.readPopupPosition())
+    const popupPosition = this.readPopupPosition()
+    if (popupPosition) {
+      this.tray.popUpContextMenu(menu, popupPosition)
+      return
+    }
+    this.tray.popUpContextMenu(menu)
   }
 
   async performAction(actionId: TrayActionId, payload?: unknown): Promise<void> {

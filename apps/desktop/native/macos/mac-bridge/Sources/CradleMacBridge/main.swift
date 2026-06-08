@@ -192,6 +192,7 @@ final class InputMonitor: @unchecked Sendable {
     private let output: OutputWriter
     private let stateLock = NSLock()
     private var eventTap: CFMachPort?
+    private var trigger = BareModifierTrigger.doubleCommand
     private var enabled = false
     private var tapEnableAttempted = false
     private var runLoopSourceCreated = false
@@ -199,8 +200,8 @@ final class InputMonitor: @unchecked Sendable {
     private var lastEventAt: String?
     private var lastDisabledReason: String?
     private var lastSetupError: String?
-    private var leftCommandDown = false
-    private var rightCommandDown = false
+    private var leftModifierDown = false
+    private var rightModifierDown = false
     private var firedForCurrentPress = false
     private var debugEventsRemaining = 0
     private var debugSessionId = 0
@@ -210,7 +211,14 @@ final class InputMonitor: @unchecked Sendable {
         self.output = output
     }
 
-    func configure(enabled nextEnabled: Bool) throws {
+    func configure(trigger nextTrigger: BareModifierTrigger, enabled nextEnabled: Bool) throws {
+        stateLock.lock()
+        trigger = nextTrigger
+        leftModifierDown = false
+        rightModifierDown = false
+        firedForCurrentPress = false
+        stateLock.unlock()
+
         if nextEnabled {
             try start()
         } else {
@@ -228,7 +236,7 @@ final class InputMonitor: @unchecked Sendable {
         initialObservedEventCount = observedEventCount
         stateLock.unlock()
 
-        try configure(enabled: true)
+        try configure(trigger: trigger, enabled: true)
         scheduleDebugTimeout(sessionId: sessionId, initialObservedEventCount: initialObservedEventCount, timeoutSeconds: timeoutSeconds)
     }
 
@@ -236,6 +244,7 @@ final class InputMonitor: @unchecked Sendable {
         stateLock.lock()
         let tap = eventTap
         let snapshot: [String: Any] = [
+            "trigger": trigger.rawValue,
             "enabled": enabled,
             "tapCreated": tap != nil,
             "tapEnabled": tap.map { CGEvent.tapIsEnabled(tap: $0) } ?? false,
@@ -245,8 +254,8 @@ final class InputMonitor: @unchecked Sendable {
             "lastEventAt": lastEventAt ?? NSNull(),
             "lastDisabledReason": lastDisabledReason ?? NSNull(),
             "lastSetupError": lastSetupError ?? NSNull(),
-            "leftCommandDown": leftCommandDown,
-            "rightCommandDown": rightCommandDown,
+            "leftModifierDown": leftModifierDown,
+            "rightModifierDown": rightModifierDown,
             "permissions": permissionStatus(),
         ]
         stateLock.unlock()
@@ -279,7 +288,7 @@ final class InputMonitor: @unchecked Sendable {
             },
             userInfo: Unmanaged.passUnretained(self).toOpaque()
         ) else {
-            throw BridgeError("input-monitor-unavailable", "Mac Bridge could not create a Command-key event tap. Input Monitoring or Accessibility permission may be required.")
+            throw BridgeError("input-monitor-unavailable", "Mac Bridge could not create a modifier-key event tap. Input Monitoring or Accessibility permission may be required.")
         }
 
         stateLock.lock()
@@ -319,8 +328,8 @@ final class InputMonitor: @unchecked Sendable {
         eventTap = nil
         tapEnableAttempted = false
         runLoopSourceCreated = false
-        leftCommandDown = false
-        rightCommandDown = false
+        leftModifierDown = false
+        rightModifierDown = false
         firedForCurrentPress = false
         debugEventsRemaining = 0
         debugSessionId += 1
@@ -328,11 +337,11 @@ final class InputMonitor: @unchecked Sendable {
     }
 
     private func handle(event: CGEvent) {
-        let eventState = updateCommandState(event: event)
+        let eventState = updateModifierState(event: event)
         emitDebugEvent(eventState)
-        let hasBothCommand = (eventState["leftCommandDown"] as? Bool) == true
-            && (eventState["rightCommandDown"] as? Bool) == true
-        if !hasBothCommand {
+        let hasBothModifiers = (eventState["leftModifierDown"] as? Bool) == true
+            && (eventState["rightModifierDown"] as? Bool) == true
+        if !hasBothModifiers {
             stateLock.lock()
             firedForCurrentPress = false
             stateLock.unlock()
@@ -346,7 +355,7 @@ final class InputMonitor: @unchecked Sendable {
         firedForCurrentPress = true
         stateLock.unlock()
         var params: [String: Any] = [
-            "trigger": "bothCommand",
+            "trigger": eventState["trigger"] as? String ?? BareModifierTrigger.doubleCommand.rawValue,
             "capturedAt": isoTimestamp(),
         ]
         if let targetWindow = frontmostWindowTracker.readLastWindowTargetPayload() {
@@ -361,20 +370,22 @@ final class InputMonitor: @unchecked Sendable {
         output.event(method: "event.mac.hotkeyTriggered", params: params)
     }
 
-    private func updateCommandState(event: CGEvent) -> [String: Any] {
+    private func updateModifierState(event: CGEvent) -> [String: Any] {
         let keyCode = CGKeyCode(event.getIntegerValueField(.keyboardEventKeycode))
         let flagsRaw = event.flags.rawValue
         stateLock.lock()
         observedEventCount += 1
         lastEventAt = isoTimestamp()
-        leftCommandDown = (flagsRaw & leftCommandDeviceFlag) != 0
-        rightCommandDown = (flagsRaw & rightCommandDeviceFlag) != 0
+        let selectedTrigger = trigger
+        leftModifierDown = (flagsRaw & selectedTrigger.leftDeviceFlag) != 0
+        rightModifierDown = (flagsRaw & selectedTrigger.rightDeviceFlag) != 0
         let snapshot: [String: Any] = [
+            "trigger": selectedTrigger.rawValue,
             "keyCode": Int(keyCode),
             "flagsRaw": flagsRaw,
-            "hasCommandFlag": event.flags.contains(.maskCommand),
-            "leftCommandDown": leftCommandDown,
-            "rightCommandDown": rightCommandDown,
+            "hasModifierFlag": event.flags.contains(selectedTrigger.modifierFlag),
+            "leftModifierDown": leftModifierDown,
+            "rightModifierDown": rightModifierDown,
             "observedEventCount": observedEventCount,
         ]
         stateLock.unlock()
@@ -459,7 +470,7 @@ final class BridgeRuntime: @unchecked Sendable {
 
     private func readInputLoop() {
         defer {
-            try? inputMonitor.configure(enabled: false)
+            try? inputMonitor.configure(trigger: .doubleCommand, enabled: false)
             Task { @MainActor in
                 frontmostWindowTracker.stop()
                 NSApplication.shared.terminate(nil)
@@ -507,14 +518,15 @@ final class BridgeRuntime: @unchecked Sendable {
         case "mac.permissions.openSettings":
             return try openPermissionSettings(params: params)
         case "mac.input.configure":
-            guard let trigger = params["trigger"] as? String, trigger == "bothCommand",
+            guard let rawTrigger = params["trigger"] as? String,
+                  let trigger = BareModifierTrigger(rawValue: rawTrigger),
                   let enabled = params["enabled"] as? Bool
             else {
-                throw BridgeError("invalid-params", "mac.input.configure requires trigger=bothCommand and enabled boolean.")
+                throw BridgeError("invalid-params", "mac.input.configure requires trigger DoubleCommand, DoubleOption, or DoubleShift and enabled boolean.")
             }
-            try inputMonitor.configure(enabled: enabled)
+            try inputMonitor.configure(trigger: trigger, enabled: enabled)
             return [
-                "trigger": "bothCommand",
+                "trigger": trigger.rawValue,
                 "enabled": enabled,
                 "diagnostics": inputMonitor.diagnostics(),
             ]
@@ -655,7 +667,7 @@ func permissionSettingsURLString(target: String) -> String {
     }
 }
 
-enum SyntheticBareModifierTrigger: String {
+enum BareModifierTrigger: String {
     case doubleCommand = "DoubleCommand"
     case doubleOption = "DoubleOption"
     case doubleShift = "DoubleShift"
@@ -733,8 +745,8 @@ func synthesizeBothCommandHotkey(params: [String: Any]) throws -> [String: Any] 
 }
 
 func synthesizeBareModifierHotkey(params: [String: Any]) throws -> [String: Any] {
-    let rawTrigger = params["modifier"] as? String ?? SyntheticBareModifierTrigger.doubleCommand.rawValue
-    guard let trigger = SyntheticBareModifierTrigger(rawValue: rawTrigger) else {
+    let rawTrigger = params["modifier"] as? String ?? BareModifierTrigger.doubleCommand.rawValue
+    guard let trigger = BareModifierTrigger(rawValue: rawTrigger) else {
         throw BridgeError("invalid-params", "mac.input.syntheticBareModifier requires modifier DoubleCommand, DoubleOption, or DoubleShift.")
     }
     let result = try postSyntheticBareModifier(
@@ -762,7 +774,7 @@ func readSyntheticHoldMilliseconds(params: [String: Any], method: String) throws
 }
 
 func postSyntheticBareModifier(
-    trigger: SyntheticBareModifierTrigger,
+    trigger: BareModifierTrigger,
     holdMilliseconds: Double
 ) throws -> (holdMilliseconds: Double, postedEventCount: Int, postedAt: String) {
     let source = CGEventSource(stateID: .hidSystemState)

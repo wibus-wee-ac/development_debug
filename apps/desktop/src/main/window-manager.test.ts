@@ -19,7 +19,10 @@ const electronMocks = vi.hoisted(() => {
     readonly handlers = new Map<string, Listener[]>()
     readonly onceHandlers = new Map<string, Listener[]>()
     readonly webContents = {
+      getURL: vi.fn(() => 'http://127.0.0.1:5174/'),
+      on: vi.fn(),
       send: vi.fn(),
+      setWindowOpenHandler: vi.fn(),
     }
 
     destroyed = false
@@ -103,6 +106,9 @@ const electronMocks = vi.hoisted(() => {
       getDisplayNearestPoint: vi.fn(() => ({
         workArea: { x: 0, y: 0, width: 1440, height: 900 },
       })),
+    },
+    shell: {
+      openExternal: vi.fn(),
     },
   }
 })
