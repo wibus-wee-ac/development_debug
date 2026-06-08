@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createServerApp } from '../src/app'
 import { shutdownInfra } from '../src/infra'
 import { setCodexChatgptCredentialLoginFetchForTests } from '../src/modules/chat-runtime-providers/codex/account-service'
+import { setCodexChatgptModelListClientFactoryForTests } from '../src/modules/chat-runtime-providers/codex/model-list'
 import { readSecret } from '../src/modules/secrets/service'
 
 function makeTempDir(prefix: string): string {
@@ -306,9 +307,79 @@ describe('preferences capability', () => {
         chatgptAccountId: 'account-1',
         chatgptPlanType: 'plus',
       }))
+
+      const codexRequests: Array<{ method: string, params?: unknown }> = []
+      setCodexChatgptModelListClientFactoryForTests(() => ({
+        initialize: vi.fn(async () => undefined),
+        request: vi.fn(async (method: string, params?: unknown) => {
+          codexRequests.push({ method, params })
+          if (method === 'account/login/start') {
+            return {}
+          }
+          if (method === 'model/list') {
+            return {
+              data: [
+                {
+                  id: 'gpt-5-codex',
+                  model: 'gpt-5-codex',
+                  displayName: 'GPT-5 Codex',
+                  supportedReasoningEfforts: [
+                    { reasoningEffort: 'medium', description: 'Medium' },
+                    { reasoningEffort: 'high', description: 'High' },
+                  ],
+                  inputModalities: ['text'],
+                },
+              ],
+              nextCursor: null,
+            }
+          }
+          throw new Error(`unexpected Codex app-server method ${method}`)
+        }),
+        nextNotification: vi.fn(async () => null),
+        close: vi.fn(),
+      }))
+      const profileRes = await app.handle(new Request('http://localhost/profiles/provider-chatgpt', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Work ChatGPT',
+          providerKind: 'openai-compatible',
+          enabled: true,
+          config: { baseUrl: 'https://api.openai.com/v1' },
+          credentialRef,
+        }),
+      }))
+      expect(profileRes.status).toBe(200)
+      const modelsRes = await app.handle(new Request('http://localhost/providers/models', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          providerKind: 'openai-compatible',
+          label: 'Work ChatGPT',
+          config: { baseUrl: 'https://api.openai.com/v1' },
+          secretRef: credentialRef,
+          profileId: 'provider-chatgpt',
+          providerTargetKind: 'manual',
+          providerTargetId: 'provider-chatgpt',
+        }),
+      }))
+      const modelsJson = await modelsRes.json()
+      expect(modelsRes.status, JSON.stringify(modelsJson)).toBe(200)
+      expect(modelsJson).toEqual([
+        expect.objectContaining({
+          id: 'gpt-5-codex',
+          providerKind: 'openai-compatible',
+        }),
+      ])
+      expect(fetchMock).not.toHaveBeenCalledWith(
+        expect.stringContaining('/v1/models'),
+        expect.anything(),
+      )
+      expect(codexRequests.map(request => request.method)).toEqual(['account/login/start', 'model/list'])
     }
     finally {
       setCodexChatgptCredentialLoginFetchForTests(null)
+      setCodexChatgptModelListClientFactoryForTests(null)
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {

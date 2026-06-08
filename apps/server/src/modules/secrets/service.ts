@@ -13,7 +13,14 @@ export interface SecretMetadata {
   kind: string
   label: string
   maskedSecret: string
+  chatgpt?: ChatgptCredentialSummary | null
   createdAt: number
+  updatedAt: number
+}
+
+export interface ChatgptCredentialSummary {
+  chatgptAccountId: string
+  chatgptPlanType: string | null
   updatedAt: number
 }
 
@@ -73,6 +80,10 @@ function decrypt(encryptedText: string): string {
 }
 
 function maskSecret(secret: string): string {
+  const chatgpt = readChatgptCredentialSummary(secret)
+  if (chatgpt) {
+    return `ChatGPT ${chatgpt.chatgptAccountId.slice(0, 6)}...${chatgpt.chatgptAccountId.slice(-4)}`
+  }
   if (secret.length <= 4) {
     return '...'
   }
@@ -116,6 +127,7 @@ export function saveSecret(input: SaveSecretInput): SecretMetadata {
     kind: input.kind,
     label: input.label,
     maskedSecret: maskSecret(input.secret),
+    chatgpt: readChatgptCredentialSummary(input.secret),
     createdAt: now,
     updatedAt: now,
   }
@@ -169,6 +181,7 @@ export function upsertSecretInDb(database: ReturnType<typeof db>, input: UpsertS
     kind: input.kind,
     label: input.label,
     maskedSecret: maskSecret(input.secret),
+    chatgpt: readChatgptCredentialSummary(input.secret),
     createdAt: now,
     updatedAt: now,
   }
@@ -208,6 +221,7 @@ export function listSecrets(): SecretMetadata[] {
       kind: secret.kind,
       label: secret.label,
       maskedSecret: maskSecret(plainText),
+      chatgpt: readChatgptCredentialSummary(plainText),
       createdAt: secret.createdAt,
       updatedAt: secret.updatedAt,
     }
@@ -226,4 +240,35 @@ export function readSecret(id: string): string {
     })
   }
   return decrypt(secret.encryptedSecret)
+}
+
+function readChatgptCredentialSummary(rawSecret: string): ChatgptCredentialSummary | null {
+  try {
+    const parsed = JSON.parse(rawSecret) as unknown
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+      return null
+    }
+    const record = parsed as Record<string, unknown>
+    if (record.kind !== 'chatgpt-auth') {
+      return null
+    }
+    const chatgptAccountId = typeof record.chatgptAccountId === 'string' && record.chatgptAccountId.trim()
+      ? record.chatgptAccountId
+      : null
+    if (!chatgptAccountId) {
+      return null
+    }
+    return {
+      chatgptAccountId,
+      chatgptPlanType: typeof record.chatgptPlanType === 'string' && record.chatgptPlanType.trim()
+        ? record.chatgptPlanType
+        : null,
+      updatedAt: typeof record.updatedAt === 'number' && Number.isFinite(record.updatedAt)
+        ? record.updatedAt
+        : 0,
+    }
+  }
+  catch {
+    return null
+  }
 }

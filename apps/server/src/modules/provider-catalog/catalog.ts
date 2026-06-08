@@ -1,6 +1,8 @@
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
+import { readCodexChatgptAuthCredential } from '../chat-runtime-providers/codex/chatgpt-auth'
+import { listCodexChatgptModels } from '../chat-runtime-providers/codex/model-list'
 import { normalizeBaseUrl, OpenAICompatibleConfigJsonSchema, UniversalProviderConfigJsonSchema } from '../provider-contracts/provider-base'
 import type { ModelDescriptor, ProviderKind, ProviderRequest } from '../provider-contracts/types'
 import { readProviderDefaultModelCapabilities } from './model-capabilities'
@@ -9,8 +11,13 @@ export interface ProviderMetadataProvider {
   readonly providerKind: ProviderKind
   listModels: (
     input: ProviderRequest,
-    deps: { readSecret: (secretRef: string) => string },
+    deps: ProviderCatalogDeps,
   ) => Promise<ModelDescriptor[]>
+}
+
+interface ProviderCatalogDeps {
+  readSecret: (secretRef: string) => string
+  updateSecretValue?: (secretRef: string, secret: string) => void
 }
 
 const TRAILING_SLASH_RE = /\/$/
@@ -75,14 +82,24 @@ class OpenAICompatibleMetadataProvider implements ProviderMetadataProvider {
 
   async listModels(
     input: ProviderRequest,
-    deps: { readSecret: (secretRef: string) => string },
+    deps: ProviderCatalogDeps,
   ): Promise<ModelDescriptor[]> {
     const config = OpenAICompatibleConfigJsonSchema.parse(input.configJson)
+
+    const secret = input.secretRef ? deps.readSecret(input.secretRef) : null
+    const chatgptAuth = readCodexChatgptAuthCredential(input.secretRef, secret)
+    if (chatgptAuth) {
+      return listCodexChatgptModels({
+        credential: chatgptAuth,
+        updateSecretValue: deps.updateSecretValue,
+      })
+    }
+
     if (!config.baseUrl) {
       throw invalidProviderRequest('Base URL is required')
     }
 
-    const apiKey = input.secretRef ? deps.readSecret(input.secretRef) : null
+    const apiKey = secret
     const baseUrl = normalizeBaseUrl(config.baseUrl)
 
     try {
@@ -111,7 +128,7 @@ class AnthropicMetadataProvider implements ProviderMetadataProvider {
 
   async listModels(
     input: ProviderRequest,
-    deps: { readSecret: (secretRef: string) => string },
+    deps: ProviderCatalogDeps,
   ): Promise<ModelDescriptor[]> {
     const config = AnthropicProviderConfigJsonSchema.parse(input.configJson)
 
@@ -147,7 +164,7 @@ class UniversalMetadataProvider implements ProviderMetadataProvider {
 
   async listModels(
     input: ProviderRequest,
-    deps: { readSecret: (secretRef: string) => string },
+    deps: ProviderCatalogDeps,
   ): Promise<ModelDescriptor[]> {
     const config = UniversalProviderConfigJsonSchema.parse(input.configJson)
     if (!config.baseUrl) {

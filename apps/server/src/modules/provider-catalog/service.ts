@@ -114,6 +114,7 @@ export async function listModels(input: ProviderRequest): Promise<ModelDescripto
   try {
     models = await provider.listModels(effective.request, {
       readSecret: secretRef => Secrets.readSecret(secretRef),
+      updateSecretValue: (secretRef, secret) => Secrets.updateSecretValue(secretRef, secret),
     })
     recordModelList({
       profileId: effective.request.profileId,

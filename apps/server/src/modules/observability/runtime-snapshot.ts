@@ -14,6 +14,8 @@ import * as Pty from '../pty/service'
 import { providerRuntimeHostManager } from '../provider-runtime/host-manager'
 import { getDesktopRuntimeSamples, getQueueHealth } from './service'
 
+const TOP_DRILLDOWN_LIMIT = 10
+
 function toMB(bytes: number): number {
   return Math.round((bytes / 1024 / 1024) * 100) / 100
 }
@@ -51,8 +53,217 @@ function readNestedArray(record: Record<string, unknown>, key: string): unknown[
   return Array.isArray(value) ? value : []
 }
 
+function readRecordString(record: Record<string, unknown> | undefined, key: string): string | null {
+  const value = record?.[key]
+  return typeof value === 'string' ? value : null
+}
+
+function readRecordBoolean(record: Record<string, unknown> | undefined, key: string): boolean | null {
+  const value = record?.[key]
+  return typeof value === 'boolean' ? value : null
+}
+
 function toBytesFromKiB(value: number | null): number | null {
   return value === null ? null : value * 1024
+}
+
+function summarizeRendererDrilldowns(
+  latestDesktopSample: Record<string, unknown> | undefined,
+) {
+  const diagnostics = latestDesktopSample
+    ? readNestedRecord(latestDesktopSample, 'diagnostics')
+    : undefined
+  const renderers = readNestedArray(diagnostics ?? {}, 'renderers')
+  const topChatSessions: Array<Record<string, unknown>> = []
+  const activeStreamingMessages: Array<Record<string, unknown>> = []
+  const rendererWindows: Array<Record<string, unknown>> = []
+
+  for (const item of renderers) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      continue
+    }
+    const rendererEntry = item as Record<string, unknown>
+    const renderer = readNestedRecord(rendererEntry, 'renderer')
+    const chatStore = readNestedRecord(renderer ?? {}, 'chatStore')
+    const location = readNestedRecord(renderer ?? {}, 'location')
+    const electron = readNestedRecord(renderer ?? {}, 'electron')
+    const rendererMemory = readNestedRecord(renderer ?? {}, 'rendererMemory')
+    const currentMemory = readNestedRecord(rendererMemory ?? {}, 'current')
+    const documentMetrics = readNestedRecord(renderer ?? {}, 'document')
+
+    const windowIdentity = {
+      windowId: readRecordNumber(rendererEntry, 'windowId'),
+      title: readRecordString(rendererEntry, 'title'),
+      visible: readRecordBoolean(rendererEntry, 'visible'),
+      webContentsId: readRecordNumber(rendererEntry, 'webContentsId'),
+      rendererProcessId: readRecordNumber(rendererEntry, 'rendererProcessId'),
+      url: readRecordString(rendererEntry, 'url'),
+      locationHash: readRecordString(location, 'hash'),
+      locationPathname: readRecordString(location, 'pathname'),
+      electronSessionId: readRecordString(electron, 'sessionId'),
+      electronSurface: readRecordString(electron, 'surface'),
+      electronIsTearoff: readRecordBoolean(electron, 'isTearoff'),
+      usedJSHeapSize: readRecordNumber(currentMemory, 'usedJSHeapSize'),
+      totalJSHeapSize: readRecordNumber(currentMemory, 'totalJSHeapSize'),
+      nodeCount: readRecordNumber(documentMetrics, 'nodeCount'),
+      messageBubbleCount: readRecordNumber(documentMetrics, 'messageBubbleCount'),
+      toolCallCount: readRecordNumber(documentMetrics, 'toolCallCount'),
+    }
+    rendererWindows.push(windowIdentity)
+
+    for (const session of readNestedArray(chatStore ?? {}, 'sessions')) {
+      if (!session || typeof session !== 'object' || Array.isArray(session)) {
+        continue
+      }
+      const sessionRecord = session as Record<string, unknown>
+      topChatSessions.push({
+        ...windowIdentity,
+        sessionId: readRecordString(sessionRecord, 'sessionId'),
+        hydrated: readRecordBoolean(sessionRecord, 'hydrated'),
+        messageCount: readRecordNumber(sessionRecord, 'messageCount'),
+        partCount: readRecordNumber(sessionRecord, 'partCount'),
+        textPartCount: readRecordNumber(sessionRecord, 'textPartCount'),
+        toolPartCount: readRecordNumber(sessionRecord, 'toolPartCount'),
+        filePartCount: readRecordNumber(sessionRecord, 'filePartCount'),
+        estimatedPartStringChars: readRecordNumber(sessionRecord, 'estimatedPartStringChars'),
+        streamingMessageCount: readRecordNumber(sessionRecord, 'streamingMessageCount'),
+        generatingMessageCount: readRecordNumber(sessionRecord, 'generatingMessageCount'),
+        passiveStreamingMessageCount: readRecordNumber(sessionRecord, 'passiveStreamingMessageCount'),
+        hasLocalDriver: readRecordBoolean(sessionRecord, 'hasLocalDriver'),
+        passiveStatus: readRecordString(sessionRecord, 'passiveStatus'),
+        errorCount: readRecordNumber(sessionRecord, 'errorCount'),
+        activeGoal: readRecordBoolean(sessionRecord, 'activeGoal'),
+        assistantDisplaySplitCount: readRecordNumber(sessionRecord, 'assistantDisplaySplitCount'),
+      })
+    }
+
+    for (const message of readNestedArray(chatStore ?? {}, 'activeStreamingMessages')) {
+      if (!message || typeof message !== 'object' || Array.isArray(message)) {
+        continue
+      }
+      const messageRecord = message as Record<string, unknown>
+      activeStreamingMessages.push({
+        ...windowIdentity,
+        sessionId: readRecordString(messageRecord, 'sessionId'),
+        messageId: readRecordString(messageRecord, 'messageId'),
+        generating: readRecordBoolean(messageRecord, 'generating'),
+        passiveStreaming: readRecordBoolean(messageRecord, 'passiveStreaming'),
+        localDriver: readRecordBoolean(messageRecord, 'localDriver'),
+        role: readRecordString(messageRecord, 'role'),
+        partCount: readRecordNumber(messageRecord, 'partCount'),
+        estimatedPartStringChars: readRecordNumber(messageRecord, 'estimatedPartStringChars'),
+      })
+    }
+  }
+
+  topChatSessions.sort((a, b) =>
+    (readRecordNumber(b, 'estimatedPartStringChars') ?? 0) - (readRecordNumber(a, 'estimatedPartStringChars') ?? 0)
+    || (readRecordNumber(b, 'partCount') ?? 0) - (readRecordNumber(a, 'partCount') ?? 0))
+  activeStreamingMessages.sort((a, b) =>
+    (readRecordNumber(b, 'estimatedPartStringChars') ?? 0) - (readRecordNumber(a, 'estimatedPartStringChars') ?? 0)
+    || (readRecordNumber(b, 'partCount') ?? 0) - (readRecordNumber(a, 'partCount') ?? 0))
+  rendererWindows.sort((a, b) =>
+    (readRecordNumber(b, 'usedJSHeapSize') ?? 0) - (readRecordNumber(a, 'usedJSHeapSize') ?? 0))
+
+  return {
+    rendererWindows: rendererWindows.slice(0, TOP_DRILLDOWN_LIMIT),
+    topChatSessions: topChatSessions.slice(0, TOP_DRILLDOWN_LIMIT),
+    activeStreamingMessages: activeStreamingMessages.slice(0, TOP_DRILLDOWN_LIMIT),
+  }
+}
+
+function summarizeBrowserPanelDrilldowns(
+  latestDesktopSample: Record<string, unknown> | undefined,
+) {
+  const diagnostics = latestDesktopSample
+    ? readNestedRecord(latestDesktopSample, 'diagnostics')
+    : undefined
+  const browser = readNestedRecord(diagnostics ?? {}, 'browser')
+  const panel = readNestedRecord(browser ?? {}, 'panel')
+  const limits = readNestedRecord(browser ?? {}, 'limits')
+  const threads = readNestedArray(browser ?? {}, 'threads')
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+  const runtimes = readNestedArray(browser ?? {}, 'runtimes')
+    .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+
+  const activeThreads = threads
+    .filter(thread =>
+      readRecordBoolean(thread, 'open') === true
+      || readRecordBoolean(thread, 'active') === true
+      || (readRecordNumber(thread, 'tabCount') ?? 0) > 0
+      || (readRecordNumber(thread, 'runtimeCount') ?? 0) > 0)
+    .slice(0, TOP_DRILLDOWN_LIMIT)
+
+  const liveTabs = activeThreads.flatMap((thread) => {
+    const tabs = readNestedArray(thread, 'tabs')
+      .filter((item): item is Record<string, unknown> => Boolean(item) && typeof item === 'object' && !Array.isArray(item))
+    return tabs
+      .filter(tab => readRecordBoolean(tab, 'hasRuntime') === true || readRecordBoolean(tab, 'active') === true)
+      .map(tab => ({
+        threadId: readRecordString(thread, 'threadId'),
+        tabId: readRecordString(tab, 'id'),
+        status: readRecordString(tab, 'status'),
+        active: readRecordBoolean(tab, 'active'),
+        loading: readRecordBoolean(tab, 'loading'),
+        hasRuntime: readRecordBoolean(tab, 'hasRuntime'),
+        webContentsId: readRecordNumber(tab, 'webContentsId'),
+        chromiumProcessId: readRecordNumber(tab, 'chromiumProcessId'),
+        osProcessId: readRecordNumber(tab, 'osProcessId'),
+        url: readRecordString(tab, 'url'),
+        title: readRecordString(tab, 'title'),
+        lastCommittedUrl: readRecordString(tab, 'lastCommittedUrl'),
+        lastError: readRecordString(tab, 'lastError'),
+      }))
+  }).slice(0, TOP_DRILLDOWN_LIMIT)
+
+  return {
+    panel: panel ?? null,
+    limits: limits ?? null,
+    activeThreads,
+    liveTabs,
+    runtimes: runtimes.slice(0, TOP_DRILLDOWN_LIMIT),
+  }
+}
+
+function summarizeReplayDrilldowns(
+  activeRuns: ChatRuntime.ActiveRunSummary[],
+  replayBuffers: ChatRuntime.ActiveRunReplayBufferSummary[],
+) {
+  const runById = new Map(activeRuns.map(run => [run.runId, run]))
+  return replayBuffers
+    .map((buffer) => {
+      const run = runById.get(buffer.runId)
+      return {
+        ...buffer,
+        sessionId: run?.sessionId ?? null,
+        messageId: run?.messageId ?? null,
+        providerTargetKind: run?.providerTargetKind ?? null,
+        providerTargetId: run?.providerTargetId ?? null,
+        modelId: run?.modelId ?? null,
+      }
+    })
+    .sort((a, b) =>
+      b.chunkCount - a.chunkCount
+      || b.maxDeltaChars - a.maxDeltaChars)
+    .slice(0, TOP_DRILLDOWN_LIMIT)
+}
+
+function summarizeProviderHostDrilldowns(
+  hosts: ReturnType<typeof providerRuntimeHostManager.listHosts>,
+) {
+  const now = Date.now()
+  return hosts
+    .map(host => ({
+      ...host,
+      expiresInMs: host.expiresAt - now,
+      idleForMs: now - host.updatedAt,
+    }))
+    .sort((a, b) =>
+      b.refCount - a.refCount
+      || b.pinnedCount - a.pinnedCount
+      || Number(b.hasResource) - Number(a.hasResource)
+      || b.idleForMs - a.idleForMs)
+    .slice(0, TOP_DRILLDOWN_LIMIT)
 }
 
 export async function getRuntimeSnapshot() {
@@ -118,6 +329,7 @@ export async function getRuntimeSnapshot() {
   }
 
   const latestDesktopSample = desktop.latestSamples.at(-1)
+  const latestDesktopSampleRecord = latestDesktopSample as unknown as Record<string, unknown> | undefined
   const appProcessCountByType: Record<string, number> = {}
   const appProcessMemoryBytesByType: Record<string, number> = {}
   for (const metric of latestDesktopSample?.appMetrics ?? []) {
@@ -139,7 +351,8 @@ export async function getRuntimeSnapshot() {
   }
   const rendererMemoryBytesByKind: Record<string, number> = {}
   const rendererChatStoreTotals: Record<string, number> = {}
-  const latestDesktopSampleRecord = latestDesktopSample as unknown as Record<string, unknown> | undefined
+  const rendererDocumentTotals: Record<string, number> = {}
+  const rendererPerformanceTotals: Record<string, number> = {}
   const diagnostics = latestDesktopSampleRecord
     ? readNestedRecord(latestDesktopSampleRecord, 'diagnostics')
     : undefined
@@ -165,6 +378,27 @@ export async function getRuntimeSnapshot() {
     for (const [key, value] of Object.entries(totals ?? {})) {
       if (typeof value === 'number' && Number.isFinite(value)) {
         incrementBucket(rendererChatStoreTotals, key, value)
+      }
+    }
+
+    const documentMetrics = readNestedRecord(renderer, 'document')
+    for (const [key, value] of Object.entries(documentMetrics ?? {})) {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        incrementBucket(rendererDocumentTotals, key, value)
+      }
+    }
+
+    const longTasks = readNestedArray(rendererMemory ?? {}, 'longTasks')
+    const paints = readNestedArray(rendererMemory ?? {}, 'paints')
+    incrementBucket(rendererPerformanceTotals, 'longTaskCount', longTasks.length)
+    incrementBucket(rendererPerformanceTotals, 'paintCount', paints.length)
+    for (const item of longTasks) {
+      if (!item || typeof item !== 'object' || Array.isArray(item)) {
+        continue
+      }
+      const duration = readRecordNumber(item as Record<string, unknown>, 'duration')
+      if (duration !== null) {
+        incrementBucket(rendererPerformanceTotals, 'longTaskDurationMs', duration)
       }
     }
   }
@@ -210,8 +444,21 @@ export async function getRuntimeSnapshot() {
     mainMemoryBytesByKind,
     rendererMemoryBytesByKind,
     rendererChatStoreTotals,
+    rendererDocumentTotals,
+    rendererPerformanceTotals,
   })
   updateObservabilityMetrics(observability)
+
+  const drilldowns = {
+    renderer: summarizeRendererDrilldowns(latestDesktopSampleRecord),
+    browserPanel: summarizeBrowserPanelDrilldowns(latestDesktopSampleRecord),
+    replay: {
+      topRuns: summarizeReplayDrilldowns(activeRuns, replayBuffers),
+    },
+    providerRuntime: {
+      topHosts: summarizeProviderHostDrilldowns(providerHosts),
+    },
+  }
 
   return {
     timestamp: Date.now(),
@@ -235,6 +482,7 @@ export async function getRuntimeSnapshot() {
     pty,
     chronicle,
     desktop,
+    drilldowns,
     observability,
   }
 }

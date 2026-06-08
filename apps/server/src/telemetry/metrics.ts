@@ -57,6 +57,8 @@ export interface DesktopMetricSnapshot {
   mainMemoryBytesByKind: Record<string, number>
   rendererMemoryBytesByKind: Record<string, number>
   rendererChatStoreTotals: Record<string, number>
+  rendererDocumentTotals: Record<string, number>
+  rendererPerformanceTotals: Record<string, number>
 }
 
 let serverProcessSnapshot: ServerProcessMetricSnapshot | null = null
@@ -313,6 +315,24 @@ export function initializeCradleMetrics(): void {
   })
   desktopRendererChatStoreGauge.addCallback((result) => {
     for (const [kind, count] of Object.entries(desktopSnapshot?.rendererChatStoreTotals ?? {})) {
+      result.observe(count, { kind })
+    }
+  })
+
+  const desktopRendererDocumentGauge = meter.createObservableGauge('cradle_desktop_renderer_document_total', {
+    description: 'Latest reported renderer document and DOM telemetry totals grouped by kind.',
+  })
+  desktopRendererDocumentGauge.addCallback((result) => {
+    for (const [kind, count] of Object.entries(desktopSnapshot?.rendererDocumentTotals ?? {})) {
+      result.observe(count, { kind })
+    }
+  })
+
+  const desktopRendererPerformanceGauge = meter.createObservableGauge('cradle_desktop_renderer_performance_total', {
+    description: 'Latest reported renderer performance observer telemetry grouped by kind.',
+  })
+  desktopRendererPerformanceGauge.addCallback((result) => {
+    for (const [kind, count] of Object.entries(desktopSnapshot?.rendererPerformanceTotals ?? {})) {
       result.observe(count, { kind })
     }
   })

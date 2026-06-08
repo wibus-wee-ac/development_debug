@@ -299,6 +299,26 @@ export const ObservabilityModel = {
         diagnostics: t.Optional(t.Record(t.String(), t.Unknown())),
       })),
     }),
+    drilldowns: t.Object({
+      renderer: t.Object({
+        rendererWindows: t.Array(t.Record(t.String(), t.Unknown())),
+        topChatSessions: t.Array(t.Record(t.String(), t.Unknown())),
+        activeStreamingMessages: t.Array(t.Record(t.String(), t.Unknown())),
+      }),
+      browserPanel: t.Object({
+        panel: t.Nullable(t.Record(t.String(), t.Unknown())),
+        limits: t.Nullable(t.Record(t.String(), t.Unknown())),
+        activeThreads: t.Array(t.Record(t.String(), t.Unknown())),
+        liveTabs: t.Array(t.Record(t.String(), t.Unknown())),
+        runtimes: t.Array(t.Record(t.String(), t.Unknown())),
+      }),
+      replay: t.Object({
+        topRuns: t.Array(t.Record(t.String(), t.Unknown())),
+      }),
+      providerRuntime: t.Object({
+        topHosts: t.Array(t.Record(t.String(), t.Unknown())),
+      }),
+    }),
     observability: t.Object({
       queueDepth: t.Number(),
       recentEvents: t.Number(),
