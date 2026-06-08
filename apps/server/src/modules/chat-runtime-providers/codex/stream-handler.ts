@@ -4,18 +4,26 @@
  * Position: Codex provider package owner for single-turn stream notification orchestration.
  */
 
+import type { UIMessageChunk } from 'ai'
+
 import type { ProviderThreadEvent } from '../../chat-runtime/runtime-provider-types'
 import type { CodexAppServerMessage } from './app-server-client'
+import type { CodexAppServerMapperState } from './event-to-chunk-mapper'
 import {
   closeOpenCodexAppServerReasoning,
   closeOpenCodexAppServerText,
   createCodexAppServerMapperState,
   mapCodexAppServerNotificationToChunks,
 } from './event-to-chunk-mapper'
+import type { CodexStreamDiagnostics } from './stream-diagnostics'
 import {
+  collectCodexStreamDiagnostics,
+  createCodexAppServerError,
+  createCodexTurnFailureError,
   getNotificationTurnId,
   getThreadId,
   getTurnId,
+  isRetryableCodexAppServerError,
 } from './stream-diagnostics'
 
 const ACTIVE_GOAL_CONTINUATION_DELAY_MS = 250
@@ -30,8 +38,22 @@ interface CodexGoalLike {
   status?: string | null
 }
 
+export interface CodexMappedTurnEvent {
+  notification: CodexAppServerMessage
+  chunks: UIMessageChunk[]
+  retryableError: boolean
+}
+
 interface ThreadStatusChangedNotificationParams {
   status?: { type?: string }
+}
+
+interface TurnCompletedNotificationParams {
+  turn?: {
+    id?: string
+    status?: string
+    error?: { message?: string } | null
+  }
 }
 
 interface CodexGoalUpdatedNotificationParams {
@@ -148,6 +170,65 @@ export async function* readTurnNotifications(
       }
     }
   }
+}
+
+export async function* streamCodexMappedTurnEvents(input: {
+  client: CodexAppServerClientLike
+  threadId: string
+  turnId: string | null
+  signal: AbortSignal
+  mapperState: CodexAppServerMapperState
+  diagnostics: CodexStreamDiagnostics
+  readGoal: () => CodexGoalLike | null | undefined
+  onProviderNotification?: (notification: CodexAppServerMessage) => void
+}): AsyncGenerator<CodexMappedTurnEvent, void, void> {
+  for await (const notification of readTurnNotifications(
+    input.client,
+    input.threadId,
+    input.turnId,
+    input.signal,
+    input.readGoal,
+    input.onProviderNotification,
+  )) {
+    if (input.signal.aborted) {
+      break
+    }
+
+    collectCodexStreamDiagnostics(input.diagnostics, notification)
+    const chunks = mapCodexAppServerNotificationToChunks(notification, input.mapperState)
+    input.diagnostics.mappedEvents += chunks.length
+
+    if (notification.method === 'turn/completed') {
+      const turn = (notification.params as TurnCompletedNotificationParams | undefined)?.turn
+      if (turn?.status === 'failed') {
+        throw createCodexTurnFailureError(turn.error?.message, input.diagnostics, notification)
+      }
+    }
+
+    if (notification.method === 'error') {
+      if (isRetryableCodexAppServerError(notification)) {
+        yield { notification, chunks, retryableError: true }
+        continue
+      }
+      throw createCodexAppServerError(notification, input.diagnostics)
+    }
+
+    yield { notification, chunks, retryableError: false }
+  }
+}
+
+export function closeCodexMappedTurnChunks(
+  mapperState: CodexAppServerMapperState,
+  diagnostics?: CodexStreamDiagnostics,
+): UIMessageChunk[] {
+  const chunks = [
+    ...closeOpenCodexAppServerReasoning(mapperState),
+    ...closeOpenCodexAppServerText(mapperState),
+  ]
+  if (diagnostics) {
+    diagnostics.mappedEvents += chunks.length
+  }
+  return chunks
 }
 
 export async function continueActiveGoal(

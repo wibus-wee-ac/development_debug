@@ -30,6 +30,8 @@ import type {
   RuntimeUsageUiSlotState,
 } from '../../chat-runtime/runtime-provider-types'
 import type { CodexAppServerCapabilityManifest } from './app-server-capabilities'
+import type { Thread } from './app-server-protocol/v2/Thread'
+import type { ThreadListResponse } from './app-server-protocol/v2/ThreadListResponse'
 import type { ThreadReadResponse } from './app-server-protocol/v2/ThreadReadResponse'
 import type { ThreadTurnsListResponse } from './app-server-protocol/v2/ThreadTurnsListResponse'
 import type { Turn } from './app-server-protocol/v2/Turn'
@@ -67,6 +69,7 @@ import type {
 } from './types'
 
 const CODEX_CREW_TURNS_LIST_LIMIT = 50
+const CODEX_CREW_THREAD_LIST_PAGE_SIZE = 100
 
 interface CodexUiSlotDefinition extends Omit<RuntimeUiSlot, 'surfaces'> {
   surfaces?: RuntimeUiSlot['surfaces']
@@ -889,19 +892,64 @@ async function readCodexCrewState(
   snapshot: CodexProviderSnapshot,
   collaborationModes: CodexCollaborationModeListResponse | null,
 ): Promise<RuntimeCrewUiSlotState | null> {
-  try {
-    const turns = await listRecentCodexCrewTurns(client, parentThreadId)
-    const calls = mergeCodexCrewCalls(
-      projectCodexCrewCallsFromTurns(parentThreadId, turns),
-      projectCodexCrewCallsFromSnapshot(snapshot),
-    )
-    const threadMetadata = await readCrewThreadMetadata(client, readCrewReceiverThreadIdsFromCalls(parentThreadId, calls))
-    return projectCodexCrewStateFromCalls(parentThreadId, calls, collaborationModes, threadMetadata)
-  }
-  catch {
-    const threadMetadata = await readCrewThreadMetadata(client, readCrewReceiverThreadIdsFromSnapshot(parentThreadId, snapshot))
-    return projectCodexCrewStateFromSnapshot(parentThreadId, snapshot, collaborationModes, threadMetadata)
-  }
+  const listedThreads = await listCodexCrewThreads(client, parentThreadId).catch(() => [])
+  const turns = await listRecentCodexCrewTurns(client, parentThreadId).catch(() => [])
+  const calls = mergeCodexCrewCalls(
+    projectCodexCrewCallsFromTurns(parentThreadId, turns),
+    projectCodexCrewCallsFromSnapshot(snapshot),
+  )
+  const listedMetadata = new Map(listedThreads.flatMap((thread) => {
+    const metadata = readCodexThreadMetadataFromThread(thread.id, thread)
+    return metadata ? [[metadata.id, metadata] as const] : []
+  }))
+  const missingCallThreadIds = readCrewReceiverThreadIdsFromCalls(parentThreadId, calls)
+    .filter(threadId => !listedMetadata.has(threadId))
+  const snapshotThreadIds = readCrewReceiverThreadIdsFromSnapshot(parentThreadId, snapshot)
+    .filter(threadId => !listedMetadata.has(threadId))
+  const fetchedMetadata = await readCrewThreadMetadata(client, uniqueStrings([...missingCallThreadIds, ...snapshotThreadIds]))
+  const threadMetadata = new Map([...listedMetadata, ...fetchedMetadata])
+  const listedAgents = listedThreads.map(thread => readCrewAgentFromThread(thread, threadMetadata))
+  return projectCodexCrewStateFromCalls(parentThreadId, calls, collaborationModes, threadMetadata, listedAgents)
+}
+
+async function listCodexCrewThreads(
+  client: CodexAppServerClientLike,
+  parentThreadId: string,
+): Promise<Thread[]> {
+  const parent = await client.request('thread/read', {
+    threadId: parentThreadId,
+    includeTurns: false,
+  }) as ThreadReadResponse
+  const threads: Thread[] = []
+  const seenThreadIds = new Set<string>()
+  const seenCursors = new Set<string>()
+  let cursor: string | null = null
+
+  do {
+    const response = await client.request('thread/list', {
+      cursor,
+      limit: CODEX_CREW_THREAD_LIST_PAGE_SIZE,
+      sortKey: 'updated_at',
+      sortDirection: 'desc',
+      sourceKinds: ['subAgentThreadSpawn'],
+      archived: false,
+    }) as ThreadListResponse
+    for (const thread of response.data ?? []) {
+      if (!codexThreadBelongsToRuntimeParent(parent.thread, thread) || seenThreadIds.has(thread.id)) {
+        continue
+      }
+      seenThreadIds.add(thread.id)
+      threads.push(thread)
+    }
+    const nextCursor = response.nextCursor ?? null
+    if (!nextCursor || seenCursors.has(nextCursor)) {
+      break
+    }
+    seenCursors.add(nextCursor)
+    cursor = nextCursor
+  } while (cursor)
+
+  return threads
 }
 
 async function listRecentCodexCrewTurns(
@@ -981,6 +1029,10 @@ function readCrewReceiverThreadIdsFromCalls(parentThreadId: string, calls: Runti
 
 function readCodexThreadMetadata(fallbackThreadId: string, response: ThreadReadResponse): CodexThreadMetadata | null {
   const thread = response.thread as Partial<ThreadReadResponse['thread']> | undefined
+  return readCodexThreadMetadataFromThread(fallbackThreadId, thread)
+}
+
+function readCodexThreadMetadataFromThread(fallbackThreadId: string, thread: Partial<Thread> | undefined): CodexThreadMetadata | null {
   if (!thread) {
     return null
   }
@@ -992,6 +1044,23 @@ function readCodexThreadMetadata(fallbackThreadId: string, response: ThreadReadR
     modelProvider: typeof thread.modelProvider === 'string' ? thread.modelProvider : null,
     agentNickname: typeof thread.agentNickname === 'string' ? thread.agentNickname : null,
     agentRole: typeof thread.agentRole === 'string' ? thread.agentRole : null,
+  }
+}
+
+function readCrewAgentFromThread(
+  thread: Thread,
+  threadMetadata: Map<string, CodexThreadMetadata>,
+): RuntimeCrewAgentItem {
+  const metadata = threadMetadata.get(thread.id)
+  return {
+    threadId: thread.id,
+    status: readThreadStatusType(thread.status),
+    message: null,
+    name: metadata?.name ?? null,
+    preview: metadata?.preview ?? null,
+    modelProvider: metadata?.modelProvider ?? null,
+    agentNickname: metadata?.agentNickname ?? null,
+    agentRole: metadata?.agentRole ?? null,
   }
 }
 
@@ -1036,7 +1105,7 @@ function projectCodexCrewStateFromSnapshot(
   const activity = snapshot.codex?.toolActivity
   const calls = projectCodexCrewCallsFromSnapshot(snapshot)
   const recentItems = (activity?.items ?? []).filter(item => item.type === 'collabAgentToolCall')
-  return projectCodexCrewStateFromCalls(threadId, calls, collaborationModes, threadMetadata, activity?.updatedAt ?? 0, recentItems)
+  return projectCodexCrewStateFromCalls(threadId, calls, collaborationModes, threadMetadata, [], activity?.updatedAt ?? 0, recentItems)
 }
 
 function projectCodexCrewCallsFromSnapshot(snapshot: CodexProviderSnapshot): RuntimeCrewCallItem[] {
@@ -1073,6 +1142,7 @@ function projectCodexCrewStateFromCalls(
   calls: RuntimeCrewCallItem[],
   collaborationModes: CodexCollaborationModeListResponse | null,
   threadMetadata: Map<string, CodexThreadMetadata>,
+  listedAgents: RuntimeCrewAgentItem[] = [],
   fallbackUpdatedAt = 0,
   recentItems = calls.map(call => ({
     id: call.id,
@@ -1090,10 +1160,10 @@ function projectCodexCrewStateFromCalls(
       call.agents.map(agent => [agent.threadId, { status: agent.status, message: agent.message }]),
     ), threadMetadata),
   }))
-  if (calls.length === 0 && modes.length === 0) {
+  if (calls.length === 0 && modes.length === 0 && listedAgents.length === 0) {
     return null
   }
-  const agents = hydratedCalls.flatMap(call => call.agents)
+  const agents = mergeCrewAgents([...listedAgents, ...hydratedCalls.flatMap(call => call.agents)])
   return {
     kind: 'crew',
     slotId: 'codex:crew',
@@ -1102,6 +1172,7 @@ function projectCodexCrewStateFromCalls(
     completedCount: agents.filter(agent => isCompletedCrewAgentStatus(agent.status)).length,
     failedCount: agents.filter(agent => isFailedCrewAgentStatus(agent.status)).length,
     recentItems: recentItems.slice(0, 12),
+    agents,
     collaborationModeCount: modes.length,
     collaborationModes: modes,
     calls: hydratedCalls,
@@ -1137,7 +1208,7 @@ function normalizeCollabToolCallStatus(status: unknown): RuntimeToolActivityStat
 }
 
 function isActiveCrewAgentStatus(status: string | null): boolean {
-  return status === 'pendingInit' || status === 'running'
+  return status === 'pendingInit' || status === 'running' || status === 'active'
 }
 
 function isCompletedCrewAgentStatus(status: string | null): boolean {
@@ -1170,6 +1241,67 @@ function readCrewAgents(
       agentRole: metadata?.agentRole ?? null,
     }
   })
+}
+
+function mergeCrewAgents(agents: RuntimeCrewAgentItem[]): RuntimeCrewAgentItem[] {
+  const byThreadId = new Map<string, RuntimeCrewAgentItem>()
+  for (const agent of agents) {
+    const existing = byThreadId.get(agent.threadId)
+    byThreadId.set(agent.threadId, existing ? mergeCrewAgent(existing, agent) : agent)
+  }
+  return Array.from(byThreadId.values())
+}
+
+function mergeCrewAgent(left: RuntimeCrewAgentItem, right: RuntimeCrewAgentItem): RuntimeCrewAgentItem {
+  return {
+    threadId: right.threadId,
+    status: right.status ?? left.status,
+    message: right.message ?? left.message,
+    name: right.name ?? left.name,
+    preview: right.preview ?? left.preview,
+    modelProvider: right.modelProvider ?? left.modelProvider,
+    agentNickname: right.agentNickname ?? left.agentNickname,
+    agentRole: right.agentRole ?? left.agentRole,
+  }
+}
+
+function uniqueStrings(values: string[]): string[] {
+  return Array.from(new Set(values))
+}
+
+function readThreadStatusType(status: Thread['status']): string {
+  return typeof status === 'object' && status !== null && 'type' in status
+    ? String(status.type)
+    : 'unknown'
+}
+
+function codexThreadBelongsToRuntimeParent(parentThread: Thread, thread: Thread): boolean {
+  if (thread.parentThreadId === parentThread.id) {
+    return true
+  }
+  if (parentThread.sessionId && thread.sessionId === parentThread.sessionId) {
+    return true
+  }
+  if (thread.forkedFromId === parentThread.id) {
+    return true
+  }
+  return readCodexThreadSpawnParentThreadId(thread.source) === parentThread.id
+}
+
+function readCodexThreadSpawnParentThreadId(source: Thread['source']): string | null {
+  if (!source || typeof source !== 'object' || !('subAgent' in source)) {
+    return null
+  }
+  const subAgentSource = source.subAgent
+  if (!subAgentSource || typeof subAgentSource !== 'object' || !('thread_spawn' in subAgentSource)) {
+    return null
+  }
+  const spawn = subAgentSource.thread_spawn
+  if (!spawn || typeof spawn !== 'object') {
+    return null
+  }
+  const parentThreadId = (spawn as { parent_thread_id?: unknown }).parent_thread_id
+  return typeof parentThreadId === 'string' && parentThreadId.length > 0 ? parentThreadId : null
 }
 
 function projectCodexUsageState(

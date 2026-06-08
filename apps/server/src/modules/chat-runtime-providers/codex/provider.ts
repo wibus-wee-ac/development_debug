@@ -7,8 +7,8 @@ import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
 import type { UIMessage, UIMessageChunk } from 'ai'
 
-import { aiTelemetryEnabled } from '../../../telemetry/config'
 import { getRegisteredMcpServers } from '../../../plugins'
+import { aiTelemetryEnabled } from '../../../telemetry/config'
 import { isCodexGoalContinuationMessage } from '../../chat-runtime/message-snapshots'
 import type {
   CancelTurnInput,
@@ -39,8 +39,8 @@ import type {
   ProviderThreadTurnsResult,
   QuickQuestionInput,
   ResumeChatSessionInput,
-  RuntimePresentationCapabilities,
   RuntimeContextUsage,
+  RuntimePresentationCapabilities,
   RuntimeSession,
   RuntimeUiSlotState,
   RuntimeUserInputQuestion,
@@ -84,19 +84,16 @@ import type { ThreadSourceKind } from './app-server-protocol/v2/ThreadSourceKind
 import type { ThreadTurnsListResponse } from './app-server-protocol/v2/ThreadTurnsListResponse'
 import type { Turn } from './app-server-protocol/v2/Turn'
 import type { UserInput } from './app-server-protocol/v2/UserInput'
-import type { CodexAppServerAuthResolution, CodexChatgptAuthCredential } from './chatgpt-auth'
+import type { CodexAppServerAuthCarrier, CodexAppServerAuthResolution, CodexChatgptAuthCredential } from './chatgpt-auth'
 import {
   buildCodexChatgptAuthLoginParams,
   ensureCodexChatgptAuthAccessToken,
   resolveCodexAppServerAuth,
 } from './chatgpt-auth'
-import {
-  closeOpenCodexAppServerReasoning,
-  closeOpenCodexAppServerText,
-  createCodexAppServerMapperState,
-  mapCodexAppServerNotificationToChunks,
-} from './event-to-chunk-mapper'
 import { projectCodexEstimatedContextUsage } from './context-usage-projector'
+import {
+  createCodexAppServerMapperState,
+} from './event-to-chunk-mapper'
 import {
   describeCodexUserInput,
   isCodexCompactCommand,
@@ -127,15 +124,11 @@ import {
 } from './state-projector'
 import {
   CodexProviderError,
-  collectCodexStreamDiagnostics,
-  createCodexAppServerError,
   createCodexEmptyStreamError,
   createCodexStreamDiagnostics,
-  createCodexTurnFailureError,
   getNotificationTurnId,
   getThreadId,
   getTurnId,
-  isRetryableCodexAppServerError,
   normalizeProviderTitle,
   readCodexThreadDisplayTitle,
   readLatestThreadTitle,
@@ -143,10 +136,11 @@ import {
   validateCodexStreamOutput,
 } from './stream-diagnostics'
 import {
+  closeCodexMappedTurnChunks,
   continueActiveGoal,
   isCompletedGoalUpdate,
   publishProviderThreadEvent,
-  readTurnNotifications,
+  streamCodexMappedTurnEvents,
 } from './stream-handler'
 import type { CodexAppServerItem } from './tools/mapper'
 import { buildCodexToolInput, buildCodexToolOutput, readCodexToolError, readCodexToolName } from './tools/mapper'
@@ -175,7 +169,6 @@ import type {
   ThreadGoalGetResponse,
   ThreadResponse,
   ThreadTokenUsageUpdatedNotificationParams,
-  TurnNotificationParams,
   TurnResponse,
 } from './types'
 import { projectCodexUiSlotStates } from './ui-slot-projector'
@@ -190,7 +183,6 @@ const CODEX_SIDE_BOUNDARY_PROMPT = [
 ].join('\n')
 const CODEX_SHELL_COMMAND_RESULT_TIMEOUT_MS = 60_000
 const CODEX_EPHEMERAL_REQUEST_TIMEOUT_MS = 20_000
-const CODEX_QUICK_QUESTION_TIMEOUT_MS = 60_000
 const CODEX_THREAD_TITLE_MAX_LENGTH = 36
 const CODEX_THREAD_TITLE_TIMEOUT_MS = 20_000
 type CodexTitleGenerationThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
@@ -351,7 +343,7 @@ export class CodexProvider implements ChatRuntime {
     }
 
     const config = readTrustedCodexConfig(input.profile.configJson)
-    const auth = resolveCodexAppServerAuth(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
     if (config.baseUrl && !auth.apiKey) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }
@@ -447,7 +439,7 @@ export class CodexProvider implements ChatRuntime {
 
   async* quickQuestion(input: QuickQuestionInput): AsyncGenerator<UIMessageChunk, void, void> {
     const config = readTrustedCodexConfig(input.profile.configJson)
-    const auth = resolveCodexAppServerAuth(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
 
     if (config.baseUrl && !auth.apiKey) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
@@ -491,12 +483,7 @@ export class CodexProvider implements ChatRuntime {
     })
     const client = hostLease.resource.client
     const abortController = new AbortController()
-    let quickQuestionTimedOut = false
-    let lastCodexErrorDetail: string | null = null
-    const quickQuestionTimeout = setTimeout(() => {
-      quickQuestionTimedOut = true
-      abortController.abort()
-    }, CODEX_QUICK_QUESTION_TIMEOUT_MS)
+    const diagnostics = createCodexStreamDiagnostics()
 
     try {
       // Create ephemeral thread for this quick question
@@ -549,54 +536,25 @@ export class CodexProvider implements ChatRuntime {
       const textItemId = randomUUID()
       const mapperState = createCodexAppServerMapperState(textItemId)
 
-      // Stream response chunks
-      for await (const notification of readTurnNotifications(
+      for await (const event of streamCodexMappedTurnEvents({
         client,
         threadId,
         turnId,
-        abortController.signal,
-        () => null,
-        () => {},
-      )) {
-        if (abortController.signal.aborted) {
-          break
-        }
-
-        if (notification.method === 'error') {
-          lastCodexErrorDetail = readCodexAppServerErrorDetail(notification)
-          if (!isRetryableCodexAppServerError(notification)) {
-            throw codexRequestError('quickQuestion', lastCodexErrorDetail)
-          }
-        }
-
-        const chunks = mapCodexAppServerNotificationToChunks(notification, mapperState)
-        for (const chunk of chunks) {
+        signal: abortController.signal,
+        mapperState,
+        diagnostics,
+        readGoal: () => null,
+      })) {
+        for (const chunk of event.chunks) {
           yield chunk
         }
-
-        if (notification.method === 'turn/completed') {
-          break
-        }
       }
 
-      if (quickQuestionTimedOut) {
-        const detail = lastCodexErrorDetail
-          ? `timed out after ${CODEX_QUICK_QUESTION_TIMEOUT_MS}ms; last Codex error: ${lastCodexErrorDetail}`
-          : `timed out after ${CODEX_QUICK_QUESTION_TIMEOUT_MS}ms`
-        throw codexRequestError('quickQuestion', detail)
-      }
-
-      // Emit final chunks
-      const finalChunks = [
-        ...closeOpenCodexAppServerText(mapperState),
-        ...closeOpenCodexAppServerReasoning(mapperState),
-      ]
-      for (const chunk of finalChunks) {
+      for (const chunk of closeCodexMappedTurnChunks(mapperState, diagnostics)) {
         yield chunk
       }
     }
     finally {
-      clearTimeout(quickQuestionTimeout)
       abortController.abort()
       hostLease.release()
     }
@@ -638,7 +596,7 @@ export class CodexProvider implements ChatRuntime {
 
   async getUiSlotStates(input: GetUiSlotStatesInput): Promise<RuntimeUiSlotState[]> {
     const config = readTrustedCodexConfig(input.profile.configJson)
-    const auth = resolveCodexAppServerAuth(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
     if (config.baseUrl && !auth.apiKey) {
       return []
     }
@@ -853,7 +811,7 @@ export class CodexProvider implements ChatRuntime {
     workspacePath: string
   }> {
     const config = readTrustedCodexConfig(input.profile.configJson)
-    const auth = resolveCodexAppServerAuth(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
     if (config.baseUrl && !auth.apiKey) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }
@@ -902,7 +860,7 @@ export class CodexProvider implements ChatRuntime {
     }
 
     const config = readTrustedCodexConfig(input.profile.configJson)
-    const auth = resolveCodexAppServerAuth(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
     if (config.baseUrl && !auth.apiKey) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }
@@ -978,7 +936,7 @@ export class CodexProvider implements ChatRuntime {
 
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const config = readTrustedCodexConfig(input.profile.configJson)
-    const auth = resolveCodexAppServerAuth(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
     const effectiveModel = input.modelId ?? config.model
     const userInput = projectCodexUserInput(input.message, 'Codex provider')
     const userPromptText = extractUiMessageText(input.message).trim()
@@ -1221,21 +1179,18 @@ export class CodexProvider implements ChatRuntime {
         this.activeTurns.set(sessionId, activeEntry)
       }
 
-      for await (const notification of readTurnNotifications(
+      for await (const event of streamCodexMappedTurnEvents({
         client,
         threadId,
         turnId,
-        abortController.signal,
-        () => readCodexProviderSnapshot(input.runtimeSession.providerStateSnapshot).codex?.goal ?? null,
-        providerNotification => publishProviderThreadEvent(input.onProviderThreadEvent, providerNotification, providerThreadMapperStates),
-      )) {
-        if (abortController.signal.aborted) {
-          break
-        }
-        collectCodexStreamDiagnostics(diagnostics, notification)
-        const chunks = mapCodexAppServerNotificationToChunks(notification, mapperState)
-        diagnostics.mappedEvents += chunks.length
-        for (const chunk of chunks) {
+        signal: abortController.signal,
+        mapperState,
+        diagnostics,
+        readGoal: () => readCodexProviderSnapshot(input.runtimeSession.providerStateSnapshot).codex?.goal ?? null,
+        onProviderNotification: providerNotification => publishProviderThreadEvent(input.onProviderThreadEvent, providerNotification, providerThreadMapperStates),
+      })) {
+        const { notification } = event
+        for (const chunk of event.chunks) {
           if (generation && chunk.type === 'text-delta' && 'delta' in chunk) {
             outputTextCollector.append((chunk as { delta: string }).delta)
           }
@@ -1256,18 +1211,6 @@ export class CodexProvider implements ChatRuntime {
         if (isCompletedGoalUpdate(notification)) {
           await client.request('thread/goal/clear', { threadId }).catch(() => undefined)
         }
-        if (notification.method === 'turn/completed') {
-          const turn = (notification.params as TurnNotificationParams | undefined)?.turn
-          if (turn?.status === 'failed') {
-            throw createCodexTurnFailureError(turn.error?.message, diagnostics, notification)
-          }
-        }
-        if (notification.method === 'error') {
-          if (isRetryableCodexAppServerError(notification)) {
-            continue
-          }
-          throw createCodexAppServerError(notification, diagnostics)
-        }
       }
       const finalTitle = await readLatestThreadTitle(client, threadId)
       if (finalTitle) {
@@ -1277,12 +1220,7 @@ export class CodexProvider implements ChatRuntime {
         await hydrateCodexNativeHistory(client, input.runtimeSession, threadId)
       }
 
-      for (const chunk of closeOpenCodexAppServerReasoning(mapperState)) {
-        diagnostics.mappedEvents += 1
-        yield chunk
-      }
-      for (const chunk of closeOpenCodexAppServerText(mapperState)) {
-        diagnostics.mappedEvents += 1
+      for (const chunk of closeCodexMappedTurnChunks(mapperState, diagnostics)) {
         yield chunk
       }
 
@@ -1457,6 +1395,13 @@ export class CodexProvider implements ChatRuntime {
     })
   }
 
+  private resolveAppServerAuth(
+    profile: CodexAppServerAuthCarrier,
+    configApiKey: string | undefined,
+  ): CodexAppServerAuthResolution {
+    return resolveCodexAppServerAuth(profile, configApiKey, 'OPENAI_API_KEY', this.deps)
+  }
+
   private async acquireCodexAppServerHost(input: {
     providerTargetId: string
     scopeId: string
@@ -1543,7 +1488,7 @@ export class CodexProvider implements ChatRuntime {
     const config = readTrustedCodexConfig(profile.configJson)
     const model = explicitModelId ?? config.model ?? null
     return {
-      auth: resolveCodexAppServerAuth(profile, config.apiKey, 'OPENAI_API_KEY', this.deps),
+      auth: this.resolveAppServerAuth(profile, config.apiKey),
       codexConfig: buildCodexConfig(config, input.workspacePath, this.resolveSkillPaths, null, model),
       model,
       fallbackModel: config.model ?? input.fallbackModel,
@@ -1631,7 +1576,7 @@ export class CodexProvider implements ChatRuntime {
 
   async generateSessionTitle(input: GenerateSessionTitleInput): Promise<string | null> {
     const config = readTrustedCodexConfig(input.profile.configJson)
-    const auth = resolveCodexAppServerAuth(input.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
     if (config.baseUrl && !auth.apiKey) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }

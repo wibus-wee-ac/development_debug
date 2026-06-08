@@ -517,12 +517,14 @@ function createFakeChatgptJwt(input: {
   accountId: string
   planType?: string
   email?: string
+  exp?: number
 }): string {
   const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
   return [
     encode({ alg: 'none', typ: 'JWT' }),
     encode({
       'email': input.email ?? 'user@example.com',
+      ...(input.exp !== undefined ? { exp: input.exp } : {}),
       'https://api.openai.com/auth': {
         chatgpt_account_id: input.accountId,
         chatgpt_plan_type: input.planType ?? 'plus',
@@ -2971,7 +2973,79 @@ describe('codexProvider app-server integration', () => {
     })
   })
 
-  it('reports non-retryable quick-question Codex errors without waiting for the total timeout', async () => {
+  it('keeps quick-question streaming when Codex app-server reports a retryable transport error', async () => {
+    vi.useFakeTimers()
+    try {
+      const client = new FakeCodexAppServerClient({})
+      client.autoCompleteGeneratedTitle = false
+      const provider = createProvider(client)
+      const stream = provider.quickQuestion({
+        runtimeSession: createRuntimeSession('codex-thread-1'),
+        profile: createProfile(),
+        question: 'Can you recover after reconnect?',
+        transcript: [],
+        workspaceId: 'workspace-1',
+        workspacePath: '/tmp/cradle-workspace',
+      })
+
+      const firstChunkPromise = stream.next()
+      await vi.waitFor(() => {
+        expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+      })
+
+      client.pushNotification({
+        method: 'error',
+        params: {
+          threadId: 'codex-title-thread-1',
+          turnId: 'codex-title-turn-1',
+          error: {
+            message: 'Reconnecting... 1/5',
+            codexErrorInfo: null,
+            additionalDetails: 'stream disconnected before completion: stream closed before response.completed',
+          },
+          willRetry: true,
+        },
+      })
+      await vi.advanceTimersByTimeAsync(60_001)
+      client.pushNotification({
+        method: 'item/agentMessage/delta',
+        params: {
+          threadId: 'codex-title-thread-1',
+          turnId: 'codex-title-turn-1',
+          itemId: 'quick-answer',
+          delta: 'Recovered',
+        },
+      })
+
+      await expect(firstChunkPromise).resolves.toEqual({
+        done: false,
+        value: { type: 'text-start', id: 'quick-answer' },
+      })
+
+      client.pushNotification({
+        method: 'turn/completed',
+        params: {
+          threadId: 'codex-title-thread-1',
+          turn: { id: 'codex-title-turn-1', status: 'completed' },
+        },
+      })
+
+      const chunks: UIMessageChunk[] = []
+      for await (const chunk of stream) {
+        chunks.push(chunk)
+      }
+
+      expect(chunks).toEqual([
+        { type: 'text-delta', id: 'quick-answer', delta: 'Recovered' },
+        { type: 'text-end', id: 'quick-answer' },
+      ])
+    }
+    finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('reports non-retryable quick-question Codex errors with shared turn-stream diagnostics', async () => {
     const client = new FakeCodexAppServerClient({})
     client.autoCompleteGeneratedTitle = false
     const provider = createProvider(client)
@@ -2998,10 +3072,18 @@ describe('codexProvider app-server integration', () => {
     })
 
     await expect(stream.next()).rejects.toMatchObject({
-      providerError: expect.objectContaining({
-        _tag: 'request_failed',
-        method: 'quickQuestion',
-        detail: 'exceeded retry limit, last status: 429 Too Many Requests Concurrency limit exceeded for user, please retry later',
+      name: 'CodexProviderError',
+      code: 'TURN_STREAM_FAILED',
+      data: expect.objectContaining({
+        diagnostics: expect.objectContaining({
+          totalEvents: 1,
+          mappedEvents: 0,
+          retryableErrorEvents: 0,
+          eventTypeCounts: { error: 1 },
+        }),
+        notification: expect.objectContaining({
+          method: 'error',
+        }),
       }),
     })
   })
@@ -3878,6 +3960,95 @@ describe('codexProvider app-server integration', () => {
       accessToken: refreshedAccessToken,
       chatgptAccountId: 'workspace-1',
       chatgptPlanType: 'pro',
+    })
+    expect(updateSecret).toHaveBeenCalledWith('credential-chatgpt', expect.stringContaining('"refreshToken":"refresh-token-2"'))
+
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    await drainStream(stream)
+  })
+
+  it('refreshes expired ChatGPT access tokens before logging into Codex app-server', async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000)
+    const accessToken = createFakeChatgptJwt({
+      accountId: 'workspace-1',
+      planType: 'plus',
+      exp: nowSeconds - 60,
+    })
+    const refreshedAccessToken = createFakeChatgptJwt({
+      accountId: 'workspace-1',
+      planType: 'pro',
+      exp: nowSeconds + 3600,
+    })
+    const updateSecret = vi.fn()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      access_token: refreshedAccessToken,
+      refresh_token: 'refresh-token-2',
+    }), {
+      status: 200,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+
+    const client = new FakeCodexAppServerClient({})
+    const provider = new CodexProvider({
+      readSecret: () => JSON.stringify({
+        kind: 'chatgpt-auth',
+        accessToken,
+        refreshToken: 'refresh-token-1',
+        chatgptAccountId: 'workspace-1',
+        chatgptPlanType: 'plus',
+      }),
+      updateSecret,
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        client.options = options
+        return client
+      },
+    })
+    const stream = provider.streamTurn({
+      runId: 'run-codex-chatgpt-proactive-refresh',
+      runtimeSession: createRuntimeSession(),
+      profile: {
+        ...createProfile({ apiKey: undefined, baseUrl: undefined }),
+        credentialRef: 'credential-chatgpt',
+      },
+      message: createUserMessage('Use ChatGPT auth'),
+      workspaceId: 'workspace-1',
+    })
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method).slice(0, 3)).toEqual([
+        'account/login/start',
+        'thread/start',
+        'turn/start',
+      ])
+    })
+
+    expect(client.requests[0]).toEqual({
+      method: 'account/login/start',
+      params: {
+        type: 'chatgptAuthTokens',
+        accessToken: refreshedAccessToken,
+        chatgptAccountId: 'workspace-1',
+        chatgptPlanType: 'pro',
+      },
     })
     expect(updateSecret).toHaveBeenCalledWith('credential-chatgpt', expect.stringContaining('"refreshToken":"refresh-token-2"'))
 
@@ -5242,7 +5413,7 @@ describe('codexProvider app-server integration', () => {
     const userInputResolver: {
       resolve: ((resolution: RuntimeUserInputResolution) => void) | null
     } = { resolve: null }
-    const requestUserInput = vi.fn((request: RuntimeUserInputRequest) => {
+    const requestUserInput = vi.fn((_request: RuntimeUserInputRequest) => {
       return new Promise<RuntimeUserInputResolution>((resolve) => {
         userInputResolver.resolve = resolve
       })
@@ -5372,7 +5543,7 @@ describe('codexProvider app-server integration', () => {
     const userInputResolver: {
       resolve: ((resolution: RuntimeUserInputResolution) => void) | null
     } = { resolve: null }
-    const requestUserInput = vi.fn((request: RuntimeUserInputRequest) => {
+    const requestUserInput = vi.fn((_request: RuntimeUserInputRequest) => {
       return new Promise<RuntimeUserInputResolution>((resolve) => {
         userInputResolver.resolve = resolve
       })

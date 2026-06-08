@@ -7,6 +7,7 @@ import type { LoginAccountParams } from './app-server-protocol/v2/LoginAccountPa
 const CODEX_CHATGPT_AUTH_KIND = 'chatgpt-auth'
 const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const OPENAI_OAUTH_TOKEN_URL = 'https://auth.openai.com/oauth/token'
+const ACCESS_TOKEN_REFRESH_SKEW_SECONDS = 5 * 60
 
 export interface CodexChatgptAuthCredential {
   credentialRef: string
@@ -42,6 +43,7 @@ interface OAuthTokenResponse {
 
 interface ParsedJwtClaims {
   'email'?: string
+  'exp'?: number
   'chatgpt_account_id'?: string
   'chatgpt_plan_type'?: string
   'https://api.openai.com/auth'?: {
@@ -147,7 +149,7 @@ export async function ensureCodexChatgptAuthAccessToken(
   credential: CodexChatgptAuthCredential,
   deps: CodexChatgptAuthDeps,
 ): Promise<CodexChatgptAuthCredential> {
-  if (credential.accessToken) {
+  if (credential.accessToken && !isAccessTokenExpiring(credential.accessToken)) {
     return credential
   }
   return refreshCodexChatgptAuthCredential(credential, deps)
@@ -259,6 +261,15 @@ function readPlanType(value: unknown): string | null {
 
 function normalizePlanType(value: string | null): string | null {
   return value?.trim().toLowerCase() || null
+}
+
+function isAccessTokenExpiring(token: string): boolean {
+  const exp = parseJwtClaims(token)?.exp
+  if (typeof exp !== 'number' || !Number.isFinite(exp)) {
+    return false
+  }
+  const nowSeconds = Math.floor(Date.now() / 1000)
+  return exp <= nowSeconds + ACCESS_TOKEN_REFRESH_SKEW_SECONDS
 }
 
 function parseJwtClaims(token: string | null): ParsedJwtClaims | null {
