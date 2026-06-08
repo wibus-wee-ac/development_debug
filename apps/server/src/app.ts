@@ -11,6 +11,7 @@ import { automation } from './modules/automation'
 import { chatRuntime } from './modules/chat-runtime'
 import { chronicle } from './modules/chronicle'
 import { desktop } from './modules/desktop'
+import { externalIssueSources } from './modules/external-issue-sources'
 import { externalProviderSources } from './modules/external-provider-sources'
 import { externalWorkImport } from './modules/external-work-import'
 import { filesystem } from './modules/filesystem'
@@ -98,6 +99,7 @@ export async function createServerContractApp(options: CreateServerContractAppOp
   app.use(usage)
   app.use(profiles)
   app.use(providerTargets)
+  app.use(externalIssueSources)
   app.use(externalProviderSources)
   app.use(externalWorkImport)
   app.use(secrets)
@@ -140,6 +142,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     { cleanup: chronicleCleanup },
     chronicleService,
     { refreshAllExternalProviderSources },
+    { reconcileExternalIssueSourceRegistrations },
     { providerRuntimeHostManager },
     { clearSideConversations },
     { activateServerPlugins },
@@ -150,6 +153,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     import('./modules/chronicle/daemon-manager'),
     import('./modules/chronicle/service'),
     import('./modules/external-provider-sources/service'),
+    import('./modules/external-issue-sources/service'),
     import('./modules/provider-runtime/host-manager'),
     import('./modules/provider-runtime/side-conversation-registry'),
     import('./plugins'),
@@ -160,6 +164,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
 
   // Plugin system — discover and activate server plugins
   await activateServerPlugins(app)
+  reconcileExternalIssueSourceRegistrations()
 
   app.onStop([
     () => flushAllActiveRunSnapshots(),

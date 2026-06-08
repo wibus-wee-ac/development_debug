@@ -1,10 +1,10 @@
 import { Elysia, t } from 'elysia'
 
 import { AppError } from '../../errors/app-error'
+import { GitHubTargetValidationError } from '../../lib/github-api'
 import { SessionAwaitModel } from './model'
 import * as Poller from './poller'
 import * as SessionAwait from './service'
-import { GitHubTargetValidationError } from './sources/github-api'
 import { fetchLiveCIStatus, githubCISource } from './sources/github-ci'
 import { fetchLiveReviewStatus, githubReviewSource } from './sources/github-review'
 

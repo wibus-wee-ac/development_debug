@@ -11,6 +11,7 @@ import {
   deleteIssuesStatusesById,
   deleteKanbanBoardsById,
   deleteSessionsByIdLinkedIssue,
+  getExternalIssueSourcesItems,
   getIssues,
   getIssuesById,
   getIssuesByIdActivity,
@@ -24,6 +25,7 @@ import {
   getSessionsByIdLinkedIssue,
   patchIssuesBulk,
   patchIssuesById,
+  patchExternalIssueSourcesItemsByIdStatus,
   patchIssuesMilestonesById,
   patchIssuesStatusesById,
   patchKanbanBoardsById,
@@ -39,7 +41,7 @@ import {
   postSessionsByIdLinkedIssue,
 } from '~/api-gen/sdk.gen'
 import { queryRefreshPolicies, queryRefreshPolicy } from '~/lib/query-refresh-policy'
-import type { AgentSession, KanbanBoard, KanbanIssue, KanbanIssueActivityItem, KanbanIssueCommentView, KanbanIssueFieldChangeView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
+import type { AgentSession, ExternalIssueItem, ExternalKanbanIssue, KanbanBoard, KanbanBoardIssue, KanbanIssue, KanbanIssueActivityItem, KanbanIssueCommentView, KanbanIssueFieldChangeView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 
 // ── Query keys ────────────────────────────────────────────────────────────────
 
@@ -54,6 +56,7 @@ export const kanbanKeys = {
   comments: (issueId: string) => ['kanban', 'comments', issueId] as const,
   fieldChanges: (issueId: string) => ['kanban', 'fieldChanges', issueId] as const,
   relations: (issueId: string) => ['kanban', 'relations', issueId] as const,
+  externalIssues: (workspaceId: string) => ['kanban', 'externalIssues', workspaceId] as const,
 }
 
 // ── Input types ───────────────────────────────────────────────────────────────
@@ -129,6 +132,7 @@ type BulkUpdateIssuesInput = {
   }>
 }
 type MoveIssueInput = { id: string, statusId: string | null }
+type MoveExternalIssueInput = { id: string, statusId: string }
 type AddCommentInput = { issueId: string, content: string }
 type DeleteCommentInput = { id: string, issueId: string }
 type AddRelationInput = { sourceIssueId: string, targetIssueId: string, type: 'blocks' | 'duplicates' | 'relates_to' }
@@ -194,6 +198,41 @@ const KanbanIssueSchema = z.object({
   updatedAt: z.number(),
 }).passthrough() satisfies z.ZodType<ApiKanbanIssue>
 const KanbanIssueListSchema = z.array(KanbanIssueSchema).default([])
+
+const ExternalIssueItemSchema = z.object({
+  id: z.string(),
+  bindingId: z.string(),
+  workspaceId: z.string(),
+  statusId: z.string().nullable(),
+  sourceKey: z.string(),
+  externalId: z.string(),
+  externalKey: z.string(),
+  externalUrl: z.string().nullable(),
+  repositoryOwner: z.string(),
+  repositoryName: z.string(),
+  number: z.number(),
+  title: z.string(),
+  body: z.string().nullable(),
+  sourceState: z.enum(['open', 'closed']),
+  labels: z.array(z.string()),
+  assignees: z.array(z.string()),
+  milestone: z.string().nullable(),
+  sourceCreatedAt: z.string().nullable(),
+  sourceUpdatedAt: z.string().nullable(),
+  sourceClosedAt: z.string().nullable(),
+  syncStatus: z.enum(['active', 'missing', 'error']),
+  fingerprint: z.string(),
+  metadata: z.record(z.string(), z.unknown()),
+  warnings: z.array(z.object({
+    code: z.string(),
+    message: z.string(),
+    severity: z.enum(['info', 'warning', 'error']),
+  })),
+  lastSeenAt: z.number(),
+  createdAt: z.number(),
+  updatedAt: z.number(),
+}).passthrough() satisfies z.ZodType<ExternalIssueItem>
+const ExternalIssueItemListSchema = z.array(ExternalIssueItemSchema).default([])
 
 const IssueCommentAuthorSchema = z.object({
   kind: z.enum(['user', 'agent', 'provider-target', 'system']),
@@ -486,6 +525,65 @@ export function useIssues(params: IssueFilterParams) {
   })
 }
 
+export function externalIssueToKanbanIssue(item: ExternalIssueItem): ExternalKanbanIssue {
+  return {
+    id: item.id,
+    workspaceId: item.workspaceId,
+    number: item.number,
+    statusId: item.statusId,
+    milestoneId: null,
+    parentIssueId: null,
+    title: item.title,
+    description: item.body,
+    priority: 'none',
+    labels: item.labels,
+    assigneeKind: item.assignees.length > 0 ? 'external' : null,
+    assigneeId: item.assignees[0] ?? null,
+    dueDate: null,
+    createdByKind: 'system',
+    createdById: item.sourceKey,
+    sourceChatSessionId: null,
+    delegateAgentId: null,
+    delegateAgentProfileId: null,
+    contextRefs: '[]',
+    order: item.updatedAt,
+    createdAt: item.createdAt,
+    updatedAt: item.updatedAt,
+    sourceKind: 'external',
+    externalIssue: item,
+  }
+}
+
+export function useExternalIssueItems(workspaceId: string) {
+  return useQuery({
+    queryKey: kanbanKeys.externalIssues(workspaceId),
+    queryFn: async () => {
+      const { data } = await getExternalIssueSourcesItems({
+        query: { workspaceId },
+      })
+      return ExternalIssueItemListSchema.parse(data) satisfies ExternalIssueItem[]
+    },
+    enabled: !!workspaceId,
+    ...queryRefreshPolicies.active,
+  })
+}
+
+export function useBoardIssues(params: IssueFilterParams) {
+  const nativeIssues = useIssues(params)
+  const externalIssues = useExternalIssueItems(params.workspaceId)
+  const externalCards = (externalIssues.data ?? [])
+    .filter(item => item.syncStatus !== 'error')
+    .map(externalIssueToKanbanIssue)
+
+  return {
+    ...nativeIssues,
+    data: [...(nativeIssues.data ?? []), ...externalCards] satisfies KanbanBoardIssue[],
+    isSuccess: nativeIssues.isSuccess && externalIssues.isSuccess,
+    isLoading: nativeIssues.isLoading || externalIssues.isLoading,
+    isPending: nativeIssues.isPending || externalIssues.isPending,
+  }
+}
+
 export function useSearchIssues(query: string, limit = 20, enabled = true) {
   const trimmed = query.trim()
 
@@ -502,14 +600,14 @@ export function useSearchIssues(query: string, limit = 20, enabled = true) {
   })
 }
 
-export function useIssue(id: string) {
+export function useIssue(id: string, enabled = true) {
   return useQuery({
     queryKey: kanbanKeys.issue(id),
     queryFn: async () => {
       const { data } = await getIssuesById({ path: { id } })
       return KanbanIssueSchema.parse(data) satisfies KanbanIssue
     },
-    enabled: !!id,
+    enabled: enabled && !!id,
     ...queryRefreshPolicies.interactive,
   })
 }
@@ -602,6 +700,22 @@ export function useMoveIssue() {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.id) })
       qc.invalidateQueries({ queryKey: kanbanKeys.activity(vars.id) })
       qc.invalidateQueries({ queryKey: kanbanKeys.fieldChanges(vars.id) })
+    },
+  })
+}
+
+export function useMoveExternalIssue() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: MoveExternalIssueInput) => {
+      const { data } = await patchExternalIssueSourcesItemsByIdStatus({ path: { id: vars.id }, body: { statusId: vars.statusId } })
+      return ExternalIssueItemSchema.parse(data) satisfies ExternalIssueItem
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: ['kanban', 'externalIssues'] })
+      qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
+      qc.invalidateQueries({ queryKey: kanbanKeys.externalIssues(_data.workspaceId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.id) })
     },
   })
 }

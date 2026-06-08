@@ -6,6 +6,7 @@ import { assertChatRuntime, registerRuntime, unregisterRuntime } from '../module
 import type { ChatRuntimeMetadata } from '../modules/chat-runtime/runtime-provider-types'
 import type { ProviderKind } from '../modules/provider-contracts/types'
 import { createPluginEventBus } from './event-bus'
+import { registerExternalIssueSource } from './external-issue-source-registry'
 import { registerExternalProviderSource } from './external-provider-source-registry'
 import { registerOwnedAfterResponseHook, registerOwnedBeforeQueryHook } from './hooks'
 import { registerPluginMcpServer } from './mcp-registry'
@@ -158,6 +159,14 @@ export function createServerPluginContext(
     },
   } satisfies ServerPluginContext['providers']
 
+  const issues = {
+    externalSources: {
+      register(source) {
+        return track(registerExternalIssueSource(manifest.name, source))
+      },
+    },
+  } satisfies ServerPluginContext['issues']
+
   const runtimes = {
     register(runtime, metadata) {
       assertChatRuntime(runtime)
@@ -214,6 +223,7 @@ export function createServerPluginContext(
     mcp,
     skills,
     providers,
+    issues,
     runtimes,
     storage: createPluginStorage(manifest.name),
     logger,

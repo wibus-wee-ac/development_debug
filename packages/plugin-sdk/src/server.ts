@@ -17,6 +17,9 @@ export interface ServerPluginContext {
   /** Provider-related registrations */
   providers: ServerPluginProviderRegistries
 
+  /** Issue-related registrations */
+  issues: ServerPluginIssueRegistries
+
   /** Chat/Jarvis runtime provider registrations */
   runtimes: ServerPluginRuntimeRegistry
 
@@ -120,6 +123,11 @@ export interface ServerPluginProviderRegistries {
   externalSources: ExternalProviderSourceRegistry
 }
 
+export interface ServerPluginIssueRegistries {
+  /** External issue sources that return host-rendered read-only issue snapshots */
+  externalSources: ExternalIssueSourceRegistry
+}
+
 export type ChatRuntimeSurface = 'chat' | 'jarvis'
 
 export interface ChatRuntimeContributionMetadata {
@@ -213,6 +221,82 @@ export interface ExternalProviderInventory {
 }
 
 export interface ExternalProviderWarning {
+  code: string
+  message: string
+  severity: 'info' | 'warning' | 'error'
+}
+
+export interface ExternalIssueSourceRegistry {
+  register: (source: ExternalIssueSource) => Disposable
+}
+
+export interface ExternalIssueSource {
+  id: string
+  label: string
+  description?: string
+  capabilities?: ExternalIssueSourceCapabilities
+  readSnapshot: (ctx: ExternalIssueSourceReadContext) => Promise<ExternalIssueSourceSnapshot>
+}
+
+export interface ExternalIssueSourceCapabilities {
+  refresh?: boolean
+}
+
+export interface ExternalIssueSourceReadContext {
+  signal: AbortSignal
+  logger: Logger
+  sharedConfig: ReadonlyMap<string, string>
+  repository: {
+    owner: string
+    name: string
+  }
+  etag?: string | null
+  cursor?: Record<string, unknown> | null
+}
+
+export interface ExternalIssueSourceSnapshot {
+  source: ExternalIssueSourceSnapshotInfo
+  issues: ExternalIssueRecord[]
+  inventory?: Record<string, unknown>
+  warnings?: ExternalIssueWarning[]
+}
+
+export interface ExternalIssueSourceSnapshotInfo {
+  status: 'ok' | 'warning' | 'error'
+  message?: string
+  observedAt?: string
+  notModified?: boolean
+  etag?: string
+  cursor?: Record<string, unknown>
+  rateLimit?: {
+    remaining?: number
+    resetAt?: number
+  }
+}
+
+export interface ExternalIssueRecord {
+  externalId: string
+  externalKey: string
+  externalUrl?: string
+  repository: {
+    owner: string
+    name: string
+  }
+  number: number
+  title: string
+  body?: string | null
+  state: 'open' | 'closed'
+  labels?: string[]
+  assignees?: string[]
+  milestone?: string | null
+  createdAt?: string
+  updatedAt?: string
+  closedAt?: string | null
+  metadata?: Record<string, unknown>
+  warnings?: ExternalIssueWarning[]
+}
+
+export interface ExternalIssueWarning {
   code: string
   message: string
   severity: 'info' | 'warning' | 'error'

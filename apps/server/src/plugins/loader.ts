@@ -10,6 +10,7 @@ import { createChildLogger } from '../logging/logger'
 import { createServerPluginContext } from './context'
 import type { DiscoveredPluginPackage } from './discovery'
 import { discoverPluginPackages } from './discovery'
+import { resetExternalIssueSourceRegistry } from './external-issue-source-registry'
 import { resetExternalProviderSourceRegistry } from './external-provider-source-registry'
 import {
   classifyPluginSource,
@@ -115,6 +116,7 @@ export async function activateServerPlugins(app: Elysia): Promise<void> {
   const packages = await discoverPackagesFromSources(getPluginDiscoverySources(pluginsDir))
   resetPluginRuntimeRegistry()
   resetExternalProviderSourceRegistry()
+  resetExternalIssueSourceRegistry()
 
   for (const { pkg, source } of packages) {
     if (!pkg.manifest) {

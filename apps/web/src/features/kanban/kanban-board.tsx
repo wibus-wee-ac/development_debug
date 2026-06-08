@@ -9,7 +9,7 @@ import {
 import { m } from 'motion/react'
 import { useState } from 'react'
 
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
+import type { KanbanBoardIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 
 import type { KanbanCardRuntimeData } from './kanban-card'
 import { KanbanCardPreview } from './kanban-card'
@@ -21,7 +21,7 @@ import type { ViewConfig } from './use-view-config'
 
 interface BoardProps {
   workspaceId: string
-  issues: KanbanIssue[]
+  issues: KanbanBoardIssue[]
   statuses: KanbanStatus[]
   milestones: KanbanMilestone[]
   parentIssueRefs: Map<string, ParentIssueRef>
@@ -58,7 +58,7 @@ export function KanbanBoard({
   selectedIssueIds,
   runtimeData,
 }: BoardProps) {
-  const [activeIssue, setActiveIssue] = useState<KanbanIssue | null>(null)
+  const [activeIssue, setActiveIssue] = useState<KanbanBoardIssue | null>(null)
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
@@ -94,7 +94,7 @@ export function KanbanBoard({
   })()
 
   const groupedIssues = (() => {
-    const map: Record<string, KanbanIssue[]> = {}
+    const map: Record<string, KanbanBoardIssue[]> = {}
     for (const g of groups) {
       map[g.id] = []
     }
@@ -122,7 +122,7 @@ export function KanbanBoard({
   })()
 
   const handleDragStart = (event: DragStartEvent) => {
-    const issue = event.active.data.current?.issue as KanbanIssue | undefined
+    const issue = event.active.data.current?.issue as KanbanBoardIssue | undefined
     if (issue) {
       setActiveIssue(issue)
     }

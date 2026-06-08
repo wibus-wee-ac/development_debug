@@ -1,4 +1,4 @@
-import { CheckIcon } from 'lucide-react'
+import { CheckIcon, GitBranchIcon } from 'lucide-react'
 import type { MouseEvent, PointerEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
 
@@ -6,7 +6,8 @@ import { AgentAvatar } from '~/features/agent-runtime/agent-avatar'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
+import type { KanbanBoardIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
+import { isExternalKanbanIssue } from '~/features/kanban/types'
 
 import { IssueContextMenu } from './issue-context-menu'
 import { AssigneeAvatar } from './shared/assignee-avatar'
@@ -20,7 +21,7 @@ import { StatusIcon } from './shared/status-icon'
 import type { StatusCategory, ViewConfig } from './use-view-config'
 
 interface ListRowProps {
-  issue: KanbanIssue
+  issue: KanbanBoardIssue
   statuses: KanbanStatus[]
   milestones: KanbanMilestone[]
   parentIssueRef?: ParentIssueRef | null
@@ -65,6 +66,7 @@ function KanbanListRowView({
   const status = statuses.find(s => s.id === issue.statusId)
   const category = (status?.category ?? 'unstarted') as StatusCategory
   const labels = issue.labels
+  const external = isExternalKanbanIssue(issue)
   const delegatedAgent = findDelegatedAgent(issue, agents)
   const showAssigneeAvatar = displayProperties.assignee && issue.assigneeId
   const showAgentAvatar = displayProperties.agentIndicator && delegatedAgent
@@ -134,6 +136,7 @@ function KanbanListRowView({
           'first:mt-1',
           parentIssueRef && 'pl-6',
           'active:scale-[0.995] data-[pressed=true]:scale-[0.995]',
+          external && 'border border-dashed border-border/80 bg-muted/20',
           selected ? 'bg-primary/10 text-primary' : highlighted ? 'bg-muted' : 'hover:bg-muted',
         )}
       >
@@ -180,7 +183,13 @@ function KanbanListRowView({
         {/* ID — mono, fixed width */}
         {displayProperties.id && (
           <span className="pointer-events-none relative z-10 text-[11px] font-mono text-muted-foreground shrink-0 tabular-nums">
-            {formatIssueId(issue, workspaces)}
+            {external ? issue.externalIssue.externalKey : formatIssueId(issue, workspaces)}
+          </span>
+        )}
+        {external && (
+          <span className="pointer-events-none relative z-10 inline-flex items-center gap-1 rounded border border-border bg-background px-1 py-0.5 text-[10px] font-medium text-muted-foreground">
+            <GitBranchIcon className="size-2.5" aria-hidden="true" />
+            GitHub
           </span>
         )}
 

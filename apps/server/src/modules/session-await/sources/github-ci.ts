@@ -2,7 +2,7 @@ import { z } from 'zod'
 
 import { getMatchingBypassPatterns, matchesAnyBypassPattern } from '../service'
 import type { CheckResult, SessionAwait, SessionAwaitSource } from '../types'
-import type { GitHubCheckRun, GitHubCommitStatus, GitHubWorkflowJob, GitHubWorkflowJobStep, GitHubWorkflowRun } from './github-api'
+import type { GitHubCheckRun, GitHubCommitStatus, GitHubWorkflowJob, GitHubWorkflowJobStep, GitHubWorkflowRun } from '../../../lib/github-api'
 import {
   fetchBranchProtection,
   fetchCheckRun,
@@ -16,7 +16,7 @@ import {
   isGitHubMissingTarget,
   isGitHubRateLimited,
   resetTokenCache,
-} from './github-api'
+} from '../../../lib/github-api'
 
 export { resetTokenCache }
 

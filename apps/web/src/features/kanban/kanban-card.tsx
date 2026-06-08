@@ -1,5 +1,5 @@
 import { useDraggable } from '@dnd-kit/core'
-import { CheckIcon } from 'lucide-react'
+import { CheckIcon, GitBranchIcon } from 'lucide-react'
 import type { CSSProperties, HTMLAttributes, MouseEvent, PointerEvent, ReactNode, Ref } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -10,7 +10,8 @@ import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
 import type { Workspace } from '~/features/workspace/types'
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
+import type { KanbanBoardIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
+import { isExternalKanbanIssue } from '~/features/kanban/types'
 
 import { IssueContextMenu } from './issue-context-menu'
 import { AssigneeAvatar } from './shared/assignee-avatar'
@@ -26,7 +27,7 @@ import type { ViewConfig } from './use-view-config'
 type KanbanKey = keyof typeof import('~/locales/default').default.kanban
 
 interface CardProps {
-  issue: KanbanIssue
+  issue: KanbanBoardIssue
   statuses: KanbanStatus[]
   milestones: KanbanMilestone[]
   parentIssueRef?: ParentIssueRef | null
@@ -243,6 +244,7 @@ function KanbanCardChromeView({
   const { t } = useTranslation('kanban')
   const { workspaces, agents } = runtimeData
   const labels = issue.labels
+  const external = isExternalKanbanIssue(issue)
   const issueStatus = statuses.find(status => status.id === issue.statusId)
   const statusCategory = StatusCategorySchema.parse(issueStatus?.category ?? category)
   const delegatedAgent = findDelegatedAgent(issue, agents)
@@ -269,6 +271,7 @@ function KanbanCardChromeView({
         'hover:shadow-[var(--shadow-sm)] hover:bg-card',
         'active:scale-[0.985] data-[pressed=true]:scale-[0.985] data-[pressed=true]:border-primary/40 data-[pressed=true]:shadow-[var(--shadow-xs)]',
         !highlighted && !selected && !pressed && 'hover:border-border',
+        external && 'border-dashed border-border bg-muted/20',
         selected && 'border-primary/60 bg-primary/5 shadow-[var(--shadow-sm)]',
         dragging && 'opacity-50',
         preview && 'pointer-events-none',
@@ -294,7 +297,13 @@ function KanbanCardChromeView({
 
           {displayProperties.id && (
             <span className="text-[10.5px] text-muted-foreground tabular-nums">
-              {formatIssueId(issue, workspaces)}
+              {external ? issue.externalIssue.externalKey : formatIssueId(issue, workspaces)}
+            </span>
+          )}
+          {external && (
+            <span className="inline-flex items-center gap-1 rounded border border-border bg-background px-1 py-0.5 text-[10px] font-medium text-muted-foreground">
+              <GitBranchIcon className="size-2.5" aria-hidden="true" />
+              GitHub
             </span>
           )}
         </span>

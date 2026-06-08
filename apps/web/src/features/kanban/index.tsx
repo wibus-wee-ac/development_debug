@@ -2,11 +2,13 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { BetaNotice } from '~/components/common/beta-notice'
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
+import type { KanbanBoardIssue, KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
+import { isExternalKanbanIssue } from '~/features/kanban/types'
 import type { Workspace } from '~/features/workspace/types'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 
 import { CreateIssueDialog } from './create-issue-dialog'
+import { ExternalIssueDetail } from './external-issue-detail'
 import { IssueDetail } from './issue-detail'
 import { IssuePeekPanel } from './issue-peek-panel'
 import { KanbanBoard } from './kanban-board'
@@ -20,11 +22,10 @@ import { KanbanList } from './kanban-list'
 import type { IssueSelectionMode } from './kanban-selection'
 import { addIssueSelectionRange, orderedIssuesForKanbanView, toggleIssueSelection } from './kanban-selection'
 import { KanbanSelectionBar } from './kanban-selection-bar'
-import { KanbanTable } from './kanban-table'
 import { KanbanToolbar } from './kanban-toolbar'
 import { formatIssueId } from './shared/format-issue-id'
 import type { ParentIssueRef } from './shared/parent-issue-ref'
-import { useIssues, useMilestones, useMoveIssue, useStatuses } from './use-kanban'
+import { useBoardIssues, useMilestones, useMoveExternalIssue, useMoveIssue, useStatuses } from './use-kanban'
 import type { FilterState } from './use-view-config'
 import { useViewConfig } from './use-view-config'
 
@@ -37,14 +38,14 @@ interface KanbanViewProps {
   onOpenMilestone?: (id: string) => void
 }
 
-function toContextIssue(issue: KanbanIssue | null | undefined, workspaces: Workspace[]): KanbanContextIssue | null {
+function toContextIssue(issue: KanbanBoardIssue | null | undefined, workspaces: Workspace[]): KanbanContextIssue | null {
   if (!issue) {
     return null
   }
 
   return {
     id: issue.id,
-    label: formatIssueId(issue, workspaces),
+    label: isExternalKanbanIssue(issue) ? issue.externalIssue.externalKey : formatIssueId(issue, workspaces),
     title: issue.title,
   }
 }
@@ -101,7 +102,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
   const [hoveredIssueId, setHoveredIssueId] = useState<string | null>(null)
   const spaceDownTimeRef = useRef<number>(0)
   const peekWasOpenRef = useRef(false)
-  const visibleIssuesRef = useRef<KanbanIssue[]>([])
+  const visibleIssuesRef = useRef<KanbanBoardIssue[]>([])
   // Refs for keyboard handler (avoid stale closures + listener re-registration)
   const peekIssueIdRef = useRef<string | null>(null)
   const focusedIndexRef = useRef<number>(-1)
@@ -135,8 +136,9 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
 
   const { data: statuses = [], isSuccess: _statusesReady } = useStatuses(workspaceId)
   const { data: milestones = [], isSuccess: _milestonesReady } = useMilestones(workspaceId)
-  const { data: allIssues = [], isSuccess: _issuesReady } = useIssues({ workspaceId })
+  const { data: allIssues = [], isSuccess: _issuesReady } = useBoardIssues({ workspaceId })
   const moveIssue = useMoveIssue()
+  const moveExternalIssue = useMoveExternalIssue()
 
   useEffect(() => {
     if (initialMilestoneId) {
@@ -145,10 +147,11 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
   }, [initialMilestoneId, setFilter])
 
   const parentIssueRefs = (() => {
-    const issuesById = new Map(allIssues.map(issue => [issue.id, issue]))
+    const nativeIssues = allIssues.filter((issue): issue is KanbanIssue => !isExternalKanbanIssue(issue))
+    const issuesById = new Map(nativeIssues.map(issue => [issue.id, issue]))
     const refs = new Map<string, ParentIssueRef>()
 
-    for (const issue of allIssues) {
+    for (const issue of nativeIssues) {
       if (!issue.parentIssueId) {
         continue
       }
@@ -171,23 +174,25 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
       result = result.filter(i => i.statusId && filter.statusIds!.includes(i.statusId))
     }
     if (filter.priorities?.length) {
-      result = result.filter(i => filter.priorities!.includes(i.priority as FilterState['priorities'] extends (infer T)[] | undefined ? T : never))
+      result = result.filter(i => !isExternalKanbanIssue(i) && filter.priorities!.includes(i.priority as FilterState['priorities'] extends (infer T)[] | undefined ? T : never))
     }
     if (filter.labels?.length) {
       result = result.filter(i => filter.labels!.some(l => i.labels.includes(l)))
     }
     if (filter.milestoneId) {
-      result = result.filter(i => i.milestoneId === filter.milestoneId)
+      result = result.filter(i => !isExternalKanbanIssue(i) && i.milestoneId === filter.milestoneId)
     }
     if (filter.isDelegated === true) {
-      result = result.filter(i => !!i.delegateAgentId || !!i.delegateAgentProfileId)
+      result = result.filter(i => !isExternalKanbanIssue(i) && (!!i.delegateAgentId || !!i.delegateAgentProfileId))
     }
 
     // Search
     if (searchQuery.trim()) {
       const q = searchQuery.toLowerCase()
       result = result.filter(i =>
-        i.title.toLowerCase().includes(q) || i.id.toLowerCase().includes(q))
+        i.title.toLowerCase().includes(q)
+        || i.id.toLowerCase().includes(q)
+        || (isExternalKanbanIssue(i) && i.externalIssue.externalKey.toLowerCase().includes(q)))
     }
 
     // Sort
@@ -195,7 +200,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
       const dir = config.orderDirection === 'asc' ? 1 : -1
       if (config.orderBy === 'priority') {
         const pOrder = { urgent: 0, high: 1, medium: 2, low: 3, none: 4 }
-        return dir * ((pOrder[a.priority as keyof typeof pOrder] ?? 4) - (pOrder[b.priority as keyof typeof pOrder] ?? 4))
+        return dir * ((pOrder[isExternalKanbanIssue(a) ? 'none' : a.priority as keyof typeof pOrder] ?? 4) - (pOrder[isExternalKanbanIssue(b) ? 'none' : b.priority as keyof typeof pOrder] ?? 4))
       }
       if (config.orderBy === 'created') {
         return dir * ((a.createdAt ?? 0) - (b.createdAt ?? 0))
@@ -221,6 +226,11 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
 
   const handleMoveIssue = (issueId: string, targetGroupId: string) => {
     if (config.groupBy === 'status') {
+      const issue = allIssues.find(candidate => candidate.id === issueId)
+      if (issue && isExternalKanbanIssue(issue)) {
+        moveExternalIssue.mutate({ id: issueId, statusId: targetGroupId })
+        return
+      }
       moveIssue.mutate({ id: issueId, statusId: targetGroupId })
     }
   }
@@ -235,6 +245,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
   const visibleIssueIds = visibleIssues.map(issue => issue.id)
 
   const selectedIssues = visibleIssues.filter(issue => selectedIssueIds.has(issue.id))
+  const selectedNativeIssues = selectedIssues.filter((issue): issue is KanbanIssue => !isExternalKanbanIssue(issue))
 
   const focusedIssueId = (() => {
     if (focusedIndex >= 0 && focusedIndex < visibleIssues.length) {
@@ -244,6 +255,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
   })()
 
   const issuesById = new Map(allIssues.map(issue => [issue.id, issue]))
+  const selectedExternalIssue = selectedIssueId ? issuesById.get(selectedIssueId) : null
 
   const kanbanFilterSummary = summarizeKanbanFilter(filter, statuses, milestones)
 
@@ -548,14 +560,25 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
 
       {/* eslint-disable-next-line style/multiline-ternary */}
       {selectedIssueId ? (
-        <IssueDetail
-          issueId={selectedIssueId}
-          workspaceId={workspaceId}
-          issues={allIssues}
-          onOpenIssue={handleIssueClick}
-          onOpenMilestone={handleOpenMilestone}
-          onBack={() => onSelectIssue?.(null)}
-        />
+        selectedExternalIssue && isExternalKanbanIssue(selectedExternalIssue)
+          ? (
+              <ExternalIssueDetail
+                item={selectedExternalIssue.externalIssue}
+                statuses={statuses}
+                onMoveStatus={statusId => moveExternalIssue.mutate({ id: selectedExternalIssue.id, statusId })}
+                onBack={() => onSelectIssue?.(null)}
+              />
+            )
+          : (
+              <IssueDetail
+                issueId={selectedIssueId}
+                workspaceId={workspaceId}
+                issues={allIssues.filter((issue): issue is KanbanIssue => !isExternalKanbanIssue(issue))}
+                onOpenIssue={handleIssueClick}
+                onOpenMilestone={handleOpenMilestone}
+                onBack={() => onSelectIssue?.(null)}
+              />
+            )
       ) : (
         <>
           <KanbanToolbar
@@ -604,29 +627,15 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
             />
           )}
 
-          {config.layout === 'table' && (
-            <KanbanTable
-              issues={filteredIssues}
-              statuses={statuses}
-              milestones={milestones}
-              parentIssueRefs={parentIssueRefs}
-              displayProperties={config.displayProperties}
-              highlightedIssueId={focusedIssueId}
-              selectedIssueIds={selectedIssueIds}
-              onIssueClick={handleIssueClick}
-              onIssueSelectionGesture={handleIssueSelectionGesture}
-            />
-          )}
-
           <KanbanSelectionBar
-            issues={selectedIssues}
+            issues={selectedNativeIssues}
             statuses={statuses}
             onClear={clearSelectedIssues}
           />
 
           <CreateIssueDialog
             workspaceId={workspaceId}
-            issues={allIssues}
+            issues={allIssues.filter((issue): issue is KanbanIssue => !isExternalKanbanIssue(issue))}
             defaultStatusId={createDefaultStatusId}
             open={createDialogOpen}
             onClose={() => setCreateDialogOpen(false)}
@@ -635,6 +644,7 @@ export function KanbanView({ boardId: _boardId, workspaceId, selectedIssueId, in
           {/* Peek panel */}
           <IssuePeekPanel
             issueId={peekIssueId}
+            issue={peekIssueId ? issuesById.get(peekIssueId) : null}
             workspaceId={workspaceId}
             onClose={() => setPeekIssueId(null)}
             onOpenDetail={id => onSelectIssue?.(id)}

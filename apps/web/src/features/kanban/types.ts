@@ -8,15 +8,26 @@ import type {
   GetIssuesStatusesResponse,
   GetKanbanBoardsResponse,
   GetIssuesMilestonesResponse,
+  GetExternalIssueSourcesItemsResponse,
 } from '~/api-gen/types.gen'
 
 export type KanbanBoard = GetKanbanBoardsResponse[number]
 export type KanbanIssue = GetIssuesResponse[number]
+export type ExternalIssueItem = GetExternalIssueSourcesItemsResponse[number]
+export type ExternalKanbanIssue = KanbanIssue & {
+  sourceKind: 'external'
+  externalIssue: ExternalIssueItem
+}
+export type KanbanBoardIssue = KanbanIssue | ExternalKanbanIssue
 export type KanbanMilestone = GetIssuesMilestonesResponse[number]
 export type KanbanIssueRelation = GetIssuesByIdRelationsResponse[number]
 export type KanbanIssueCommentView = GetIssuesByIdCommentsResponse[number]
 export type KanbanIssueFieldChangeView = GetIssuesByIdFieldChangesResponse[number]
 export type AgentSession = GetIssuesByIdAgentSessionsResponse[number]
+
+export function isExternalKanbanIssue(issue: KanbanBoardIssue | null | undefined): issue is ExternalKanbanIssue {
+  return (issue as Partial<ExternalKanbanIssue> | null | undefined)?.sourceKind === 'external'
+}
 
 export type KanbanStatus = Omit<GetIssuesStatusesResponse[number], 'category'> & {
   category: 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'

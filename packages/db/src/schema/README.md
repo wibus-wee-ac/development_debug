@@ -25,4 +25,4 @@
 - **agent-interaction.ts**: Agent Interaction Runtime session / activity 相关表；物理表名为 `agent_sessions` 与 `agent_activities`，由交互运行时拥有，Issue Agent 只通过服务层引用
 - **observability.ts**: local observability append-only events 与 dedupe incident 相关表；session/run/message 删除后保留取证记录并将 FK 置空
 - **plugin.ts**: Cradle plugin host 拥有的 plugin-scoped persistent storage 表；按 plugin package identity 和 key 隔离，不写入其他产品 namespace
-- **session-await.ts**: Session Await durable wait 表、GitHub API cache 与 bypass rules；await records 保存恢复文本、source/delivery failure 分类、GitHub filter JSON、timer/fire/expiry 时间和 bypass check 投影
+- **session-await.ts**: Session Await durable wait 表、host-owned GitHub API cache 与 bypass rules；await records 保存恢复文本、source/delivery failure 分类、GitHub filter JSON、timer/fire/expiry 时间和 bypass check 投影

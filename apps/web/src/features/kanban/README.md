@@ -22,7 +22,6 @@ User-facing board, issue, filter, status, and label-management copy is owned by 
 - **kanban-list.tsx**: List-view composition for issues; group collapse uses instant layout changes instead of height/auto motion animation.
 - **kanban-item-actions.test.tsx**: Regression tests for native issue card/list row button semantics.
 - **kanban-list-row.tsx**: Compact list row for individual issues; rows use native named buttons for opening detail views, indent child issues, and expose separate parent issue quick-jump affordances.
-- **kanban-table.tsx**: TanStack Table issue view with dense Linear-style rows, sorting, global filtering, column visibility, and external issue selection state.
 - **kanban-parent-issue-link.test.tsx**: Regression tests for parent issue indicators on Kanban cards and list rows.
 - **kanban-selection.ts**: Pure helper functions for visible-order multi-selection, toggle, and range semantics.
 - **kanban-selection.test.ts**: Regression tests for Linear-style issue selection ranges and toggles.

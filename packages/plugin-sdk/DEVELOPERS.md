@@ -10,7 +10,7 @@ The Cradle Plugin System runs across **3 runtime layers**:
 
 | Layer | Runtime | Entry Point | Capabilities |
 |-------|---------|-------------|-------------|
-| **Server** | Node.js (Elysia) | `src/server.ts` | HTTP routes, MCP servers, skills, external provider sources, Chat/Jarvis runtimes, hooks, events, KV storage |
+| **Server** | Node.js (Elysia) | `src/server.ts` | HTTP routes, MCP servers, skills, external provider sources, external issue sources, Chat/Jarvis runtimes, hooks, events, KV storage |
 | **Web** | Browser (React) | `dist/web.mjs` | UI panels, commands, localStorage |
 | **Desktop** | Electron main | `src/desktop.ts` | System-level access, CDP, IPC, shared config |
 
@@ -348,6 +348,52 @@ Provider source contract 的边界是：
 - 插件不拥有 provider profile 的 enabled/disabled 状态；Cradle host 负责初始启用策略和用户开关。
 - 插件不贡献 badge、button、React component、surface descriptor 或 action ref。
 - Cradle host 固定渲染 external source UI，并负责 profile read-only guard。
+
+### `ctx.issues.externalSources.register(source)` — External Issue Source
+
+插件可以提供外部 issue 数据源，例如 GitHub Issues。这个能力只读取外部系统并返回标准化 snapshot；插件不得写 `kanban_issues`，不得创建普通 Cradle issue，也不得贡献 Settings 或 Kanban UI。Cradle host 负责 workspace 仓库绑定、共享 repository cursor、ETag/rate-limit 状态、`external_issue_items` 投影、missing 标记和本地 Kanban status overlay。
+
+```ts
+import type { ServerPluginContext } from '@cradle/plugin-sdk/server'
+
+export function activate(ctx: ServerPluginContext): void {
+  ctx.issues.externalSources.register({
+    id: 'github-issues',
+    label: 'GitHub Issues',
+    capabilities: { refresh: true },
+    async readSnapshot({ repository, etag }) {
+      return {
+        source: {
+          status: 'ok',
+          etag,
+          message: `Read ${repository.owner}/${repository.name}`,
+        },
+        issues: [
+          {
+            externalId: 'I_kwDOExample',
+            externalKey: `${repository.owner}/${repository.name}#1`,
+            externalUrl: `https://github.com/${repository.owner}/${repository.name}/issues/1`,
+            repository,
+            number: 1,
+            title: 'Example external issue',
+            state: 'open',
+            labels: ['bug'],
+            assignees: [],
+          },
+        ],
+      }
+    },
+  })
+}
+```
+
+Issue source contract 的边界是：
+
+- 插件读取 GitHub 或其它外部 issue namespace，并返回 `ExternalIssueSourceSnapshot`。
+- `externalId` 和 `externalKey` 必须稳定；GitHub source 应优先使用 `node_id` 和 `owner/repo#number`。
+- title、body、labels、assignees、milestone、state、URL 和 timestamps 由外部系统拥有，刷新会覆盖这些字段。
+- Cradle 只允许用户修改外部卡片的 `statusId`。
+- repository 选择由 Cradle-owned binding 决定，插件不选择 workspace。
 
 ### `ctx.storage` — Plugin KV Storage
 

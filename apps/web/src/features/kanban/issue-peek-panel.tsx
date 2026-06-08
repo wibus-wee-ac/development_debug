@@ -5,7 +5,8 @@ import { AnimatePresence, m } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 
 import { useWorkspaces } from '~/features/workspace/use-workspace'
-import type { KanbanIssue, KanbanStatus } from '~/features/kanban/types'
+import type { KanbanBoardIssue, KanbanStatus } from '~/features/kanban/types'
+import { isExternalKanbanIssue } from '~/features/kanban/types'
 
 import { formatIssueId } from './shared/format-issue-id'
 import { LabelChip } from './shared/label-chip'
@@ -25,18 +26,20 @@ const priorityLabelKeys: Record<IssuePriority, 'priority.none' | 'priority.low' 
 
 interface IssuePeekPanelProps {
   issueId: string | null
+  issue?: KanbanBoardIssue | null
   workspaceId: string
   onClose: () => void
   onOpenDetail: (id: string) => void
 }
 
-export function IssuePeekPanel({ issueId, workspaceId, onClose, onOpenDetail }: IssuePeekPanelProps) {
+export function IssuePeekPanel({ issueId, issue, workspaceId, onClose, onOpenDetail }: IssuePeekPanelProps) {
   return (
     <AnimatePresence>
       {issueId && (
         <IssuePeekCard
           key="peek"
           issueId={issueId}
+          issue={issue}
           workspaceId={workspaceId}
           onClose={onClose}
           onOpenDetail={onOpenDetail}
@@ -46,16 +49,19 @@ export function IssuePeekPanel({ issueId, workspaceId, onClose, onOpenDetail }: 
   )
 }
 
-function IssuePeekCard({ issueId, workspaceId, onClose, onOpenDetail }: {
+function IssuePeekCard({ issueId, issue: providedIssue, workspaceId, onClose, onOpenDetail }: {
   issueId: string
+  issue?: KanbanBoardIssue | null
   workspaceId: string
   onClose: () => void
   onOpenDetail: (id: string) => void
 }) {
   const { t } = useTranslation('kanban')
   const { workspaces } = useWorkspaces()
-  const { data: issue, isLoading } = useIssue(issueId)
+  const isExternal = isExternalKanbanIssue(providedIssue)
+  const { data: loadedIssue, isLoading } = useIssue(issueId, !isExternal)
   const { data: statuses = [] } = useStatuses(workspaceId)
+  const issue = isExternal ? providedIssue : loadedIssue
 
   const status = issue?.statusId ? statuses.find(s => s.id === issue.statusId) : undefined
 
@@ -96,7 +102,7 @@ function IssuePeekContent({
   onClose,
   onOpenDetail,
 }: {
-  issue: KanbanIssue
+  issue: KanbanBoardIssue
   status: KanbanStatus | undefined
   issueId: string
   workspaces: ReturnType<typeof useWorkspaces>['workspaces']
@@ -105,12 +111,13 @@ function IssuePeekContent({
   onOpenDetail: (id: string) => void
 }) {
   const labels = issue.labels
+  const external = isExternalKanbanIssue(issue)
 
   return (
     <div className="flex flex-col">
       <div className="flex items-center justify-between px-4 pt-2.5">
         <span className="text-[11px] font-mono text-muted-foreground tabular-nums">
-          {formatIssueId(issue, workspaces)}
+          {external ? issue.externalIssue.externalKey : formatIssueId(issue, workspaces)}
         </span>
         <button
           type="button"

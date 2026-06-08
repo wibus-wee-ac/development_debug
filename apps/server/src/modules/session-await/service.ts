@@ -6,8 +6,8 @@ import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
+import { fetchBranchHead, fetchBranchProtection, fetchCheckRuns, fetchCombinedStatus, fetchRepo, GitHubTargetValidationError, isGitHubMissingTarget } from '../../lib/github-api'
 import { enqueueSessionQueueItem } from '../chat-runtime/service'
-import { fetchBranchHead, fetchBranchProtection, fetchCheckRuns, fetchCombinedStatus, fetchRepo, GitHubTargetValidationError, isGitHubMissingTarget } from './sources/github-api'
 import { GitHubCIFilterJsonSchema, validateGitHubCITarget } from './sources/github-ci'
 import { GitHubReviewFilterJsonSchema, validateGitHubReviewTarget } from './sources/github-review'
 import type {

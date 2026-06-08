@@ -1,7 +1,7 @@
 import { githubApiCache } from '@cradle/db'
 import { eq, lt } from 'drizzle-orm'
 
-import { db } from '../../../infra'
+import { db } from '../infra'
 
 const DEFAULT_TTL_S = 60 * 60 // 1 hour
 

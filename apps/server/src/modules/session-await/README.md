@@ -9,7 +9,7 @@
 - **service.ts**: Durable await writes, supported-source validation, GitHub target preflight validation, available-checks error normalization, pending queries, idempotent trigger handling, delivery failure marking, retry delivery, and chat runtime queue dispatch for resume messages.
 - **poller.ts**: Source registry, explicit single-cycle runner, interval tick, expiry handling, timer awaits, source checks, empty resume guard, permanent source failure handling, and bounded trigger concurrency.
 - **types.ts**: Source adapter and await lifecycle TypeScript contracts; matched source results must carry non-empty resume text.
-- **sources/github-api.ts**: Shared GitHub REST API boundary, token resolution, ETag cache, rate-limit tracking, missing-target classification, PR/check/status/review/workflow-run/workflow-job fetch helpers.
+- **../../lib/github-api.ts**: Shared GitHub REST API boundary, token resolution, ETag cache, rate-limit tracking, missing-target classification, PR/check/status/review/workflow-run/workflow-job fetch helpers. Session await and external issue source refresh both consume this host-owned GitHub access boundary.
 - **sources/github-ci.ts**: `github-ci` source. Supports `{ repo, pr }`, `{ repo, sha }`, and `{ repo, runs_id }` filters, validates target visibility during registration, resolves PR head SHAs or single check-run head SHAs, aggregates check runs plus legacy commit statuses, and exposes live CI status with optional GitHub Actions job steps.
 - **sources/github-review.ts**: `github-review` source. Supports `{ repo, pr, mode }` filters, validates PR visibility during registration, and waits for PR review signals on the current PR head.
 

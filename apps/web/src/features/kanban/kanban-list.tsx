@@ -1,7 +1,7 @@
 import { useState } from 'react'
 
 import { cn } from '~/lib/cn'
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
+import type { KanbanBoardIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 
 import { KanbanGroupHeader } from './kanban-group-header'
 import { KanbanListRow } from './kanban-list-row'
@@ -11,7 +11,7 @@ import { StatusCategorySchema } from './shared/status-icon'
 import type { ViewConfig } from './use-view-config'
 
 interface ListProps {
-  issues: KanbanIssue[]
+  issues: KanbanBoardIssue[]
   statuses: KanbanStatus[]
   milestones: KanbanMilestone[]
   parentIssueRefs: Map<string, ParentIssueRef>
@@ -75,7 +75,7 @@ export function KanbanList({
   })()
 
   const groupedIssues = (() => {
-    const map: Record<string, KanbanIssue[]> = {}
+    const map: Record<string, KanbanBoardIssue[]> = {}
     for (const g of groups) {
       map[g.id] = []
     }

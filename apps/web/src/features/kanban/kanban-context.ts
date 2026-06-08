@@ -12,7 +12,7 @@ export interface KanbanContextIssue {
 export interface KanbanAttentionSnapshot {
   boardId: string
   workspaceId: string
-  layout: 'board' | 'list' | 'table'
+  layout: 'board' | 'list'
   visibleIssueCount: number
   selectedIssueIds: string[]
   selectedIssues: KanbanContextIssue[]

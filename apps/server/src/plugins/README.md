@@ -7,6 +7,7 @@
 - **context.ts**：创建传给 server plugin entry 的 `ServerPluginContext`，并记录 owner-scoped capability registration。
 - **discovery.ts**：从配置的插件目录读取 plugin package，返回有效 manifest 或无效 package diagnostics。
 - **event-bus.ts**：提供 server plugin 使用的进程内 plugin event bus。
+- **external-issue-source-registry.ts**：保存插件注册的 external issue source readers；插件只读取外部系统并返回标准 snapshot，Cradle host 负责 workspace 绑定、外部 issue 投影、Kanban 只读卡片和 status overlay。
 - **external-provider-source-registry.ts**：保存插件注册的 external provider source readers；插件只提供标准 snapshot，Cradle host 负责 profile/secret 投影与固定 UI。
 - **hooks.ts**：注册 chat lifecycle hooks，并投影插件拥有的 hook capability records。
 - **index.ts**：导出 server plugin host API，供 server 其它模块使用。

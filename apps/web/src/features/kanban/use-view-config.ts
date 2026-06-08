@@ -4,7 +4,7 @@ import { z } from 'zod'
 export type StatusCategory = 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'
 
 export interface ViewConfig {
-  layout: 'board' | 'list' | 'table'
+  layout: 'board' | 'list'
   groupBy: 'status' | 'priority' | 'milestone' | 'assignee' | 'label'
   orderBy: 'manual' | 'priority' | 'created' | 'updated' | 'status'
   orderDirection: 'asc' | 'desc'
@@ -54,7 +54,7 @@ const defaultConfig: ViewConfig = {
 }
 
 const ViewConfigSchema = z.object({
-  layout: z.enum(['board', 'list', 'table']).default('board'),
+  layout: z.enum(['board', 'list']).catch('board').default('board'),
   groupBy: z.enum(['status', 'priority', 'milestone', 'assignee', 'label']).default('status'),
   orderBy: z.enum(['manual', 'priority', 'created', 'updated', 'status']).default('manual'),
   orderDirection: z.enum(['asc', 'desc']).default('asc'),
