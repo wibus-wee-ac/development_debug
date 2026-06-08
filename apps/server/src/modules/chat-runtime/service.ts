@@ -141,7 +141,10 @@ import type {
 } from './session-queue'
 import {
   compareQueueRows,
+  parseQueueContextParts,
+  parseQueueFiles,
   readPersistedThinkingEffort,
+  readQueueItemRuntimeSettings,
   serializeQueueContextParts,
   serializeQueueFiles,
   toQueueItemDto
@@ -1785,122 +1788,11 @@ function insertUsage(input: {
     .run()
 }
 
-function parseQueueFiles(filesJson: string): FileUIPart[] {
-  try {
-    return JSON.parse(filesJson) as FileUIPart[]
-  } catch (error) {
-    throw new AppError({
-      code: 'chat_queue_item_invalid',
-      status: 500,
-      message: 'Stored chat queue item is invalid',
-      details: {
-        reason: error instanceof Error ? error.message : 'Invalid file attachment payload'
-      }
-    })
-  }
-}
-
-function parseQueueContextParts(contextPartsJson: string): ChatContextPart[] {
-  try {
-    return JSON.parse(contextPartsJson) as ChatContextPart[]
-  } catch (error) {
-    throw new AppError({
-      code: 'chat_queue_item_invalid',
-      status: 500,
-      message: 'Stored chat queue item is invalid',
-      details: {
-        reason: error instanceof Error ? error.message : 'Invalid context part payload'
-      }
-    })
-  }
-}
-
-function serializeQueueFiles(files: FileUIPart[]): string {
-  return JSON.stringify(files)
-}
-
-function serializeQueueContextParts(contextParts: ChatContextPart[]): string {
-  return JSON.stringify(contextParts)
-}
-
-function readQueueItemRuntimeSettings(
-  row: Pick<
-    typeof chatSessionQueueItems.$inferSelect,
-    'permissionMode' | 'runtimeAccessMode' | 'runtimeInteractionMode'
-  >,
-  sessionRuntimeSettings: ChatRuntimeSettings
-): ChatRuntimeSettings {
-  const accessMode =
-    normalizeRuntimeAccessMode(row.runtimeAccessMode) ??
-    (row.permissionMode === 'plan' ? 'approval-required' : DEFAULT_RUNTIME_SETTINGS.accessMode)
-  const interactionMode =
-    normalizeRuntimeInteractionMode(row.runtimeInteractionMode) ??
-    (row.permissionMode === 'plan' ? 'plan' : DEFAULT_RUNTIME_SETTINGS.interactionMode)
-  return mergeRuntimeSettings(sessionRuntimeSettings, {
-    accessMode,
-    interactionMode
-  })
-}
-
-function readPersistedThinkingEffort(effort: unknown): PersistedThinkingEffort | null {
-  return effort === 'low' || effort === 'medium' || effort === 'high' || effort === 'xhigh'
-    ? effort
-    : null
-}
-
 function canApplyLiveSteerWithRequest(input: {
   activeRun: ActiveRun
   providerTargetId: string | null
 }): boolean {
   return !input.providerTargetId || input.providerTargetId === input.activeRun.providerTargetId
-}
-
-function toQueueItemDto(
-  row: typeof chatSessionQueueItems.$inferSelect,
-  sessionRuntimeSettings: ChatRuntimeSettings = DEFAULT_RUNTIME_SETTINGS
-): ChatSessionQueueItemDto {
-  const runtimeSettings = readQueueItemRuntimeSettings(row, sessionRuntimeSettings)
-  return {
-    id: row.id,
-    sessionId: row.sessionId,
-    mode: row.mode as ChatSessionQueueMode,
-    status: row.status as ChatSessionQueueStatus,
-    text: row.text,
-    files: parseQueueFiles(row.filesJson),
-    contextParts: parseQueueContextParts(row.contextPartsJson),
-    providerTargetId: row.providerTargetId,
-    modelId: row.modelId,
-    thinkingEffort: readPersistedThinkingEffort(row.thinkingEffort),
-    runtimeSettings,
-    position: row.position,
-    sourceRunId: row.sourceRunId,
-    startedRunId: row.startedRunId,
-    errorText: row.errorText,
-    createdAt: row.createdAt,
-    updatedAt: row.updatedAt
-  }
-}
-
-function compareQueueRows(
-  left: typeof chatSessionQueueItems.$inferSelect,
-  right: typeof chatSessionQueueItems.$inferSelect
-): number {
-  const statusRank: Record<string, number> = {
-    running: 0,
-    pending: 1,
-    completed: 2,
-    cancelled: 2,
-    failed: 2
-  }
-  const leftRank = statusRank[left.status] ?? 3
-  const rightRank = statusRank[right.status] ?? 3
-  if (leftRank !== rightRank) {
-    return leftRank - rightRank
-  }
-  if (left.status === 'running' || left.status === 'pending') {
-    return left.position - right.position || left.createdAt - right.createdAt
-  }
-  return right.createdAt - left.createdAt || right.updatedAt - left.updatedAt
 }
 
 function assertRunnableSession(sessionId: string): SessionRunContext {
