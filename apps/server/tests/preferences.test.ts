@@ -12,6 +12,63 @@ function makeTempDir(prefix: string): string {
 }
 
 describe('preferences capability', () => {
+  it('returns defaults when missing and persists app feature flags under the server data directory', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const initialRes = await app.handle(new Request('http://localhost/preferences/app'))
+      expect(initialRes.status).toBe(200)
+      expect(await initialRes.json()).toEqual({
+        featureFlags: {
+          multiWorkspacePoc: false,
+        },
+      })
+
+      const filePath = join(dataDir, 'preferences', 'app.json')
+      expect(existsSync(filePath)).toBe(false)
+
+      const saveRes = await app.handle(new Request('http://localhost/preferences/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          featureFlags: {
+            multiWorkspacePoc: true,
+          },
+        }),
+      }))
+      expect(saveRes.status).toBe(200)
+      expect(await saveRes.json()).toEqual({ ok: true })
+
+      expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({
+        featureFlags: {
+          multiWorkspacePoc: true,
+        },
+      })
+
+      const finalRes = await app.handle(new Request('http://localhost/preferences/app'))
+      expect(finalRes.status).toBe(200)
+      expect(await finalRes.json()).toEqual({
+        featureFlags: {
+          multiWorkspacePoc: true,
+        },
+      })
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
   it('returns defaults when missing and persists chat preferences under the server data directory', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -155,6 +212,9 @@ describe('preferences capability', () => {
       expect(await initialRes.json()).toEqual({
         requireDoubleCommandQToQuit: true,
         appshotHotkeyEnabled: true,
+        appshotHotkeyTrigger: 'DoubleCommand',
+        autoCheckForUpdates: true,
+        autoDownloadUpdates: false,
       })
 
       const filePath = join(dataDir, 'preferences', 'desktop.json')
@@ -166,6 +226,9 @@ describe('preferences capability', () => {
         body: JSON.stringify({
           requireDoubleCommandQToQuit: false,
           appshotHotkeyEnabled: false,
+          appshotHotkeyTrigger: 'DoubleShift',
+          autoCheckForUpdates: false,
+          autoDownloadUpdates: true,
         }),
       }))
       expect(saveRes.status).toBe(200)
@@ -174,6 +237,9 @@ describe('preferences capability', () => {
       expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({
         requireDoubleCommandQToQuit: false,
         appshotHotkeyEnabled: false,
+        appshotHotkeyTrigger: 'DoubleShift',
+        autoCheckForUpdates: false,
+        autoDownloadUpdates: true,
       })
 
       const finalRes = await app.handle(new Request('http://localhost/preferences/desktop'))
@@ -181,6 +247,9 @@ describe('preferences capability', () => {
       expect(await finalRes.json()).toEqual({
         requireDoubleCommandQToQuit: false,
         appshotHotkeyEnabled: false,
+        appshotHotkeyTrigger: 'DoubleShift',
+        autoCheckForUpdates: false,
+        autoDownloadUpdates: true,
       })
     }
     finally {

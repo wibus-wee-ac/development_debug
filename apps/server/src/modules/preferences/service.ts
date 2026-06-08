@@ -7,6 +7,7 @@ import type { Static } from 'elysia'
 import { getServerConfig } from '../../infra'
 import type { PreferencesModel } from './model'
 import {
+  AppPreferencesJsonSchema,
   ChatPreferencesJsonSchema,
   CodexPreferencesJsonSchema,
   DesktopPreferencesJsonSchema,
@@ -30,6 +31,39 @@ export async function getChatPreferences(): Promise<Static<typeof PreferencesMod
     }
     throw error
   }
+}
+
+export async function getAppPreferences(): Promise<Static<typeof PreferencesModel['appPreferences']>> {
+  const filePath = getPath('app')
+  try {
+    return AppPreferencesJsonSchema.parse(await readFile(filePath, 'utf8'))
+  }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return AppPreferencesJsonSchema.parse(undefined)
+    }
+    throw error
+  }
+}
+
+export function getAppPreferencesSync(): Static<typeof PreferencesModel['appPreferences']> {
+  const filePath = getPath('app')
+  try {
+    return AppPreferencesJsonSchema.parse(readFileSync(filePath, 'utf8'))
+  }
+  catch (error) {
+    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
+      return AppPreferencesJsonSchema.parse(undefined)
+    }
+    throw error
+  }
+}
+
+export async function setAppPreferences(preferences: Static<typeof PreferencesModel['appPreferences']>): Promise<void> {
+  const filePath = getPath('app')
+  const normalized = AppPreferencesJsonSchema.parse(JSON.stringify(preferences))
+  await mkdir(dirname(filePath), { recursive: true })
+  await writeFile(filePath, JSON.stringify(normalized, null, 2), 'utf8')
 }
 
 export function getChatPreferencesSync(): Static<typeof PreferencesModel['chatPreferences']> {

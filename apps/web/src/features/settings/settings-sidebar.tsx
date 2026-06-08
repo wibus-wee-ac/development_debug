@@ -1,4 +1,4 @@
-import { ActivityIcon, ArrowDownToLineIcon, ArrowLeftIcon, BotIcon, DatabaseIcon, DownloadIcon, HourglassIcon, InfoIcon, KeyboardIcon, LifeBuoyIcon, MessageSquareIcon, MousePointer2Icon, PaletteIcon, PlugIcon } from 'lucide-react'
+import { ActivityIcon, ArrowDownToLineIcon, ArrowLeftIcon, BotIcon, BoxesIcon, DatabaseIcon, FlagIcon, HourglassIcon, InfoIcon, LifeBuoyIcon, MessageSquareIcon, MonitorIcon, MousePointer2Icon, PaletteIcon, PlugIcon } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
@@ -22,7 +22,6 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
     labelKey: 'sidebar.section.general',
     items: [
       { id: 'appearance', labelKey: 'nav.appearance', icon: PaletteIcon },
-      { id: 'shortcuts', labelKey: 'nav.shortcuts', icon: KeyboardIcon },
     ],
   },
   {
@@ -47,7 +46,9 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
   {
     labelKey: 'sidebar.section.system',
     items: [
-      { id: 'desktop', labelKey: 'nav.desktop', icon: DownloadIcon },
+      { id: 'desktop', labelKey: 'nav.desktop', icon: MonitorIcon },
+      { id: 'features', labelKey: 'nav.features', icon: FlagIcon },
+      { id: 'externalIssues', labelKey: 'nav.externalIssues', icon: BoxesIcon },
       { id: 'import', labelKey: 'nav.import', icon: ArrowDownToLineIcon },
     ],
   },

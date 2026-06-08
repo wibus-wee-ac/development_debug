@@ -11,6 +11,11 @@ const titleGenerationThinkingEffort = t.Union([
   t.Literal('high'),
   t.Literal('xhigh'),
 ])
+const appshotHotkeyTrigger = t.Union([
+  t.Literal('DoubleCommand'),
+  t.Literal('DoubleOption'),
+  t.Literal('DoubleShift'),
+], { default: 'DoubleCommand' })
 const titleGenerationPreferences = t.Object({
   providerTargetId: nullableString,
   modelId: nullableString,
@@ -18,6 +23,11 @@ const titleGenerationPreferences = t.Object({
 }, { additionalProperties: false })
 
 export const PreferencesModel = {
+  appPreferences: t.Object({
+    featureFlags: t.Object({
+      multiWorkspacePoc: t.Boolean({ default: false }),
+    }, { additionalProperties: false }),
+  }, { additionalProperties: false }),
   chatPreferences: t.Object({
     modelId: nullableString,
     configSelections: t.Record(t.String(), t.Union([t.String(), t.Boolean()])),
@@ -42,6 +52,7 @@ export const PreferencesModel = {
   desktopPreferences: t.Object({
     requireDoubleCommandQToQuit: t.Boolean({ default: true }),
     appshotHotkeyEnabled: t.Boolean({ default: true }),
+    appshotHotkeyTrigger,
     autoCheckForUpdates: t.Boolean({ default: true }),
     autoDownloadUpdates: t.Boolean({ default: false }),
   }, { additionalProperties: false }),
@@ -89,6 +100,21 @@ export const ChatPreferencesJsonSchema = z.union([
   },
 }))
 
+export const AppPreferencesJsonSchema = z.union([
+  z.string().transform(raw => JSON.parse(raw)),
+  z.undefined(),
+]).pipe(z.object({
+  featureFlags: z.object({
+    multiWorkspacePoc: z.boolean().default(false),
+  }).default({
+    multiWorkspacePoc: false,
+  }),
+}).default({
+  featureFlags: {
+    multiWorkspacePoc: false,
+  },
+}))
+
 export const CodexPreferencesJsonSchema = z.union([
   z.string().transform(raw => JSON.parse(raw)),
   z.undefined(),
@@ -104,11 +130,13 @@ export const DesktopPreferencesJsonSchema = z.union([
 ]).pipe(z.object({
   requireDoubleCommandQToQuit: z.boolean().default(true),
   appshotHotkeyEnabled: z.boolean().default(true),
+  appshotHotkeyTrigger: z.enum(['DoubleCommand', 'DoubleOption', 'DoubleShift']).default('DoubleCommand'),
   autoCheckForUpdates: z.boolean().default(true),
   autoDownloadUpdates: z.boolean().default(false),
 }).default({
   requireDoubleCommandQToQuit: true,
   appshotHotkeyEnabled: true,
+  appshotHotkeyTrigger: 'DoubleCommand',
   autoCheckForUpdates: true,
   autoDownloadUpdates: false,
 }))

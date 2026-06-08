@@ -16,6 +16,35 @@ const spec = {
       "required": true,
       "target": "body.requireDoubleCommandQToQuit",
       "type": "boolean"
+    },
+    {
+      "name": "appshotHotkeyEnabled",
+      "required": true,
+      "target": "body.appshotHotkeyEnabled",
+      "type": "boolean"
+    },
+    {
+      "name": "appshotHotkeyTrigger",
+      "required": true,
+      "target": "body.appshotHotkeyTrigger",
+      "type": "string",
+      "values": [
+        "DoubleCommand",
+        "DoubleOption",
+        "DoubleShift"
+      ]
+    },
+    {
+      "name": "autoCheckForUpdates",
+      "required": true,
+      "target": "body.autoCheckForUpdates",
+      "type": "boolean"
+    },
+    {
+      "name": "autoDownloadUpdates",
+      "required": true,
+      "target": "body.autoDownloadUpdates",
+      "type": "boolean"
     }
   ],
   "method": "put",

@@ -8,10 +8,11 @@ import { AppearanceSettings } from './appearance-settings'
 import { AwaitSettings } from './await-settings'
 import { ChatSettings } from './chat-settings'
 import { DesktopUpdateSettings } from './desktop-update-settings'
+import { ExternalIssueSourceSettings } from './external-issue-source-settings'
 import { ExternalWorkImportSettings } from './external-work-import-settings'
+import { FeatureSettings } from './feature-settings'
 import { JarvisSettings } from './jarvis-settings'
 import { ModelRegistrySettings } from './model-registry-settings'
-import { ShortcutsSettings } from './shortcuts-settings'
 import { SupportSettings } from './support-settings'
 
 const SECTION_MAP: Record<string, React.ComponentType> = {
@@ -20,11 +21,12 @@ const SECTION_MAP: Record<string, React.ComponentType> = {
   registry: ModelRegistrySettings,
   agents: AgentList,
   chat: ChatSettings,
-  shortcuts: ShortcutsSettings,
   await: AwaitSettings,
   jarvis: JarvisSettings,
   chronicle: ChronicleSettings,
   desktop: DesktopUpdateSettings,
+  features: FeatureSettings,
+  externalIssues: ExternalIssueSourceSettings,
   import: ExternalWorkImportSettings,
   support: SupportSettings,
   about: AboutSettings,

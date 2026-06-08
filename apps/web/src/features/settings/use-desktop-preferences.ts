@@ -4,10 +4,12 @@ import { z } from 'zod'
 
 import { getPreferencesDesktopOptions, getPreferencesDesktopQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { putPreferencesDesktop } from '~/api-gen/sdk.gen'
+import type { MacInputBareModifier } from '~/lib/electron'
 
 export interface DesktopPreferences {
   requireDoubleCommandQToQuit: boolean
   appshotHotkeyEnabled: boolean
+  appshotHotkeyTrigger: MacInputBareModifier
   autoCheckForUpdates: boolean
   autoDownloadUpdates: boolean
 }
@@ -15,6 +17,7 @@ export interface DesktopPreferences {
 const DesktopPreferencesSchema = z.object({
   requireDoubleCommandQToQuit: z.boolean().default(true),
   appshotHotkeyEnabled: z.boolean().default(true),
+  appshotHotkeyTrigger: z.enum(['DoubleCommand', 'DoubleOption', 'DoubleShift']).default('DoubleCommand'),
   autoCheckForUpdates: z.boolean().default(true),
   autoDownloadUpdates: z.boolean().default(false),
 })

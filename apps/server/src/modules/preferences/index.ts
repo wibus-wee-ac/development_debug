@@ -7,6 +7,34 @@ export const preferences = new Elysia({
   prefix: '/preferences',
   detail: { tags: ['preferences'] },
 })
+  .get('/app', () => Preferences.getAppPreferences(), {
+    detail: {
+      'summary': 'Get app preferences',
+      'description': 'Read Cradle-owned application preferences and feature flags.',
+      'x-cradle-cli': {
+        command: ['preferences', 'app', 'get'],
+      },
+    },
+    response: {
+      200: PreferencesModel.appPreferences,
+    },
+  })
+  .put('/app', async ({ body }) => {
+    await Preferences.setAppPreferences(body)
+    return { ok: true as const }
+  }, {
+    detail: {
+      'summary': 'Set app preferences',
+      'description': 'Persist Cradle-owned application preferences and feature flags.',
+      'x-cradle-cli': {
+        command: ['preferences', 'app', 'set'],
+      },
+    },
+    body: PreferencesModel.appPreferences,
+    response: {
+      200: PreferencesModel.savedResponse,
+    },
+  })
   .get('/chat', () => Preferences.getChatPreferences(), {
     detail: {
       'summary': 'Get chat preferences',
