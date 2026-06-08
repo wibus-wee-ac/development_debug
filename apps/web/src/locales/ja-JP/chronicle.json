@@ -212,7 +212,7 @@
   "pipeline.trigger.snapshot": "画面記録",
   "pipeline.trigger.summarize": "要約",
   "privacy.appBundle.placeholder": "com.apple.Terminal",
-  "privacy.closedEyes.description": "detector が閉眼または離席を報告すると、Server はスクリーンショット、ウィンドウ手がかり、活動セグメントを書き込む前にそのフレームを破棄します。",
+  "privacy.closedEyes.description": "一時的に利用できません。runtime の detector / 手動停止フローはまだ接続されていないため、Server はフレームの記録を続け、この破棄設定を無視します。",
   "privacy.closedEyes.mode.alwaysPause": "常に一時停止",
   "privacy.closedEyes.mode.alwaysPause.ariaLabel": "常に一時停止",
   "privacy.closedEyes.mode.alwaysRecord": "常に記録",
@@ -320,6 +320,15 @@
   "timeline.fallback.screenRecord": "画面記録",
   "timeline.fallback.slackMessage": "Slack メッセージ",
   "timeline.fallback.unknownUser": "不明なユーザー",
+  "timeline.displayLabel": "ディスプレイ {{displayId}}",
+  "timeline.filter.all": "すべて",
+  "timeline.filter.allDisplays": "すべてのディスプレイ",
+  "timeline.filter.display.ariaLabel": "ディスプレイで記録を絞り込む",
+  "timeline.filter.source.ariaLabel": "ソースで記録を絞り込む",
+  "timeline.filteredEmpty": "この条件に一致する記録はありません",
   "timeline.frameAlt": "{{time}} の活動記録",
-  "timeline.frameUnavailable": "画面は利用できません"
+  "timeline.frameUnavailable": "画面は利用できません",
+  "timeline.source.audio": "音声",
+  "timeline.source.message": "メッセージ",
+  "timeline.source.snapshot": "画面"
 }

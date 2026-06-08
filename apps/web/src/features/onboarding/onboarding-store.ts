@@ -3,15 +3,11 @@ import { persist } from 'zustand/middleware'
 
 import { persistStorage } from '~/store/persist-storage'
 
-export const ONBOARDING_TOTAL_STEPS = 5
-
 interface OnboardingState {
   completed: boolean
-  step: number
-  nextStep: () => void
-  prevStep: () => void
-  goToStep: (step: number) => void
-  complete: () => void
+  roles: string[]
+  personalizedSuggestionsEnabled: boolean
+  complete: (preferences?: { roles?: string[], personalizedSuggestionsEnabled?: boolean }) => void
   reset: () => void
 }
 
@@ -19,24 +15,18 @@ export const useOnboardingStore = create<OnboardingState>()(
   persist(
     set => ({
       completed: false,
-      step: 0,
+      roles: [],
+      personalizedSuggestionsEnabled: true,
 
-      nextStep: () =>
-        set(s => ({
-          step: Math.min(s.step + 1, ONBOARDING_TOTAL_STEPS - 1),
+      complete: preferences =>
+        set(state => ({
+          completed: true,
+          roles: preferences?.roles ?? state.roles,
+          personalizedSuggestionsEnabled:
+            preferences?.personalizedSuggestionsEnabled ?? state.personalizedSuggestionsEnabled,
         })),
 
-      prevStep: () =>
-        set(s => ({
-          step: Math.max(s.step - 1, 0),
-        })),
-
-      goToStep: (step: number) =>
-        set({ step: Math.max(0, Math.min(step, ONBOARDING_TOTAL_STEPS - 1)) }),
-
-      complete: () => set({ completed: true }),
-
-      reset: () => set({ completed: false, step: 0 }),
+      reset: () => set({ completed: false, roles: [], personalizedSuggestionsEnabled: true }),
     }),
     {
       name: 'cradle:onboarding:v1',
@@ -44,7 +34,8 @@ export const useOnboardingStore = create<OnboardingState>()(
       version: 1,
       partialize: state => ({
         completed: state.completed,
-        step: state.step,
+        roles: state.roles,
+        personalizedSuggestionsEnabled: state.personalizedSuggestionsEnabled,
       }),
     },
   ),

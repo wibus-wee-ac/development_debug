@@ -18,8 +18,8 @@ import {
   TriangleAlertIcon,
   UserRoundIcon,
 } from 'lucide-react'
-import type { KeyboardEvent, MouseEvent, ReactNode } from 'react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
@@ -34,7 +34,8 @@ import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-mo
 import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
 import type { ProviderModelOption } from '~/features/composer-toolbar/types'
-import { SettingsDivider, SettingsRow, SettingsSectionHeader } from '~/features/settings/settings-row'
+import { SettingsGroup, SettingsPage } from '~/features/settings/settings-container'
+import { SettingsRow } from '~/features/settings/settings-row'
 import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
 import { formatPercentFromRatio, formatShortDurationMs } from '~/lib/number-format'
@@ -91,11 +92,11 @@ const PRIVACY_RULE_LINE_SPLIT_RE = /\r?\n/
 type ChronicleTranslate = TFunction<'chronicle'>
 
 const AccessibilityTreeNodeSchema = z.object({
-  role: z.string().min(1).default('AXElement'),
-  label: z.string().default(''),
-  value: z.string().default(''),
-  depth: z.number().finite().default(0),
-  path: z.string().min(1).optional(),
+  role: z.string().nullable().optional().transform(value => value?.trim() || 'AXElement'),
+  label: z.union([z.string(), z.number(), z.boolean()]).nullable().optional().transform(value => value === null || value === undefined ? '' : String(value)),
+  value: z.union([z.string(), z.number(), z.boolean()]).nullable().optional().transform(value => value === null || value === undefined ? '' : String(value)),
+  depth: z.coerce.number().finite().nullable().optional().transform(value => value ?? 0),
+  path: z.string().min(1).nullable().optional(),
 }).passthrough().transform(node => ({
   role: node.role,
   label: node.label,
@@ -438,29 +439,24 @@ export function ChronicleSettings() {
   }
 
   return (
-    <div
-      className="flex flex-col gap-0"
+    <SettingsPage
+      title={t('page.title')}
+      description={t('page.description')}
+      action={
+        <div className="flex items-center gap-2">
+          <StatusBadge running={status?.running ?? false} available={status?.available ?? false} />
+          <Button type="button" variant="outline" size="xs" onClick={refreshChronicle} className="transition-transform active:scale-[0.96]">
+            <RefreshCwIcon className="size-3" />
+            {t('common.action.refresh')}
+          </Button>
+        </div>
+      }
       data-testid="chronicle-settings"
       data-settings-chronicle-ready={settingsChronicleReady ? 'true' : 'false'}
     >
-      {/* ── Section: Chronicle ── */}
-      <SettingsSectionHeader
-        title={t('page.title')}
-        description={t('page.description')}
-        action={
-          <div className="flex items-center gap-2">
-            <StatusBadge running={status?.running ?? false} available={status?.available ?? false} />
-            <Button type="button" variant="outline" size="xs" onClick={refreshChronicle} className="active:scale-[0.96] transition-transform">
-              <RefreshCwIcon className="size-3" />
-              {t('common.action.refresh')}
-            </Button>
-          </div>
-        }
-      />
-
-      {/* Setup notice */}
+      {/* Setup / dependency notices */}
       {setupNotice && (
-        <Alert className="border-amber-500/20 bg-amber-500/5 text-amber-800 dark:text-amber-300 mt-2">
+        <Alert className="border-amber-500/20 bg-amber-500/5 text-amber-800 dark:text-amber-300">
           <TriangleAlertIcon className="size-4" aria-hidden="true" />
           <AlertTitle>{setupNotice.title}</AlertTitle>
           <AlertDescription className="flex flex-col gap-3 text-[12px] leading-5 md:flex-row md:items-center md:justify-between">
@@ -470,7 +466,7 @@ export function ChronicleSettings() {
                 type="button"
                 variant="outline"
                 size="sm"
-                className="w-fit border-amber-500/30 bg-background/70 text-amber-800 hover:bg-amber-500/10 active:scale-[0.96] transition-transform dark:text-amber-200"
+                className="w-fit border-amber-500/30 bg-background/70 text-amber-800 transition-transform hover:bg-amber-500/10 active:scale-[0.96] dark:text-amber-200"
                 disabled={saving}
                 onClick={() => {
                   if (setupNotice.actionKind === 'open-providers') {
@@ -489,9 +485,8 @@ export function ChronicleSettings() {
         </Alert>
       )}
 
-      {/* Dependency notice */}
       {dependencyNotice && (
-        <Alert className="border-border bg-muted/30 mt-2">
+        <Alert className="border-border bg-muted/30">
           <TriangleAlertIcon className="size-4 text-muted-foreground" aria-hidden="true" />
           <AlertTitle>{dependencyNotice.title}</AlertTitle>
           <AlertDescription className="text-[12px] leading-5">
@@ -500,157 +495,148 @@ export function ChronicleSettings() {
         </Alert>
       )}
 
-      {/* ── Controls ── */}
-      <SettingsRow
-        label={t('control.capture.title')}
-        description={canEnable ? t('control.capture.description.enabled') : t('control.capture.description.blocked')}
-        labelAccessory={
-          <StatusBadgeInline tone={config?.enabled ? 'enabled' : captureDisabledReason ? 'warning' : 'disabled'}>
-            {localizedCaptureStatus}
-          </StatusBadgeInline>
-        }
-      >
-        <Switch
-          checked={config?.enabled ?? false}
-          onCheckedChange={(enabled) => {
-            void updateConfig(enabled
-              ? { enabled, activityPipelineEnabled: false, dreamSchedulerEnabled: false }
-              : { enabled })
-          }}
-          disabled={saving || !canEnable}
-        />
-      </SettingsRow>
-      <SettingsDivider />
-
-      <ChronicleModelRow
-        saving={saving}
-        profiles={profiles}
-        selectedProfileId={config?.profileId ?? null}
-        selectedModelId={config?.modelId ?? null}
-        selectedModel={selectedModel}
-        modelsByProfileId={modelsByProfileId}
-        loadingProfileIds={loadingProfileIds}
-        successfulProfileIds={successfulProfileIds}
-        requestProfileModels={requestProfileModels}
-        onUpdateConfig={updateConfig}
-      />
-      <SettingsDivider />
-
-      <SettingsRow
-        label={t('control.activity.title')}
-        description={config?.enabled ? t('control.activity.description.enabled') : t('control.activity.description.blocked')}
-        labelAccessory={
-          <StatusBadgeInline tone={config?.enabled && (config?.activityPipelineEnabled ?? false) ? 'enabled' : activityDisabledReason ? 'warning' : 'disabled'}>
-            {localizedActivityStatus}
-          </StatusBadgeInline>
-        }
-      >
-        <Switch
-          checked={config?.activityPipelineEnabled ?? false}
-          onCheckedChange={activityPipelineEnabled => void updateConfig({ activityPipelineEnabled })}
-          disabled={saving || !config?.enabled}
-        />
-      </SettingsRow>
-      <SettingsDivider />
-
-      <SettingsRow
-        label={t('control.dream.title')}
-        description={config?.enabled ? t('control.dream.description.enabled') : t('control.dream.description.blocked')}
-        labelAccessory={
-          <StatusBadgeInline tone={config?.enabled && (config?.dreamSchedulerEnabled ?? false) ? 'enabled' : activityDisabledReason ? 'warning' : 'disabled'}>
-            {localizedDreamStatus}
-          </StatusBadgeInline>
-        }
-      >
-        <Switch
-          checked={config?.dreamSchedulerEnabled ?? false}
-          onCheckedChange={dreamSchedulerEnabled => void updateConfig({ dreamSchedulerEnabled })}
-          disabled={saving || !config?.enabled}
-        />
-      </SettingsRow>
-      <SettingsDivider />
-
-      <SettingsRow
-        label={t('control.audio.title')}
-        description={config?.enabled ? t('control.audio.description.enabled') : t('control.audio.description.blocked')}
-        labelAccessory={
-          <StatusBadgeInline tone={config?.enabled && config?.audioCaptureEnabled ? 'enabled' : audioDisabledReason || audioSourceDisabledReason ? 'warning' : 'disabled'}>
-            {localizedAudioStatus}
-          </StatusBadgeInline>
-        }
-      >
-        <div className="flex items-center gap-2">
-          <select
-            className="h-8 max-w-40 rounded-md border border-border bg-background px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
-            value={config?.audioSource ?? 'microphone'}
-            onChange={event => void updateConfig({ audioSource: event.target.value as ChronicleConfig['audioSource'] })}
-            disabled={saving || !config?.enabled || !config?.audioCaptureEnabled}
-          >
-            <option value="microphone">{t('control.audio.source.microphone')}</option>
-            <option value="system">{t('control.audio.source.system')}</option>
-            <option value="mixed">{t('control.audio.source.mixed')}</option>
-          </select>
+      {/* ── Section: Controls ── */}
+      <SettingsGroup>
+        <SettingsRow
+          label={t('control.capture.title')}
+          description={canEnable ? t('control.capture.description.enabled') : t('control.capture.description.blocked')}
+          labelAccessory={
+            <StatusBadgeInline tone={config?.enabled ? 'enabled' : captureDisabledReason ? 'warning' : 'disabled'}>
+              {localizedCaptureStatus}
+            </StatusBadgeInline>
+          }
+        >
           <Switch
-            checked={config?.audioCaptureEnabled ?? false}
-            onCheckedChange={audioCaptureEnabled => void updateConfig({ audioCaptureEnabled })}
+            checked={config?.enabled ?? false}
+            onCheckedChange={(enabled) => {
+              void updateConfig(enabled
+                ? { enabled, activityPipelineEnabled: false, dreamSchedulerEnabled: false }
+                : { enabled })
+            }}
+            disabled={saving || !canEnable}
+          />
+        </SettingsRow>
+
+        <ChronicleModelRow
+          saving={saving}
+          profiles={profiles}
+          selectedProfileId={config?.profileId ?? null}
+          selectedModelId={config?.modelId ?? null}
+          selectedModel={selectedModel}
+          modelsByProfileId={modelsByProfileId}
+          loadingProfileIds={loadingProfileIds}
+          successfulProfileIds={successfulProfileIds}
+          requestProfileModels={requestProfileModels}
+          onUpdateConfig={updateConfig}
+        />
+
+        <SettingsRow
+          label={t('control.activity.title')}
+          description={config?.enabled ? t('control.activity.description.enabled') : t('control.activity.description.blocked')}
+          labelAccessory={
+            <StatusBadgeInline tone={config?.enabled && (config?.activityPipelineEnabled ?? false) ? 'enabled' : activityDisabledReason ? 'warning' : 'disabled'}>
+              {localizedActivityStatus}
+            </StatusBadgeInline>
+          }
+        >
+          <Switch
+            checked={config?.activityPipelineEnabled ?? false}
+            onCheckedChange={activityPipelineEnabled => void updateConfig({ activityPipelineEnabled })}
             disabled={saving || !config?.enabled}
           />
-        </div>
-      </SettingsRow>
-      <SettingsDivider />
+        </SettingsRow>
+
+        <SettingsRow
+          label={t('control.dream.title')}
+          description={config?.enabled ? t('control.dream.description.enabled') : t('control.dream.description.blocked')}
+          labelAccessory={
+            <StatusBadgeInline tone={config?.enabled && (config?.dreamSchedulerEnabled ?? false) ? 'enabled' : activityDisabledReason ? 'warning' : 'disabled'}>
+              {localizedDreamStatus}
+            </StatusBadgeInline>
+          }
+        >
+          <Switch
+            checked={config?.dreamSchedulerEnabled ?? false}
+            onCheckedChange={dreamSchedulerEnabled => void updateConfig({ dreamSchedulerEnabled })}
+            disabled={saving || !config?.enabled}
+          />
+        </SettingsRow>
+
+        <SettingsRow
+          label={t('control.audio.title')}
+          description={config?.enabled ? t('control.audio.description.enabled') : t('control.audio.description.blocked')}
+          labelAccessory={
+            <StatusBadgeInline tone={config?.enabled && config?.audioCaptureEnabled ? 'enabled' : audioDisabledReason || audioSourceDisabledReason ? 'warning' : 'disabled'}>
+              {localizedAudioStatus}
+            </StatusBadgeInline>
+          }
+        >
+          <div className="flex items-center gap-2">
+            <select
+              className="h-8 max-w-40 rounded-md border border-border bg-background px-2 text-sm text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+              value={config?.audioSource ?? 'microphone'}
+              onChange={event => void updateConfig({ audioSource: event.target.value as ChronicleConfig['audioSource'] })}
+              disabled={saving || !config?.enabled || !config?.audioCaptureEnabled}
+            >
+              <option value="microphone">{t('control.audio.source.microphone')}</option>
+              <option value="system">{t('control.audio.source.system')}</option>
+              <option value="mixed">{t('control.audio.source.mixed')}</option>
+            </select>
+            <Switch
+              checked={config?.audioCaptureEnabled ?? false}
+              onCheckedChange={audioCaptureEnabled => void updateConfig({ audioCaptureEnabled })}
+              disabled={saving || !config?.enabled}
+            />
+          </div>
+        </SettingsRow>
+      </SettingsGroup>
 
       {/* ── Section: Data Sources ── */}
-      <SettingsSectionHeader
-        title={t('sources.title')}
+      <SettingsGroup
+        label={t('sources.title')}
         description={t('sources.description')}
         action={
-          <div className="flex items-center gap-1.5">
-            <Badge variant="secondary" className="text-[11px] tabular-nums">
-              {t('sources.metric.total', {
-                screen: status?.totalAccessibilitySnapshots ?? 0,
-                messages: status?.totalMessages ?? 0,
-                audio: status?.totalAudioTranscripts ?? 0,
-              })}
-            </Badge>
-          </div>
+          <Badge variant="secondary" className="text-[11px] tabular-nums">
+            {t('sources.metric.total', {
+              screen: status?.totalAccessibilitySnapshots ?? 0,
+              messages: status?.totalMessages ?? 0,
+              audio: status?.totalAudioTranscripts ?? 0,
+            })}
+          </Badge>
         }
-      />
-      <SettingsDivider />
-
-      <SettingsRow
-        label={t('sources.screen.title')}
-        description={t('sources.screen.description')}
-        labelAccessory={<Badge variant="outline" className="text-[11px] tabular-nums">{status?.totalAccessibilitySnapshots ?? 0}</Badge>}
       >
-        <Badge variant="outline" className="text-[11px]">{t('sources.screen.active')}</Badge>
-      </SettingsRow>
-      <SettingsDivider />
+        <SettingsRow
+          label={t('sources.screen.title')}
+          description={t('sources.screen.description')}
+          labelAccessory={<Badge variant="outline" className="text-[11px] tabular-nums">{status?.totalAccessibilitySnapshots ?? 0}</Badge>}
+        >
+          <Badge variant="outline" className="text-[11px]">{t('sources.screen.active')}</Badge>
+        </SettingsRow>
 
-      <SettingsRow
-        label={t('sources.slack.title')}
-        description={t('sources.slack.description')}
-        labelAccessory={<Badge variant="outline" className="text-[11px] tabular-nums">{status?.totalMessages ?? 0}</Badge>}
-      >
-        <Badge variant={messageSources.length > 0 ? 'secondary' : 'outline'} className="text-[11px]">
-          {messageSources.length > 0 ? t('common.status.enabled') : t('common.status.disconnected')}
-        </Badge>
-      </SettingsRow>
-      <SettingsDivider />
+        <SettingsRow
+          label={t('sources.slack.title')}
+          description={t('sources.slack.description')}
+          labelAccessory={<Badge variant="outline" className="text-[11px] tabular-nums">{status?.totalMessages ?? 0}</Badge>}
+        >
+          <Badge variant={messageSources.length > 0 ? 'secondary' : 'outline'} className="text-[11px]">
+            {messageSources.length > 0 ? t('common.status.enabled') : t('common.status.disconnected')}
+          </Badge>
+        </SettingsRow>
 
-      <SettingsRow
-        label={t('sources.audio.title')}
-        description={t('sources.audio.description')}
-        labelAccessory={<Badge variant="outline" className="text-[11px] tabular-nums">{status?.totalAudioTranscripts ?? 0}</Badge>}
-      >
-        <Badge variant={config?.audioCaptureEnabled ? 'secondary' : 'outline'} className="text-[11px]">
-          {config?.audioCaptureEnabled ? t('common.status.enabled') : t('common.status.notEnabled')}
-        </Badge>
-      </SettingsRow>
-      <SettingsDivider />
+        <SettingsRow
+          label={t('sources.audio.title')}
+          description={t('sources.audio.description')}
+          labelAccessory={<Badge variant="outline" className="text-[11px] tabular-nums">{status?.totalAudioTranscripts ?? 0}</Badge>}
+        >
+          <Badge variant={config?.audioCaptureEnabled ? 'secondary' : 'outline'} className="text-[11px]">
+            {config?.audioCaptureEnabled ? t('common.status.enabled') : t('common.status.notEnabled')}
+          </Badge>
+        </SettingsRow>
+      </SettingsGroup>
 
       {/* ── Section: Memory & Knowledge ── */}
-      <SettingsSectionHeader
-        title={t('memorySection.title')}
+      <SettingsGroup
+        label={t('memorySection.title')}
         description={t('memorySection.description')}
         action={
           <div className="flex items-center gap-1.5">
@@ -666,88 +652,81 @@ export function ChronicleSettings() {
             </Badge>
           </div>
         }
-      />
-      <SettingsDivider />
+      >
+        <SettingsRow label={t('recentActivity.title')} description={t('recentActivity.description')} vertical>
+          {timelineLoading
+            ? <EmptyState icon={<ImageIcon className="size-4" />} title={t('recentActivity.loading')} />
+            : timelineEntries.length === 0
+              ? <EmptyState icon={<ImageIcon className="size-4" />} title={t('recentActivity.empty')} />
+              : <TimelineRecordFeed entries={timelineEntries} />}
+        </SettingsRow>
 
-      <SettingsRow label={t('recentActivity.title')} description={t('recentActivity.description')} vertical>
-        {timelineLoading
-          ? <EmptyState icon={<ImageIcon className="size-4" />} title={t('recentActivity.loading')} />
-          : timelineEntries.length === 0
-            ? <EmptyState icon={<ImageIcon className="size-4" />} title={t('recentActivity.empty')} />
-            : <TimelineScrubber entries={timelineEntries} />}
-      </SettingsRow>
-      <SettingsDivider />
-
-      <div ref={memorySectionRef}>
-        <SettingsRow label={t('memorySearch.title')} description={t('memorySearch.description')} vertical>
-          <div className="flex flex-col gap-3">
-            <div className="relative">
-              <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
-              <Input
-                value={searchQuery}
-                onChange={event => setSearchQuery(event.target.value)}
-                placeholder={t('memorySearch.placeholder')}
-                className="h-9 pl-8 text-[13px]"
-              />
+        <div ref={memorySectionRef}>
+          <SettingsRow label={t('memorySearch.title')} description={t('memorySearch.description')} vertical>
+            <div className="flex flex-col gap-3">
+              <div className="relative">
+                <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+                <Input
+                  value={searchQuery}
+                  onChange={event => setSearchQuery(event.target.value)}
+                  placeholder={t('memorySearch.placeholder')}
+                  className="h-9 pl-8 text-[13px]"
+                />
+              </div>
+              {memoriesLoading || searchingMemories || focusedMemoryLoading
+                ? <EmptyState icon={<BrainIcon className="size-4" />} title={t('memorySearch.loading')} />
+                : visibleMemoryEntries.length === 0
+                  ? (
+                      <EmptyState
+                        icon={<BrainIcon className="size-4" />}
+                        title={hasSearchQuery ? t('memorySearch.noMatches') : t('memorySearch.empty')}
+                      />
+                    )
+                  : (
+                      <MemoryList
+                        entries={visibleMemoryEntries}
+                        focusTarget={chronicleFocusTarget}
+                      />
+                    )}
             </div>
-            {memoriesLoading || searchingMemories || focusedMemoryLoading
-              ? <EmptyState icon={<BrainIcon className="size-4" />} title={t('memorySearch.loading')} />
-              : visibleMemoryEntries.length === 0
-                ? (
-                    <EmptyState
-                      icon={<BrainIcon className="size-4" />}
-                      title={hasSearchQuery ? t('memorySearch.noMatches') : t('memorySearch.empty')}
-                    />
-                  )
-                : (
-                    <MemoryList
-                      entries={visibleMemoryEntries}
-                      focusTarget={chronicleFocusTarget}
-                    />
-                  )}
-          </div>
-        </SettingsRow>
-      </div>
-      <SettingsDivider />
+          </SettingsRow>
+        </div>
 
-      <div ref={knowledgeSectionRef}>
-        <SettingsRow label={t('knowledge.title')} description={t('knowledge.description')} vertical>
-          {knowledgeCardsLoading || focusedKnowledgeLoading
-            ? <EmptyState icon={<BrainIcon className="size-4" />} title={t('knowledge.loading')} />
-            : visibleKnowledgeCards.length === 0
-              ? <EmptyState icon={<BrainIcon className="size-4" />} title={t('knowledge.empty')} />
-              : <KnowledgeCardList cards={visibleKnowledgeCards} focusTarget={chronicleFocusTarget} />}
-        </SettingsRow>
-      </div>
-      <SettingsDivider />
+        <div ref={knowledgeSectionRef}>
+          <SettingsRow label={t('knowledge.title')} description={t('knowledge.description')} vertical>
+            {knowledgeCardsLoading || focusedKnowledgeLoading
+              ? <EmptyState icon={<BrainIcon className="size-4" />} title={t('knowledge.loading')} />
+              : visibleKnowledgeCards.length === 0
+                ? <EmptyState icon={<BrainIcon className="size-4" />} title={t('knowledge.empty')} />
+                : <KnowledgeCardList cards={visibleKnowledgeCards} focusTarget={chronicleFocusTarget} />}
+          </SettingsRow>
+        </div>
 
-      <SettingsRow label={t('speakers.title')} description={t('speakers.description')} vertical>
-        {speakerProfilesLoading
-          ? <EmptyState icon={<UserRoundIcon className="size-4" />} title={t('speakers.loading')} />
-          : speakerProfiles.length === 0
-            ? <EmptyState icon={<UserRoundIcon className="size-4" />} title={t('speakers.empty')} />
-            : <SpeakerProfileList profiles={speakerProfiles} />}
-      </SettingsRow>
-      <SettingsDivider />
+        <SettingsRow label={t('speakers.title')} description={t('speakers.description')} vertical>
+          {speakerProfilesLoading
+            ? <EmptyState icon={<UserRoundIcon className="size-4" />} title={t('speakers.loading')} />
+            : speakerProfiles.length === 0
+              ? <EmptyState icon={<UserRoundIcon className="size-4" />} title={t('speakers.empty')} />
+              : <SpeakerProfileList profiles={speakerProfiles} />}
+        </SettingsRow>
+      </SettingsGroup>
 
       {/* ── Section: Privacy ── */}
-      <SettingsSectionHeader title={t('privacySection.title')} description={t('privacySection.description')} />
-      <SettingsDivider />
-
-      <PrivacyRulesPanel
-        config={config}
-        saving={saving}
-        onUpdateConfig={updateConfig}
-      />
-      <SettingsDivider />
+      <SettingsGroup label={t('privacySection.title')} description={t('privacySection.description')} bare className="p-4">
+        <PrivacyRulesPanel
+          config={config}
+          saving={saving}
+          onUpdateConfig={updateConfig}
+        />
+      </SettingsGroup>
 
       {/* ── Section: Advanced & Diagnostics ── */}
-      <details className="group mt-2 rounded-lg bg-muted/20 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)]">
+      <details className="group rounded-xl border border-border bg-card">
         <summary className="flex min-h-12 cursor-pointer list-none items-center justify-between gap-3 px-4 py-3 text-[13px] font-medium text-foreground">
           {t('advanced.summary.title')}
           <span className="text-[12px] font-normal text-muted-foreground">{t('advanced.summary.description')}</span>
         </summary>
-        <div className="border-t border-foreground/5 px-4 pb-4 pt-3">
+        <div className="border-t border-border/60 px-4 pb-4 pt-3">
           <section className="py-2">
             <StatusPanel
               loading={statusLoading}
@@ -790,12 +769,12 @@ export function ChronicleSettings() {
           <SettingsRow label={t('advanced.messageSources.title')} description={t('advanced.messageSources.description')} vertical>
             <SlackSourcePanel loading={messageSourcesLoading} sources={messageSources} />
           </SettingsRow>
-          <SettingsDivider />
+          <div className="border-t border-border/60" />
 
           <AdvancedDiagnosticSection title={t('advanced.resources.title')} description={t('advanced.resources.description')}>
             <ResourceGrid loading={resourcesLoading} resources={resources} />
           </AdvancedDiagnosticSection>
-          <SettingsDivider />
+          <div className="border-t border-border/60" />
 
           <SettingsRow label={t('advanced.accessibilitySnapshots.title')} description={t('advanced.accessibilitySnapshots.description')} vertical>
             {accessibilitySnapshotsLoading
@@ -804,7 +783,7 @@ export function ChronicleSettings() {
                 ? <EmptyState icon={<EyeIcon className="size-4" />} title={t('advanced.accessibilitySnapshots.empty')} />
                 : <AccessibilitySnapshotList snapshots={accessibilitySnapshots} />}
           </SettingsRow>
-          <SettingsDivider />
+          <div className="border-t border-border/60" />
 
           <SettingsRow label={t('advanced.accessibilityEvents.title')} description={t('advanced.accessibilityEvents.description')} vertical>
             {accessibilityEventsLoading
@@ -813,7 +792,7 @@ export function ChronicleSettings() {
                 ? <EmptyState icon={<ActivityIcon className="size-4" />} title={t('advanced.accessibilityEvents.empty')} />
                 : <AccessibilityEventList events={accessibilityEvents} />}
           </SettingsRow>
-          <SettingsDivider />
+          <div className="border-t border-border/60" />
 
           <SettingsRow label={t('advanced.audioSegments.title')} description={t('advanced.audioSegments.description')} vertical>
             {audioRawSegmentsLoading
@@ -822,7 +801,7 @@ export function ChronicleSettings() {
                 ? <EmptyState icon={<FileAudioIcon className="size-4" />} title={t('advanced.audioSegments.empty')} />
                 : <AudioRawSegmentList segments={audioRawSegments} />}
           </SettingsRow>
-          <SettingsDivider />
+          <div className="border-t border-border/60" />
 
           <SettingsRow label={t('advanced.transcripts.title')} description={t('advanced.transcripts.description')} vertical>
             {audioTranscriptsLoading
@@ -831,7 +810,7 @@ export function ChronicleSettings() {
                 ? <EmptyState icon={<FileAudioIcon className="size-4" />} title={t('advanced.transcripts.empty')} />
                 : <AudioTranscriptList transcripts={audioTranscripts} />}
           </SettingsRow>
-          <SettingsDivider />
+          <div className="border-t border-border/60" />
 
           <AdvancedDiagnosticSection title={t('advanced.activitySegments.title')} description={t('advanced.activitySegments.description')}>
             {activitySegmentsLoading || pipelineRunsLoading
@@ -840,14 +819,14 @@ export function ChronicleSettings() {
                 ? <EmptyState icon={<ActivityIcon className="size-4" />} title={t('advanced.activitySegments.empty')} />
                 : <ActivityPipelinePanel segments={activitySegments} runs={pipelineRuns} />}
           </AdvancedDiagnosticSection>
-          <SettingsDivider />
+          <div className="border-t border-border/60" />
 
           <SettingsRow label={t('advanced.dreamRuns.title')} description={t('advanced.dreamRuns.description')} vertical>
             <DreamRunPanel loading={dreamRunsLoading} runs={dreamRuns} />
           </SettingsRow>
         </div>
       </details>
-    </div>
+    </SettingsPage>
   )
 }
 
@@ -1045,8 +1024,6 @@ export function PrivacyRulesPanel({
   const nextTitlePatterns = parsePrivacyRuleLines(draft.titlePatternText)
   const nextUrlPatterns = parsePrivacyRuleLines(draft.urlPatternText)
   const ruleCount = nextAppBundleIds.length + nextTitlePatterns.length + nextUrlPatterns.length
-  const closedEyesEnabled = config?.closedEyesDiscardEnabled ?? false
-  const closedEyesMode = config?.closedEyesMode ?? 'auto'
   const hasChanges = config
     ? !stringListsEqual(nextAppBundleIds, config.privacySensitiveAppBundleIds)
     || !stringListsEqual(nextTitlePatterns, config.privacySensitiveTitlePatterns)
@@ -1054,26 +1031,21 @@ export function PrivacyRulesPanel({
     : false
 
   return (
-    <div className="flex flex-col gap-0">
+    <div className="flex flex-col">
       <SettingsRow
         label={t('privacy.closedEyes.title')}
         description={t('privacy.closedEyes.description')}
         labelAccessory={
-          <Badge variant={closedEyesEnabled ? 'secondary' : 'outline'} className="text-[11px]">
-            {closedEyesEnabled ? t('common.status.enabled') : t('common.status.disabled')}
+          <Badge variant="outline" className="text-[11px]">
+            {t('common.status.unavailable')}
           </Badge>
         }
       >
         <div className="flex items-center gap-2">
           <ToggleGroup
             type="single"
-            value={closedEyesMode}
-            onValueChange={(value) => {
-              if (value) {
-                void onUpdateConfig({ closedEyesMode: value as ChronicleConfig['closedEyesMode'] })
-              }
-            }}
-            disabled={!config || saving || !closedEyesEnabled}
+            value="always-record"
+            disabled
             variant="outline"
             size="sm"
           >
@@ -1089,13 +1061,12 @@ export function PrivacyRulesPanel({
           </ToggleGroup>
           <Switch
             aria-label={t('privacy.closedEyes.toggle')}
-            checked={closedEyesEnabled}
-            onCheckedChange={closedEyesDiscardEnabled => void onUpdateConfig({ closedEyesDiscardEnabled })}
-            disabled={saving || !config}
+            checked={false}
+            disabled
           />
         </div>
       </SettingsRow>
-      <SettingsDivider />
+      <div className="border-t border-border/60" />
 
       <SettingsRow
         label={t('privacy.title')}
@@ -1587,164 +1558,191 @@ function ResourceBadge({ resource }: { resource: ChronicleModelResource }) {
   )
 }
 
-function TimelineScrubber({ entries }: { entries: TimelineEntry[] }) {
-  const { t } = useTranslation('chronicle')
-  const [selectedIndex, setSelectedIndex] = useState(0)
-  const [hoverIndex, setHoverIndex] = useState<number | null>(null)
-  const seekRef = useRef<HTMLDivElement>(null)
-  const serverUrl = getServerUrl()
+type TimelineSourceFilter = 'all' | 'snapshot' | 'message' | 'audio'
 
-  const frameUrl = useCallback(
-    (entry: TimelineEntry) => `${serverUrl}/chronicle/snapshots/${encodeURIComponent(entry.id)}/frame`,
-    [serverUrl],
+function TimelineRecordFeed({ entries }: { entries: TimelineEntry[] }) {
+  const { t } = useTranslation('chronicle')
+  const serverUrl = getServerUrl()
+  const [sourceFilter, setSourceFilter] = useState<TimelineSourceFilter>('all')
+  const [displayFilter, setDisplayFilter] = useState<number | null>(null)
+  const displayIds = useMemo(
+    () => Array.from(new Set(entries.map(entry => entry.displayId))).sort((left, right) => left - right),
+    [entries],
+  )
+  const filteredEntries = useMemo(
+    () => entries.filter((entry) => {
+      const sourceType = entry.sourceType ?? 'snapshot'
+      return (sourceFilter === 'all' || sourceType === sourceFilter)
+        && (displayFilter === null || entry.displayId === displayFilter)
+    }),
+    [displayFilter, entries, sourceFilter],
   )
 
-  const handleKeyDown = useCallback((event: KeyboardEvent<HTMLDivElement>) => {
-    if (event.key === 'ArrowLeft') {
-      setSelectedIndex(index => Math.min(index + 1, entries.length - 1))
-    }
-    else if (event.key === 'ArrowRight') {
-      setSelectedIndex(index => Math.max(index - 1, 0))
-    }
-  }, [entries.length])
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-col gap-2 rounded-lg bg-muted/30 p-2 sm:flex-row sm:items-center sm:justify-between">
+        <ToggleGroup
+          type="single"
+          value={sourceFilter}
+          onValueChange={(value) => {
+            if (isTimelineSourceFilter(value)) {
+              setSourceFilter(value)
+            }
+          }}
+          variant="outline"
+          size="sm"
+          spacing={0}
+          aria-label={t('timeline.filter.source.ariaLabel')}
+          className="w-full justify-start sm:w-auto"
+        >
+          <ToggleGroupItem value="all" aria-label={t('timeline.filter.all')} className="h-8 px-2 text-[11px]">
+            {t('timeline.filter.all')}
+          </ToggleGroupItem>
+          <ToggleGroupItem value="snapshot" aria-label={t('timeline.source.snapshot')} className="h-8 px-2 text-[11px]">
+            {t('timeline.source.snapshot')}
+          </ToggleGroupItem>
+          <ToggleGroupItem value="message" aria-label={t('timeline.source.message')} className="h-8 px-2 text-[11px]">
+            {t('timeline.source.message')}
+          </ToggleGroupItem>
+          <ToggleGroupItem value="audio" aria-label={t('timeline.source.audio')} className="h-8 px-2 text-[11px]">
+            {t('timeline.source.audio')}
+          </ToggleGroupItem>
+        </ToggleGroup>
 
-  const getIndexFromMouseEvent = useCallback((event: MouseEvent<HTMLDivElement>) => {
-    const element = seekRef.current
-    if (!element) {
-      return null
-    }
+        <select
+          value={displayFilter === null ? 'all' : String(displayFilter)}
+          aria-label={t('timeline.filter.display.ariaLabel')}
+          className="h-8 rounded-md border border-border bg-background px-2 text-[12px] text-foreground disabled:cursor-not-allowed disabled:opacity-50"
+          disabled={displayIds.length <= 1}
+          onChange={(event) => {
+            setDisplayFilter(event.target.value === 'all' ? null : Number(event.target.value))
+          }}
+        >
+          <option value="all">{t('timeline.filter.allDisplays')}</option>
+          {displayIds.map(displayId => (
+            <option key={displayId} value={displayId}>
+              {t('timeline.displayLabel', { displayId })}
+            </option>
+          ))}
+        </select>
+      </div>
 
-    const rect = element.getBoundingClientRect()
-    const x = Math.max(0, Math.min(event.clientX - rect.left, rect.width))
-    const ratio = x / rect.width
-    const index = Math.round((1 - ratio) * (entries.length - 1))
-    return Math.max(0, Math.min(entries.length - 1, index))
-  }, [entries.length])
+      <div className="max-h-[420px] overflow-y-auto overscroll-contain pr-1">
+        {filteredEntries.length === 0
+          ? <EmptyState icon={<ImageIcon className="size-4" />} title={t('timeline.filteredEmpty')} />
+          : (
+              <div className="grid grid-cols-1 gap-2 xl:grid-cols-2">
+                {filteredEntries.map(entry => (
+                  <TimelineRecordItem
+                    key={`${entry.sourceType ?? 'snapshot'}:${entry.id}`}
+                    entry={entry}
+                    frameUrl={`${serverUrl}/chronicle/snapshots/${encodeURIComponent(entry.id)}/frame`}
+                  />
+                ))}
+              </div>
+            )}
+      </div>
+    </div>
+  )
+}
 
-  const selected = entries[selectedIndex]
-  if (!selected) {
-    return null
-  }
+function isTimelineSourceFilter(value: string): value is TimelineSourceFilter {
+  return value === 'all' || value === 'snapshot' || value === 'message' || value === 'audio'
+}
 
-  const displayEntry = hoverIndex !== null ? entries[hoverIndex] : selected
-  const startTime = new Date(entries.at(-1)?.capturedAt ?? selected.capturedAt)
-  const endTime = new Date(entries[0].capturedAt)
+function TimelineRecordItem({ entry, frameUrl }: { entry: TimelineEntry, frameUrl: string }) {
+  const { t } = useTranslation('chronicle')
+  const sourceType = entry.sourceType ?? 'snapshot'
+  const isSnapshot = sourceType === 'snapshot'
+  const sourceLabel = sourceType === 'audio'
+    ? t('timeline.source.audio')
+    : sourceType === 'message'
+      ? t('timeline.source.message')
+      : t('timeline.source.snapshot')
+  const title = getTimelineEntryTitle(t, entry)
+  const secondary = getTimelineEntrySecondaryLabel(t, entry)
 
   return (
-    <div className="flex flex-col gap-3 outline-none" tabIndex={0} onKeyDown={handleKeyDown}>
-      <div className="overflow-hidden rounded-lg bg-black shadow-sm">
-        {displayEntry?.sourceType === 'audio'
-          ? (
-              <div className="flex aspect-video items-center justify-center bg-background px-6 text-foreground">
-                <div className="max-w-xl rounded-lg border border-foreground/5 bg-muted/40 p-4">
-                  <div className="mb-2 flex min-w-0 items-center gap-2">
-                    <FileAudioIcon className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate text-[13px] font-medium">
-                      {displayEntry.channelName ?? displayEntry.windowTitle ?? t('timeline.fallback.audioTranscript')}
-                    </span>
-                  </div>
-                  <p className="line-clamp-5 text-[14px] leading-6">{displayEntry.ocrText}</p>
-                </div>
-              </div>
-            )
-          : displayEntry?.sourceType === 'message'
-          ? (
-              <div className="flex aspect-video items-center justify-center bg-background px-6 text-foreground">
-                <div className="max-w-xl rounded-lg border border-foreground/5 bg-muted/40 p-4">
-                  <div className="mb-2 flex min-w-0 items-center gap-2">
-                    <MessageSquareIcon className="size-4 shrink-0 text-muted-foreground" />
-                    <span className="truncate text-[13px] font-medium">
-                      {displayEntry.channelName ? `#${displayEntry.channelName}` : displayEntry.channelId ?? 'Slack'}
-                    </span>
-                    <span className="shrink-0 text-[12px] text-muted-foreground">{displayEntry.userName ?? t('timeline.fallback.unknownUser')}</span>
-                  </div>
-                  <p className="line-clamp-5 text-[14px] leading-6">{displayEntry.ocrText}</p>
-                </div>
-              </div>
-            )
-          : displayEntry?.framePath
+    <article className="grid min-h-[96px] grid-cols-[92px_minmax(0,1fr)] gap-3 rounded-lg bg-background p-2.5 shadow-[0_0_0_1px_rgba(0,0,0,0.06)] transition-shadow hover:shadow-[0_0_0_1px_rgba(0,0,0,0.1)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.06)] dark:hover:shadow-[0_0_0_1px_rgba(255,255,255,0.1)] sm:grid-cols-[120px_minmax(0,1fr)]">
+      <div className="h-[52px] w-[92px] overflow-hidden rounded-md bg-muted text-muted-foreground shadow-[0_0_0_1px_rgba(0,0,0,0.1)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.1)] sm:h-[68px] sm:w-[120px]">
+        {isSnapshot && entry.framePath
           ? (
               <img
-                src={frameUrl(displayEntry)}
-                alt={t('timeline.frameAlt', { time: formatDateTime(t, displayEntry.capturedAt) })}
-                className="aspect-video w-full object-contain outline-solid outline-1 -outline-offset-1 outline-white/10"
+                src={frameUrl}
+                alt={t('timeline.frameAlt', { time: formatDateTime(t, entry.capturedAt) })}
+                className="size-full object-contain"
+                loading="lazy"
               />
             )
           : (
-              <div className="flex aspect-video items-center justify-center text-[13px] text-white/60">
-                {t('timeline.frameUnavailable')}
+              <div className="flex size-full items-center justify-center">
+                {sourceType === 'audio'
+                  ? <FileAudioIcon className="size-4" />
+                  : sourceType === 'message'
+                    ? <MessageSquareIcon className="size-4" />
+                    : <ImageIcon className="size-4" />}
               </div>
             )}
       </div>
 
-      <div className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
-        <div className="mb-3 flex min-w-0 items-center gap-2">
-          {displayEntry?.sourceType === 'audio'
-            ? <FileAudioIcon className="size-3.5 shrink-0 text-muted-foreground" />
-            : displayEntry?.sourceType === 'message'
-            ? <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
-            : <ImageIcon className="size-3.5 shrink-0 text-muted-foreground" />}
-          <span className="truncate text-[13px] font-medium text-foreground">
-            {displayEntry?.sourceType === 'audio'
-              ? displayEntry.channelName ?? displayEntry.windowTitle ?? t('timeline.fallback.audioTranscript')
-              : displayEntry?.sourceType === 'message'
-              ? displayEntry.channelName ? `#${displayEntry.channelName}` : displayEntry.channelId ?? t('timeline.fallback.slackMessage')
-              : displayEntry?.appBundleId ?? displayEntry?.windowTitle ?? t('timeline.fallback.screenRecord')}
-          </span>
+      <div className="flex min-w-0 flex-col gap-1">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <Badge variant="outline" className="h-5 shrink-0 px-1.5 text-[10px]">
+            {sourceLabel}
+          </Badge>
+          <Badge variant="secondary" className="h-5 shrink-0 px-1.5 text-[10px] tabular-nums">
+            {t('timeline.displayLabel', { displayId: entry.displayId })}
+          </Badge>
           <span className="ml-auto shrink-0 font-mono text-[11px] text-muted-foreground">
-            {formatDateTime(t, displayEntry?.capturedAt ?? selected.capturedAt)}
+            {new Date(entry.capturedAt).toLocaleTimeString()}
           </span>
         </div>
 
-        <div
-          ref={seekRef}
-          className="relative h-10 cursor-pointer overflow-visible"
-          onClick={(event) => {
-            const index = getIndexFromMouseEvent(event)
-            if (index !== null) {
-              setSelectedIndex(index)
-            }
-          }}
-          onMouseMove={(event) => {
-            setHoverIndex(getIndexFromMouseEvent(event))
-          }}
-          onMouseLeave={() => setHoverIndex(null)}
-        >
-          <div className="absolute inset-x-0 bottom-2 h-2 overflow-hidden rounded-full bg-foreground/15">
-            <div
-              className="h-full rounded-full bg-foreground/40"
-              style={{ width: `${entries.length > 1 ? ((entries.length - 1 - selectedIndex) / (entries.length - 1)) * 100 : 100}%` }}
-            />
-          </div>
-
-          {hoverIndex !== null && (
-            <div
-              className="absolute bottom-1 h-4 w-0.5 -translate-x-1/2 rounded-full bg-foreground/60"
-              style={{ left: `${entries.length > 1 ? ((entries.length - 1 - hoverIndex) / (entries.length - 1)) * 100 : 50}%` }}
-            />
-          )}
-
-          <div
-            className="absolute bottom-1 -translate-x-1/2"
-            style={{ left: `${entries.length > 1 ? ((entries.length - 1 - selectedIndex) / (entries.length - 1)) * 100 : 50}%` }}
-          >
-            <div className="size-3.5 rounded-full bg-foreground shadow-sm" />
-          </div>
-        </div>
-
-        <div className="flex items-center justify-between">
-          <span className="font-mono text-[11px] text-muted-foreground/50">{startTime.toLocaleTimeString()}</span>
-          <span className="font-mono text-[11px] text-muted-foreground">{endTime.toLocaleTimeString()}</span>
-        </div>
-
-        {displayEntry?.ocrText && (
-          <p className="mt-3 line-clamp-3 rounded-md bg-muted/50 px-2 py-1.5 text-[12px] text-muted-foreground">
-            {displayEntry.ocrText}
+        <h4 className="truncate text-[13px] font-medium text-foreground">
+          {title}
+        </h4>
+        {secondary && (
+          <p className="truncate text-[11px] text-muted-foreground">
+            {secondary}
           </p>
         )}
+        {entry.ocrText
+          ? (
+              <p className="line-clamp-2 text-[12px] leading-5 text-muted-foreground">
+                {entry.ocrText}
+              </p>
+            )
+          : !entry.framePath && (
+              <p className="text-[12px] text-muted-foreground">
+                {t('timeline.frameUnavailable')}
+              </p>
+            )}
       </div>
-    </div>
+    </article>
   )
+}
+
+function getTimelineEntryTitle(t: ChronicleTranslate, entry: TimelineEntry): string {
+  if (entry.sourceType === 'audio') {
+    return entry.channelName ?? entry.windowTitle ?? t('timeline.fallback.audioTranscript')
+  }
+  if (entry.sourceType === 'message') {
+    return entry.channelName ? `#${entry.channelName}` : entry.channelId ?? t('timeline.fallback.slackMessage')
+  }
+  return entry.windowTitle ?? entry.appBundleId ?? t('timeline.fallback.screenRecord')
+}
+
+function getTimelineEntrySecondaryLabel(t: ChronicleTranslate, entry: TimelineEntry): string | null {
+  if (entry.sourceType === 'message') {
+    return entry.userName ?? t('timeline.fallback.unknownUser')
+  }
+  if (entry.appBundleId && entry.windowTitle) {
+    return entry.appBundleId
+  }
+  if (entry.platform) {
+    return entry.platform
+  }
+  return null
 }
 
 function ActivityPipelinePanel({
@@ -2298,7 +2296,18 @@ function AccessibilitySnapshotList({ snapshots }: { snapshots: ChronicleAccessib
 }
 
 function AccessibilityTreePreview({ tree }: { tree: unknown[] }) {
-  const nodes = tree.map(node => AccessibilityTreeNodeSchema.parse(node)).slice(0, 4)
+  const nodes = tree.reduce<Array<z.output<typeof AccessibilityTreeNodeSchema>>>((items, node) => {
+    if (items.length >= 4) {
+      return items
+    }
+
+    const parsed = AccessibilityTreeNodeSchema.safeParse(node)
+    if (parsed.success) {
+      items.push(parsed.data)
+    }
+    return items
+  }, [])
+
   if (nodes.length === 0) {
     return null
   }

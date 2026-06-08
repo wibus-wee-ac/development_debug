@@ -80,12 +80,12 @@ export function ModelRegistrySettings() {
       className="flex h-full min-h-0 flex-col overflow-hidden"
     >
       {/* Header */}
-      <header className="flex min-w-0 shrink-0 flex-wrap items-start justify-between gap-3 pb-5">
-        <div className="min-w-0 flex-1 space-y-1">
-          <h3 className="font-heading text-[15px] font-medium tracking-tight text-foreground text-balance">
+      <header className="flex min-w-0 shrink-0 flex-wrap items-start justify-between gap-3 pb-4">
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <h3 className="text-[18px] font-semibold leading-tight tracking-[-0.01em] text-foreground text-balance">
             {t('registry.page.title' as SettingsKey)}
           </h3>
-          <p className="max-w-full break-words text-[12.5px] leading-relaxed text-muted-foreground text-pretty">
+          <p className="max-w-full break-words text-[13px] leading-relaxed text-muted-foreground text-pretty">
             {t('registry.page.description' as SettingsKey)}
 {' '}
             {t('registry.alert.description' as SettingsKey)}

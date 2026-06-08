@@ -6,6 +6,7 @@ import { useStore } from 'zustand'
 import type { StoreApi } from 'zustand/vanilla'
 import { createStore } from 'zustand/vanilla'
 
+import { BetaNotice } from '~/components/common/beta-notice'
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
@@ -14,7 +15,8 @@ import { Spinner } from '~/components/ui/spinner'
 import { cn } from '~/lib/cn'
 import { getServerUrl, isElectron, nativeIpc } from '~/lib/electron'
 
-import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
+import { SettingsGroup, SettingsPage } from './settings-container'
+import { SettingsRow } from './settings-row'
 
 type SourceApp = 'claude' | 'codex' | 'cursor' | 'windsurf' | 'gemini' | 'unknown'
 type SourceScope = 'server' | 'electron-upload'
@@ -372,80 +374,76 @@ export function ExternalWorkImportSettings() {
   const busy = status === 'scanning' || status === 'importing'
 
   return (
-    <div className="flex h-full min-h-0 flex-col overflow-hidden" data-testid="external-work-import-settings">
-      <SettingsSectionHeader
-        title={t('import.page.title')}
-        description={t('import.page.description')}
-        action={<Badge variant="outline">{isElectron ? t('import.badge.device') : t('import.badge.server')}</Badge>}
-      />
+    <SettingsPage
+      title={t('import.page.title')}
+      description={t('import.page.description')}
+      action={<Badge variant="outline">{isElectron ? t('import.badge.device') : t('import.badge.server')}</Badge>}
+      data-testid="external-work-import-settings"
+    >
 
-      <Alert className="mb-4">
+      <Alert>
         <DatabaseIcon className="size-4" aria-hidden="true" />
         <AlertTitle>{t('import.alert.title')}</AlertTitle>
         <AlertDescription>{t('import.alert.description')}</AlertDescription>
       </Alert>
 
-      <SettingsDivider />
-      <SettingsRow
-        label={t('import.scan.label')}
-        description={isElectron ? t('import.scan.descriptionElectron') : t('import.scan.descriptionServer')}
-      >
-        <ImportActionButtons
-          status={status}
-          selectionStore={selectionStore}
-          onScan={() => void scan()}
-          onImport={() => void importSelected()}
-        />
-      </SettingsRow>
+      <SettingsGroup>
+        <SettingsRow
+          label={t('import.scan.label')}
+          description={isElectron ? t('import.scan.descriptionElectron') : t('import.scan.descriptionServer')}
+        >
+          <ImportActionButtons
+            status={status}
+            selectionStore={selectionStore}
+            onScan={() => void scan()}
+            onImport={() => void importSelected()}
+          />
+        </SettingsRow>
 
-      <SettingsDivider />
-      <ImportSelectionControl
-        busy={busy}
-        importableCount={importableCount}
-        importableFingerprints={importableFingerprints}
-        selectionStore={selectionStore}
-      />
+        <ImportSelectionControl
+          busy={busy}
+          importableCount={importableCount}
+          importableFingerprints={importableFingerprints}
+          selectionStore={selectionStore}
+        />
+      </SettingsGroup>
 
       {warnings.length > 0 && (
-        <>
-          <SettingsDivider />
-          <Alert variant="destructive" className="my-3">
-            <TriangleAlertIcon className="size-4" aria-hidden="true" />
-            <AlertTitle>{t('import.warning.title')}</AlertTitle>
-            <AlertDescription>{warnings.join(' ')}</AlertDescription>
-          </Alert>
-        </>
+        <Alert variant="destructive">
+          <TriangleAlertIcon className="size-4" aria-hidden="true" />
+          <AlertTitle>{t('import.warning.title')}</AlertTitle>
+          <AlertDescription>{warnings.join(' ')}</AlertDescription>
+        </Alert>
       )}
 
-      <div className="min-h-0 flex-1 overflow-hidden pb-10">
-        <VList
-          className="h-full min-h-0 pr-1"
-          data={items}
-          itemSize={IMPORT_ROW_SIZE}
-        >
-          {item => (
-            <ExternalWorkImportRow
-              key={item.fingerprint}
-              item={item}
-              busy={busy}
-              duplicateLabel={t('import.badge.duplicate')}
-              selectionStore={selectionStore}
-            />
-          )}
-        </VList>
-      </div>
+      {items.length > 0 && (
+        <SettingsGroup bare className="overflow-hidden">
+          <VList
+            className="h-full min-h-0 pr-1"
+            data={items}
+            itemSize={IMPORT_ROW_SIZE}
+          >
+            {item => (
+              <ExternalWorkImportRow
+                key={item.fingerprint}
+                item={item}
+                busy={busy}
+                duplicateLabel={t('import.badge.duplicate')}
+                selectionStore={selectionStore}
+              />
+            )}
+          </VList>
+        </SettingsGroup>
+      )}
 
       {message && (
-        <>
-          <SettingsDivider />
-          <p className="flex items-center gap-2 py-3 text-[12px] text-muted-foreground" data-testid="external-work-import-status">
-            {status === 'error'
-              ? <TriangleAlertIcon className="size-3.5" aria-hidden="true" />
-              : <CheckCircle2Icon className="size-3.5" aria-hidden="true" />}
-            {message}
-          </p>
-        </>
+        <p className="flex items-center gap-2 text-[12px] text-muted-foreground" data-testid="external-work-import-status">
+          {status === 'error'
+            ? <TriangleAlertIcon className="size-3.5" aria-hidden="true" />
+            : <CheckCircle2Icon className="size-3.5" aria-hidden="true" />}
+          {message}
+        </p>
       )}
-    </div>
+    </SettingsPage>
   )
 }

@@ -212,7 +212,7 @@
   "pipeline.trigger.snapshot": "Registro de pantalla",
   "pipeline.trigger.summarize": "Resumen",
   "privacy.appBundle.placeholder": "com.apple.Terminal",
-  "privacy.closedEyes.description": "Cuando el detector informa ojos cerrados o ausencia, el servidor descarta el fotograma antes de escribir capturas, pistas de ventana o segmentos de actividad.",
+  "privacy.closedEyes.description": "No disponible temporalmente. El detector del runtime o el flujo de pausa manual aún no están conectados, así que el servidor sigue registrando fotogramas e ignora este ajuste de descarte.",
   "privacy.closedEyes.mode.alwaysPause": "Pausar siempre",
   "privacy.closedEyes.mode.alwaysPause.ariaLabel": "Pausar siempre",
   "privacy.closedEyes.mode.alwaysRecord": "Registrar siempre",
@@ -320,6 +320,15 @@
   "timeline.fallback.screenRecord": "Registro de pantalla",
   "timeline.fallback.slackMessage": "Mensaje de Slack",
   "timeline.fallback.unknownUser": "Usuario desconocido",
+  "timeline.displayLabel": "Pantalla {{displayId}}",
+  "timeline.filter.all": "Todo",
+  "timeline.filter.allDisplays": "Todas las pantallas",
+  "timeline.filter.display.ariaLabel": "Filtrar registros por pantalla",
+  "timeline.filter.source.ariaLabel": "Filtrar registros por origen",
+  "timeline.filteredEmpty": "Ningún registro coincide con estos filtros",
   "timeline.frameAlt": "Registro de actividad a las {{time}}",
-  "timeline.frameUnavailable": "Imagen no disponible"
+  "timeline.frameUnavailable": "Imagen no disponible",
+  "timeline.source.audio": "Audio",
+  "timeline.source.message": "Mensaje",
+  "timeline.source.snapshot": "Pantalla"
 }

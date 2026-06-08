@@ -350,7 +350,7 @@ function AppLayoutContent({
   const rightAsideInSheet = canUseRightAside
     && viewportWidth < dockedSidebarWidth + asideWidth + CHROME_CENTER_MIN_WIDTH + CHROME_RESPONSIVE_GUTTER_WIDTH
   const resolvedBrowserPanelOpen = !isSettings && !!resolvedHasBrowserPanel && browserPanelOpen
-  const browserPanelMounted = isElectron
+  const browserPanelMounted = !!resolvedHasBrowserPanel
   const browserPanelVisible = browserPanelMounted && resolvedBrowserPanelOpen
   const browserPanelWidth = useAnimatedSize(browserPanelVisible ? browserPanelRatio * readMainWidth() : 0)
   useLayoutEffect(() => {
@@ -756,6 +756,9 @@ const AppRightAside = memo(({
   const setAsideWidth = useLayoutStore(state => state.setAsideWidth)
   const asideOpen = useLayoutStore(state => state.asideOpen)
   const asideMotionWidth = useAnimatedSize(asideOpen ? asideWidth : 0)
+  const [asideContentMounted, setAsideContentMounted] = useState(asideOpen)
+  const asideAnimationIdRef = useRef(0)
+  const shouldRenderAsideContent = asideOpen || asideContentMounted
 
   const handleAsideResize = useCallback((width: number) => {
     asideMotionWidth.setSize(width)
@@ -772,10 +775,25 @@ const AppRightAside = memo(({
 
   useEffect(() => {
     const nextWidth = asideOpen ? asideWidth : 0
+    if (asideOpen) {
+      setAsideContentMounted(true)
+    }
     if (Math.abs(asideMotionWidth.size.get() - nextWidth) < 0.5) {
+      if (!asideOpen) {
+        setAsideContentMounted(false)
+      }
       return
     }
-    asideMotionWidth.animateSize(nextWidth, SPRING)
+    const animationId = asideAnimationIdRef.current + 1
+    asideAnimationIdRef.current = animationId
+    const controls = asideMotionWidth.animateSize(nextWidth, SPRING)
+    if (!asideOpen) {
+      void controls.finished.then(() => {
+        if (asideAnimationIdRef.current === animationId) {
+          setAsideContentMounted(false)
+        }
+      }).catch(() => { })
+    }
   }, [asideMotionWidth, asideOpen, asideWidth])
 
   return (
@@ -800,17 +818,20 @@ const AppRightAside = memo(({
         className="flex shrink-0 overflow-hidden bg-sidebar"
         data-testid="app-layout-right-aside"
         data-aside-open={asideOpen ? 'true' : 'false'}
+        aria-hidden={asideOpen ? undefined : 'true'}
       >
         <m.div
           className="flex flex-col flex-1 overflow-hidden"
-          style={{ width: asideMotionWidth.size }}
+          style={{ width: asideWidth }}
         >
-          <MemoizedRightAside
-            sessionId={sessionId}
-            workspaceId={workspaceId}
-            workspaceName={workspaceName}
-            workspacePath={workspacePath}
-          />
+          {shouldRenderAsideContent && (
+            <MemoizedRightAside
+              sessionId={sessionId}
+              workspaceId={workspaceId}
+              workspaceName={workspaceName}
+              workspacePath={workspacePath}
+            />
+          )}
         </m.div>
       </m.aside>
     </>

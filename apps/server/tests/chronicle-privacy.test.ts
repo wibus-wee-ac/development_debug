@@ -286,7 +286,7 @@ describe('chronicle privacy capability', () => {
     }
   })
 
-  it('discards closed-eyes snapshot reports before durable evidence is written', async () => {
+  it('keeps closed-eyes snapshot reports while the runtime discard gate is disabled', async () => {
     const dataDir = makeTempDir('cradle-privacy-data-')
     const storageRoot = makeTempDir('cradle-privacy-storage-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -331,7 +331,7 @@ describe('chronicle privacy capability', () => {
           capturedAt: '2026-05-21T10-01-00Z',
           segmentDir: 'closed-eyes',
           framePath: 'closed-eyes/frame-00008.jpg',
-          ocrText: 'This text must not become durable evidence',
+          ocrText: 'This text should become durable evidence',
           appBundleId: 'app.cradle.desktop',
           windowTitle: 'Cradle Chronicle',
           closedEyes: {
@@ -344,7 +344,7 @@ describe('chronicle privacy capability', () => {
             sourceId: 'accessibility:closed-eyes-snapshot-source',
             status: 'ready',
             provider: 'macos-accessibility-window-inventory',
-            text: 'This accessibility text must not persist',
+            text: 'This accessibility text should persist',
             elementCount: 1,
             tree: [{ role: 'AXWindow', label: 'Cradle Chronicle' }],
           },
@@ -352,37 +352,26 @@ describe('chronicle privacy capability', () => {
         }),
       }))
       expect(snapshotResponse.status).toBe(200)
-      const ignored = await snapshotResponse.json() as {
-        status: 'ignored'
-        reason: string
+      const snapshot = await snapshotResponse.json() as {
+        id: string
         sourceId: string
-        capturedAtUnix: number
+        ocrText: string
       }
-      expect(ignored).toEqual(expect.objectContaining({
-        status: 'ignored',
+      expect(snapshot).toEqual(expect.objectContaining({
         sourceId: 'closed-eyes-snapshot-source',
-        capturedAtUnix: 1_779_357_660,
+        ocrText: 'This text should become durable evidence',
       }))
-      expect(ignored.reason).toContain('absent')
 
-      expect(db().select().from(chronicleSnapshots).where(eq(chronicleSnapshots.sourceId, 'closed-eyes-snapshot-source')).all()).toHaveLength(0)
-      expect(db().select().from(chronicleAccessibilitySnapshots).where(eq(chronicleAccessibilitySnapshots.sourceId, 'accessibility:closed-eyes-snapshot-source')).all()).toHaveLength(0)
-      expect(db().select().from(chronicleActivitySegments).all()).toHaveLength(0)
+      expect(db().select().from(chronicleSnapshots).where(eq(chronicleSnapshots.sourceId, 'closed-eyes-snapshot-source')).all()).toHaveLength(1)
+      expect(db().select().from(chronicleAccessibilitySnapshots).where(eq(chronicleAccessibilitySnapshots.sourceId, 'accessibility:closed-eyes-snapshot-source')).all()).toHaveLength(1)
+      expect(db().select().from(chronicleActivitySegments).all()).toHaveLength(1)
 
       const breadcrumbsRes = await app.handle(new Request('http://localhost/chronicle/privacy/breadcrumbs?limit=20'))
       expect(breadcrumbsRes.status).toBe(200)
       const breadcrumbs = await breadcrumbsRes.json()
-      expect(breadcrumbs).toEqual(expect.arrayContaining([
+      expect(breadcrumbs).not.toEqual(expect.arrayContaining([
         expect.objectContaining({
           kind: 'closed-eyes-discard',
-          snapshotId: null,
-          attrs: expect.objectContaining({
-            sourceId: 'closed-eyes-snapshot-source',
-            closedEyesStatus: 'absent',
-            closedEyesMode: 'auto',
-            detector: 'test-presence-detector',
-            confidenceBps: 9_100,
-          }),
         }),
       ]))
     }

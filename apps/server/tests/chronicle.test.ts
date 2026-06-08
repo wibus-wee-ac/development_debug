@@ -305,6 +305,109 @@ describe('chronicle module', () => {
     }
   })
 
+  it('retries transient invalid JSON provider responses when summarizing', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const storageRoot = makeTempDir('cradle-chronicle-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousCredentialSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    const previousMaxAttempts = process.env.CRADLE_CHRONICLE_MODEL_GENERATE_MAX_ATTEMPTS
+    const previousBaseDelay = process.env.CRADLE_CHRONICLE_MODEL_GENERATE_BASE_DELAY_MS
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chronicle-test-secret'
+    process.env.CRADLE_CHRONICLE_MODEL_GENERATE_MAX_ATTEMPTS = '3'
+    process.env.CRADLE_CHRONICLE_MODEL_GENERATE_BASE_DELAY_MS = '0'
+    shutdownInfra()
+    mockedGenerateText.mockReset()
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp({ startBackgroundTasks: false })
+      const profileSecretResponse = await requestJson(app, '/secrets/', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          kind: 'provider.api-key',
+          label: 'Chronicle retry profile key',
+          secret: 'sk-chronicle-retry-test',
+        }),
+      })
+      expect(profileSecretResponse.status).toBe(200)
+      const profileSecret = await profileSecretResponse.json() as { id: string }
+      const profileResponse = await requestJson(app, '/profiles/profile-chronicle-retry', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Chronicle Retry',
+          providerKind: 'openai-compatible',
+          enabled: true,
+          config: { baseUrl: 'https://example.com/v1', model: 'chronicle-retry-model' },
+          credentialRef: profileSecret.id,
+        }),
+      })
+      expect(profileResponse.status).toBe(200)
+      writeChroniclePreference(dataDir, storageRoot, {
+        profileId: 'profile-chronicle-retry',
+        modelId: 'chronicle-retry-model',
+        enabled: true,
+      })
+      mockedGenerateText
+        .mockRejectedValueOnce(new Error('Invalid JSON response'))
+        .mockResolvedValueOnce({
+          text: 'Recovered Chronicle summary',
+          usage: { inputTokens: 5, outputTokens: 4, totalTokens: 9 },
+        } as Awaited<ReturnType<typeof generateText>>)
+
+      const response = await requestJson(app, '/chronicle/summarize', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ prompt: 'Summarize retry behavior', windowType: '10min' }),
+      })
+
+      expect(response.status).toBe(200)
+      const body = await response.json() as { status: string, summary: string, memoryId: string | null }
+      expect(body.status).toBe('success')
+      expect(body.summary).toBe('Recovered Chronicle summary')
+      expect(body.memoryId).toBeTruthy()
+      expect(mockedGenerateText).toHaveBeenCalledTimes(2)
+      expect(db().select().from(chronicleEvents).where(eq(chronicleEvents.status, 'warning')).all().some(event =>
+        event.message.includes('Chronicle model generation retry') && event.message.includes('Invalid JSON response'),
+      )).toBe(true)
+    }
+    finally {
+      stopActivityPipelineScheduler()
+      stopDreamScheduler()
+      stopSlackBackgroundSync()
+      shutdownInfra()
+      mockedGenerateText.mockReset()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(storageRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousCredentialSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousCredentialSecret
+      }
+      if (previousMaxAttempts === undefined) {
+        delete process.env.CRADLE_CHRONICLE_MODEL_GENERATE_MAX_ATTEMPTS
+      }
+      else {
+        process.env.CRADLE_CHRONICLE_MODEL_GENERATE_MAX_ATTEMPTS = previousMaxAttempts
+      }
+      if (previousBaseDelay === undefined) {
+        delete process.env.CRADLE_CHRONICLE_MODEL_GENERATE_BASE_DELAY_MS
+      }
+      else {
+        process.env.CRADLE_CHRONICLE_MODEL_GENERATE_BASE_DELAY_MS = previousBaseDelay
+      }
+    }
+  })
+
   it('persists daemon reports, deduplicates sources, exposes model resources, and searches DB-backed memories', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const storageRoot = makeTempDir('cradle-chronicle-')

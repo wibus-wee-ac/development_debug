@@ -25,7 +25,8 @@ import type { ModelDescriptor } from '~/features/agent-runtime/types'
 
 import type { WorkspaceSession } from '../workspace/use-session'
 import { sessionsQueryKey, useAllSessions } from '../workspace/use-session'
-import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
+import { SettingsGroup, SettingsPage } from './settings-container'
+import { SettingsRow } from './settings-row'
 import type { ContinuationBehavior, TitleGenerationPreferences, TitleGenerationThinkingEffort } from './use-chat-preferences'
 import { useChatPreferences } from './use-chat-preferences'
 import { useCodexPreferences } from './use-codex-preferences'
@@ -197,7 +198,7 @@ function ArchivedSessionList() {
   })
 
   return (
-    <div className="flex flex-col gap-2 py-3" data-testid="chat-archived-sessions">
+    <div className="flex flex-col gap-2" data-testid="chat-archived-sessions">
       <div className="flex items-center justify-between gap-3">
         <div className="min-w-0">
           <div className="text-[13px] font-medium text-foreground">{t('chat.archive.label' as SettingsKey)}</div>
@@ -468,61 +469,58 @@ export function ChatSettings() {
   }
 
   return (
-    <div className="flex flex-col gap-0" data-testid="chat-settings">
-      <SettingsSectionHeader
-        title={t('chat.page.title')}
-        description={t('chat.page.description')}
-      />
-      <SettingsDivider />
-
-      <SettingsRow
-        label={t('chat.codexUserAgent.label' as SettingsKey)}
-        description={t('chat.codexUserAgent.description' as SettingsKey)}
-      >
-        <Switch
-          checked={codexPrefs?.useCradleUserAgent ?? true}
-          onCheckedChange={handleCradleUserAgentChange}
-          disabled={!codexPrefs || isSavingCodexPrefs}
-          aria-label={t('chat.codexUserAgent.label' as SettingsKey)}
-          data-testid="chat-codex-user-agent"
-        />
-      </SettingsRow>
-
-      <SettingsDivider />
-
-      <TitleGenerationSettings
-        prefs={prefs.titleGeneration}
-        saving={isSaving}
-        save={handleTitleGenerationChange}
-      />
-
-      <SettingsDivider />
-
-      <SettingsRow
-        label={t('chat.continuation.label')}
-        description={t('chat.continuation.description')}
-      >
-        <ToggleGroup
-          type="single"
-          variant="outline"
-          size="sm"
-          value={prefs.continuationBehavior}
-          onValueChange={handleBehaviorChange}
-          disabled={isSaving}
-          aria-label={t('chat.continuation.label')}
-          data-testid="chat-continuation-behavior"
+    <SettingsPage
+      title={t('chat.page.title')}
+      description={t('chat.page.description')}
+      data-testid="chat-settings"
+    >
+      <SettingsGroup>
+        <SettingsRow
+          label={t('chat.codexUserAgent.label' as SettingsKey)}
+          description={t('chat.codexUserAgent.description' as SettingsKey)}
         >
-          <ToggleGroupItem value="queue" aria-label={t('chat.continuation.queue')}>
-            {t('chat.continuation.queue')}
-          </ToggleGroupItem>
-          <ToggleGroupItem value="steer" aria-label={t('chat.continuation.steer')}>
-            {t('chat.continuation.steer')}
-          </ToggleGroupItem>
-        </ToggleGroup>
-      </SettingsRow>
-      <SettingsDivider />
+          <Switch
+            checked={codexPrefs?.useCradleUserAgent ?? true}
+            onCheckedChange={handleCradleUserAgentChange}
+            disabled={!codexPrefs || isSavingCodexPrefs}
+            aria-label={t('chat.codexUserAgent.label' as SettingsKey)}
+            data-testid="chat-codex-user-agent"
+          />
+        </SettingsRow>
 
-      <ArchivedSessionList />
-    </div>
+        <TitleGenerationSettings
+          prefs={prefs.titleGeneration}
+          saving={isSaving}
+          save={handleTitleGenerationChange}
+        />
+
+        <SettingsRow
+          label={t('chat.continuation.label')}
+          description={t('chat.continuation.description')}
+        >
+          <ToggleGroup
+            type="single"
+            variant="outline"
+            size="sm"
+            value={prefs.continuationBehavior}
+            onValueChange={handleBehaviorChange}
+            disabled={isSaving}
+            aria-label={t('chat.continuation.label')}
+            data-testid="chat-continuation-behavior"
+          >
+            <ToggleGroupItem value="queue" aria-label={t('chat.continuation.queue')}>
+              {t('chat.continuation.queue')}
+            </ToggleGroupItem>
+            <ToggleGroupItem value="steer" aria-label={t('chat.continuation.steer')}>
+              {t('chat.continuation.steer')}
+            </ToggleGroupItem>
+          </ToggleGroup>
+        </SettingsRow>
+      </SettingsGroup>
+
+      <SettingsGroup bare className="p-4">
+        <ArchivedSessionList />
+      </SettingsGroup>
+    </SettingsPage>
   )
 }

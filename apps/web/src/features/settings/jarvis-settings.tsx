@@ -12,7 +12,8 @@ import { RuntimeSelector } from '~/features/composer-toolbar/runtime-selector'
 import type { JarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
 import { useJarvisPreferences } from '~/features/system-agent/use-jarvis-preferences'
 
-import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
+import { SettingsGroup, SettingsPage } from './settings-container'
+import { SettingsRow } from './settings-row'
 
 const JARVIS_THINKING_LEVELS: Array<JarvisPreferences['thinkingLevel']> = ['minimal', 'low', 'medium', 'high', 'xhigh']
 
@@ -128,94 +129,89 @@ export function JarvisSettings() {
   }
 
   return (
-    <div
-      className="flex flex-col gap-0"
+    <SettingsPage
+      title={t('jarvis.page.title')}
+      description={t('jarvis.page.description')}
       data-testid="jarvis-settings"
       data-settings-jarvis-ready={settingsJarvisReady ? 'true' : 'false'}
     >
-      <SettingsSectionHeader
-        title={t('jarvis.page.title')}
-        description={t('jarvis.page.description')}
-      />
-      <SettingsDivider />
-
-      <SettingsRow label={t('jarvis.runtime.label')} description={t('jarvis.runtime.description')}>
-        <RuntimeSelector
-          value={runtimeKind}
-          onChange={(nextRuntimeKind) => {
-            const nextProfiles = listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind: nextRuntimeKind, runtimes })
-            const currentProfileStillValid = prefs.profileId
-              ? nextProfiles.some(profile => profile.id === prefs.profileId)
-              : false
-            const nextProfile = currentProfileStillValid
-              ? nextProfiles.find(profile => profile.id === prefs.profileId) ?? null
-              : nextProfiles[0] ?? null
-            if (!nextProfile) {
+      <SettingsGroup>
+        <SettingsRow label={t('jarvis.runtime.label')} description={t('jarvis.runtime.description')}>
+          <RuntimeSelector
+            value={runtimeKind}
+            onChange={(nextRuntimeKind) => {
+              const nextProfiles = listSelectableComposerProfiles({ profiles: providerOptions, runtimeKind: nextRuntimeKind, runtimes })
+              const currentProfileStillValid = prefs.profileId
+                ? nextProfiles.some(profile => profile.id === prefs.profileId)
+                : false
+              const nextProfile = currentProfileStillValid
+                ? nextProfiles.find(profile => profile.id === prefs.profileId) ?? null
+                : nextProfiles[0] ?? null
+              if (!nextProfile) {
+                setPendingSelection(null)
+                void save({ runtimeKind: nextRuntimeKind, profileId: null, model: undefined })
+                return
+              }
+              requestProfileModels(nextProfile.id)
+              const nextModel = (modelsByProfileId[nextProfile.id] ?? [])[0] ?? null
+              if (!nextModel) {
+                setPendingSelection({ runtimeKind: nextRuntimeKind, profileId: nextProfile.id })
+                return
+              }
               setPendingSelection(null)
-              void save({ runtimeKind: nextRuntimeKind, profileId: null, model: undefined })
-              return
-            }
-            requestProfileModels(nextProfile.id)
-            const nextModel = (modelsByProfileId[nextProfile.id] ?? [])[0] ?? null
-            if (!nextModel) {
-              setPendingSelection({ runtimeKind: nextRuntimeKind, profileId: nextProfile.id })
-              return
-            }
-            setPendingSelection(null)
-            void save({
-              runtimeKind: nextRuntimeKind,
-              profileId: nextProfile.id,
-              model: nextModel.id,
-              thinkingLevel: selectThinkingForModel(nextModel),
-            })
-          }}
-          options={runtimeOptions}
-          disabled={saving}
-        />
-      </SettingsRow>
+              void save({
+                runtimeKind: nextRuntimeKind,
+                profileId: nextProfile.id,
+                model: nextModel.id,
+                thinkingLevel: selectThinkingForModel(nextModel),
+              })
+            }}
+            options={runtimeOptions}
+            disabled={saving}
+          />
+        </SettingsRow>
 
-      <SettingsDivider />
-
-      <SettingsRow label={t('jarvis.model.label')} description={t('jarvis.model.description')}>
-        <ProviderModelPicker
-          providerTargets={profiles}
-          selectedProviderTargetId={pendingSelection?.profileId ?? prefs.profileId}
-          selectedModelId={pendingSelection ? null : prefs.model ?? null}
-          selectedModel={selectedModel}
-          modelsByProviderTargetId={modelsByProfileId}
-          loadingProviderTargetIds={loadingProfileIds}
-          isLoadingSelectedModels={Boolean(pendingSelection && loadingProfileIds.has(pendingSelection.profileId))}
-          thinkingValue={prefs.thinkingLevel}
-          thinkingOptions={thinkingOptions}
-          emptyProviderTargetsLabel={t('jarvis.model.emptyProfiles')}
-          emptySelectionLabel={t('jarvis.model.emptySelection')}
-          menuSide="bottom"
-          menuAlign="end"
-          triggerTestId="jarvis-provider-model-selector"
-          disabled={saving}
-          getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, thinkingOptions)}
-          onRequestProviderTargetModels={requestProfileModels}
-          onSelectProviderTarget={(profileId) => {
-            requestProfileModels(profileId)
-            const nextModel = (modelsByProfileId[profileId] ?? [])[0] ?? null
-            if (!nextModel) {
-              setPendingSelection({ runtimeKind, profileId })
-              return
-            }
-            setPendingSelection(null)
-            void save({ profileId, model: nextModel.id, thinkingLevel: selectThinkingForModel(nextModel) })
-          }}
-          onSelectModel={(model, profileId) => {
-            if (!model) {
-              return
-            }
-            const nextModel = (modelsByProfileId[profileId] ?? []).find(item => item.id === model) ?? null
-            setPendingSelection(null)
-            void save({ profileId, model, thinkingLevel: selectThinkingForModel(nextModel) })
-          }}
-          onSelectThinking={thinkingLevel => void save({ thinkingLevel })}
-        />
-      </SettingsRow>
-    </div>
+        <SettingsRow label={t('jarvis.model.label')} description={t('jarvis.model.description')}>
+          <ProviderModelPicker
+            providerTargets={profiles}
+            selectedProviderTargetId={pendingSelection?.profileId ?? prefs.profileId}
+            selectedModelId={pendingSelection ? null : prefs.model ?? null}
+            selectedModel={selectedModel}
+            modelsByProviderTargetId={modelsByProfileId}
+            loadingProviderTargetIds={loadingProfileIds}
+            isLoadingSelectedModels={Boolean(pendingSelection && loadingProfileIds.has(pendingSelection.profileId))}
+            thinkingValue={prefs.thinkingLevel}
+            thinkingOptions={thinkingOptions}
+            emptyProviderTargetsLabel={t('jarvis.model.emptyProfiles')}
+            emptySelectionLabel={t('jarvis.model.emptySelection')}
+            menuSide="bottom"
+            menuAlign="end"
+            triggerTestId="jarvis-provider-model-selector"
+            disabled={saving}
+            getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, thinkingOptions)}
+            onRequestProviderTargetModels={requestProfileModels}
+            onSelectProviderTarget={(profileId) => {
+              requestProfileModels(profileId)
+              const nextModel = (modelsByProfileId[profileId] ?? [])[0] ?? null
+              if (!nextModel) {
+                setPendingSelection({ runtimeKind, profileId })
+                return
+              }
+              setPendingSelection(null)
+              void save({ profileId, model: nextModel.id, thinkingLevel: selectThinkingForModel(nextModel) })
+            }}
+            onSelectModel={(model, profileId) => {
+              if (!model) {
+                return
+              }
+              const nextModel = (modelsByProfileId[profileId] ?? []).find(item => item.id === model) ?? null
+              setPendingSelection(null)
+              void save({ profileId, model, thinkingLevel: selectThinkingForModel(nextModel) })
+            }}
+            onSelectThinking={thinkingLevel => void save({ thinkingLevel })}
+          />
+        </SettingsRow>
+      </SettingsGroup>
+    </SettingsPage>
   )
 }

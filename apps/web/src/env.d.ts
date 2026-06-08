@@ -75,8 +75,26 @@ interface Window {
         designChange: import('~/store/browser-panel').BrowserAnnotationDesignChange
       }) => Promise<import('~/store/browser-panel').BrowserAnnotationElement | null>
       clearAnnotationDesign: (input: { threadId: string, tabId?: string }) => Promise<void>
-      startAnnotationRuntime: (input: { threadId: string, tabId?: string }) => Promise<void>
+      startAnnotationRuntime: (input: {
+        threadId: string
+        tabId?: string
+        annotations?: Array<{
+          id: string
+          anchor: import('~/store/browser-panel').BrowserAnnotationAnchor
+          body: string
+          designChange?: import('~/store/browser-panel').BrowserAnnotationDesignChange | null
+          status?: 'saved' | 'sent'
+        }>
+        editAnnotationId?: string | null
+        layoutHints?: import('~/store/browser-panel').BrowserAnnotationLayoutHint[]
+      }) => Promise<void>
       stopAnnotationRuntime: (input: { threadId: string, tabId?: string }) => Promise<void>
+      notifyAnnotationRuntime: (input: {
+        threadId: string
+        tabId?: string
+        message: string
+        tone?: 'neutral' | 'success' | 'error'
+      }) => Promise<void>
       executeCdp: (input: {
         threadId: string
         tabId?: string
@@ -141,10 +159,34 @@ interface Window {
         handler: (event: {
           threadId: string
           tabId: string
-          type: 'ready' | 'selected-element' | 'save' | 'submit' | 'cancel' | 'closed' | 'toggle'
+          type:
+            | 'ready'
+            | 'selected-element'
+            | 'save'
+            | 'submit'
+            | 'cancel'
+            | 'closed'
+            | 'toggle'
+            | 'copy'
+            | 'clear'
+            | 'delete'
+            | 'edit'
+            | 'layout-sync'
+            | 'send'
           anchor?: import('~/store/browser-panel').BrowserAnnotationAnchor
+          annotationId?: string
           selectedElement?: import('~/store/browser-panel').BrowserAnnotationElement | null
           body?: string
+          output?: string
+          webhookUrl?: string
+          annotations?: Array<{
+            id: string
+            anchor: import('~/store/browser-panel').BrowserAnnotationAnchor
+            body: string
+            designChange?: import('~/store/browser-panel').BrowserAnnotationDesignChange | null
+            status?: 'saved' | 'sent'
+          }>
+          layoutHints?: import('~/store/browser-panel').BrowserAnnotationLayoutHint[]
           attachedImages?: Array<{
             filename?: string
             mediaType?: string

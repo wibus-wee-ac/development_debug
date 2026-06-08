@@ -12,10 +12,12 @@ const spec = {
   "description": "Export Chronicle data with privacy redaction",
   "flags": [
     {
+      "description": "Defaults to CRADLE_WORKSPACE_ID.",
       "name": "workspaceId",
       "required": false,
       "target": "body.workspaceId",
-      "type": "string"
+      "type": "string",
+      "envDefault": "CRADLE_WORKSPACE_ID"
     },
     {
       "name": "limit",

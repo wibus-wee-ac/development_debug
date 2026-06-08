@@ -9,7 +9,8 @@ import { cn } from '~/lib/cn'
 import type { ThemeMode } from '~/store/theme'
 import { useThemeStore } from '~/store/theme'
 
-import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
+import { SettingsGroup, SettingsPage } from './settings-container'
+import { SettingsRow } from './settings-row'
 
 type SettingsKey = keyof typeof import('~/locales/default').default.settings
 
@@ -99,66 +100,66 @@ export function AppearanceSettings() {
   const settingsAppearanceReady = THEME_OPTIONS.length > 0
 
   return (
-    <div
-      className="flex flex-col gap-1"
+    <SettingsPage
+      title={t('appearance.page.title')}
+      description={t('appearance.page.description')}
       data-testid="appearance-settings"
       data-settings-appearance-ready={settingsAppearanceReady ? 'true' : 'false'}
     >
-      <SettingsSectionHeader title={t('appearance.page.title')} description={t('appearance.page.description')} />
-      <SettingsDivider />
-
-      <SettingsRow
-        label={t('appearance.theme.label')}
-        description={t('appearance.theme.description')}
-        info={t('appearance.theme.info')}
-      >
-        <div className="flex gap-3">
-          {THEME_OPTIONS.map(({ value, labelKey }) => {
-            const selected = mode === value
-            return (
-              <button
-                key={value}
-                type="button"
-                onClick={() => setMode(value)}
-                data-testid={`appearance-theme-${value}`}
-                data-theme-selected={selected ? 'true' : 'false'}
-                className="group flex flex-col items-center gap-1.5"
-              >
-                <div
-                  className={cn(
-                    'relative aspect-4/3 w-36 overflow-hidden rounded-lg p-0.5 transition-[box-shadow,outline-color] duration-150',
-                    selected
-                      ? 'ring-1 ring-foreground/30 ring-offset-2 ring-offset-background'
-                      : 'ring-1 ring-border/60 hover:ring-border',
-                  )}
+      <SettingsGroup>
+        <SettingsRow
+          label={t('appearance.theme.label')}
+          description={t('appearance.theme.description')}
+          info={t('appearance.theme.info')}
+          vertical
+        >
+          <div className="flex gap-3">
+            {THEME_OPTIONS.map(({ value, labelKey }) => {
+              const selected = mode === value
+              return (
+                <button
+                  key={value}
+                  type="button"
+                  onClick={() => setMode(value)}
+                  data-testid={`appearance-theme-${value}`}
+                  data-theme-selected={selected ? 'true' : 'false'}
+                  className="group flex flex-col items-center gap-1.5"
                 >
-                  {value === 'system'
-                    ? <SystemThemePreview />
-                    : <ThemePreview theme={value} />}
+                  <div
+                    className={cn(
+                      'relative aspect-4/3 w-36 overflow-hidden rounded-lg p-0.5 transition-[box-shadow,outline-color] duration-150',
+                      selected
+                        ? 'ring-1 ring-foreground/30 ring-offset-2 ring-offset-background'
+                        : 'ring-1 ring-border/60 hover:ring-border',
+                    )}
+                  >
+                    {value === 'system'
+                      ? <SystemThemePreview />
+                      : <ThemePreview theme={value} />}
 
-                  {selected && (
-                    <div className="absolute right-1 bottom-1 flex size-3.5 items-center justify-center rounded-full bg-foreground text-background">
-                      <CheckIcon className="size-2" aria-hidden="true" />
-                    </div>
-                  )}
-                </div>
-                <span
-                  className={cn(
-                    'text-[11px]',
-                    selected ? 'text-foreground font-medium' : 'text-muted-foreground',
-                  )}
-                >
-                  {t(labelKey)}
-                </span>
-              </button>
-            )
-          })}
-        </div>
-      </SettingsRow>
+                    {selected && (
+                      <div className="absolute right-1 bottom-1 flex size-3.5 items-center justify-center rounded-full bg-foreground text-background">
+                        <CheckIcon className="size-2" aria-hidden="true" />
+                      </div>
+                    )}
+                  </div>
+                  <span
+                    className={cn(
+                      'text-[11px]',
+                      selected ? 'text-foreground font-medium' : 'text-muted-foreground',
+                    )}
+                  >
+                    {t(labelKey)}
+                  </span>
+                </button>
+              )
+            })}
+          </div>
+        </SettingsRow>
 
-      <SettingsDivider />
-      <LanguageSettings />
-    </div>
+        <LanguageSettings />
+      </SettingsGroup>
+    </SettingsPage>
   )
 }
 

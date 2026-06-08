@@ -95,6 +95,27 @@ const defaultConfig: ChronicleConfig = {
   closedEyesMode: 'auto',
 }
 
+const CLOSED_EYES_DISCARD_RUNTIME_ENABLED = false
+const CHRONICLE_MODEL_GENERATE_DEFAULT_MAX_ATTEMPTS = 3
+const CHRONICLE_MODEL_GENERATE_DEFAULT_BASE_DELAY_MS = 750
+const CHRONICLE_MODEL_GENERATE_MAX_DELAY_MS = 5_000
+const CHRONICLE_MODEL_GENERATE_TIMEOUT_MS = 120_000
+
+type ChronicleGenerateTextResult = Awaited<ReturnType<typeof generateText>>
+type ChronicleGenerateStage = 'summarize' | 'triage' | 'summarization' | 'crystallization'
+
+const ChronicleModelGenerateMaxAttemptsSchema = z.coerce.number()
+  .int()
+  .min(1)
+  .max(8)
+  .default(CHRONICLE_MODEL_GENERATE_DEFAULT_MAX_ATTEMPTS)
+
+const ChronicleModelGenerateBaseDelayMsSchema = z.coerce.number()
+  .int()
+  .nonnegative()
+  .max(60_000)
+  .default(CHRONICLE_MODEL_GENERATE_DEFAULT_BASE_DELAY_MS)
+
 const ChroniclePrivacyRuleListSchema = z.array(z.string())
   .default([])
   .transform(values => Array.from(new Set(values.map(value => value.trim()).filter(Boolean))))
@@ -652,8 +673,14 @@ interface CrystallizedKnowledgeCardDraft {
   stableKey: string
 }
 
+function stripModelJsonMarkdownFence(raw: string): string {
+  const trimmed = raw.trim()
+  const fenced = /^```(?:json)?\s*\n?([\s\S]*?)\n?```$/i.exec(trimmed)
+  return fenced ? fenced[1].trim() : trimmed
+}
+
 const ModelTextJsonObjectSchema = z.string()
-  .transform(raw => JSON.parse(raw.trim()))
+  .transform(raw => JSON.parse(stripModelJsonMarkdownFence(raw)))
   .pipe(z.record(z.string(), z.unknown()))
 
 const ActivitySegmentTypeSchema = z.enum(['work', 'meeting', 'browsing', 'chat', 'audio', 'idle', 'unknown'])
@@ -2129,6 +2156,82 @@ function getAudioRuntimeStatus(
   return daemonInfo.running && daemonInfo.audioCaptureEnabled ? 'armed' : 'unavailable'
 }
 
+async function generateChronicleText(input: {
+  modelContext: ChronicleLanguageModelContext
+  prompt: string
+  stage: ChronicleGenerateStage
+}): Promise<ChronicleGenerateTextResult> {
+  const maxAttempts = ChronicleModelGenerateMaxAttemptsSchema.parse(process.env.CRADLE_CHRONICLE_MODEL_GENERATE_MAX_ATTEMPTS)
+  const baseDelayMs = ChronicleModelGenerateBaseDelayMsSchema.parse(process.env.CRADLE_CHRONICLE_MODEL_GENERATE_BASE_DELAY_MS)
+  let lastError: unknown
+
+  for (let attempt = 1; attempt <= maxAttempts; attempt += 1) {
+    try {
+      return await generateText({
+        model: input.modelContext.model,
+        prompt: input.prompt,
+        maxRetries: 0,
+        timeout: CHRONICLE_MODEL_GENERATE_TIMEOUT_MS,
+      })
+    }
+    catch (error) {
+      lastError = error
+      const message = error instanceof Error ? error.message : String(error)
+      if (attempt >= maxAttempts || !isRetryableChronicleModelError(message)) {
+        throw error
+      }
+
+      recordEvent({
+        type: input.stage === 'summarize' ? 'summarize' : 'activity',
+        status: 'warning',
+        message: `Chronicle model generation retry ${attempt}/${maxAttempts}: ${message}`,
+        attrs: {
+          stage: input.stage,
+          attempt,
+          maxAttempts,
+          modelId: input.modelContext.modelId,
+          profileId: input.modelContext.profileId,
+        },
+      })
+      await delayChronicleModelRetry(attempt, baseDelayMs)
+    }
+  }
+
+  throw lastError instanceof Error ? lastError : new Error(String(lastError))
+}
+
+function isRetryableChronicleModelError(message: string): boolean {
+  const normalized = message.toLowerCase()
+  return [
+    'invalid json response',
+    'failed to parse json',
+    'unexpected token',
+    'json response body',
+    'fetch failed',
+    'econnreset',
+    'econnrefused',
+    'etimedout',
+    'enotfound',
+    'network',
+    'timeout',
+    'rate limit',
+    'temporarily unavailable',
+    '429',
+    '500',
+    '502',
+    '503',
+    '504',
+  ].some(pattern => normalized.includes(pattern))
+}
+
+async function delayChronicleModelRetry(attempt: number, baseDelayMs: number): Promise<void> {
+  const delayMs = Math.min(baseDelayMs * 2 ** (attempt - 1), CHRONICLE_MODEL_GENERATE_MAX_DELAY_MS)
+  if (delayMs <= 0) {
+    return
+  }
+  await new Promise(resolve => setTimeout(resolve, delayMs))
+}
+
 export async function updateConfig(input: unknown): Promise<ChronicleConfig> {
   const config = ChronicleConfigSchema.parse(input)
   const previous = await getConfig()
@@ -2204,11 +2307,10 @@ export async function summarize(rawBody: z.input<typeof ChronicleSummarizeInputS
   const modelContext = modelContextResult.context
 
   try {
-    const result = await generateText({
-      model: modelContext.model,
+    const result = await generateChronicleText({
+      modelContext,
       prompt: body.prompt,
-      maxRetries: 1,
-      timeout: 120_000,
+      stage: 'summarize',
     })
     const usage = normalizeLanguageModelUsage(result.usage)
     const memory = recordMemory({
@@ -4440,11 +4542,10 @@ export async function triageActivitySegment(segmentId: string): Promise<Activity
 
   try {
     const prompt = buildActivityTriagePrompt(context)
-    const result = await generateText({
-      model: modelContext.model,
+    const result = await generateChronicleText({
+      modelContext,
       prompt,
-      maxRetries: 1,
-      timeout: 120_000,
+      stage: 'triage',
     })
     const triage = ActivityTriageModelTextSchema.parse(result.text)
     const endedAt = currentUnixSeconds()
@@ -4541,11 +4642,10 @@ export async function summarizeActivitySegment(segmentId: string): Promise<Activ
 
   try {
     const prompt = buildActivitySummaryPrompt(context)
-    const result = await generateText({
-      model: modelContext.model,
+    const result = await generateChronicleText({
+      modelContext,
       prompt,
-      maxRetries: 1,
-      timeout: 120_000,
+      stage: 'summarization',
     })
     const summary = ActivitySummaryModelTextSchema.parse(result.text)
     const usage = normalizeLanguageModelUsage(result.usage)
@@ -4668,11 +4768,10 @@ export async function crystallizeActivitySegment(segmentId: string): Promise<Act
 
   try {
     const prompt = buildActivityCrystallizationPrompt(context)
-    const result = await generateText({
-      model: modelContext.model,
+    const result = await generateChronicleText({
+      modelContext,
       prompt,
-      maxRetries: 1,
-      timeout: 120_000,
+      stage: 'crystallization',
     })
     const parsed = ActivityCrystallizationModelTextSchema.parse(result.text)
     const usage = normalizeLanguageModelUsage(result.usage)
@@ -6798,6 +6897,9 @@ function getClosedEyesSnapshotDecision(
   config: ChronicleConfig,
   input: ChronicleSnapshotReport,
 ): { discard: boolean, reason: string } {
+  if (!CLOSED_EYES_DISCARD_RUNTIME_ENABLED) {
+    return { discard: false, reason: 'closed-eyes discard runtime disabled' }
+  }
   if (!config.closedEyesDiscardEnabled || config.closedEyesMode === 'always-record') {
     return { discard: false, reason: 'closed-eyes discard disabled' }
   }

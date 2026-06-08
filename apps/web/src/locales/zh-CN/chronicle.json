@@ -212,7 +212,7 @@
   "pipeline.trigger.snapshot": "屏幕记录",
   "pipeline.trigger.summarize": "摘要",
   "privacy.appBundle.placeholder": "com.apple.Terminal",
-  "privacy.closedEyes.description": "detector 上报闭眼或离席时，Server 会在写入截图、窗口线索和活动片段前丢弃该帧。",
+  "privacy.closedEyes.description": "暂时不可用。runtime 的 detector / 手动暂停流程还没有接上，所以 Server 会继续记录帧，并忽略这个丢弃设置。",
   "privacy.closedEyes.mode.alwaysPause": "始终暂停",
   "privacy.closedEyes.mode.alwaysPause.ariaLabel": "始终暂停",
   "privacy.closedEyes.mode.alwaysRecord": "始终记录",
@@ -320,6 +320,15 @@
   "timeline.fallback.screenRecord": "屏幕记录",
   "timeline.fallback.slackMessage": "Slack 消息",
   "timeline.fallback.unknownUser": "未知用户",
+  "timeline.displayLabel": "显示器 {{displayId}}",
+  "timeline.filter.all": "全部",
+  "timeline.filter.allDisplays": "全部显示器",
+  "timeline.filter.display.ariaLabel": "按显示器筛选记录",
+  "timeline.filter.source.ariaLabel": "按来源筛选记录",
+  "timeline.filteredEmpty": "没有符合筛选条件的记录",
   "timeline.frameAlt": "{{time}} 的活动记录",
-  "timeline.frameUnavailable": "画面暂不可用"
+  "timeline.frameUnavailable": "画面暂不可用",
+  "timeline.source.audio": "音频",
+  "timeline.source.message": "消息",
+  "timeline.source.snapshot": "屏幕"
 }

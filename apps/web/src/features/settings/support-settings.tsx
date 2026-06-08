@@ -18,7 +18,8 @@ import { Spinner } from '~/components/ui/spinner'
 import { useOnboardingStore } from '~/features/onboarding/onboarding-store'
 import { getServerUrl, isElectron, nativeIpc } from '~/lib/electron'
 
-import { SettingsDivider, SettingsRow, SettingsSectionHeader } from './settings-row'
+import { SettingsGroup, SettingsPage } from './settings-container'
+import { SettingsRow } from './settings-row'
 
 type SupportStatus = 'idle' | 'working' | 'ready' | 'error'
 type ObservabilityExportBundle = GetObservabilityExportResponses[200]
@@ -239,18 +240,14 @@ export function SupportSettings() {
   }
 
   return (
-    <div
-      className="flex flex-col gap-0"
+    <SettingsPage
+      title={t('support.page.title')}
+      description={t('support.page.description')}
+      action={<Badge variant="outline">{t('support.badge.manual')}</Badge>}
       data-testid="support-settings"
       data-settings-support-ready={settingsSupportReady ? 'true' : 'false'}
     >
-      <SettingsSectionHeader
-        title={t('support.page.title')}
-        description={t('support.page.description')}
-        action={<Badge variant="outline">{t('support.badge.manual')}</Badge>}
-      />
-
-      <Alert className="mb-4">
+      <Alert>
         <LifeBuoyIcon className="size-4" aria-hidden="true" />
         <AlertTitle>{t('support.alert.title')}</AlertTitle>
         <AlertDescription>
@@ -258,106 +255,99 @@ export function SupportSettings() {
         </AlertDescription>
       </Alert>
 
-      <SettingsDivider />
-      <SettingsRow
-        label={t('support.diagnostics.label')}
-        description={t('support.diagnostics.description')}
-      >
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => void exportDiagnostics()}
-          disabled={status === 'working'}
+      <SettingsGroup>
+        <SettingsRow
+          label={t('support.diagnostics.label')}
+          description={t('support.diagnostics.description')}
         >
-          {status === 'working' ? <Spinner className="size-3.5" /> : <Share2Icon className="size-3.5" aria-hidden="true" />}
-          {t('support.action.export')}
-        </Button>
-      </SettingsRow>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void exportDiagnostics()}
+            disabled={status === 'working'}
+          >
+            {status === 'working' ? <Spinner className="size-3.5" /> : <Share2Icon className="size-3.5" aria-hidden="true" />}
+            {t('support.action.export')}
+          </Button>
+        </SettingsRow>
 
-      <SettingsDivider />
-      <SettingsRow
-        label={t('support.feedbackTemplate.label')}
-        description={t('support.feedbackTemplate.description')}
-      >
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => void copyFeedbackTemplate()}
-          disabled={status === 'working'}
+        <SettingsRow
+          label={t('support.feedbackTemplate.label')}
+          description={t('support.feedbackTemplate.description')}
         >
-          <ClipboardIcon className="size-3.5" aria-hidden="true" />
-          {t('support.action.copy')}
-        </Button>
-      </SettingsRow>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void copyFeedbackTemplate()}
+            disabled={status === 'working'}
+          >
+            <ClipboardIcon className="size-3.5" aria-hidden="true" />
+            {t('support.action.copy')}
+          </Button>
+        </SettingsRow>
 
-      <SettingsDivider />
-      <SettingsRow
-        label={t('support.feedbackChannel.label')}
-        description={t('support.feedbackChannel.description')}
-      >
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => void copyPrivateHandoff()}
-          disabled={status === 'working'}
+        <SettingsRow
+          label={t('support.feedbackChannel.label')}
+          description={t('support.feedbackChannel.description')}
         >
-          <ClipboardIcon className="size-3.5" aria-hidden="true" />
-          {t('support.action.copy')}
-        </Button>
-      </SettingsRow>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void copyPrivateHandoff()}
+            disabled={status === 'working'}
+          >
+            <ClipboardIcon className="size-3.5" aria-hidden="true" />
+            {t('support.action.copy')}
+          </Button>
+        </SettingsRow>
 
-      <SettingsDivider />
-      <SettingsRow
-        label={t('support.dataDirectory.label')}
-        description={dataPath ?? t('support.dataDirectory.description')}
-      >
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => void openDataDirectory()}
-          disabled={!canOpenDataPath}
+        <SettingsRow
+          label={t('support.dataDirectory.label')}
+          description={dataPath ?? t('support.dataDirectory.description')}
         >
-          <FolderOpenIcon className="size-3.5" aria-hidden="true" />
-          {t('support.action.reveal')}
-        </Button>
-      </SettingsRow>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => void openDataDirectory()}
+            disabled={!canOpenDataPath}
+          >
+            <FolderOpenIcon className="size-3.5" aria-hidden="true" />
+            {t('support.action.reveal')}
+          </Button>
+        </SettingsRow>
 
-      <SettingsDivider />
-      <SettingsRow
-        label={t('support.onboarding.label')}
-        description={t('support.onboarding.description')}
-      >
-        <Button
-          type="button"
-          size="sm"
-          variant="outline"
-          onClick={() => useOnboardingStore.getState().reset()}
+        <SettingsRow
+          label={t('support.onboarding.label')}
+          description={t('support.onboarding.description')}
         >
-          <RotateCcwIcon className="size-3.5" aria-hidden="true" />
-          {t('support.action.showOnboarding')}
-        </Button>
-      </SettingsRow>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            onClick={() => useOnboardingStore.getState().reset()}
+          >
+            <RotateCcwIcon className="size-3.5" aria-hidden="true" />
+            {t('support.action.showOnboarding')}
+          </Button>
+        </SettingsRow>
 
-      <SettingsDivider />
-      <SettingsRow
-        label={t('support.uninstall.label')}
-        description={t('support.uninstall.description')}
-      >
-        <Badge variant="outline">{t('support.badge.documented')}</Badge>
-      </SettingsRow>
+        <SettingsRow
+          label={t('support.uninstall.label')}
+          description={t('support.uninstall.description')}
+        >
+          <Badge variant="outline">{t('support.badge.documented')}</Badge>
+        </SettingsRow>
+      </SettingsGroup>
 
       {message && (
-        <>
-          <SettingsDivider />
-          <p className="py-3 text-[12px] text-muted-foreground" data-testid="support-settings-status">
-            {message}
-          </p>
-        </>
+        <p className="text-[12px] text-muted-foreground" data-testid="support-settings-status">
+          {message}
+        </p>
       )}
-    </div>
+    </SettingsPage>
   )
 }

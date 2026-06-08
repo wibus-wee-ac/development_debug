@@ -12,7 +12,7 @@ import { client } from '~/lib/client.config'
 import { cn } from '~/lib/cn'
 import type { Workspace } from '~/features/workspace/types'
 
-import { SettingsDivider, SettingsSectionHeader } from './settings-row'
+import { SettingsPage } from './settings-container'
 
 // ── Types ──
 
@@ -468,18 +468,16 @@ export function AwaitSettings() {
   if (!ready) { return null }
 
   return (
-    <div className="flex flex-col gap-0" data-testid="await-settings">
-      <SettingsSectionHeader
-        title={t('await.page.title')}
-        description={t('await.page.description')}
-      />
-      <SettingsDivider />
-
-      <div className="flex flex-col gap-4 py-3">
+    <SettingsPage
+      title={t('await.page.title')}
+      description={t('await.page.description')}
+      data-testid="await-settings"
+    >
+      <div className="flex flex-col gap-3">
         {workspaces.map(w => (
           <WorkspaceBypassSection key={w.id} workspace={w} />
         ))}
       </div>
-    </div>
+    </SettingsPage>
   )
 }
