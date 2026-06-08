@@ -184,7 +184,6 @@ const CODEX_SIDE_BOUNDARY_PROMPT = [
 const CODEX_SHELL_COMMAND_RESULT_TIMEOUT_MS = 60_000
 const CODEX_EPHEMERAL_REQUEST_TIMEOUT_MS = 20_000
 const CODEX_THREAD_TITLE_MAX_LENGTH = 36
-const CODEX_THREAD_TITLE_TIMEOUT_MS = 20_000
 type CodexTitleGenerationThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
 const CODEX_THREAD_TITLE_PROMPT_PREFIX = [
   'You are naming a Codex task thread.',
@@ -1620,7 +1619,6 @@ export class CodexProvider implements ChatRuntime {
         approvalPolicy: config.approvalPolicy,
         sandbox: config.sandboxMode,
         config: codexConfig,
-        requestTimeoutMs: CODEX_THREAD_TITLE_TIMEOUT_MS,
       })
       input.runtimeSession.providerSessionId = threadStart.threadId
       this._lastModelId = threadStart.modelId ?? effectiveModel
@@ -2083,10 +2081,10 @@ async function setCodexThreadTitleName(
   },
 ): Promise<void> {
   try {
-    await requestCodexAppServerWithTimeout(primaryClient, 'thread/name/set', params, CODEX_THREAD_TITLE_TIMEOUT_MS)
+    await primaryClient.request('thread/name/set', params)
   }
   catch {
-    await requestCodexAppServerWithTimeout(fallbackClient, 'thread/name/set', params, CODEX_THREAD_TITLE_TIMEOUT_MS)
+    await fallbackClient.request('thread/name/set', params)
   }
 }
 
@@ -2109,7 +2107,7 @@ async function generateCodexThreadTitle(
   try {
     let threadResponse: ThreadResponse
     try {
-      threadResponse = await requestCodexAppServerWithTimeout(client, 'thread/start', {
+      threadResponse = await client.request('thread/start', {
         model,
         cwd: input.cwd,
         runtimeWorkspaceRoots: input.runtimeWorkspaceRoots,
@@ -2118,7 +2116,7 @@ async function generateCodexThreadTitle(
         config: titleConfig,
         ephemeral: true,
         threadSource: 'user',
-      }, CODEX_THREAD_TITLE_TIMEOUT_MS)
+      }) as ThreadResponse
     }
     catch (error) {
       throw codexRequestError('thread/start', formatUnknownError(error))
@@ -2130,7 +2128,7 @@ async function generateCodexThreadTitle(
 
     let turnResponse: TurnResponse
     try {
-      turnResponse = await requestCodexAppServerWithTimeout(client, 'turn/start', {
+      turnResponse = await client.request('turn/start', {
         threadId: titleThreadId,
         input: buildCodexThreadTitleInput(input.promptText),
         cwd: input.cwd,
@@ -2139,7 +2137,7 @@ async function generateCodexThreadTitle(
         sandboxPolicy: toSandboxPolicy('read-only', input.runtimeWorkspaceRoots, []),
         model,
         effort: input.thinkingEffort,
-      }, CODEX_THREAD_TITLE_TIMEOUT_MS)
+      }) as TurnResponse
     }
     catch (error) {
       throw codexRequestError('turn/start', formatUnknownError(error))
@@ -2179,16 +2177,14 @@ async function readGeneratedCodexThreadTitle(
   signal: AbortSignal,
 ): Promise<string | null> {
   const titleAbortController = new AbortController()
-  let timedOut = false
-  const timeout = setTimeout(() => {
-    timedOut = true
-    titleAbortController.abort()
-  }, CODEX_THREAD_TITLE_TIMEOUT_MS)
   const abortTitleRead = () => titleAbortController.abort()
   signal.addEventListener('abort', abortTitleRead, { once: true })
   const deltas = createBoundedTextCollector()
   let completedText: string | null = null
   try {
+    if (signal.aborted) {
+      return null
+    }
     while (!titleAbortController.signal.aborted) {
       let notification: CodexAppServerMessage | null
       try {
@@ -2196,9 +2192,6 @@ async function readGeneratedCodexThreadTitle(
       }
       catch (error) {
         if (titleAbortController.signal.aborted) {
-          if (timedOut && !signal.aborted) {
-            throw codexRequestError('title/generate', `timed out after ${CODEX_THREAD_TITLE_TIMEOUT_MS}ms`)
-          }
           return null
         }
         throw error
@@ -2235,13 +2228,9 @@ async function readGeneratedCodexThreadTitle(
         return normalizeGeneratedCodexThreadTitle(completedText ?? deltas.read())
       }
     }
-    if (timedOut && !signal.aborted) {
-      throw codexRequestError('title/generate', `timed out after ${CODEX_THREAD_TITLE_TIMEOUT_MS}ms`)
-    }
     return null
   }
   finally {
-    clearTimeout(timeout)
     signal.removeEventListener('abort', abortTitleRead)
   }
 }

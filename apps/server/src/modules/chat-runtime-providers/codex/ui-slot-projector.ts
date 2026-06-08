@@ -27,7 +27,7 @@ import type {
   RuntimeToolActivityUiSlotState,
   RuntimeUiSlot,
   RuntimeUiSlotState,
-  RuntimeUsageUiSlotState,
+  RuntimeUsageUiSlotState
 } from '../../chat-runtime/runtime-provider-types'
 import type { CodexAppServerCapabilityManifest } from './app-server-capabilities'
 import type { Thread } from './app-server-protocol/v2/Thread'
@@ -45,7 +45,7 @@ import {
   readNullableNumber,
   readNullablePercent,
   readPercent,
-  readPositiveNumber,
+  readPositiveNumber
 } from './state-projector'
 import type {
   CodexAppServerClientLike,
@@ -65,7 +65,7 @@ import type {
   CodexSkillsListResponse,
   CodexThreadMetadata,
   CodexThreadStatus,
-  ThreadGoalGetResponse,
+  ThreadGoalGetResponse
 } from './types'
 
 const CODEX_CREW_TURNS_LIST_LIMIT = 50
@@ -90,7 +90,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'ide-context',
     commandText: '/context ',
     surfaces: ['slashCommand'],
-    requiredMethods: ['fuzzyFileSearch'],
+    requiredMethods: ['fuzzyFileSearch']
   },
   {
     id: 'codex:mcp',
@@ -100,7 +100,12 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     argumentHint: '',
     iconKey: 'mcp',
     commandText: '/mcp ',
-    anyMethods: ['mcpServerStatus/list', 'mcpServer/tool/call', 'mcpServer/resource/read', 'mcpServer/oauth/login'],
+    anyMethods: [
+      'mcpServerStatus/list',
+      'mcpServer/tool/call',
+      'mcpServer/resource/read',
+      'mcpServer/oauth/login'
+    ]
   },
   {
     id: 'codex:plan',
@@ -111,7 +116,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'plan',
     commandText: '/plan ',
     surfaces: ['composerState', 'runtimePanel'],
-    anyNotifications: ['turn/plan/updated', 'item/plan/delta'],
+    anyNotifications: ['turn/plan/updated', 'item/plan/delta']
   },
   {
     id: 'codex:tool-activity',
@@ -122,7 +127,12 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     aliases: ['activity'],
     iconKey: 'tool-activity',
     commandText: '/tools ',
-    anyNotifications: ['item/started', 'item/completed', 'serverRequest/resolved', 'item/mcpToolCall/progress'],
+    anyNotifications: [
+      'item/started',
+      'item/completed',
+      'serverRequest/resolved',
+      'item/mcpToolCall/progress'
+    ]
   },
   {
     id: 'codex:diff',
@@ -133,7 +143,11 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'diff',
     commandText: '/diff ',
     anyMethods: ['gitDiffToRemote'],
-    anyNotifications: ['turn/diff/updated', 'item/fileChange/patchUpdated', 'item/fileChange/outputDelta'],
+    anyNotifications: [
+      'turn/diff/updated',
+      'item/fileChange/patchUpdated',
+      'item/fileChange/outputDelta'
+    ]
   },
   {
     id: 'codex:terminal',
@@ -145,7 +159,12 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'terminal',
     commandText: '/terminal ',
     anyMethods: ['command/exec', 'process/spawn', 'thread/shellCommand'],
-    anyNotifications: ['item/commandExecution/outputDelta', 'item/commandExecution/terminalInteraction', 'process/outputDelta', 'process/exited'],
+    anyNotifications: [
+      'item/commandExecution/outputDelta',
+      'item/commandExecution/terminalInteraction',
+      'process/outputDelta',
+      'process/exited'
+    ]
   },
   {
     id: 'codex:approvals',
@@ -155,7 +174,11 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     argumentHint: '',
     iconKey: 'approvals',
     commandText: '/approvals ',
-    anyNotifications: ['item/autoApprovalReview/started', 'item/autoApprovalReview/completed', 'serverRequest/resolved'],
+    anyNotifications: [
+      'item/autoApprovalReview/started',
+      'item/autoApprovalReview/completed',
+      'serverRequest/resolved'
+    ]
   },
   {
     id: 'codex:alerts',
@@ -167,7 +190,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'alert',
     commandText: '/alerts ',
     surfaces: ['runtimePanel'],
-    anyNotifications: ['warning', 'guardianWarning', 'configWarning', 'deprecationNotice'],
+    anyNotifications: ['warning', 'guardianWarning', 'configWarning', 'deprecationNotice']
   },
   {
     id: 'codex:filesystem',
@@ -179,7 +202,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'filesystem',
     commandText: '/files ',
     anyMethods: ['fs/readFile', 'fs/readDirectory', 'fs/watch', 'fs/getMetadata'],
-    anyNotifications: ['fs/changed'],
+    anyNotifications: ['fs/changed']
   },
   {
     id: 'codex:skills',
@@ -190,7 +213,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'skills',
     commandText: '/skills ',
     anyMethods: ['skills/list', 'skills/config/write', 'hooks/list'],
-    anyNotifications: ['skills/changed'],
+    anyNotifications: ['skills/changed']
   },
   {
     id: 'codex:plugin',
@@ -202,7 +225,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'plugin',
     commandText: '/plugins ',
     anyMethods: ['plugin/list', 'plugin/read', 'app/list', 'marketplace/add'],
-    anyNotifications: ['app/list/updated'],
+    anyNotifications: ['app/list/updated']
   },
   {
     id: 'codex:search',
@@ -214,7 +237,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'search',
     commandText: '/search ',
     anyMethods: ['thread/search', 'thread/read', 'thread/turns/list', 'fuzzyFileSearch'],
-    anyNotifications: ['fuzzyFileSearch/sessionUpdated', 'fuzzyFileSearch/sessionCompleted'],
+    anyNotifications: ['fuzzyFileSearch/sessionUpdated', 'fuzzyFileSearch/sessionCompleted']
   },
   {
     id: 'codex:quick-question',
@@ -225,7 +248,19 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     aliases: ['quick-question'],
     iconKey: 'quick-question',
     commandText: '/btw ',
-    surfaces: ['slashCommand', 'composerState'],
+    surfaces: ['slashCommand', 'composerState']
+  },
+  {
+    id: 'codex:user-input',
+    name: 'ask-user',
+    label: 'Ask user',
+    description: 'Answer a pending runtime question or MCP elicitation.',
+    argumentHint: '',
+    aliases: ['user-input', 'elicitation'],
+    iconKey: 'user-input',
+    commandText: '/ask-user ',
+    surfaces: ['composerState', 'runtimePanel', 'streamEvidence'],
+    anyMethods: ['item/tool/requestUserInput', 'mcpServer/elicitation/request']
   },
   {
     id: 'codex:crew',
@@ -238,7 +273,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     commandText: '/crew ',
     surfaces: ['runtimePanel', 'streamEvidence'],
     anyMethods: ['review/start', 'collaborationMode/list', 'thread/fork'],
-    anyNotifications: ['item/started', 'item/completed'],
+    anyNotifications: ['item/started', 'item/completed']
   },
   {
     id: 'codex:usage',
@@ -250,7 +285,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     commandText: '/usage ',
     surfaces: ['slashCommand', 'runtimePanel'],
     anyMethods: ['account/rateLimits/read'],
-    anyNotifications: ['account/rateLimits/updated'],
+    anyNotifications: ['account/rateLimits/updated']
   },
   {
     id: 'codex:config',
@@ -261,8 +296,18 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'config',
     commandText: '/config ',
     surfaces: ['toolbarPicker', 'runtimePanel'],
-    anyMethods: ['config/read', 'configRequirements/read', 'experimentalFeature/list', 'permissionProfile/list'],
-    anyNotifications: ['configWarning', 'thread/settings/updated', 'model/rerouted', 'model/verification'],
+    anyMethods: [
+      'config/read',
+      'configRequirements/read',
+      'experimentalFeature/list',
+      'permissionProfile/list'
+    ],
+    anyNotifications: [
+      'configWarning',
+      'thread/settings/updated',
+      'model/rerouted',
+      'model/verification'
+    ]
   },
   {
     id: 'codex:personality',
@@ -274,7 +319,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'personality',
     commandText: '/personality ',
     surfaces: ['toolbarPicker'],
-    requiredMethods: ['thread/settings/update'],
+    requiredMethods: ['thread/settings/update']
   },
   {
     id: 'codex:review',
@@ -286,7 +331,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'code-review',
     commandText: '/review ',
     surfaces: ['slashCommand'],
-    requiredMethods: ['review/start'],
+    requiredMethods: ['review/start']
   },
   {
     id: 'codex:side-chat',
@@ -298,7 +343,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'side-chat',
     commandText: '/side ',
     surfaces: ['runtimePanel'],
-    requiredMethods: ['thread/fork'],
+    requiredMethods: ['thread/fork']
   },
   {
     id: 'codex:compact',
@@ -311,7 +356,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     commandText: '/compact ',
     surfaces: ['slashCommand', 'runtimePanel'],
     requiredMethods: ['thread/compact/start'],
-    anyNotifications: ['thread/compacted'],
+    anyNotifications: ['thread/compacted']
   },
   {
     id: 'codex:feedback',
@@ -322,7 +367,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'feedback',
     commandText: '/feedback ',
     surfaces: ['slashCommand'],
-    requiredMethods: ['feedback/upload'],
+    requiredMethods: ['feedback/upload']
   },
   {
     id: 'codex:goal',
@@ -335,7 +380,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     commandText: '/goal ',
     surfaces: ['slashCommand', 'composerState', 'runtimePanel'],
     requiredMethods: ['thread/goal/set', 'thread/goal/get', 'thread/goal/clear'],
-    anyNotifications: ['thread/goal/updated', 'thread/goal/cleared'],
+    anyNotifications: ['thread/goal/updated', 'thread/goal/cleared']
   },
   {
     id: 'codex:reasoning',
@@ -347,7 +392,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'reasoning',
     commandText: '/reasoning ',
     surfaces: ['toolbarPicker', 'runtimePanel'],
-    requiredMethods: ['thread/settings/update'],
+    requiredMethods: ['thread/settings/update']
   },
   {
     id: 'codex:model',
@@ -358,7 +403,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'model',
     commandText: '/model ',
     surfaces: ['toolbarPicker', 'runtimePanel'],
-    requiredMethods: ['model/list', 'modelProvider/capabilities/read'],
+    requiredMethods: ['model/list', 'modelProvider/capabilities/read']
   },
   {
     id: 'codex:status',
@@ -369,17 +414,24 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'status',
     commandText: '/status ',
     anyMethods: ['account/rateLimits/read', 'configRequirements/read'],
-    anyNotifications: ['thread/status/changed', 'thread/tokenUsage/updated', 'thread/settings/updated'],
-  },
+    anyNotifications: [
+      'thread/status/changed',
+      'thread/tokenUsage/updated',
+      'thread/settings/updated'
+    ]
+  }
 ]
 
 export function projectCodexUiSlots(manifest: CodexAppServerCapabilityManifest): RuntimeUiSlot[] {
-  const methodNames = new Set(manifest.clientMethods.map(method => method.method))
-  const notificationNames = new Set(manifest.serverNotifications.map(notification => notification.method))
+  const methodNames = new Set(manifest.clientMethods.map((method) => method.method))
+  const notificationNames = new Set(
+    manifest.serverNotifications.map((notification) => notification.method)
+  )
 
-  return CODEX_UI_SLOT_DEFINITIONS
-    .filter(slot => supportsSlot(slot, methodNames, notificationNames))
-    .map(({
+  return CODEX_UI_SLOT_DEFINITIONS.filter((slot) =>
+    supportsSlot(slot, methodNames, notificationNames)
+  ).map(
+    ({
       requiredMethods: _requiredMethods,
       anyMethods: _anyMethods,
       requiredNotifications: _requiredNotifications,
@@ -388,25 +440,29 @@ export function projectCodexUiSlots(manifest: CodexAppServerCapabilityManifest):
       ...slot
     }) => ({
       ...slot,
-      surfaces: surfaces ?? ['runtimePanel'],
-    }))
+      surfaces: surfaces ?? ['runtimePanel']
+    })
+  )
 }
 
 function supportsSlot(
   slot: CodexUiSlotDefinition,
   methodNames: Set<string>,
-  notificationNames: Set<string>,
+  notificationNames: Set<string>
 ): boolean {
-  if (slot.requiredMethods?.some(method => !methodNames.has(method))) {
+  if (slot.requiredMethods?.some((method) => !methodNames.has(method))) {
     return false
   }
-  if (slot.requiredNotifications?.some(notification => !notificationNames.has(notification))) {
+  if (slot.requiredNotifications?.some((notification) => !notificationNames.has(notification))) {
     return false
   }
-  if (slot.anyMethods && !slot.anyMethods.some(method => methodNames.has(method))) {
+  if (slot.anyMethods && !slot.anyMethods.some((method) => methodNames.has(method))) {
     return false
   }
-  if (slot.anyNotifications && !slot.anyNotifications.some(notification => notificationNames.has(notification))) {
+  if (
+    slot.anyNotifications &&
+    !slot.anyNotifications.some((notification) => notificationNames.has(notification))
+  ) {
     return false
   }
   return true
@@ -429,20 +485,32 @@ export interface CodexUiSlotStateProjectionInput {
   collaborationModes: CodexCollaborationModeListResponse | null
 }
 
-export async function projectCodexUiSlotStates(input: CodexUiSlotStateProjectionInput): Promise<RuntimeUiSlotState[]> {
+export async function projectCodexUiSlotStates(
+  input: CodexUiSlotStateProjectionInput
+): Promise<RuntimeUiSlotState[]> {
   const snapshot = readCodexProviderSnapshot(input.providerStateSnapshot)
   const states: RuntimeUiSlotState[] = []
   const crewState = await readCodexCrewState(
     input.client,
     input.threadId,
     snapshot,
-    input.collaborationModes,
+    input.collaborationModes
   )
   const slotStates = [
     projectCodexStatusState(input.threadId, snapshot),
-    projectCodexModelState(input.threadId, snapshot, input.configResponse, input.providerCapabilities, input.modelList),
+    projectCodexModelState(
+      input.threadId,
+      snapshot,
+      input.configResponse,
+      input.providerCapabilities,
+      input.modelList
+    ),
     projectCodexReasoningState(input.threadId, snapshot, input.configResponse, input.modelList),
-    projectCodexCompactState(input.threadId, readCodexCompactSnapshot(input.providerStateSnapshot), input.configResponse),
+    projectCodexCompactState(
+      input.threadId,
+      readCodexCompactSnapshot(input.providerStateSnapshot),
+      input.configResponse
+    ),
     projectCodexPlanState(input.threadId, snapshot),
     projectCodexToolActivityState(input.threadId, snapshot),
     projectCodexMcpState(input.threadId, snapshot, input.mcpStatus),
@@ -457,7 +525,7 @@ export async function projectCodexUiSlotStates(input: CodexUiSlotStateProjection
     crewState,
     projectCodexUsageState(input.threadId, snapshot, input.rateLimits),
     projectCodexConfigState(input.threadId, input.configResponse, input.configRequirements),
-    projectCodexGoalState(readCodexGoalStateSource(input.goal, snapshot.codex?.goal ?? null)),
+    projectCodexGoalState(readCodexGoalStateSource(input.goal, snapshot.codex?.goal ?? null))
   ]
   for (const state of slotStates) {
     if (state) {
@@ -481,13 +549,13 @@ function projectCodexGoalState(goal: ThreadGoalGetResponse['goal']): RuntimeUiSl
     tokensUsed: typeof goal.tokensUsed === 'number' ? goal.tokensUsed : 0,
     timeUsedSeconds: typeof goal.timeUsedSeconds === 'number' ? goal.timeUsedSeconds : 0,
     createdAt: typeof goal.createdAt === 'number' ? goal.createdAt : 0,
-    updatedAt: typeof goal.updatedAt === 'number' ? goal.updatedAt : 0,
+    updatedAt: typeof goal.updatedAt === 'number' ? goal.updatedAt : 0
   }
 }
 
 function readCodexGoalStateSource(
   appServerGoal: ThreadGoalGetResponse['goal'] | undefined,
-  snapshotGoal: CodexGoalSnapshot | null,
+  snapshotGoal: CodexGoalSnapshot | null
 ): ThreadGoalGetResponse['goal'] {
   if (appServerGoal) {
     return appServerGoal
@@ -500,7 +568,7 @@ function readCodexGoalStateSource(
 
 function projectCodexStatusState(
   threadId: string,
-  snapshot: CodexProviderSnapshot,
+  snapshot: CodexProviderSnapshot
 ): RuntimeStatusUiSlotState | null {
   const status = snapshot.codex?.status
   if (!status || status.threadId !== threadId) {
@@ -515,8 +583,10 @@ function projectCodexStatusState(
     slotId: 'codex:status',
     threadId,
     status: statusType,
-    activeFlags: Array.isArray(status.status.activeFlags) ? status.status.activeFlags.filter(flag => typeof flag === 'string') : [],
-    updatedAt: status.updatedAt,
+    activeFlags: Array.isArray(status.status.activeFlags)
+      ? status.status.activeFlags.filter((flag) => typeof flag === 'string')
+      : [],
+    updatedAt: status.updatedAt
   }
 }
 
@@ -525,10 +595,11 @@ function projectCodexModelState(
   snapshot: CodexProviderSnapshot,
   configResponse: CodexConfigReadResponse | null,
   providerCapabilities: CodexModelProviderCapabilitiesReadResponse | null,
-  modelList: CodexModelListResponse | null,
+  modelList: CodexModelListResponse | null
 ): RuntimeModelUiSlotState | null {
   const model = snapshot.codex?.model
-  const modelId = model?.modelId ?? configResponse?.config?.model ?? snapshot.models?.currentModelId ?? null
+  const modelId =
+    model?.modelId ?? configResponse?.config?.model ?? snapshot.models?.currentModelId ?? null
   if (!model && !modelId) {
     return null
   }
@@ -541,10 +612,17 @@ function projectCodexModelState(
     modelLabel: modelInfo?.displayName ?? modelInfo?.model ?? modelId,
     modelProvider: model?.modelProvider ?? configResponse?.config?.model_provider ?? null,
     serviceTier: model?.serviceTier ?? configResponse?.config?.service_tier ?? null,
-    supportsImages: typeof providerCapabilities?.imageGeneration === 'boolean' ? providerCapabilities.imageGeneration : null,
-    supportsWebSearch: typeof providerCapabilities?.webSearch === 'boolean' ? providerCapabilities.webSearch : null,
-    supportsNamespaceTools: typeof providerCapabilities?.namespaceTools === 'boolean' ? providerCapabilities.namespaceTools : null,
-    updatedAt: model?.updatedAt ?? 0,
+    supportsImages:
+      typeof providerCapabilities?.imageGeneration === 'boolean'
+        ? providerCapabilities.imageGeneration
+        : null,
+    supportsWebSearch:
+      typeof providerCapabilities?.webSearch === 'boolean' ? providerCapabilities.webSearch : null,
+    supportsNamespaceTools:
+      typeof providerCapabilities?.namespaceTools === 'boolean'
+        ? providerCapabilities.namespaceTools
+        : null,
+    updatedAt: model?.updatedAt ?? 0
   }
 }
 
@@ -552,16 +630,30 @@ function projectCodexReasoningState(
   threadId: string,
   snapshot: CodexProviderSnapshot,
   configResponse: CodexConfigReadResponse | null,
-  modelList: CodexModelListResponse | null,
+  modelList: CodexModelListResponse | null
 ): RuntimeReasoningUiSlotState | null {
   const reasoning = snapshot.codex?.reasoning
-  const modelId = snapshot.codex?.model?.modelId ?? configResponse?.config?.model ?? snapshot.models?.currentModelId ?? null
+  const modelId =
+    snapshot.codex?.model?.modelId ??
+    configResponse?.config?.model ??
+    snapshot.models?.currentModelId ??
+    null
   const modelInfo = findCodexModel(modelList, modelId)
-  const supportedEfforts = (modelInfo?.supportedReasoningEfforts ?? [])
-    .flatMap(option => typeof option.reasoningEffort === 'string'
-      ? [{ id: option.reasoningEffort, description: typeof option.description === 'string' ? option.description : '' }]
-      : [])
-  const effort = reasoning?.effort ?? configResponse?.config?.model_reasoning_effort ?? modelInfo?.defaultReasoningEffort ?? null
+  const supportedEfforts = (modelInfo?.supportedReasoningEfforts ?? []).flatMap((option) =>
+    typeof option.reasoningEffort === 'string'
+      ? [
+          {
+            id: option.reasoningEffort,
+            description: typeof option.description === 'string' ? option.description : ''
+          }
+        ]
+      : []
+  )
+  const effort =
+    reasoning?.effort ??
+    configResponse?.config?.model_reasoning_effort ??
+    modelInfo?.defaultReasoningEffort ??
+    null
   const summary = reasoning?.summary ?? configResponse?.config?.model_reasoning_summary ?? null
   if (!reasoning && !effort && !summary && supportedEfforts.length === 0) {
     return null
@@ -573,11 +665,13 @@ function projectCodexReasoningState(
     effort,
     summary,
     supportedEfforts,
-    updatedAt: reasoning?.updatedAt ?? 0,
+    updatedAt: reasoning?.updatedAt ?? 0
   }
 }
 
-function normalizeCodexThreadStatus(status: CodexThreadStatus): RuntimeStatusUiSlotState['status'] | null {
+function normalizeCodexThreadStatus(
+  status: CodexThreadStatus
+): RuntimeStatusUiSlotState['status'] | null {
   switch (status.type) {
     case 'notLoaded':
     case 'idle':
@@ -589,17 +683,20 @@ function normalizeCodexThreadStatus(status: CodexThreadStatus): RuntimeStatusUiS
   }
 }
 
-function findCodexModel(modelList: CodexModelListResponse | null, modelId: string | null | undefined) {
+function findCodexModel(
+  modelList: CodexModelListResponse | null,
+  modelId: string | null | undefined
+) {
   if (!modelId) {
     return null
   }
-  return modelList?.data?.find(model => model.id === modelId || model.model === modelId) ?? null
+  return modelList?.data?.find((model) => model.id === modelId || model.model === modelId) ?? null
 }
 
 function projectCodexCompactState(
   threadId: string,
   snapshot: CodexCompactSnapshot | null,
-  configResponse: CodexConfigReadResponse | null,
+  configResponse: CodexConfigReadResponse | null
 ): RuntimeCompactUiSlotState | null {
   if (!snapshot || snapshot.threadId !== threadId) {
     return null
@@ -607,16 +704,23 @@ function projectCodexCompactState(
 
   const total = normalizeTokenUsageBreakdown(snapshot.tokenUsage.total)
   const last = normalizeTokenUsageBreakdown(snapshot.tokenUsage.last)
-  const modelContextWindow = readPositiveNumber(snapshot.tokenUsage.modelContextWindow)
-    ?? readConfigNumber(configResponse?.config?.model_context_window)
-  const autoCompactTokenLimit = readConfigNumber(configResponse?.config?.model_auto_compact_token_limit)
-  const usagePercent = modelContextWindow ? readPercent(total.totalTokens, modelContextWindow) : null
-  const autoCompactPercent = autoCompactTokenLimit ? readPercent(total.totalTokens, autoCompactTokenLimit) : null
+  const modelContextWindow =
+    readPositiveNumber(snapshot.tokenUsage.modelContextWindow) ??
+    readConfigNumber(configResponse?.config?.model_context_window)
+  const autoCompactTokenLimit = readConfigNumber(
+    configResponse?.config?.model_auto_compact_token_limit
+  )
+  const usagePercent = modelContextWindow
+    ? readPercent(total.totalTokens, modelContextWindow)
+    : null
+  const autoCompactPercent = autoCompactTokenLimit
+    ? readPercent(total.totalTokens, autoCompactTokenLimit)
+    : null
   const status = readCompactStatus({
     lifecycleStatus: snapshot.status ?? null,
     lastCompactedAt: snapshot.lastCompactedAt ?? null,
     usagePercent,
-    autoCompactPercent,
+    autoCompactPercent
   })
 
   return {
@@ -634,21 +738,21 @@ function projectCodexCompactState(
     autoCompactPercent,
     lastCompactedAt: snapshot.lastCompactedAt ?? null,
     compactionItemId: snapshot.compactionItemId ?? null,
-    updatedAt: snapshot.updatedAt,
+    updatedAt: snapshot.updatedAt
   }
 }
 
 function projectCodexPlanState(
   threadId: string,
-  snapshot: CodexProviderSnapshot,
+  snapshot: CodexProviderSnapshot
 ): RuntimePlanUiSlotState | null {
   const plan = snapshot.codex?.plan
   if (!plan || plan.threadId !== threadId) {
     return null
   }
-  const pendingCount = plan.steps.filter(step => step.status === 'pending').length
-  const inProgressCount = plan.steps.filter(step => step.status === 'inProgress').length
-  const completedCount = plan.steps.filter(step => step.status === 'completed').length
+  const pendingCount = plan.steps.filter((step) => step.status === 'pending').length
+  const inProgressCount = plan.steps.filter((step) => step.status === 'inProgress').length
+  const completedCount = plan.steps.filter((step) => step.status === 'completed').length
   return {
     kind: 'plan',
     slotId: 'codex:plan',
@@ -657,19 +761,20 @@ function projectCodexPlanState(
     explanation: plan.explanation,
     content: plan.content,
     steps: plan.steps,
-    currentStep: plan.steps.find(step => step.status === 'inProgress')?.step
-      ?? plan.steps.find(step => step.status === 'pending')?.step
-      ?? null,
+    currentStep:
+      plan.steps.find((step) => step.status === 'inProgress')?.step ??
+      plan.steps.find((step) => step.status === 'pending')?.step ??
+      null,
     pendingCount,
     inProgressCount,
     completedCount,
-    updatedAt: plan.updatedAt,
+    updatedAt: plan.updatedAt
   }
 }
 
 function projectCodexToolActivityState(
   threadId: string,
-  snapshot: CodexProviderSnapshot,
+  snapshot: CodexProviderSnapshot
 ): RuntimeToolActivityUiSlotState | null {
   const activity = snapshot.codex?.toolActivity
   if (!activity || activity.threadId !== threadId || activity.items.length === 0) {
@@ -680,18 +785,18 @@ function projectCodexToolActivityState(
     slotId: 'codex:tool-activity',
     threadId,
     turnId: activity.turnId,
-    activeCount: activity.items.filter(item => item.status === 'running').length,
-    completedCount: activity.items.filter(item => item.status === 'completed').length,
-    failedCount: activity.items.filter(item => item.status === 'failed').length,
+    activeCount: activity.items.filter((item) => item.status === 'running').length,
+    completedCount: activity.items.filter((item) => item.status === 'completed').length,
+    failedCount: activity.items.filter((item) => item.status === 'failed').length,
     recentItems: activity.items,
-    updatedAt: activity.updatedAt,
+    updatedAt: activity.updatedAt
   }
 }
 
 function projectCodexMcpState(
   threadId: string,
   snapshot: CodexProviderSnapshot,
-  mcpStatus: CodexListMcpServerStatusResponse | null,
+  mcpStatus: CodexListMcpServerStatusResponse | null
 ): RuntimeMcpUiSlotState | null {
   const listedServers = projectMcpServersFromList(mcpStatus)
   const snapshotMcp = snapshot.codex?.mcp
@@ -711,18 +816,18 @@ function projectCodexMcpState(
     slotId: 'codex:mcp',
     threadId,
     serverCount: servers.length,
-    readyCount: servers.filter(server => server.status === 'ready').length,
-    failedCount: servers.filter(server => server.status === 'failed').length,
-    needsLoginCount: servers.filter(server => server.authStatus === 'notLoggedIn').length,
+    readyCount: servers.filter((server) => server.status === 'ready').length,
+    failedCount: servers.filter((server) => server.status === 'failed').length,
+    needsLoginCount: servers.filter((server) => server.authStatus === 'notLoggedIn').length,
     recentProgress: snapshotMcp?.recentProgress ?? null,
     servers,
-    updatedAt: Math.max(snapshotMcp?.updatedAt ?? 0, listedServers.length > 0 ? Date.now() : 0),
+    updatedAt: Math.max(snapshotMcp?.updatedAt ?? 0, listedServers.length > 0 ? Date.now() : 0)
   }
 }
 
 function projectCodexDiffState(
   threadId: string,
-  snapshot: CodexProviderSnapshot,
+  snapshot: CodexProviderSnapshot
 ): RuntimeDiffUiSlotState | null {
   const diff = snapshot.codex?.diff
   if (!diff || diff.threadId !== threadId || diff.files.length === 0) {
@@ -736,14 +841,14 @@ function projectCodexDiffState(
     fileCount: diff.files.length,
     addedLines: diff.files.reduce((count, file) => count + file.addedLines, 0),
     removedLines: diff.files.reduce((count, file) => count + file.removedLines, 0),
-    hasDiff: diff.files.some(file => file.addedLines > 0 || file.removedLines > 0),
-    updatedAt: diff.updatedAt,
+    hasDiff: diff.files.some((file) => file.addedLines > 0 || file.removedLines > 0),
+    updatedAt: diff.updatedAt
   }
 }
 
 function projectCodexTerminalState(
   threadId: string,
-  snapshot: CodexProviderSnapshot,
+  snapshot: CodexProviderSnapshot
 ): RuntimeTerminalUiSlotState | null {
   const terminal = snapshot.codex?.terminal
   if (!terminal || terminal.threadId !== threadId || terminal.commands.length === 0) {
@@ -755,18 +860,18 @@ function projectCodexTerminalState(
     slotId: 'codex:terminal',
     threadId,
     turnId: terminal.turnId,
-    activeCount: terminal.commands.filter(command => command.status === 'running').length,
-    completedCount: terminal.commands.filter(command => command.status === 'completed').length,
-    failedCount: terminal.commands.filter(command => command.status === 'failed').length,
+    activeCount: terminal.commands.filter((command) => command.status === 'running').length,
+    completedCount: terminal.commands.filter((command) => command.status === 'completed').length,
+    failedCount: terminal.commands.filter((command) => command.status === 'failed').length,
     lastCommand: lastCommand?.command ?? null,
     lastOutputPreview: lastCommand?.outputPreview ?? null,
-    updatedAt: terminal.updatedAt,
+    updatedAt: terminal.updatedAt
   }
 }
 
 function projectCodexApprovalsState(
   threadId: string,
-  snapshot: CodexProviderSnapshot,
+  snapshot: CodexProviderSnapshot
 ): RuntimeApprovalsUiSlotState | null {
   const approvals = snapshot.codex?.approvals
   if (!approvals || approvals.threadId !== threadId || approvals.items.length === 0) {
@@ -777,36 +882,40 @@ function projectCodexApprovalsState(
     slotId: 'codex:approvals',
     threadId,
     turnId: approvals.turnId,
-    pendingCount: approvals.items.filter(item => item.status === 'pending').length,
-    approvedCount: approvals.items.filter(item => item.status === 'approved').length,
-    deniedCount: approvals.items.filter(item => item.status === 'denied').length,
+    pendingCount: approvals.items.filter((item) => item.status === 'pending').length,
+    approvedCount: approvals.items.filter((item) => item.status === 'approved').length,
+    deniedCount: approvals.items.filter((item) => item.status === 'denied').length,
     recentItems: approvals.items,
-    updatedAt: approvals.updatedAt,
+    updatedAt: approvals.updatedAt
   }
 }
 
 function projectCodexAlertState(
   threadId: string,
-  snapshot: CodexProviderSnapshot,
+  snapshot: CodexProviderSnapshot
 ): RuntimeAlertUiSlotState | null {
   const alert = snapshot.codex?.alert
-  if (!alert || (alert.threadId !== null && alert.threadId !== threadId) || alert.items.length === 0) {
+  if (
+    !alert ||
+    (alert.threadId !== null && alert.threadId !== threadId) ||
+    alert.items.length === 0
+  ) {
     return null
   }
   return {
     kind: 'alert',
     slotId: 'codex:alerts',
     threadId: alert.threadId,
-    warningCount: alert.items.filter(item => item.severity === 'warning').length,
-    errorCount: alert.items.filter(item => item.severity === 'error').length,
+    warningCount: alert.items.filter((item) => item.severity === 'warning').length,
+    errorCount: alert.items.filter((item) => item.severity === 'error').length,
     recentItems: alert.items,
-    updatedAt: alert.updatedAt,
+    updatedAt: alert.updatedAt
   }
 }
 
 function projectCodexFilesystemState(
   threadId: string,
-  snapshot: CodexProviderSnapshot,
+  snapshot: CodexProviderSnapshot
 ): RuntimeFilesystemUiSlotState | null {
   const filesystem = snapshot.codex?.filesystem
   if (!filesystem || filesystem.threadId !== threadId || filesystem.recentPaths.length === 0) {
@@ -818,38 +927,38 @@ function projectCodexFilesystemState(
     threadId,
     changedPathCount: filesystem.recentPaths.length,
     recentPaths: filesystem.recentPaths,
-    updatedAt: filesystem.updatedAt,
+    updatedAt: filesystem.updatedAt
   }
 }
 
 function projectCodexSkillsState(
   threadId: string,
-  response: CodexSkillsListResponse | null,
+  response: CodexSkillsListResponse | null
 ): RuntimeSkillsUiSlotState | null {
   const entries = response?.data ?? []
   if (entries.length === 0) {
     return null
   }
-  const skills = entries.flatMap(entry => entry.skills ?? [])
+  const skills = entries.flatMap((entry) => entry.skills ?? [])
   return {
     kind: 'skills',
     slotId: 'codex:skills',
     threadId,
-    enabledCount: skills.filter(skill => skill.enabled !== false).length,
-    disabledCount: skills.filter(skill => skill.enabled === false).length,
+    enabledCount: skills.filter((skill) => skill.enabled !== false).length,
+    disabledCount: skills.filter((skill) => skill.enabled === false).length,
     errorCount: entries.reduce((count, entry) => count + (entry.errors?.length ?? 0), 0),
-    roots: entries.flatMap(entry => typeof entry.cwd === 'string' ? [entry.cwd] : []),
-    updatedAt: Date.now(),
+    roots: entries.flatMap((entry) => (typeof entry.cwd === 'string' ? [entry.cwd] : [])),
+    updatedAt: Date.now()
   }
 }
 
 function projectCodexPluginState(
   threadId: string,
   pluginsResponse: CodexPluginListResponse | null,
-  appsResponse: CodexAppsListResponse | null,
+  appsResponse: CodexAppsListResponse | null
 ): RuntimePluginUiSlotState | null {
   const marketplaces = pluginsResponse?.marketplaces ?? []
-  const plugins = marketplaces.flatMap(marketplace => marketplace.plugins ?? [])
+  const plugins = marketplaces.flatMap((marketplace) => marketplace.plugins ?? [])
   const apps = appsResponse?.data ?? []
   if (marketplaces.length === 0 && apps.length === 0) {
     return null
@@ -858,18 +967,18 @@ function projectCodexPluginState(
     kind: 'plugin',
     slotId: 'codex:plugin',
     threadId,
-    installedCount: plugins.filter(plugin => plugin.installed === true).length,
-    enabledCount: plugins.filter(plugin => plugin.enabled === true).length,
-    appCount: apps.filter(app => app.isAccessible !== false && app.isEnabled !== false).length,
+    installedCount: plugins.filter((plugin) => plugin.installed === true).length,
+    enabledCount: plugins.filter((plugin) => plugin.enabled === true).length,
+    appCount: apps.filter((app) => app.isAccessible !== false && app.isEnabled !== false).length,
     marketplaceCount: marketplaces.length,
     errorCount: pluginsResponse?.marketplaceLoadErrors?.length ?? 0,
-    updatedAt: Date.now(),
+    updatedAt: Date.now()
   }
 }
 
 function projectCodexSearchState(
   threadId: string,
-  snapshot: CodexProviderSnapshot,
+  snapshot: CodexProviderSnapshot
 ): RuntimeSearchUiSlotState | null {
   const search = snapshot.codex?.search
   if (!search || search.threadId !== threadId) {
@@ -882,7 +991,7 @@ function projectCodexSearchState(
     recentResultCount: search.recentResultCount,
     recentQuery: search.recentQuery,
     fuzzySessionActive: search.fuzzySessionActive,
-    updatedAt: search.updatedAt,
+    updatedAt: search.updatedAt
   }
 }
 
@@ -890,52 +999,70 @@ async function readCodexCrewState(
   client: CodexAppServerClientLike,
   parentThreadId: string,
   snapshot: CodexProviderSnapshot,
-  collaborationModes: CodexCollaborationModeListResponse | null,
+  collaborationModes: CodexCollaborationModeListResponse | null
 ): Promise<RuntimeCrewUiSlotState | null> {
   const listedThreads = await listCodexCrewThreads(client, parentThreadId).catch(() => [])
   const turns = await listRecentCodexCrewTurns(client, parentThreadId).catch(() => [])
   const calls = mergeCodexCrewCalls(
     projectCodexCrewCallsFromTurns(parentThreadId, turns),
-    projectCodexCrewCallsFromSnapshot(snapshot),
+    projectCodexCrewCallsFromSnapshot(snapshot)
   )
-  const listedMetadata = new Map(listedThreads.flatMap((thread) => {
-    const metadata = readCodexThreadMetadataFromThread(thread.id, thread)
-    return metadata ? [[metadata.id, metadata] as const] : []
-  }))
-  const missingCallThreadIds = readCrewReceiverThreadIdsFromCalls(parentThreadId, calls)
-    .filter(threadId => !listedMetadata.has(threadId))
-  const snapshotThreadIds = readCrewReceiverThreadIdsFromSnapshot(parentThreadId, snapshot)
-    .filter(threadId => !listedMetadata.has(threadId))
-  const fetchedMetadata = await readCrewThreadMetadata(client, uniqueStrings([...missingCallThreadIds, ...snapshotThreadIds]))
+  const listedMetadata = new Map(
+    listedThreads.flatMap((thread) => {
+      const metadata = readCodexThreadMetadataFromThread(thread.id, thread)
+      return metadata ? [[metadata.id, metadata] as const] : []
+    })
+  )
+  const missingCallThreadIds = readCrewReceiverThreadIdsFromCalls(parentThreadId, calls).filter(
+    (threadId) => !listedMetadata.has(threadId)
+  )
+  const snapshotThreadIds = readCrewReceiverThreadIdsFromSnapshot(parentThreadId, snapshot).filter(
+    (threadId) => !listedMetadata.has(threadId)
+  )
+  const fetchedMetadata = await readCrewThreadMetadata(
+    client,
+    uniqueStrings([...missingCallThreadIds, ...snapshotThreadIds])
+  )
   const threadMetadata = new Map([...listedMetadata, ...fetchedMetadata])
-  const listedAgents = listedThreads.map(thread => readCrewAgentFromThread(thread, threadMetadata))
-  return projectCodexCrewStateFromCalls(parentThreadId, calls, collaborationModes, threadMetadata, listedAgents)
+  const listedAgents = listedThreads.map((thread) =>
+    readCrewAgentFromThread(thread, threadMetadata)
+  )
+  return projectCodexCrewStateFromCalls(
+    parentThreadId,
+    calls,
+    collaborationModes,
+    threadMetadata,
+    listedAgents
+  )
 }
 
 async function listCodexCrewThreads(
   client: CodexAppServerClientLike,
-  parentThreadId: string,
+  parentThreadId: string
 ): Promise<Thread[]> {
-  const parent = await client.request('thread/read', {
+  const parent = (await client.request('thread/read', {
     threadId: parentThreadId,
-    includeTurns: false,
-  }) as ThreadReadResponse
+    includeTurns: false
+  })) as ThreadReadResponse
   const threads: Thread[] = []
   const seenThreadIds = new Set<string>()
   const seenCursors = new Set<string>()
   let cursor: string | null = null
 
   do {
-    const response = await client.request('thread/list', {
+    const response = (await client.request('thread/list', {
       cursor,
       limit: CODEX_CREW_THREAD_LIST_PAGE_SIZE,
       sortKey: 'updated_at',
       sortDirection: 'desc',
       sourceKinds: ['subAgentThreadSpawn'],
-      archived: false,
-    }) as ThreadListResponse
+      archived: false
+    })) as ThreadListResponse
     for (const thread of response.data ?? []) {
-      if (!codexThreadBelongsToRuntimeParent(parent.thread, thread) || seenThreadIds.has(thread.id)) {
+      if (
+        !codexThreadBelongsToRuntimeParent(parent.thread, thread) ||
+        seenThreadIds.has(thread.id)
+      ) {
         continue
       }
       seenThreadIds.add(thread.id)
@@ -954,32 +1081,34 @@ async function listCodexCrewThreads(
 
 async function listRecentCodexCrewTurns(
   client: CodexAppServerClientLike,
-  threadId: string,
+  threadId: string
 ): Promise<Turn[]> {
-  const response = await client.request('thread/turns/list', {
+  const response = (await client.request('thread/turns/list', {
     threadId,
     limit: CODEX_CREW_TURNS_LIST_LIMIT,
     sortDirection: 'desc',
-    itemsView: 'full',
-  }) as ThreadTurnsListResponse
+    itemsView: 'full'
+  })) as ThreadTurnsListResponse
   return Array.isArray(response.data) ? response.data : []
 }
 
 async function readCrewThreadMetadata(
   client: CodexAppServerClientLike,
-  threadIds: string[],
+  threadIds: string[]
 ): Promise<Map<string, CodexThreadMetadata>> {
   if (threadIds.length === 0) {
     return new Map()
   }
 
-  const results = await Promise.allSettled(threadIds.map(async (threadId) => {
-    const response = await client.request('thread/read', {
-      threadId,
-      includeTurns: false,
-    }) as ThreadReadResponse
-    return readCodexThreadMetadata(threadId, response)
-  }))
+  const results = await Promise.allSettled(
+    threadIds.map(async (threadId) => {
+      const response = (await client.request('thread/read', {
+        threadId,
+        includeTurns: false
+      })) as ThreadReadResponse
+      return readCodexThreadMetadata(threadId, response)
+    })
+  )
 
   const metadata = new Map<string, CodexThreadMetadata>()
   for (const result of results) {
@@ -990,7 +1119,10 @@ async function readCrewThreadMetadata(
   return metadata
 }
 
-function readCrewReceiverThreadIdsFromSnapshot(parentThreadId: string, snapshot: CodexProviderSnapshot): string[] {
+function readCrewReceiverThreadIdsFromSnapshot(
+  parentThreadId: string,
+  snapshot: CodexProviderSnapshot
+): string[] {
   const ids = new Set<string>()
   for (const item of snapshot.codex?.toolActivity?.items ?? []) {
     if (item.type !== 'collabAgentToolCall') {
@@ -1010,7 +1142,10 @@ function readCrewReceiverThreadIdsFromSnapshot(parentThreadId: string, snapshot:
   return Array.from(ids).slice(0, 12)
 }
 
-function readCrewReceiverThreadIdsFromCalls(parentThreadId: string, calls: RuntimeCrewCallItem[]): string[] {
+function readCrewReceiverThreadIdsFromCalls(
+  parentThreadId: string,
+  calls: RuntimeCrewCallItem[]
+): string[] {
   const ids = new Set<string>()
   for (const call of calls) {
     for (const threadId of call.receiverThreadIds) {
@@ -1027,12 +1162,18 @@ function readCrewReceiverThreadIdsFromCalls(parentThreadId: string, calls: Runti
   return Array.from(ids).slice(0, 24)
 }
 
-function readCodexThreadMetadata(fallbackThreadId: string, response: ThreadReadResponse): CodexThreadMetadata | null {
+function readCodexThreadMetadata(
+  fallbackThreadId: string,
+  response: ThreadReadResponse
+): CodexThreadMetadata | null {
   const thread = response.thread as Partial<ThreadReadResponse['thread']> | undefined
   return readCodexThreadMetadataFromThread(fallbackThreadId, thread)
 }
 
-function readCodexThreadMetadataFromThread(fallbackThreadId: string, thread: Partial<Thread> | undefined): CodexThreadMetadata | null {
+function readCodexThreadMetadataFromThread(
+  fallbackThreadId: string,
+  thread: Partial<Thread> | undefined
+): CodexThreadMetadata | null {
   if (!thread) {
     return null
   }
@@ -1043,13 +1184,13 @@ function readCodexThreadMetadataFromThread(fallbackThreadId: string, thread: Par
     preview: typeof thread.preview === 'string' ? thread.preview : null,
     modelProvider: typeof thread.modelProvider === 'string' ? thread.modelProvider : null,
     agentNickname: typeof thread.agentNickname === 'string' ? thread.agentNickname : null,
-    agentRole: typeof thread.agentRole === 'string' ? thread.agentRole : null,
+    agentRole: typeof thread.agentRole === 'string' ? thread.agentRole : null
   }
 }
 
 function readCrewAgentFromThread(
   thread: Thread,
-  threadMetadata: Map<string, CodexThreadMetadata>,
+  threadMetadata: Map<string, CodexThreadMetadata>
 ): RuntimeCrewAgentItem {
   const metadata = threadMetadata.get(thread.id)
   return {
@@ -1060,11 +1201,14 @@ function readCrewAgentFromThread(
     preview: metadata?.preview ?? null,
     modelProvider: metadata?.modelProvider ?? null,
     agentNickname: metadata?.agentNickname ?? null,
-    agentRole: metadata?.agentRole ?? null,
+    agentRole: metadata?.agentRole ?? null
   }
 }
 
-function projectCodexCrewCallsFromTurns(parentThreadId: string, turns: Turn[]): RuntimeCrewCallItem[] {
+function projectCodexCrewCallsFromTurns(
+  parentThreadId: string,
+  turns: Turn[]
+): RuntimeCrewCallItem[] {
   const calls: RuntimeCrewCallItem[] = []
   for (const turn of turns) {
     for (const item of turn.items ?? []) {
@@ -1075,7 +1219,7 @@ function projectCodexCrewCallsFromTurns(parentThreadId: string, turns: Turn[]): 
         continue
       }
       const receiverThreadIds = Array.isArray(item.receiverThreadIds)
-        ? item.receiverThreadIds.filter(threadId => typeof threadId === 'string')
+        ? item.receiverThreadIds.filter((threadId) => typeof threadId === 'string')
         : []
       const agentsStates = item.agentsStates ?? {}
       calls.push({
@@ -1089,7 +1233,7 @@ function projectCodexCrewCallsFromTurns(parentThreadId: string, turns: Turn[]): 
         reasoningEffort: typeof item.reasoningEffort === 'string' ? item.reasoningEffort : null,
         agents: readCrewAgents(receiverThreadIds, agentsStates, new Map()),
         startedAt: typeof turn.startedAt === 'number' ? turn.startedAt * 1000 : null,
-        completedAt: typeof turn.completedAt === 'number' ? turn.completedAt * 1000 : null,
+        completedAt: typeof turn.completedAt === 'number' ? turn.completedAt * 1000 : null
       })
     }
   }
@@ -1100,31 +1244,44 @@ function projectCodexCrewStateFromSnapshot(
   threadId: string,
   snapshot: CodexProviderSnapshot,
   collaborationModes: CodexCollaborationModeListResponse | null,
-  threadMetadata: Map<string, CodexThreadMetadata>,
+  threadMetadata: Map<string, CodexThreadMetadata>
 ): RuntimeCrewUiSlotState | null {
   const activity = snapshot.codex?.toolActivity
   const calls = projectCodexCrewCallsFromSnapshot(snapshot)
-  const recentItems = (activity?.items ?? []).filter(item => item.type === 'collabAgentToolCall')
-  return projectCodexCrewStateFromCalls(threadId, calls, collaborationModes, threadMetadata, [], activity?.updatedAt ?? 0, recentItems)
+  const recentItems = (activity?.items ?? []).filter((item) => item.type === 'collabAgentToolCall')
+  return projectCodexCrewStateFromCalls(
+    threadId,
+    calls,
+    collaborationModes,
+    threadMetadata,
+    [],
+    activity?.updatedAt ?? 0,
+    recentItems
+  )
 }
 
 function projectCodexCrewCallsFromSnapshot(snapshot: CodexProviderSnapshot): RuntimeCrewCallItem[] {
-  return (snapshot.codex?.toolActivity?.items ?? []).filter(item => item.type === 'collabAgentToolCall').map(item => ({
-    id: item.id,
-    tool: item.label,
-    status: item.status,
-    senderThreadId: item.senderThreadId ?? null,
-    receiverThreadIds: item.receiverThreadIds ?? [],
-    prompt: item.prompt ?? null,
-    model: item.model ?? null,
-    reasoningEffort: item.reasoningEffort ?? null,
-    agents: readCrewAgents(item.receiverThreadIds ?? [], item.agentsStates ?? {}, new Map()),
-    startedAt: item.startedAt,
-    completedAt: item.completedAt,
-  }))
+  return (snapshot.codex?.toolActivity?.items ?? [])
+    .filter((item) => item.type === 'collabAgentToolCall')
+    .map((item) => ({
+      id: item.id,
+      tool: item.label,
+      status: item.status,
+      senderThreadId: item.senderThreadId ?? null,
+      receiverThreadIds: item.receiverThreadIds ?? [],
+      prompt: item.prompt ?? null,
+      model: item.model ?? null,
+      reasoningEffort: item.reasoningEffort ?? null,
+      agents: readCrewAgents(item.receiverThreadIds ?? [], item.agentsStates ?? {}, new Map()),
+      startedAt: item.startedAt,
+      completedAt: item.completedAt
+    }))
 }
 
-function mergeCodexCrewCalls(primaryCalls: RuntimeCrewCallItem[], fallbackCalls: RuntimeCrewCallItem[]): RuntimeCrewCallItem[] {
+function mergeCodexCrewCalls(
+  primaryCalls: RuntimeCrewCallItem[],
+  fallbackCalls: RuntimeCrewCallItem[]
+): RuntimeCrewCallItem[] {
   const seen = new Set<string>()
   const calls: RuntimeCrewCallItem[] = []
   for (const call of [...primaryCalls, ...fallbackCalls]) {
@@ -1144,56 +1301,65 @@ function projectCodexCrewStateFromCalls(
   threadMetadata: Map<string, CodexThreadMetadata>,
   listedAgents: RuntimeCrewAgentItem[] = [],
   fallbackUpdatedAt = 0,
-  recentItems = calls.map(call => ({
+  recentItems = calls.map((call) => ({
     id: call.id,
     type: 'collabAgentToolCall',
     label: call.tool,
     status: call.status,
     startedAt: call.startedAt,
-    completedAt: call.completedAt,
-  })),
+    completedAt: call.completedAt
+  }))
 ): RuntimeCrewUiSlotState | null {
   const modes = projectCodexCrewCollaborationModes(collaborationModes)
-  const hydratedCalls = calls.map(call => ({
+  const hydratedCalls = calls.map((call) => ({
     ...call,
-    agents: readCrewAgents(call.receiverThreadIds, Object.fromEntries(
-      call.agents.map(agent => [agent.threadId, { status: agent.status, message: agent.message }]),
-    ), threadMetadata),
+    agents: readCrewAgents(
+      call.receiverThreadIds,
+      Object.fromEntries(
+        call.agents.map((agent) => [
+          agent.threadId,
+          { status: agent.status, message: agent.message }
+        ])
+      ),
+      threadMetadata
+    )
   }))
   if (calls.length === 0 && modes.length === 0 && listedAgents.length === 0) {
     return null
   }
-  const agents = mergeCrewAgents([...listedAgents, ...hydratedCalls.flatMap(call => call.agents)])
+  const agents = mergeCrewAgents([...listedAgents, ...hydratedCalls.flatMap((call) => call.agents)])
   return {
     kind: 'crew',
     slotId: 'codex:crew',
     threadId,
-    activeCount: agents.filter(agent => isActiveCrewAgentStatus(agent.status)).length,
-    completedCount: agents.filter(agent => isCompletedCrewAgentStatus(agent.status)).length,
-    failedCount: agents.filter(agent => isFailedCrewAgentStatus(agent.status)).length,
+    activeCount: agents.filter((agent) => isActiveCrewAgentStatus(agent.status)).length,
+    completedCount: agents.filter((agent) => isCompletedCrewAgentStatus(agent.status)).length,
+    failedCount: agents.filter((agent) => isFailedCrewAgentStatus(agent.status)).length,
     recentItems: recentItems.slice(0, 12),
     agents,
     collaborationModeCount: modes.length,
     collaborationModes: modes,
     calls: hydratedCalls,
-    updatedAt: Math.max(fallbackUpdatedAt, modes.length > 0 || calls.length > 0 ? Date.now() : 0),
+    updatedAt: Math.max(fallbackUpdatedAt, modes.length > 0 || calls.length > 0 ? Date.now() : 0)
   }
 }
 
 function projectCodexCrewCollaborationModes(
-  collaborationModes: CodexCollaborationModeListResponse | null,
+  collaborationModes: CodexCollaborationModeListResponse | null
 ): RuntimeCrewUiSlotState['collaborationModes'] {
   return (collaborationModes?.data ?? []).flatMap((mode) => {
     const name = mode.name ?? mode.id
     if (!name) {
       return []
     }
-    return [{
-      name,
-      mode: mode.mode ?? null,
-      model: mode.model ?? null,
-      reasoningEffort: mode.reasoning_effort ?? null,
-    }]
+    return [
+      {
+        name,
+        mode: mode.mode ?? null,
+        model: mode.model ?? null,
+        reasoningEffort: mode.reasoning_effort ?? null
+      }
+    ]
   })
 }
 
@@ -1221,13 +1387,10 @@ function isFailedCrewAgentStatus(status: string | null): boolean {
 
 function readCrewAgents(
   receiverThreadIds: string[],
-  agentsStates: Record<string, { status?: string | null, message?: string | null } | undefined>,
-  threadMetadata: Map<string, CodexThreadMetadata>,
+  agentsStates: Record<string, { status?: string | null; message?: string | null } | undefined>,
+  threadMetadata: Map<string, CodexThreadMetadata>
 ): RuntimeCrewAgentItem[] {
-  const ids = new Set([
-    ...receiverThreadIds,
-    ...Object.keys(agentsStates),
-  ])
+  const ids = new Set([...receiverThreadIds, ...Object.keys(agentsStates)])
   return Array.from(ids, (threadId) => {
     const metadata = threadMetadata.get(threadId)
     return {
@@ -1238,7 +1401,7 @@ function readCrewAgents(
       preview: metadata?.preview ?? null,
       modelProvider: metadata?.modelProvider ?? null,
       agentNickname: metadata?.agentNickname ?? null,
-      agentRole: metadata?.agentRole ?? null,
+      agentRole: metadata?.agentRole ?? null
     }
   })
 }
@@ -1252,7 +1415,10 @@ function mergeCrewAgents(agents: RuntimeCrewAgentItem[]): RuntimeCrewAgentItem[]
   return Array.from(byThreadId.values())
 }
 
-function mergeCrewAgent(left: RuntimeCrewAgentItem, right: RuntimeCrewAgentItem): RuntimeCrewAgentItem {
+function mergeCrewAgent(
+  left: RuntimeCrewAgentItem,
+  right: RuntimeCrewAgentItem
+): RuntimeCrewAgentItem {
   return {
     threadId: right.threadId,
     status: right.status ?? left.status,
@@ -1261,7 +1427,7 @@ function mergeCrewAgent(left: RuntimeCrewAgentItem, right: RuntimeCrewAgentItem)
     preview: right.preview ?? left.preview,
     modelProvider: right.modelProvider ?? left.modelProvider,
     agentNickname: right.agentNickname ?? left.agentNickname,
-    agentRole: right.agentRole ?? left.agentRole,
+    agentRole: right.agentRole ?? left.agentRole
   }
 }
 
@@ -1293,7 +1459,11 @@ function readCodexThreadSpawnParentThreadId(source: Thread['source']): string | 
     return null
   }
   const subAgentSource = source.subAgent
-  if (!subAgentSource || typeof subAgentSource !== 'object' || !('thread_spawn' in subAgentSource)) {
+  if (
+    !subAgentSource ||
+    typeof subAgentSource !== 'object' ||
+    !('thread_spawn' in subAgentSource)
+  ) {
     return null
   }
   const spawn = subAgentSource.thread_spawn
@@ -1307,7 +1477,7 @@ function readCodexThreadSpawnParentThreadId(source: Thread['source']): string | 
 function projectCodexUsageState(
   threadId: string,
   snapshot: CodexProviderSnapshot,
-  response: CodexRateLimitsResponse | null,
+  response: CodexRateLimitsResponse | null
 ): RuntimeUsageUiSlotState | null {
   const rateLimits = response?.rateLimits ?? snapshot.codex?.usage?.rateLimits ?? null
   if (!rateLimits) {
@@ -1324,18 +1494,21 @@ function projectCodexUsageState(
     secondaryUsedPercent: readNullablePercent(rateLimits.secondary?.usedPercent),
     secondaryWindowDurationMins: readNullableNumber(rateLimits.secondary?.windowDurationMins),
     secondaryResetsAt: readNullableNumber(rateLimits.secondary?.resetsAt),
-    creditsBalance: typeof rateLimits.credits?.balance === 'string' ? rateLimits.credits.balance : null,
-    hasCredits: typeof rateLimits.credits?.hasCredits === 'boolean' ? rateLimits.credits.hasCredits : null,
-    rateLimitReachedType: typeof rateLimits.rateLimitReachedType === 'string' ? rateLimits.rateLimitReachedType : null,
+    creditsBalance:
+      typeof rateLimits.credits?.balance === 'string' ? rateLimits.credits.balance : null,
+    hasCredits:
+      typeof rateLimits.credits?.hasCredits === 'boolean' ? rateLimits.credits.hasCredits : null,
+    rateLimitReachedType:
+      typeof rateLimits.rateLimitReachedType === 'string' ? rateLimits.rateLimitReachedType : null,
     planType: typeof rateLimits.planType === 'string' ? rateLimits.planType : null,
-    updatedAt: snapshot.codex?.usage?.updatedAt ?? Date.now(),
+    updatedAt: snapshot.codex?.usage?.updatedAt ?? Date.now()
   }
 }
 
 function projectCodexConfigState(
   threadId: string,
   configResponse: CodexConfigReadResponse | null,
-  requirementsResponse: CodexConfigRequirementsReadResponse | null,
+  requirementsResponse: CodexConfigRequirementsReadResponse | null
 ): RuntimeConfigUiSlotState | null {
   const config = configResponse?.config
   const requirements = requirementsResponse?.requirements
@@ -1349,17 +1522,25 @@ function projectCodexConfigState(
     modelId: config?.model ?? null,
     approvalPolicy: config?.approval_policy ?? null,
     sandboxMode: config?.sandbox_mode ?? null,
-    allowedApprovalPolicyCount: Array.isArray(requirements?.allowedApprovalPolicies) ? requirements.allowedApprovalPolicies.length : null,
-    allowedSandboxModeCount: Array.isArray(requirements?.allowedSandboxModes) ? requirements.allowedSandboxModes.length : null,
-    featureRequirementCount: requirements?.featureRequirements ? Object.keys(requirements.featureRequirements).length : null,
-    webSearchModeCount: Array.isArray(requirements?.allowedWebSearchModes) ? requirements.allowedWebSearchModes.length : null,
-    updatedAt: Date.now(),
+    allowedApprovalPolicyCount: Array.isArray(requirements?.allowedApprovalPolicies)
+      ? requirements.allowedApprovalPolicies.length
+      : null,
+    allowedSandboxModeCount: Array.isArray(requirements?.allowedSandboxModes)
+      ? requirements.allowedSandboxModes.length
+      : null,
+    featureRequirementCount: requirements?.featureRequirements
+      ? Object.keys(requirements.featureRequirements).length
+      : null,
+    webSearchModeCount: Array.isArray(requirements?.allowedWebSearchModes)
+      ? requirements.allowedWebSearchModes.length
+      : null,
+    updatedAt: Date.now()
   }
 }
 
 function mergeMcpListedServer(
   existing: CodexMcpServerSnapshot | undefined,
-  listed: CodexMcpServerSnapshot,
+  listed: CodexMcpServerSnapshot
 ): CodexMcpServerSnapshot {
   if (!existing) {
     return listed
@@ -1368,7 +1549,7 @@ function mergeMcpListedServer(
     ...listed,
     status: existing.status !== 'unknown' ? existing.status : listed.status,
     authStatus: existing.authStatus !== 'unknown' ? existing.authStatus : listed.authStatus,
-    error: existing.error ?? listed.error,
+    error: existing.error ?? listed.error
   }
 }
 
@@ -1400,18 +1581,22 @@ function readCompactStatus(input: {
   return 'idle'
 }
 
-function projectMcpServersFromList(response: CodexListMcpServerStatusResponse | null): CodexMcpServerSnapshot[] {
+function projectMcpServersFromList(
+  response: CodexListMcpServerStatusResponse | null
+): CodexMcpServerSnapshot[] {
   return (response?.data ?? []).flatMap((server) => {
     if (typeof server.name !== 'string') {
       return []
     }
-    return [{
-      name: server.name,
-      status: 'ready',
-      authStatus: normalizeMcpAuthStatus(server.authStatus),
-      toolCount: server.tools ? Object.keys(server.tools).length : 0,
-      resourceCount: (server.resources?.length ?? 0) + (server.resourceTemplates?.length ?? 0),
-      error: null,
-    }]
+    return [
+      {
+        name: server.name,
+        status: 'ready',
+        authStatus: normalizeMcpAuthStatus(server.authStatus),
+        toolCount: server.tools ? Object.keys(server.tools).length : 0,
+        resourceCount: (server.resources?.length ?? 0) + (server.resourceTemplates?.length ?? 0),
+        error: null
+      }
+    ]
   })
 }

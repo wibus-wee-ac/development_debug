@@ -62,6 +62,7 @@ import type {
   ThreadStatusChangedNotificationParams,
   ThreadTokenUsageUpdatedNotificationParams,
   TurnDiffUpdatedNotificationParams,
+  TurnNotificationParams,
   TurnPlanUpdatedNotificationParams,
   WarningNotificationParams,
 } from './types'
@@ -458,6 +459,16 @@ function projectCodexPlanSnapshot(
   notification: CodexAppServerMessage,
   fallbackThreadId: string,
 ): void {
+  if (notification.method === 'turn/started') {
+    const params = notification.params as TurnNotificationParams | undefined
+    const existing = readCodexProviderSnapshot(runtimeSession.providerStateSnapshot).codex?.plan
+    const threadId = params?.threadId ?? fallbackThreadId
+    if (existing?.threadId === threadId) {
+      clearCodexPlanSnapshot(runtimeSession)
+    }
+    return
+  }
+
   if (notification.method === 'item/completed') {
     const params = notification.params as ItemNotificationParams | undefined
     if (params?.item?.type !== 'plan') {
@@ -506,6 +517,16 @@ function writeCodexPlanSnapshot(runtimeSession: RuntimeSession, plan: CodexPlanS
       ...snapshot.codex,
       plan,
     },
+  })
+}
+
+function clearCodexPlanSnapshot(runtimeSession: RuntimeSession): void {
+  const snapshot = readCodexProviderSnapshot(runtimeSession.providerStateSnapshot)
+  const codex = { ...snapshot.codex }
+  delete codex.plan
+  runtimeSession.providerStateSnapshot = JSON.stringify({
+    ...snapshot,
+    codex,
   })
 }
 

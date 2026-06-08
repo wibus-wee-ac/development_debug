@@ -3088,11 +3088,11 @@ describe('codexProvider app-server integration', () => {
     })
   })
 
-  it('times out explicit Codex title generation when thread startup hangs', async () => {
+  it('waits for explicit Codex title generation beyond 20 seconds', async () => {
     vi.useFakeTimers()
     try {
       const client = new FakeCodexAppServerClient({})
-      client.hangingMethods.add('thread/start')
+      client.autoCompleteGeneratedTitle = false
       const provider = createProvider(client)
       const titlePromise = provider.generateSessionTitle({
         runtimeSession: createRuntimeSession(),
@@ -3102,15 +3102,19 @@ describe('codexProvider app-server integration', () => {
         promptText: 'Name this session.',
       })
 
-      const titleAssertion = expect(titlePromise).rejects.toMatchObject({
-        providerError: expect.objectContaining({
-          _tag: 'request_failed',
-          method: 'thread/start',
-          detail: 'timed out after 20000ms',
-        }),
+      await vi.waitFor(() => {
+        expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'thread/start', 'turn/start'])
+      })
+
+      let settled = false
+      void titlePromise.finally(() => {
+        settled = true
       })
       await vi.advanceTimersByTimeAsync(20_001)
-      await titleAssertion
+      expect(settled).toBe(false)
+
+      client.completeGeneratedTitle('Delayed Codex title')
+      await expect(titlePromise).resolves.toBe('Delayed Codex title')
     }
     finally {
       vi.useRealTimers()
