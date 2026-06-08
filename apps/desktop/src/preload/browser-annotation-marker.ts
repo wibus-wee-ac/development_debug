@@ -71,12 +71,15 @@ export const BROWSER_ANNOTATION_MARKER_CSS = `
   }
   #cradle-browser-comment-root [data-cradle-browser-comment-marker]:hover {
     z-index: 2;
+    box-shadow:
+      0 4px 12px rgba(0, 0, 0, 0.24),
+      inset 0 0 0 1px rgba(0, 0, 0, 0.04);
     transform: translate(-50%, -50%) scale(1.1);
   }
   #cradle-browser-comment-root [data-cradle-browser-comment-marker][data-multi="true"] {
     width: 26px;
     height: 26px;
-    border-radius: 6px;
+    border-radius: 50%;
     background: var(--cradle-browser-comment-green);
     font-size: 0.75rem;
   }

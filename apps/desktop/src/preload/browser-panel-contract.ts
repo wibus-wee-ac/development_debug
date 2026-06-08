@@ -191,13 +191,12 @@ export interface BrowserAnnotationRuntimeEvent {
     | 'delete'
     | 'edit'
     | 'layout-sync'
-    | 'send'
   anchor?: BrowserAnnotationAnchor
   annotationId?: string
+  runtimeAnnotationId?: string
   selectedElement?: BrowserAnnotationElement | null
   body?: string
   output?: string
-  webhookUrl?: string
   annotations?: BrowserAnnotationRuntimeAnnotation[]
   layoutHints?: BrowserAnnotationLayoutHint[]
   attachedImages?: BrowserPanelPromptAttachment[]
@@ -214,7 +213,7 @@ export type BrowserAnnotationOutputDetail = 'compact' | 'standard' | 'detailed' 
 export type BrowserAnnotationMarkerClickBehavior = 'delete' | 'edit'
 export type BrowserAnnotationMarkerColorId = 'blue' | 'green' | 'purple' | 'orange' | 'red'
 export type BrowserAnnotationReactDetectionMode = 'off' | 'filtered' | 'smart' | 'all'
-export type BrowserAnnotationResizeHandle = 'nw' | 'ne' | 'se' | 'sw'
+export type BrowserAnnotationResizeHandle = 'nw' | 'n' | 'ne' | 'e' | 'se' | 's' | 'sw' | 'w'
 export type BrowserAnnotationLayoutComponentType
   = | 'navigation'
     | 'hero'
@@ -284,7 +283,6 @@ export type BrowserAnnotationLayoutComponentType
     | 'contact'
 
 export interface BrowserAnnotationRuntimeSettings {
-  autoSendWebhook: boolean
   blockInteractions: boolean
   clearOnCopySend: boolean
   markerClickBehavior: BrowserAnnotationMarkerClickBehavior
@@ -292,6 +290,4 @@ export interface BrowserAnnotationRuntimeSettings {
   outputDetail: BrowserAnnotationOutputDetail
   reactDetectionEnabled: boolean
   toolbarPosition: { x: number, y: number } | null
-  webhookEnabled: boolean
-  webhookUrl: string
 }

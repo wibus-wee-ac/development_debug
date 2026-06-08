@@ -236,7 +236,6 @@ const BROWSER_ANNOTATION_LAYOUT_COMPONENTS: ReadonlyArray<{
 ]
 
 const BROWSER_ANNOTATION_DEFAULT_SETTINGS: BrowserAnnotationRuntimeSettings = {
-  autoSendWebhook: false,
   blockInteractions: true,
   clearOnCopySend: false,
   markerClickBehavior: 'delete',
@@ -244,8 +243,6 @@ const BROWSER_ANNOTATION_DEFAULT_SETTINGS: BrowserAnnotationRuntimeSettings = {
   outputDetail: 'detailed',
   reactDetectionEnabled: true,
   toolbarPosition: null,
-  webhookEnabled: false,
-  webhookUrl: '',
 }
 
 const BROWSER_ANNOTATION_POPUP_STYLE_FIELDS: ReadonlyArray<{
@@ -362,24 +359,28 @@ class BrowserAnnotationRuntime {
   private attachedImages: BrowserPanelPromptAttachment[] = []
   private dragStart: { x: number, y: number, altKey: boolean, shiftKey: boolean } | null = null
   private textDragStart: { x: number, y: number, altKey: boolean, shiftKey: boolean } | null = null
+  private layoutSelectStart: { x: number, y: number, additive: boolean } | null = null
+  private layoutSelectionBox: HTMLDivElement | null = null
   private selectionFrames: HTMLDivElement[] = []
   private stopTimer: number | null = null
   private noticeTimer: number | null = null
   private shakeTimer: number | null = null
   private active = false
+  private selectionEnabled = true
   private stage: BrowserAnnotationRuntimeStage = 'selecting'
   private annotations: BrowserAnnotationRuntimeAnnotation[] = []
   private placements: BrowserAnnotationLayoutPlacement[] = []
   private rearrangements: BrowserAnnotationLayoutRearrangement[] = []
   private selectedPlacementIds = new Set<string>()
+  private exitingPlacementIds = new Set<string>()
   private markerExitingIds = new Set<string>()
   private markerNumberByAnnotationId = new Map<string, number>()
   private editingAnnotationId: string | null = null
+  private activeLayoutComponent: BrowserAnnotationLayoutComponentDefinition | null = null
   private markersVisible = true
   private pageFrozen = false
   private layoutMode = false
   private showSettings = false
-  private autoSendWebhook = BROWSER_ANNOTATION_DEFAULT_SETTINGS.autoSendWebhook
   private blockInteractions = BROWSER_ANNOTATION_DEFAULT_SETTINGS.blockInteractions
   private clearOnCopySend = BROWSER_ANNOTATION_DEFAULT_SETTINGS.clearOnCopySend
   private markerClickBehavior: BrowserAnnotationMarkerClickBehavior = BROWSER_ANNOTATION_DEFAULT_SETTINGS.markerClickBehavior
@@ -387,8 +388,6 @@ class BrowserAnnotationRuntime {
   private outputDetail: BrowserAnnotationOutputDetail = BROWSER_ANNOTATION_DEFAULT_SETTINGS.outputDetail
   private reactDetectionEnabled = BROWSER_ANNOTATION_DEFAULT_SETTINGS.reactDetectionEnabled
   private toolbarPosition: { x: number, y: number } | null = BROWSER_ANNOTATION_DEFAULT_SETTINGS.toolbarPosition
-  private webhookEnabled = BROWSER_ANNOTATION_DEFAULT_SETTINGS.webhookEnabled
-  private webhookUrl = BROWSER_ANNOTATION_DEFAULT_SETTINGS.webhookUrl
   private wireframeMode = false
   private wireframeOpacity = 0.22
   private wireframePurpose = ''
@@ -441,6 +440,7 @@ class BrowserAnnotationRuntime {
       return
     }
     this.active = true
+    this.selectionEnabled = true
     this.stage = 'selecting'
     this.mount()
     this.emit({ type: 'ready', surfaceSize: this.surfaceSize(), elements: this.scanElements() })
@@ -482,6 +482,7 @@ class BrowserAnnotationRuntime {
       this.noticeTimer = null
     }
     this.active = false
+    this.selectionEnabled = true
     this.stage = 'selecting'
     this.clearDesign()
     document.removeEventListener('pointerdown', this.onDocumentPointerDown, true)
@@ -519,6 +520,7 @@ class BrowserAnnotationRuntime {
     this.showSettings = false
     this.wireframeMode = false
     this.clearSelectionFrames()
+    this.clearLayoutSelectionBox()
     this.clearWireframeStyle()
     this.clearFreezeStyle()
     this.emit({ type: eventType })
@@ -535,6 +537,7 @@ class BrowserAnnotationRuntime {
     style.textContent = `
       #cradle-browser-comment-root {
         --cradle-browser-comment-accent: ${BROWSER_ANNOTATION_MARKER_COLORS[this.markerColorId]};
+        --cradle-browser-comment-blue: #0088ff;
         --cradle-browser-comment-green: #34c759;
         --cradle-browser-comment-red: #ff383c;
         position: fixed;
@@ -581,6 +584,12 @@ class BrowserAnnotationRuntime {
       #cradle-browser-comment-root[data-cradle-browser-block-interactions="false"] [data-cradle-browser-comment-layer] {
         pointer-events: none;
       }
+      #cradle-browser-comment-root[data-cradle-browser-selection-enabled="false"] [data-cradle-browser-comment-layer] {
+        pointer-events: none;
+      }
+      #cradle-browser-comment-root[data-cradle-browser-layout-mode="true"] [data-cradle-browser-comment-layer] {
+        pointer-events: none;
+      }
       #cradle-browser-comment-root [data-cradle-browser-comment-highlight],
       #cradle-browser-comment-root [data-cradle-browser-comment-region],
       #cradle-browser-comment-root [data-cradle-browser-comment-selection-frame] {
@@ -613,16 +622,16 @@ class BrowserAnnotationRuntime {
         position: absolute;
         box-sizing: border-box;
         max-width: min(220px, calc(100vw - 16px));
-        height: 22px;
+        min-height: 22px;
         display: flex;
         align-items: center;
         gap: 5px;
-        padding: 0 7px;
+        padding: 4px 7px;
         border-radius: 12px;
         color: rgba(255, 255, 255, 0.86);
         background: #1a1a1a;
         box-shadow: 0 4px 20px rgba(0, 0, 0, 0.30), 0 0 0 1px rgba(255, 255, 255, 0.08);
-        font: 500 11px/1 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+        font: 500 11px/1.25 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         pointer-events: none;
         animation: cradle-browser-comment-label-in 100ms ease-out both;
         transition:
@@ -635,9 +644,9 @@ class BrowserAnnotationRuntime {
       #cradle-browser-comment-root [data-cradle-browser-comment-highlight-label] span,
       #cradle-browser-comment-root [data-cradle-browser-comment-selection-label] span {
         min-width: 0;
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
+        overflow-wrap: anywhere;
+        white-space: normal;
+        word-break: break-word;
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-selection-frame] {
         background: rgba(0, 136, 255, 0.10);
@@ -670,6 +679,10 @@ class BrowserAnnotationRuntime {
         inset: 0;
         pointer-events: none;
       }
+      #cradle-browser-comment-root[data-cradle-browser-layout-mode="true"] [data-cradle-browser-comment-placement-layer] {
+        pointer-events: auto;
+        cursor: crosshair;
+      }
       #cradle-browser-comment-root [data-cradle-browser-comment-placement] {
         position: absolute;
         box-sizing: border-box;
@@ -690,6 +703,14 @@ class BrowserAnnotationRuntime {
         cursor: grab;
         user-select: none;
         animation: cradle-browser-comment-frame-in 160ms cubic-bezier(0.22, 1, 0.36, 1);
+      }
+      #cradle-browser-comment-root [data-cradle-browser-comment-placement][data-exiting="true"] {
+        opacity: 0;
+        transform: scale(0.85);
+        transition:
+          opacity 180ms ease,
+          transform 180ms ease;
+        pointer-events: none;
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-placement]:active {
         cursor: grabbing;
@@ -718,20 +739,40 @@ class BrowserAnnotationRuntime {
         top: -5px;
         cursor: nwse-resize;
       }
+      #cradle-browser-comment-root [data-cradle-browser-comment-resize-handle="n"] {
+        left: calc(50% - 5px);
+        top: -5px;
+        cursor: ns-resize;
+      }
       #cradle-browser-comment-root [data-cradle-browser-comment-resize-handle="ne"] {
         right: -5px;
         top: -5px;
         cursor: nesw-resize;
+      }
+      #cradle-browser-comment-root [data-cradle-browser-comment-resize-handle="e"] {
+        right: -5px;
+        top: calc(50% - 5px);
+        cursor: ew-resize;
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-resize-handle="se"] {
         right: -5px;
         bottom: -5px;
         cursor: nwse-resize;
       }
+      #cradle-browser-comment-root [data-cradle-browser-comment-resize-handle="s"] {
+        left: calc(50% - 5px);
+        bottom: -5px;
+        cursor: ns-resize;
+      }
       #cradle-browser-comment-root [data-cradle-browser-comment-resize-handle="sw"] {
         left: -5px;
         bottom: -5px;
         cursor: nesw-resize;
+      }
+      #cradle-browser-comment-root [data-cradle-browser-comment-resize-handle="w"] {
+        left: -5px;
+        top: calc(50% - 5px);
+        cursor: ew-resize;
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-snap-guide] {
         position: absolute;
@@ -739,6 +780,17 @@ class BrowserAnnotationRuntime {
         background: var(--cradle-browser-comment-accent);
         opacity: 0.76;
         pointer-events: none;
+      }
+      #cradle-browser-comment-root [data-cradle-browser-comment-layout-selection] {
+        position: absolute;
+        z-index: 3;
+        box-sizing: border-box;
+        border: 1.5px solid var(--cradle-browser-comment-blue);
+        border-radius: 6px;
+        background: rgba(0, 136, 255, 0.10);
+        box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.64), 0 4px 16px rgba(0, 0, 0, 0.10);
+        pointer-events: none;
+        animation: cradle-browser-comment-frame-in 120ms cubic-bezier(0.22, 1, 0.36, 1);
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-snap-guide][data-axis="x"] {
         top: 0;
@@ -829,7 +881,7 @@ class BrowserAnnotationRuntime {
         width: 292px;
         max-height: min(620px, calc(100vh - 96px));
         overflow: auto;
-        border-radius: 16px;
+        border-radius: 1rem;
         padding: 12px;
         color: #fff;
         background: #1a1a1a;
@@ -863,7 +915,7 @@ class BrowserAnnotationRuntime {
         display: grid;
         grid-template-columns: repeat(2, minmax(0, 1fr));
         gap: 4px;
-        border-radius: 12px;
+        border-radius: 0.5rem;
         padding: 4px;
         background: rgba(255, 255, 255, 0.06);
       }
@@ -873,7 +925,7 @@ class BrowserAnnotationRuntime {
       #cradle-browser-comment-root [data-cradle-browser-comment-segment-button],
       #cradle-browser-comment-root [data-cradle-browser-comment-palette-button] {
         min-height: 30px;
-        border-radius: 9px;
+        border-radius: 0.375rem;
         padding: 0 8px;
         color: rgba(255, 255, 255, 0.70);
         background: transparent;
@@ -894,12 +946,16 @@ class BrowserAnnotationRuntime {
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-segment-button][data-active="true"] {
         color: #fff;
-        background: rgba(255, 255, 255, 0.16);
+        background: rgba(255, 255, 255, 0.18);
+      }
+      #cradle-browser-comment-root [data-cradle-browser-comment-palette-button][data-active="true"] {
+        color: #fff;
+        background: color-mix(in srgb, var(--cradle-browser-comment-green) 22%, transparent);
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-color-row] {
         display: flex;
         gap: 8px;
-        border-radius: 10px;
+        border-radius: 0.5rem;
         padding: 8px;
         background: rgba(255, 255, 255, 0.05);
       }
@@ -958,7 +1014,7 @@ class BrowserAnnotationRuntime {
       #cradle-browser-comment-root [data-cradle-browser-comment-wireframe-input] {
         width: 100%;
         height: 34px;
-        border-radius: 10px;
+        border-radius: 0.5rem;
         padding: 0 10px;
         color: #fff;
         background: rgba(255, 255, 255, 0.08);
@@ -989,8 +1045,43 @@ class BrowserAnnotationRuntime {
         transform: translateX(14px);
       }
       #cradle-browser-comment-root input[type="range"] {
+        appearance: none;
+        -webkit-appearance: none;
         width: 100%;
+        height: 4px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.16);
         accent-color: var(--cradle-browser-comment-accent);
+        cursor: pointer;
+      }
+      #cradle-browser-comment-root input[type="range"]::-webkit-slider-thumb {
+        -webkit-appearance: none;
+        width: 14px;
+        height: 14px;
+        border: 0;
+        border-radius: 50%;
+        background: var(--cradle-browser-comment-accent);
+        box-shadow: 0 0 0 2px #1a1a1a, 0 2px 6px rgba(0, 0, 0, 0.22);
+        transition:
+          transform 120ms ease,
+          box-shadow 120ms ease;
+      }
+      #cradle-browser-comment-root input[type="range"]:hover::-webkit-slider-thumb {
+        transform: scale(1.15);
+        box-shadow: 0 0 0 3px #1a1a1a, 0 3px 9px rgba(0, 0, 0, 0.28);
+      }
+      #cradle-browser-comment-root input[type="range"]::-moz-range-thumb {
+        width: 14px;
+        height: 14px;
+        border: 0;
+        border-radius: 50%;
+        background: var(--cradle-browser-comment-accent);
+        box-shadow: 0 0 0 2px #1a1a1a, 0 2px 6px rgba(0, 0, 0, 0.22);
+      }
+      #cradle-browser-comment-root input[type="range"]::-moz-range-track {
+        height: 4px;
+        border-radius: 2px;
+        background: rgba(255, 255, 255, 0.16);
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-settings] p,
       #cradle-browser-comment-root [data-cradle-browser-comment-layout-panel] p {
@@ -1182,9 +1273,18 @@ class BrowserAnnotationRuntime {
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-token] span {
         min-width: 0;
-        overflow: hidden;
-        white-space: nowrap;
-        text-overflow: ellipsis;
+        overflow-wrap: anywhere;
+        white-space: normal;
+        word-break: break-word;
+      }
+      #cradle-browser-comment-root [data-cradle-browser-comment-editor-drag-handle] {
+        position: absolute;
+        inset: 0 0 auto;
+        height: 30px;
+        cursor: grab;
+      }
+      #cradle-browser-comment-root [data-cradle-browser-comment-editor-drag-handle]:active {
+        cursor: grabbing;
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-styles-wrapper] {
         display: grid;
@@ -1333,6 +1433,7 @@ class BrowserAnnotationRuntime {
     layer.addEventListener('pointermove', this.onPointerMove)
     layer.addEventListener('pointerup', this.onPointerUp)
     layer.addEventListener('pointerleave', this.onPointerLeave)
+    placementLayer.addEventListener('pointerdown', this.onLayoutLayerPointerDown)
     document.addEventListener('pointerdown', this.onDocumentPointerDown, true)
     document.addEventListener('pointermove', this.onDocumentPointerMove, true)
     document.addEventListener('pointerup', this.onDocumentPointerUp, true)
@@ -1400,7 +1501,7 @@ class BrowserAnnotationRuntime {
   }
 
   private readonly onPointerDown = (event: PointerEvent): void => {
-    if (!this.active || event.button !== 0) {
+    if (!this.active || !this.selectionEnabled || event.button !== 0) {
       return
     }
     event.preventDefault()
@@ -1410,12 +1511,13 @@ class BrowserAnnotationRuntime {
       return
     }
     const element = this.elementFromPoint(event.clientX, event.clientY)
+    const additiveSelection = event.shiftKey || ((event.metaKey || event.ctrlKey) && event.shiftKey)
     if (element && this.isTextSelectionElement(element)) {
       this.textDragStart = {
         x: event.clientX,
         y: event.clientY,
         altKey: event.altKey,
-        shiftKey: event.shiftKey,
+        shiftKey: additiveSelection,
       }
       this.dragStart = null
       this.hideRegion()
@@ -1425,7 +1527,7 @@ class BrowserAnnotationRuntime {
       x: event.clientX,
       y: event.clientY,
       altKey: event.altKey,
-      shiftKey: event.shiftKey,
+      shiftKey: additiveSelection,
     }
     this.layer?.setPointerCapture?.(event.pointerId)
     this.hideRegion()
@@ -1475,6 +1577,10 @@ class BrowserAnnotationRuntime {
     if (!this.active) {
       return
     }
+    if (!this.selectionEnabled) {
+      this.hideHighlight()
+      return
+    }
     if (this.textDragStart) {
       const rect = this.rectFromPoints(this.textDragStart, { x: event.clientX, y: event.clientY })
       if (rect.width > 4 || rect.height > 4) {
@@ -1505,7 +1611,7 @@ class BrowserAnnotationRuntime {
   }
 
   private readonly onPointerUp = (event: PointerEvent): void => {
-    if (!this.active || (!this.dragStart && !this.textDragStart)) {
+    if (!this.active || !this.selectionEnabled || (!this.dragStart && !this.textDragStart)) {
       return
     }
     event.preventDefault()
@@ -1539,10 +1645,21 @@ class BrowserAnnotationRuntime {
     this.dragStart = null
 
     if (rect.width > 8 && rect.height > 8) {
-      this.selectRegion(rect)
-      this.showRegion(rect)
-      this.openEditor(rect, this.anchorLabel())
-      this.emitSelection(null)
+      const selectedElements = this.elementsInsideRect(rect)
+      if (selectedElements.length > 0) {
+        const selected = this.selectElements(selectedElements)
+        if (selected) {
+          this.hideRegion()
+          this.openEditor(this.rectForAnchor(selected.anchor), this.anchorLabel())
+          this.emitSelection(selected.element)
+        }
+      }
+      else {
+        this.selectRegion(rect)
+        this.showRegion(rect)
+        this.openEditor(rect, this.anchorLabel())
+        this.emitSelection(null)
+      }
       if (dragStart.altKey) {
         this.submit('submit')
       }
@@ -1698,14 +1815,18 @@ class BrowserAnnotationRuntime {
         return
       }
       if (this.layoutMode) {
-        this.toggleLayoutMode(false)
+        if (this.activeLayoutComponent) {
+          this.activeLayoutComponent = null
+          this.renderLayoutPanel()
+        }
+        this.clearLayoutSelectionBox()
         return
       }
       if (this.showSettings) {
         this.toggleSettings(false)
         return
       }
-      this.stop('cancel')
+      this.toggleSelectionEnabled(false)
       return
     }
 
@@ -1747,11 +1868,7 @@ class BrowserAnnotationRuntime {
     if (event.key === 'Backspace' || event.key === 'Delete') {
       event.preventDefault()
       event.stopPropagation()
-      this.placements = this.placements.filter(placement => !this.selectedPlacementIds.has(placement.id))
-      this.selectedPlacementIds.clear()
-      this.renderPlacements()
-      this.renderToolbar()
-      this.syncLayoutHints()
+      this.removePlacements(new Set(this.selectedPlacementIds))
       return true
     }
     if (!['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(event.key)) {
@@ -1796,7 +1913,7 @@ class BrowserAnnotationRuntime {
         this.closeInlineEditor()
         return
       }
-      this.stop('cancel')
+      this.toggleSelectionEnabled(false)
       return
     }
     if (event.isComposing) {
@@ -1831,6 +1948,8 @@ class BrowserAnnotationRuntime {
 
     const editor = document.createElement('div')
     editor.setAttribute('data-cradle-browser-comment-editor', 'true')
+    const dragHandle = document.createElement('div')
+    dragHandle.setAttribute('data-cradle-browser-comment-editor-drag-handle', 'true')
     const previousBody = initialBody ?? this.textarea?.value ?? this.designChange?.comment ?? ''
     const styleRows = this.selectedAnchor?.kind === 'element'
       ? this.popupStyleRows(this.selectedAnchor.element)
@@ -1904,17 +2023,17 @@ class BrowserAnnotationRuntime {
         this.closeInlineEditor()
         return
       }
-      this.stop('cancel')
+      this.clearActiveSelection()
     })
     saveButton.addEventListener('click', () => this.submit('save'))
     sendButton.addEventListener('click', () => this.submit('submit'))
 
     actions.append(fileLabel, fileCount, cancelButton, saveButton, sendButton)
     if (styleWrapper) {
-      editor.append(promptRow, styleWrapper, textarea, actions)
+      editor.append(dragHandle, promptRow, styleWrapper, textarea, actions)
     }
     else {
-      editor.append(promptRow, textarea, actions)
+      editor.append(dragHandle, promptRow, textarea, actions)
     }
     this.root.appendChild(editor)
     this.editor = editor
@@ -1930,7 +2049,40 @@ class BrowserAnnotationRuntime {
     const top = Math.min(window.innerHeight - 136, Math.max(12, rect.y + rect.height + 8))
     editor.style.left = `${Math.max(12, Math.min(window.innerWidth - editorWidth - 12, left))}px`
     editor.style.top = `${top}px`
+    this.attachEditorDrag(editor, dragHandle)
     textarea.focus()
+  }
+
+  private attachEditorDrag(editor: HTMLDivElement, dragHandle: HTMLDivElement): void {
+    dragHandle.addEventListener('pointerdown', (event) => {
+      if (event.button !== 0) {
+        return
+      }
+      event.preventDefault()
+      event.stopPropagation()
+      dragHandle.setPointerCapture(event.pointerId)
+      const rect = editor.getBoundingClientRect()
+      const startX = event.clientX
+      const startY = event.clientY
+      const initialX = rect.left
+      const initialY = rect.top
+      const onMove = (moveEvent: PointerEvent): void => {
+        moveEvent.preventDefault()
+        const nextX = Math.max(8, Math.min(window.innerWidth - rect.width - 8, initialX + moveEvent.clientX - startX))
+        const nextY = Math.max(8, Math.min(window.innerHeight - rect.height - 8, initialY + moveEvent.clientY - startY))
+        editor.style.left = `${Math.round(nextX)}px`
+        editor.style.top = `${Math.round(nextY)}px`
+      }
+      const onUp = (): void => {
+        window.removeEventListener('pointermove', onMove, true)
+        window.removeEventListener('pointerup', onUp, true)
+        if (dragHandle.hasPointerCapture(event.pointerId)) {
+          dragHandle.releasePointerCapture(event.pointerId)
+        }
+      }
+      window.addEventListener('pointermove', onMove, true)
+      window.addEventListener('pointerup', onUp, true)
+    })
   }
 
   private renderToolbar(): void {
@@ -1939,8 +2091,15 @@ class BrowserAnnotationRuntime {
     }
     this.toolbar?.remove()
     const totalCount = this.annotations.length + this.placements.length + this.rearrangements.length
-    const sendVisible = Boolean(this.webhookEnabled && this.webhookUrl.trim() && !this.autoSendWebhook)
     const buttons: BrowserAnnotationToolbarButtonInput[] = [
+      {
+        id: 'select',
+        label: this.selectionEnabled ? 'Stop selecting elements' : 'Select elements',
+        shortcut: 'Esc',
+        icon: 'cursor',
+        active: this.selectionEnabled,
+        onClick: () => this.toggleSelectionEnabled(),
+      },
       {
         id: 'pause',
         label: this.pageFrozen ? 'Resume animations' : 'Pause animations',
@@ -1974,19 +2133,6 @@ class BrowserAnnotationRuntime {
         disabled: totalCount === 0,
         onClick: () => void this.copyStructuredMarkdown(),
       },
-      ...(sendVisible
-        ? [
-            {
-              id: 'send',
-              label: 'Send Annotations',
-              shortcut: 'S',
-              icon: 'send' as const,
-              disabled: this.annotations.length === 0,
-              badge: this.annotations.length,
-              onClick: () => this.sendAnnotationsToWebhook(),
-            },
-          ]
-        : []),
       {
         id: 'clear',
         label: 'Clear all',
@@ -2005,8 +2151,7 @@ class BrowserAnnotationRuntime {
       },
       {
         id: 'exit',
-        label: 'Exit',
-        shortcut: 'Esc',
+        label: 'Close comments',
         icon: 'exit',
         danger: true,
         onClick: () => this.stop('cancel'),
@@ -2017,7 +2162,6 @@ class BrowserAnnotationRuntime {
       count: totalCount,
       expanded: true,
       entrance: !this.toolbarHasEntered,
-      sendVisible,
       tooltipBelow: this.toolbarPosition !== null && this.toolbarPosition.y < 100,
       position: this.toolbarPosition,
       onCollapsedClick: () => undefined,
@@ -2200,9 +2344,6 @@ class BrowserAnnotationRuntime {
       const parsed = JSON.parse(raw) as Partial<BrowserAnnotationRuntimeSettings>
       return {
         ...BROWSER_ANNOTATION_DEFAULT_SETTINGS,
-        autoSendWebhook: typeof parsed.autoSendWebhook === 'boolean'
-          ? parsed.autoSendWebhook
-          : BROWSER_ANNOTATION_DEFAULT_SETTINGS.autoSendWebhook,
         blockInteractions: typeof parsed.blockInteractions === 'boolean'
           ? parsed.blockInteractions
           : BROWSER_ANNOTATION_DEFAULT_SETTINGS.blockInteractions,
@@ -2222,12 +2363,6 @@ class BrowserAnnotationRuntime {
         toolbarPosition: this.isToolbarPosition(parsed.toolbarPosition)
           ? parsed.toolbarPosition
           : BROWSER_ANNOTATION_DEFAULT_SETTINGS.toolbarPosition,
-        webhookEnabled: typeof parsed.webhookEnabled === 'boolean'
-          ? parsed.webhookEnabled
-          : BROWSER_ANNOTATION_DEFAULT_SETTINGS.webhookEnabled,
-        webhookUrl: typeof parsed.webhookUrl === 'string'
-          ? parsed.webhookUrl
-          : BROWSER_ANNOTATION_DEFAULT_SETTINGS.webhookUrl,
       }
     }
     catch {
@@ -2237,7 +2372,6 @@ class BrowserAnnotationRuntime {
 
   private saveSettings(): void {
     const settings: BrowserAnnotationRuntimeSettings = {
-      autoSendWebhook: this.autoSendWebhook,
       blockInteractions: this.blockInteractions,
       clearOnCopySend: this.clearOnCopySend,
       markerClickBehavior: this.markerClickBehavior,
@@ -2245,14 +2379,11 @@ class BrowserAnnotationRuntime {
       outputDetail: this.outputDetail,
       reactDetectionEnabled: this.reactDetectionEnabled,
       toolbarPosition: this.toolbarPosition,
-      webhookEnabled: this.webhookEnabled,
-      webhookUrl: this.webhookUrl,
     }
     window.localStorage.setItem(BROWSER_ANNOTATION_SETTINGS_KEY, JSON.stringify(settings))
   }
 
   private applySettings(settings: BrowserAnnotationRuntimeSettings): void {
-    this.autoSendWebhook = settings.autoSendWebhook
     this.blockInteractions = settings.blockInteractions
     this.clearOnCopySend = settings.clearOnCopySend
     this.markerClickBehavior = settings.markerClickBehavior
@@ -2260,8 +2391,6 @@ class BrowserAnnotationRuntime {
     this.outputDetail = settings.outputDetail
     this.reactDetectionEnabled = settings.reactDetectionEnabled
     this.toolbarPosition = settings.toolbarPosition
-    this.webhookEnabled = settings.webhookEnabled
-    this.webhookUrl = settings.webhookUrl
   }
 
   private applyRootSettings(root = this.root): void {
@@ -2269,12 +2398,13 @@ class BrowserAnnotationRuntime {
       return
     }
     root.setAttribute('data-cradle-browser-block-interactions', String(this.blockInteractions))
+    root.setAttribute('data-cradle-browser-selection-enabled', String(this.selectionEnabled))
+    root.setAttribute('data-cradle-browser-layout-mode', String(this.layoutMode))
     root.style.setProperty('--cradle-browser-comment-accent', BROWSER_ANNOTATION_MARKER_COLORS[this.markerColorId])
   }
 
   private updateSettings(nextSettings: Partial<BrowserAnnotationRuntimeSettings>): void {
     this.applySettings({
-      autoSendWebhook: nextSettings.autoSendWebhook ?? this.autoSendWebhook,
       blockInteractions: nextSettings.blockInteractions ?? this.blockInteractions,
       clearOnCopySend: nextSettings.clearOnCopySend ?? this.clearOnCopySend,
       markerClickBehavior: nextSettings.markerClickBehavior ?? this.markerClickBehavior,
@@ -2282,8 +2412,6 @@ class BrowserAnnotationRuntime {
       outputDetail: nextSettings.outputDetail ?? this.outputDetail,
       reactDetectionEnabled: nextSettings.reactDetectionEnabled ?? this.reactDetectionEnabled,
       toolbarPosition: nextSettings.toolbarPosition === undefined ? this.toolbarPosition : nextSettings.toolbarPosition,
-      webhookEnabled: nextSettings.webhookEnabled ?? this.webhookEnabled,
-      webhookUrl: nextSettings.webhookUrl ?? this.webhookUrl,
     })
     this.applyRootSettings()
     this.saveSettings()
@@ -2679,13 +2807,49 @@ class BrowserAnnotationRuntime {
     this.renderToolbar()
   }
 
+  private toggleSelectionEnabled(nextValue = !this.selectionEnabled): void {
+    this.selectionEnabled = nextValue
+    this.applyRootSettings()
+    if (!this.selectionEnabled) {
+      this.clearActiveSelection()
+    }
+    this.renderToolbar()
+  }
+
+  private clearActiveSelection(): void {
+    this.editor?.remove()
+    this.editor = null
+    this.textarea = null
+    this.fileInput = null
+    this.editingAnnotationId = null
+    this.selectedAnchor = null
+    this.selectedElement = null
+    this.selectedElements = []
+    this.attachedImages = []
+    this.designChange = null
+    this.dragStart = null
+    this.textDragStart = null
+    this.stage = 'selecting'
+    this.clearSelectionFrames()
+    this.hideRegion()
+    this.hideHighlight()
+    this.emitSelection(null)
+    this.renderToolbar()
+  }
+
   private toggleLayoutMode(nextValue = !this.layoutMode): void {
     this.layoutMode = nextValue
+    this.selectionEnabled = !this.layoutMode
     if (!this.root) {
       return
     }
+    this.applyRootSettings()
+    this.clearActiveSelection()
+    this.clearLayoutSelectionBox()
     this.layoutPanel?.remove()
     this.layoutPanel = null
+    this.selectedPlacementIds.clear()
+    this.activeLayoutComponent = null
     this.applyWireframeMode()
     if (this.layoutMode) {
       this.renderLayoutPanel()
@@ -2769,6 +2933,9 @@ class BrowserAnnotationRuntime {
     button.type = 'button'
     button.setAttribute('data-cradle-browser-comment-palette-button', 'true')
     button.title = `Place ${item.label}`
+    if (this.activeLayoutComponent?.type === item.type) {
+      button.setAttribute('data-active', 'true')
+    }
     const icon = document.createElement('span')
     icon.setAttribute('data-cradle-browser-comment-palette-icon', 'true')
     const text = document.createElement('span')
@@ -2782,7 +2949,8 @@ class BrowserAnnotationRuntime {
         button.removeAttribute('data-suppress-click')
         return
       }
-      this.addPlacement(item)
+      this.activeLayoutComponent = this.activeLayoutComponent?.type === item.type ? null : item
+      this.renderLayoutPanel()
     })
     return button
   }
@@ -2841,6 +3009,7 @@ class BrowserAnnotationRuntime {
         cleanup()
         if (didDrag) {
           button.setAttribute('data-suppress-click', 'true')
+          this.activeLayoutComponent = null
           this.addPlacement(item, { x: upEvent.clientX, y: upEvent.clientY })
         }
       }
@@ -2886,6 +3055,9 @@ class BrowserAnnotationRuntime {
       const frame = document.createElement('div')
       frame.setAttribute('data-cradle-browser-comment-placement', 'true')
       frame.setAttribute('data-placement-id', placement.id)
+      if (this.exitingPlacementIds.has(placement.id)) {
+        frame.setAttribute('data-exiting', 'true')
+      }
       if (this.selectedPlacementIds.has(placement.id)) {
         frame.setAttribute('data-selected', 'true')
       }
@@ -2905,11 +3077,7 @@ class BrowserAnnotationRuntime {
       remove.addEventListener('click', (event) => {
         event.preventDefault()
         event.stopPropagation()
-        this.placements = this.placements.filter(item => item.id !== placement.id)
-        this.selectedPlacementIds.delete(placement.id)
-        this.renderPlacements()
-        this.renderToolbar()
-        this.syncLayoutHints()
+        this.removePlacements(new Set([placement.id]))
       })
       this.attachPlacementDrag(frame, placement)
       frame.append(label, remove)
@@ -2923,8 +3091,110 @@ class BrowserAnnotationRuntime {
     }
   }
 
+  private readonly onLayoutLayerPointerDown = (event: PointerEvent): void => {
+    if (!this.active || !this.layoutMode || event.button !== 0) {
+      return
+    }
+    const target = event.target
+    if (target instanceof Element && target.closest([
+      '[data-cradle-browser-comment-placement]',
+      '[data-cradle-browser-comment-rearrange]',
+      '[data-cradle-browser-comment-snap-guide]',
+      '[data-cradle-browser-comment-layout-selection]',
+    ].join(','))) {
+      return
+    }
+    event.preventDefault()
+    event.stopPropagation()
+    if (this.activeLayoutComponent) {
+      this.addPlacement(this.activeLayoutComponent, { x: event.clientX, y: event.clientY })
+      this.activeLayoutComponent = null
+      this.renderLayoutPanel()
+      return
+    }
+    this.layoutSelectStart = {
+      x: event.clientX,
+      y: event.clientY,
+      additive: event.shiftKey,
+    }
+    this.clearLayoutSelectionBox()
+    const onMove = (moveEvent: PointerEvent): void => {
+      if (!this.layoutSelectStart) {
+        return
+      }
+      const rect = this.rectFromPoints(this.layoutSelectStart, {
+        x: moveEvent.clientX,
+        y: moveEvent.clientY,
+      })
+      if (rect.width <= 4 && rect.height <= 4) {
+        return
+      }
+      this.showLayoutSelectionBox(rect)
+    }
+    const onUp = (upEvent: PointerEvent): void => {
+      window.removeEventListener('pointermove', onMove, true)
+      window.removeEventListener('pointerup', onUp, true)
+      const start = this.layoutSelectStart
+      this.layoutSelectStart = null
+      const rect = start
+        ? this.rectFromPoints(start, { x: upEvent.clientX, y: upEvent.clientY })
+        : null
+      this.clearLayoutSelectionBox()
+      if (!rect || (rect.width <= 4 && rect.height <= 4)) {
+        if (!event.shiftKey) {
+          this.selectedPlacementIds.clear()
+          this.renderPlacements()
+        }
+        return
+      }
+      const nextSelection = new Set(start?.additive ? this.selectedPlacementIds : [])
+      for (const placement of this.placements) {
+        const placementRect = this.placementViewportRect(placement)
+        if (this.rectsIntersect(rect, placementRect)) {
+          nextSelection.add(placement.id)
+        }
+      }
+      this.selectedPlacementIds = nextSelection
+      this.renderPlacements()
+    }
+    window.addEventListener('pointermove', onMove, true)
+    window.addEventListener('pointerup', onUp, true)
+  }
+
+  private showLayoutSelectionBox(rect: { x: number, y: number, width: number, height: number }): void {
+    if (!this.root) {
+      return
+    }
+    if (!this.layoutSelectionBox) {
+      const box = document.createElement('div')
+      box.setAttribute('data-cradle-browser-comment-layout-selection', 'true')
+      this.root.appendChild(box)
+      this.layoutSelectionBox = box
+    }
+    this.layoutSelectionBox.style.left = `${rect.x}px`
+    this.layoutSelectionBox.style.top = `${rect.y}px`
+    this.layoutSelectionBox.style.width = `${rect.width}px`
+    this.layoutSelectionBox.style.height = `${rect.height}px`
+  }
+
+  private clearLayoutSelectionBox(): void {
+    this.layoutSelectionBox?.remove()
+    this.layoutSelectionBox = null
+    this.layoutSelectStart = null
+  }
+
+  private rectsIntersect(
+    a: { x: number, y: number, width: number, height: number },
+    b: { x: number, y: number, width: number, height: number },
+  ): boolean {
+    return a.x < b.x + b.width
+      && a.x + a.width > b.x
+      && a.y < b.y + b.height
+      && a.y + a.height > b.y
+  }
+
   private appendResizeHandles(frame: HTMLDivElement, placement: BrowserAnnotationLayoutPlacement): void {
-    const handles: BrowserAnnotationResizeHandle[] = ['nw', 'ne', 'se', 'sw']
+    const handles: BrowserAnnotationResizeHandle[] = ['nw', 'n', 'ne', 'e', 'se', 's', 'sw', 'w']
     for (const handle of handles) {
       const button = document.createElement('button')
       button.type = 'button'
@@ -3036,11 +3306,14 @@ class BrowserAnnotationRuntime {
       const existing = this.rearrangements.find(item => item.selector === candidate.selector)
       const initial = this.layoutViewportRect(existing?.to ?? candidate.rect)
       const onMove = (moveEvent: PointerEvent): void => {
-        const nextRect = {
+        const rawRect = {
           ...initial,
           x: Math.round(Math.max(0, Math.min(window.innerWidth - initial.width, initial.x + moveEvent.clientX - startX))),
           y: Math.round(Math.max(0, Math.min(window.innerHeight - initial.height, initial.y + moveEvent.clientY - startY))),
         }
+        const snapped = this.snapRect(rawRect, new Set(), candidate.selector)
+        const nextRect = snapped.rect
+        this.showSnapGuides(snapped.guides)
         frame.style.left = `${nextRect.x}px`
         frame.style.top = `${nextRect.y}px`
         frame.setAttribute('data-moved', 'true')
@@ -3053,6 +3326,7 @@ class BrowserAnnotationRuntime {
       const onUp = (): void => {
         window.removeEventListener('pointermove', onMove, true)
         window.removeEventListener('pointerup', onUp, true)
+        this.clearSnapGuides()
         this.renderToolbar()
         this.syncLayoutHints()
       }
@@ -3161,6 +3435,26 @@ class BrowserAnnotationRuntime {
     }
   }
 
+  private removePlacements(ids: Set<string>): void {
+    if (ids.size === 0) {
+      return
+    }
+    this.exitingPlacementIds = new Set([...this.exitingPlacementIds, ...ids])
+    for (const id of ids) {
+      this.selectedPlacementIds.delete(id)
+    }
+    this.renderPlacements()
+    this.nativeSetTimeout(() => {
+      this.placements = this.placements.filter(placement => !ids.has(placement.id))
+      for (const id of ids) {
+        this.exitingPlacementIds.delete(id)
+      }
+      this.renderPlacements()
+      this.renderToolbar()
+      this.syncLayoutHints()
+    }, 180)
+  }
+
   private updatePlacementFrames(): void {
     if (!this.placementLayer) {
       return
@@ -3207,14 +3501,14 @@ class BrowserAnnotationRuntime {
       this.showSnapGuides(snapped.guides)
       this.updatePlacementFrames()
     }
-      const onUp = (): void => {
-        window.removeEventListener('pointermove', onMove, true)
-        window.removeEventListener('pointerup', onUp, true)
-        this.clearSnapGuides()
-        this.renderPlacements()
-        this.renderToolbar()
-        this.syncLayoutHints()
-      }
+    const onUp = (): void => {
+      window.removeEventListener('pointermove', onMove, true)
+      window.removeEventListener('pointerup', onUp, true)
+      this.clearSnapGuides()
+      this.renderPlacements()
+      this.renderToolbar()
+      this.syncLayoutHints()
+    }
     window.addEventListener('pointermove', onMove, true)
     window.addEventListener('pointerup', onUp, true)
   }
@@ -3227,16 +3521,20 @@ class BrowserAnnotationRuntime {
   ): { x: number, y: number, width: number, height: number } {
     const minWidth = 24
     const minHeight = 24
-    const left = handle === 'nw' || handle === 'sw'
+    const resizesLeft = handle === 'nw' || handle === 'sw' || handle === 'w'
+    const resizesRight = handle === 'ne' || handle === 'se' || handle === 'e'
+    const resizesTop = handle === 'nw' || handle === 'ne' || handle === 'n'
+    const resizesBottom = handle === 'sw' || handle === 'se' || handle === 's'
+    const left = resizesLeft
       ? Math.min(initial.x + initial.width - minWidth, initial.x + dx)
       : initial.x
-    const top = handle === 'nw' || handle === 'ne'
+    const top = resizesTop
       ? Math.min(initial.y + initial.height - minHeight, initial.y + dy)
       : initial.y
-    const right = handle === 'ne' || handle === 'se'
+    const right = resizesRight
       ? Math.max(initial.x + minWidth, initial.x + initial.width + dx)
       : initial.x + initial.width
-    const bottom = handle === 'sw' || handle === 'se'
+    const bottom = resizesBottom
       ? Math.max(initial.y + minHeight, initial.y + initial.height + dy)
       : initial.y + initial.height
     const width = Math.min(window.innerWidth - left, right - left)
@@ -3252,17 +3550,14 @@ class BrowserAnnotationRuntime {
   private snapRect(
     rect: { x: number, y: number, width: number, height: number },
     excludeIds: Set<string>,
+    excludeRearrangeSelector?: string,
   ): { rect: { x: number, y: number, width: number, height: number }, guides: BrowserAnnotationSnapGuide[] } {
     const threshold = 6
     const horizontalTargets = [0, window.innerWidth / 2, window.innerWidth]
     const verticalTargets = [0, window.innerHeight / 2, window.innerHeight]
-    for (const placement of this.placements) {
-      if (excludeIds.has(placement.id)) {
-        continue
-      }
-      const viewportY = this.placementViewportY(placement)
-      horizontalTargets.push(placement.x, placement.x + placement.width / 2, placement.x + placement.width)
-      verticalTargets.push(viewportY, viewportY + placement.height / 2, viewportY + placement.height)
+    for (const target of this.layoutSnapTargetRects(excludeIds, excludeRearrangeSelector)) {
+      horizontalTargets.push(target.x, target.x + target.width / 2, target.x + target.width)
+      verticalTargets.push(target.y, target.y + target.height / 2, target.y + target.height)
     }
 
     const rectXs = [rect.x, rect.x + rect.width / 2, rect.x + rect.width]
@@ -3312,6 +3607,26 @@ class BrowserAnnotationRuntime {
     return { rect: nextRect, guides }
   }
 
+  private layoutSnapTargetRects(
+    excludePlacementIds: Set<string>,
+    excludeRearrangeSelector?: string,
+  ): Array<{ x: number, y: number, width: number, height: number }> {
+    const targets: Array<{ x: number, y: number, width: number, height: number }> = []
+    for (const placement of this.placements) {
+      if (excludePlacementIds.has(placement.id)) {
+        continue
+      }
+      targets.push(this.placementViewportRect(placement))
+    }
+    for (const rearrangement of this.rearrangements) {
+      if (rearrangement.selector === excludeRearrangeSelector) {
+        continue
+      }
+      targets.push(this.layoutViewportRect(rearrangement.to))
+    }
+    return targets
+  }
+
   private snapResizeRect(
     rect: { x: number, y: number, width: number, height: number },
     handle: BrowserAnnotationResizeHandle,
@@ -3320,23 +3635,27 @@ class BrowserAnnotationRuntime {
     const threshold = 6
     const horizontalTargets = [0, window.innerWidth / 2, window.innerWidth]
     const verticalTargets = [0, window.innerHeight / 2, window.innerHeight]
-    for (const placement of this.placements) {
-      if (excludeIds.has(placement.id)) {
-        continue
-      }
-      const viewportY = this.placementViewportY(placement)
-      horizontalTargets.push(placement.x, placement.x + placement.width / 2, placement.x + placement.width)
-      verticalTargets.push(viewportY, viewportY + placement.height / 2, viewportY + placement.height)
+    for (const target of this.layoutSnapTargetRects(excludeIds)) {
+      horizontalTargets.push(target.x, target.x + target.width / 2, target.x + target.width)
+      verticalTargets.push(target.y, target.y + target.height / 2, target.y + target.height)
     }
 
     const next = { ...rect }
     const guides: BrowserAnnotationSnapGuide[] = []
-    const activeX = handle === 'nw' || handle === 'sw' ? rect.x : rect.x + rect.width
-    const activeY = handle === 'nw' || handle === 'ne' ? rect.y : rect.y + rect.height
-    const targetX = horizontalTargets.find(target => Math.abs(target - activeX) < threshold)
-    const targetY = verticalTargets.find(target => Math.abs(target - activeY) < threshold)
+    const resizesLeft = handle === 'nw' || handle === 'sw' || handle === 'w'
+    const resizesRight = handle === 'ne' || handle === 'se' || handle === 'e'
+    const resizesTop = handle === 'nw' || handle === 'ne' || handle === 'n'
+    const resizesBottom = handle === 'sw' || handle === 'se' || handle === 's'
+    const activeX = resizesLeft ? rect.x : rect.x + rect.width
+    const activeY = resizesTop ? rect.y : rect.y + rect.height
+    const targetX = resizesLeft || resizesRight
+      ? horizontalTargets.find(target => Math.abs(target - activeX) < threshold)
+      : undefined
+    const targetY = resizesTop || resizesBottom
+      ? verticalTargets.find(target => Math.abs(target - activeY) < threshold)
+      : undefined
     if (typeof targetX === 'number') {
-      if (handle === 'nw' || handle === 'sw') {
+      if (resizesLeft) {
         const right = rect.x + rect.width
         next.x = Math.max(0, Math.min(right - 24, targetX))
         next.width = right - next.x
@@ -3347,7 +3666,7 @@ class BrowserAnnotationRuntime {
       guides.push({ axis: 'x', position: targetX })
     }
     if (typeof targetY === 'number') {
-      if (handle === 'nw' || handle === 'ne') {
+      if (resizesTop) {
         const bottom = rect.y + rect.height
         next.y = Math.max(0, Math.min(bottom - 24, targetY))
         next.height = bottom - next.y
@@ -3460,25 +3779,9 @@ class BrowserAnnotationRuntime {
       this.createToggleRow('Block page interactions', this.blockInteractions, (checked) => {
         this.updateSettings({ blockInteractions: checked })
       }),
-      this.createToggleRow('Webhooks', this.webhookEnabled, (checked) => {
-        this.updateSettings({ webhookEnabled: checked })
-      }),
-      this.createSettingsSection('Webhook URL', this.createSettingsTextInput(
-        this.webhookUrl,
-        'https://example.com/annotations',
-        value => this.updateSettings({ webhookUrl: value }),
-      )),
-      this.createToggleRow('Auto-send webhook', this.autoSendWebhook, (checked) => {
-        this.updateSettings({ autoSendWebhook: checked })
-      }),
       this.createToggleRow('Clear on copy/send', this.clearOnCopySend, (checked) => {
         this.updateSettings({ clearOnCopySend: checked })
       }),
-      this.createSettingsSection('Integrations', this.createSettingsNote(
-        this.webhookEnabled && this.webhookUrl.trim()
-          ? 'Webhook delivery is enabled for browser annotations.'
-          : 'Configure a webhook URL to enable the toolbar send control.',
-      )),
     )
 
     this.root.appendChild(panel)
@@ -3496,26 +3799,6 @@ class BrowserAnnotationRuntime {
     }
     section.append(heading, content)
     return section
-  }
-
-  private createSettingsTextInput(
-    value: string,
-    placeholder: string,
-    onChange: (value: string) => void,
-  ): HTMLInputElement {
-    const input = document.createElement('input')
-    input.type = 'url'
-    input.value = value
-    input.placeholder = placeholder
-    input.setAttribute('data-cradle-browser-comment-wireframe-input', 'true')
-    input.addEventListener('input', () => onChange(input.value.trim()))
-    return input
-  }
-
-  private createSettingsNote(text: string): HTMLParagraphElement {
-    const note = document.createElement('p')
-    note.textContent = text
-    return note
   }
 
   private createSegment(
@@ -3599,40 +3882,6 @@ class BrowserAnnotationRuntime {
     if (this.clearOnCopySend) {
       this.clearAnnotations()
     }
-  }
-
-  private sendAnnotationsToWebhook(extraAnnotation?: BrowserAnnotationRuntimeAnnotation): void {
-    const webhookUrl = this.webhookUrl.trim()
-    if (!this.webhookEnabled || !webhookUrl) {
-      return
-    }
-    const annotations = this.runtimeAnnotationsForOutput(extraAnnotation)
-    const output = this.formatStructuredMarkdown(annotations)
-    this.showNotice('Sending annotations...')
-    this.emit({
-      type: 'send',
-      output,
-      webhookUrl,
-      annotations,
-      layoutHints: this.layoutHints(),
-      elements: this.scanElements(),
-      surfaceSize: this.surfaceSize(),
-    })
-    if (this.clearOnCopySend) {
-      this.clearAnnotations()
-    }
-  }
-
-  private runtimeAnnotationsForOutput(
-    extraAnnotation?: BrowserAnnotationRuntimeAnnotation,
-  ): BrowserAnnotationRuntimeAnnotation[] {
-    if (!extraAnnotation) {
-      return this.annotations
-    }
-    return [
-      extraAnnotation,
-      ...this.annotations.filter(annotation => annotation.id !== extraAnnotation.id),
-    ]
   }
 
   private formatStructuredMarkdown(annotations = this.annotations): string {
@@ -3862,15 +4111,17 @@ class BrowserAnnotationRuntime {
       this.commitInlineEdit(body)
       return
     }
-    const pendingAnnotation: BrowserAnnotationRuntimeAnnotation = {
-      id: `pending-${Date.now()}`,
+    const annotation: BrowserAnnotationRuntimeAnnotation = {
+      id: `local-${Date.now()}`,
       anchor: this.selectedAnchor,
       body,
       designChange: this.designChange,
-      status: 'saved',
+      status: type === 'submit' ? 'sent' : 'saved',
     }
+    this.annotations = [...this.annotations, annotation]
     this.emit({
       type,
+      runtimeAnnotationId: annotation.id,
       anchor: this.selectedAnchor,
       body,
       attachedImages: this.attachedImages,
@@ -3878,10 +4129,9 @@ class BrowserAnnotationRuntime {
       elements: this.scanElements(),
       surfaceSize: this.surfaceSize(),
     })
-    if (this.autoSendWebhook) {
-      this.sendAnnotationsToWebhook(pendingAnnotation)
-    }
-    this.stop('closed')
+    this.clearActiveSelection()
+    this.renderMarkers()
+    this.renderToolbar()
   }
 
   private commitInlineEdit(body: string): void {
@@ -3909,9 +4159,6 @@ class BrowserAnnotationRuntime {
       elements: this.scanElements(),
       surfaceSize: this.surfaceSize(),
     })
-    if (this.autoSendWebhook) {
-      this.sendAnnotationsToWebhook()
-    }
     this.closeInlineEditor()
     this.renderMarkers()
     this.renderToolbar()
@@ -4099,9 +4346,25 @@ class BrowserAnnotationRuntime {
   }
 
   private elementFromPoint(x: number, y: number): Element | null {
-    return document.elementsFromPoint(x, y).find(element =>
+    return this.deepElementsFromPoint(document, x, y).find(element =>
       !element.closest('#cradle-browser-comment-root')
       && !['HTML', 'BODY'].includes(element.tagName)) ?? null
+  }
+
+  private deepElementsFromPoint(
+    root: Document | ShadowRoot,
+    x: number,
+    y: number,
+  ): Element[] {
+    const elements = root.elementsFromPoint(x, y)
+    const deepElements: Element[] = []
+    for (const element of elements) {
+      deepElements.push(element)
+      if (element.shadowRoot) {
+        deepElements.push(...this.deepElementsFromPoint(element.shadowRoot, x, y))
+      }
+    }
+    return deepElements
   }
 
   private showHighlight(rect: DOMRect, element: BrowserAnnotationElement | null = null): void {
@@ -4292,6 +4555,37 @@ class BrowserAnnotationRuntime {
       anchor: this.selectedAnchor,
       element: annotationElement,
     }
+  }
+
+  private elementsInsideRect(rect: { x: number, y: number, width: number, height: number }): Element[] {
+    const candidates = Array.from(document.querySelectorAll('body *'))
+      .filter(element => !element.closest('#cradle-browser-comment-root, script, style, meta, link, noscript'))
+      .filter((element) => {
+        const candidateRect = element.getBoundingClientRect()
+        if (candidateRect.width <= 0 || candidateRect.height <= 0) {
+          return false
+        }
+        const intersectionWidth = Math.max(0, Math.min(rect.x + rect.width, candidateRect.right) - Math.max(rect.x, candidateRect.left))
+        const intersectionHeight = Math.max(0, Math.min(rect.y + rect.height, candidateRect.bottom) - Math.max(rect.y, candidateRect.top))
+        if (intersectionWidth <= 0 || intersectionHeight <= 0) {
+          return false
+        }
+        const intersectionArea = intersectionWidth * intersectionHeight
+        const candidateArea = candidateRect.width * candidateRect.height
+        return intersectionArea >= Math.min(candidateArea * 0.45, 2400)
+      })
+      .filter(element => this.readElement(element, 0) !== null)
+
+    const withoutAncestorDuplicates = candidates.filter(candidate =>
+      !candidates.some(other => other !== candidate && candidate.contains(other)))
+    const meaningful = withoutAncestorDuplicates.filter(element =>
+      this.isInteractiveElement(element)
+      || ['IMG', 'SVG', 'CANVAS', 'VIDEO', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(element.tagName)
+      || Boolean(element.getAttribute('role'))
+      || Boolean(element.getAttribute('aria-label'))
+      || Boolean(element.textContent?.trim()))
+
+    return meaningful.slice(0, 24)
   }
 
   private boundsForElements(elements: Element[]): { x: number, y: number, width: number, height: number } {
