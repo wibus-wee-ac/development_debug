@@ -1511,7 +1511,7 @@ describe('chat runtime capability', () => {
           type: 'data-cradle-skill',
           name: 'cradle-cli',
           scope: 'builtin',
-          path: expect.stringContaining('resources/skills/cradle-cli'),
+          path: expect.stringContaining('resources/skills/cradle-cli/SKILL.md'),
         }),
       }))
 
@@ -1524,7 +1524,7 @@ describe('chat runtime capability', () => {
           type: 'data-cradle-skill',
           name: 'cradle-cli',
           scope: 'builtin',
-          path: expect.stringContaining('resources/skills/cradle-cli'),
+          path: expect.stringContaining('resources/skills/cradle-cli/SKILL.md'),
         }),
       }))
     }
@@ -4136,6 +4136,110 @@ describe('chat runtime capability', () => {
       else {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
       }
+    }
+  })
+
+  it('releases stale active runs when the persisted run is already terminal', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexSideRuntime()
+    runtime.blockStreams = true
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+    let firstResponsePromise: Promise<Response> | null = null
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-stale-active-run',
+        name: 'Workspace Stale Active Run',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-stale-active-run', {
+        providerTargetId: 'provider-target-stale-active-run',
+        sessionId: 'session-stale-active-run',
+        runtimeKind: 'codex',
+      })
+
+      firstResponsePromise = app.handle(new Request('http://localhost/chat/sessions/session-stale-active-run/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Start a blocked turn.' }),
+      }))
+
+      await vi.waitFor(() => {
+        expect(runtime.streamInputs).toHaveLength(1)
+      })
+
+      const run = await waitForBackendRunStatus('session-stale-active-run', 'streaming')
+      expect((await getChatMessages(app, 'session-stale-active-run')).find(row => row.role === 'assistant')).toEqual(
+        expect.objectContaining({ status: 'streaming' }),
+      )
+
+      db().update(backendRuns)
+        .set({
+          status: 'failed',
+          stopReason: 'response.interrupted',
+          errorText: 'persisted terminal failure',
+          finishedAt: 1700000100,
+        })
+        .where(eq(backendRuns.id, run.id))
+        .run()
+
+      const statusResponse = await app.handle(new Request('http://localhost/chat/sessions/session-stale-active-run/runtime-status'))
+      expect(statusResponse.status).toBe(200)
+      const runtimeStatus = await statusResponse.json() as {
+        status: string
+        activeRun: unknown
+        latestRun: { status: string } | null
+      }
+      expect(runtimeStatus).toEqual(expect.objectContaining({
+        status: 'idle',
+        activeRun: null,
+        latestRun: expect.objectContaining({ status: 'failed' }),
+      }))
+
+      expect((await getChatMessages(app, 'session-stale-active-run')).find(row => row.role === 'assistant')).toEqual(
+        expect.objectContaining({ status: 'failed', errorText: 'persisted terminal failure' }),
+      )
+
+      runtime.releaseBlockedStreams()
+      await firstResponsePromise
+
+      runtime.blockStreams = false
+      const nextResponse = await app.handle(new Request('http://localhost/chat/sessions/session-stale-active-run/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Start a fresh turn.' }),
+      }))
+      expect(nextResponse.status).toBe(200)
+      await waitForCondition(() => {
+        const runs = db()
+          .select()
+          .from(backendRuns)
+          .where(eq(backendRuns.chatSessionId, 'session-stale-active-run'))
+          .all()
+        expect(runs.some(row => row.status === 'complete')).toBe(true)
+        return runs
+      }, 'fresh turn completion after stale active run release')
+    }
+    finally {
+      runtime.releaseBlockedStreams()
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
     }
   })
 

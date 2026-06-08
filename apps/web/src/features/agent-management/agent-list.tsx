@@ -870,12 +870,12 @@ export function AgentList() {
       data-settings-agents-ready={settingsAgentsReady ? 'true' : 'false'}
       className="flex h-full flex-col overflow-hidden"
     >
-      <header className="flex items-end justify-between gap-6 pb-5">
-        <div className="space-y-1">
-          <h3 className="font-heading text-[15px] font-medium tracking-tight text-foreground text-balance">
+      <header className="flex items-end justify-between gap-6 pb-4">
+        <div className="space-y-1.5">
+          <h3 className="text-[18px] font-semibold leading-tight tracking-[-0.01em] text-foreground text-balance">
             Agents
           </h3>
-          <p className="text-[12.5px] leading-relaxed text-muted-foreground">
+          <p className="text-[13px] leading-relaxed text-muted-foreground">
             Create AI agents with unique identities, personas, and provider targets.
           </p>
         </div>

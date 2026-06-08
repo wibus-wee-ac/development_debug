@@ -29,6 +29,29 @@ export type { CodexAppServerCapabilityManifest } from './app-server-capabilities
 const CRADLE_CODEX_MODEL_PROVIDER = 'cradle-openai-compatible'
 const CRADLE_CODEX_API_KEY_ENV = 'CRADLE_CODEX_API_KEY'
 
+function resolveBridgeCodexSkillExtraRoots(
+  config: CodexConfig,
+  workspacePath: string,
+  resolveSkillPaths: (workspacePath: string) => string[],
+): string[] {
+  return config.skillPaths.length > 0
+    ? config.skillPaths
+    : resolveSkillPaths(workspacePath)
+}
+
+async function syncBridgeCodexSkillExtraRoots(client: CodexAppServerClientLike, extraRoots: string[]): Promise<void> {
+  if (extraRoots.length === 0) {
+    return
+  }
+  try {
+    await client.request('skills/extraRoots/set', { extraRoots })
+  }
+  catch (error) {
+    const detail = error instanceof Error ? error.message : String(error)
+    throw new Error(`Codex app-server skills/extraRoots/set failed: ${detail}`)
+  }
+}
+
 interface CodexAppServerBridgeDeps {
   readSecret: (credentialRef: string) => string
   updateSecretValue?: (credentialRef: string, secret: string) => void
@@ -210,6 +233,7 @@ export class CodexAppServerBridge {
       throw new Error('Codex app-server bridge requires an API key for external model providers')
     }
     const runtimeContext = resolveCodexRuntimeContext(context.workspacePath, context.agentId)
+    const skillExtraRoots = resolveBridgeCodexSkillExtraRoots(config, context.workspacePath, this.deps.resolveSkillPaths)
     const clientOptions: CodexAppServerClientOptions = this.configureAppServerClientOptions({
       apiKey: auth.apiKey ?? undefined,
       config: buildBridgeCodexConfig(config, context.workspacePath, this.deps.resolveSkillPaths, context.modelId),
@@ -252,6 +276,7 @@ export class CodexAppServerBridge {
     }
     try {
       await this.initializeClient(bridgeLease.resource, auth.chatgptAuth, requestedMethod)
+      await syncBridgeCodexSkillExtraRoots(bridgeLease.resource.client, skillExtraRoots)
       return bridgeLease
     }
     catch (error) {
@@ -305,13 +330,10 @@ function normalizeParams(capability: CodexAppServerMethodCapability, params: unk
 
 function buildBridgeCodexConfig(
   config: CodexConfig,
-  workspacePath: string,
-  resolveSkillPaths: (workspacePath: string) => string[],
+  _workspacePath: string,
+  _resolveSkillPaths: (workspacePath: string) => string[],
   effectiveModel?: string | null,
 ): Record<string, unknown> {
-  const skillPaths = config.skillPaths.length > 0
-    ? config.skillPaths
-    : resolveSkillPaths(workspacePath)
   const mcpServers = buildCodexMcpServersConfig()
   return {
     approval_policy: config.approvalPolicy,
@@ -319,7 +341,6 @@ function buildBridgeCodexConfig(
     network_access: 'enabled',
     show_raw_agent_reasoning: true,
     disable_response_storage: true,
-    ...(skillPaths.length > 0 ? { instructions_paths: skillPaths } : {}),
     ...(Object.keys(mcpServers).length > 0 ? { mcp_servers: mcpServers } : {}),
     ...(config.baseUrl
       ? {

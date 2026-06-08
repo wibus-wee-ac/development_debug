@@ -17,6 +17,7 @@ afterEach(() => {
 
 class FakeCodexAppServerClient {
   readonly requests: Array<{ method: string, params?: unknown }> = []
+  readonly skillExtraRootsRequests: unknown[] = []
   options: CodexAppServerClientOptions
   close = vi.fn()
   initialize = vi.fn(async () => undefined)
@@ -30,6 +31,7 @@ class FakeCodexAppServerClient {
   autoCompleteGeneratedTitle = true
   threadListData: unknown[] | null = null
   threadTurnsListData: unknown[] | null = null
+  hangingMethods = new Set<string>()
 
   private readonly notifications: CodexAppServerMessage[] = []
   private notificationWaiter: ((message: CodexAppServerMessage | null) => void) | null = null
@@ -40,7 +42,14 @@ class FakeCodexAppServerClient {
   }
 
   async request(method: string, params?: unknown): Promise<unknown> {
+    if (method === 'skills/extraRoots/set') {
+      this.skillExtraRootsRequests.push(params)
+      return {}
+    }
     this.requests.push({ method, params })
+    if (this.hangingMethods.has(method)) {
+      return new Promise(() => undefined)
+    }
     if (method === 'config/read') {
       return {
         config: {
@@ -524,11 +533,18 @@ function createFakeChatgptJwt(input: {
 }
 
 function createProvider(client: FakeCodexAppServerClient): CodexProvider {
+  return createProviderWithClients([client])
+}
+
+function createProviderWithClients(clients: FakeCodexAppServerClient[]): CodexProvider {
+  let index = 0
   return new CodexProvider({
     readSecret: () => 'sk-secret',
     resolveSkillPaths: () => ['/tmp/cradle-skill'],
     recordObservability: vi.fn(),
     createAppServerClient: (options) => {
+      const client = clients[Math.min(index, clients.length - 1)]!
+      index += 1
       client.options = options
       return client
     },
@@ -909,11 +925,8 @@ describe('codexProvider app-server integration', () => {
     expect(client.requests.map(request => request.method)).toEqual([
       'thread/fork',
       'thread/inject_items',
-      'thread/resume',
-      'thread/turns/list',
       'turn/start',
       'thread/read',
-      'thread/turns/list',
     ])
     expect(client.close).not.toHaveBeenCalled()
 
@@ -1161,6 +1174,17 @@ describe('codexProvider app-server integration', () => {
           mediaType: 'image/png',
           filename: 'screen.png',
           url: 'data:image/png;base64,test',
+          providerMetadata: {
+            cradle: {
+              appshot: {
+                kind: 'cradle-appshot',
+                appName: 'Notes',
+                windowTitle: 'AXTree Memo',
+                bundleIdentifier: 'com.apple.Notes',
+                axTree: 'Window "AXTree Memo"\n  TextArea "Can you see the AXTree?"',
+              },
+            },
+          },
         },
         {
           type: 'file',
@@ -1184,6 +1208,19 @@ describe('codexProvider app-server integration', () => {
         input: [
           { type: 'text', text: 'Read these screenshots', text_elements: [] },
           { type: 'image', url: 'data:image/png;base64,test' },
+          {
+            type: 'text',
+            text: [
+              'Attached app screenshot accessibility tree (AXTree).',
+              'App: Notes',
+              'Window: AXTree Memo',
+              'Bundle: com.apple.Notes',
+              '',
+              'Window "AXTree Memo"',
+              '  TextArea "Can you see the AXTree?"',
+            ].join('\n'),
+            text_elements: [],
+          },
           { type: 'localImage', path: '/tmp/local.jpg' },
         ],
       }),
@@ -1819,6 +1856,136 @@ describe('codexProvider app-server integration', () => {
         last: expect.objectContaining({ totalTokens: 4_000 }),
       }),
     ]))
+  })
+
+  it('projects estimated Codex context usage from compact usage and native history snapshots', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession('codex-thread-1')
+    runtimeSession.providerStateSnapshot = JSON.stringify({
+      workspacePath: '/tmp/cradle-workspace',
+      models: { currentModelId: 'gpt-5-codex' },
+      codex: {
+        compact: {
+          threadId: 'codex-thread-1',
+          turnId: 'codex-turn-1',
+          tokenUsage: {
+            total: {
+              totalTokens: 10_000,
+              inputTokens: 8_000,
+              cachedInputTokens: 4_000,
+              outputTokens: 2_000,
+              reasoningOutputTokens: 500,
+            },
+            last: {
+              totalTokens: 2_500,
+              inputTokens: 2_000,
+              cachedInputTokens: 1_200,
+              outputTokens: 500,
+              reasoningOutputTokens: 100,
+            },
+            modelContextWindow: 200_000,
+          },
+          updatedAt: 10,
+        },
+        nativeHistory: {
+          threadId: 'codex-thread-1',
+          itemsView: 'full',
+          fetchedAt: 9,
+          complete: true,
+          turns: [
+            {
+              id: 'codex-turn-0',
+              itemsView: 'full',
+              status: 'completed',
+              error: null,
+              startedAt: 1,
+              completedAt: 2,
+              durationMs: 1000,
+              items: [
+                {
+                  type: 'userMessage',
+                  id: 'user-item-1',
+                  clientId: null,
+                  content: [{ type: 'text', text: 'Please inspect the context usage implementation.', text_elements: [] }],
+                },
+                {
+                  type: 'agentMessage',
+                  id: 'assistant-item-1',
+                  text: 'I checked the Codex runtime state.',
+                  phase: null,
+                  memoryCitation: null,
+                },
+                {
+                  type: 'reasoning',
+                  id: 'reasoning-item-1',
+                  summary: ['Need to compare visible native history with aggregate token usage.'],
+                  content: ['Use the aggregate input tokens as the authoritative top line.'],
+                },
+                {
+                  type: 'commandExecution',
+                  id: 'command-item-1',
+                  command: 'rg -n "Context Usage" apps/server',
+                  cwd: '/tmp/cradle-workspace',
+                  processId: null,
+                  source: 'agent',
+                  status: 'completed',
+                  commandActions: [],
+                  aggregatedOutput: 'apps/server/src/modules/chat-runtime/README.md:23',
+                  exitCode: 0,
+                  durationMs: 42,
+                },
+              ],
+            },
+          ],
+          turnCount: 1,
+          itemCount: 4,
+          nextCursor: null,
+          error: null,
+        },
+      },
+    })
+
+    const usage = await provider.getContextUsage({
+      runtimeSession,
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+      systemPrompt: 'Cradle system workflow for tests.',
+    })
+
+    expect(usage).toEqual(expect.objectContaining({
+      runtimeKind: 'codex',
+      providerSessionId: 'codex-thread-1',
+      source: 'codex-native-history-estimate',
+      model: 'gpt-5-codex',
+      totalTokens: 2_000,
+      maxTokens: 200_000,
+      percentage: 1,
+    }))
+    expect(usage?.apiUsage).toEqual(expect.objectContaining({
+      inputTokens: 2_000,
+      cachedInputTokens: 1_200,
+      outputTokens: 500,
+      reasoningOutputTokens: 100,
+      lifetimeInputTokens: 8_000,
+    }))
+
+    const sections = new Map(usage!.sections.map(section => [section.kind, section]))
+    expect(sections.get('system-prompt')).toEqual(expect.objectContaining({ label: 'System prompt' }))
+    expect(sections.get('messages')?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'user-message' }),
+      expect.objectContaining({ kind: 'assistant-message' }),
+    ]))
+    expect(sections.get('reasoning')?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'reasoning-item' }),
+    ]))
+    expect(sections.get('tools')?.items).toEqual(expect.arrayContaining([
+      expect.objectContaining({ kind: 'command-execution' }),
+    ]))
+    expect(sections.get('codex-runtime-context')).toEqual(expect.objectContaining({
+      label: 'Codex runtime context',
+    }))
   })
 
   it('projects Codex status, model, and reasoning into UI slot state', async () => {
@@ -2691,12 +2858,190 @@ describe('codexProvider app-server integration', () => {
     }
   })
 
+  it('times out quick-question startup when the Codex ephemeral thread request hangs', async () => {
+    vi.useFakeTimers()
+    try {
+      const client = new FakeCodexAppServerClient({})
+      client.hangingMethods.add('thread/start')
+      const provider = createProvider(client)
+      const stream = provider.quickQuestion({
+        runtimeSession: createRuntimeSession('codex-thread-1'),
+        profile: createProfile(),
+        question: 'What is blocking quick question streaming?',
+        transcript: [],
+        workspaceId: 'workspace-1',
+        workspacePath: '/tmp/cradle-workspace',
+      })
+
+      const firstChunkPromise = stream.next()
+      const firstChunkAssertion = expect(firstChunkPromise).rejects.toMatchObject({
+        providerError: expect.objectContaining({
+          _tag: 'request_failed',
+          method: 'thread/start',
+          detail: 'timed out after 20000ms',
+        }),
+      })
+      await vi.advanceTimersByTimeAsync(20_001)
+      await firstChunkAssertion
+    }
+    finally {
+      vi.useRealTimers()
+    }
+  })
+
+  it('runs quick questions with full transcript visibility but no tool initialization', async () => {
+    const client = new FakeCodexAppServerClient({})
+    client.autoCompleteGeneratedTitle = false
+    const provider = createProvider(client)
+    const transcript = [
+      createUserMessage('Earlier config file was cradle.toml'),
+    ]
+
+    client.pushNotification({
+      method: 'item/started',
+      params: {
+        threadId: 'codex-title-thread-1',
+        turnId: 'codex-title-turn-1',
+        item: {
+          type: 'agentMessage',
+          id: 'quick-answer',
+          text: '',
+          phase: null,
+          memoryCitation: null,
+        },
+      },
+    })
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-title-thread-1',
+        turnId: 'codex-title-turn-1',
+        itemId: 'quick-answer',
+        delta: 'cradle.toml',
+      },
+    })
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-title-thread-1',
+        turn: { id: 'codex-title-turn-1', status: 'completed' },
+      },
+    })
+
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of provider.quickQuestion({
+      runtimeSession: createRuntimeSession('codex-thread-1'),
+      profile: createProfile(),
+      question: 'What was that config file again?',
+      transcript,
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual([
+      { type: 'text-start', id: 'quick-answer' },
+      { type: 'text-delta', id: 'quick-answer', delta: 'cradle.toml' },
+      { type: 'text-end', id: 'quick-answer' },
+    ])
+    expect(client.skillExtraRootsRequests).toEqual([])
+    expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'thread/inject_items', 'turn/start'])
+    expect(client.requests[0]).toEqual(expect.objectContaining({
+      method: 'thread/start',
+      params: expect.objectContaining({
+        config: expect.objectContaining({
+          mcp: false,
+          computer_use: false,
+          use_bash: false,
+        }),
+      }),
+    }))
+    expect((client.requests[0]?.params as { config?: Record<string, unknown> }).config).not.toHaveProperty('mcp_servers')
+    expect(client.requests[1]).toEqual({
+      method: 'thread/inject_items',
+      params: {
+        threadId: 'codex-title-thread-1',
+        items: [{
+          type: 'message',
+          role: 'user',
+          content: [{ type: 'input_text', text: 'Earlier config file was cradle.toml' }],
+        }],
+      },
+    })
+  })
+
+  it('reports non-retryable quick-question Codex errors without waiting for the total timeout', async () => {
+    const client = new FakeCodexAppServerClient({})
+    client.autoCompleteGeneratedTitle = false
+    const provider = createProvider(client)
+    client.pushNotification({
+      method: 'error',
+      params: {
+        error: {
+          message: 'exceeded retry limit, last status: 429 Too Many Requests',
+        },
+        additionalDetails: 'Concurrency limit exceeded for user, please retry later',
+        willRetry: false,
+        threadId: 'codex-title-thread-1',
+        turnId: 'codex-title-turn-1',
+      },
+    })
+
+    const stream = provider.quickQuestion({
+      runtimeSession: createRuntimeSession('codex-thread-1'),
+      profile: createProfile(),
+      question: 'What is blocking quick question streaming?',
+      transcript: [],
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })
+
+    await expect(stream.next()).rejects.toMatchObject({
+      providerError: expect.objectContaining({
+        _tag: 'request_failed',
+        method: 'quickQuestion',
+        detail: 'exceeded retry limit, last status: 429 Too Many Requests Concurrency limit exceeded for user, please retry later',
+      }),
+    })
+  })
+
+  it('times out explicit Codex title generation when thread startup hangs', async () => {
+    vi.useFakeTimers()
+    try {
+      const client = new FakeCodexAppServerClient({})
+      client.hangingMethods.add('thread/start')
+      const provider = createProvider(client)
+      const titlePromise = provider.generateSessionTitle({
+        runtimeSession: createRuntimeSession(),
+        profile: createProfile(),
+        workspaceId: 'workspace-1',
+        workspacePath: '/tmp/cradle-workspace',
+        promptText: 'Name this session.',
+      })
+
+      const titleAssertion = expect(titlePromise).rejects.toMatchObject({
+        providerError: expect.objectContaining({
+          _tag: 'request_failed',
+          method: 'thread/start',
+          detail: 'timed out after 20000ms',
+        }),
+      })
+      await vi.advanceTimersByTimeAsync(20_001)
+      await titleAssertion
+    }
+    finally {
+      vi.useRealTimers()
+    }
+  })
+
   it('reads the final Codex thread title after the turn finishes when start and notifications omit it', async () => {
     const client = new FakeCodexAppServerClient({})
+    const titleClient = new FakeCodexAppServerClient({})
     client.threadStartName = null
     client.threadReadName = 'Final Codex title'
-    client.generatedThreadTitle = null
-    const provider = createProvider(client)
+    titleClient.generatedThreadTitle = null
+    const provider = createProviderWithClients([client, titleClient])
     const reportSessionTitle = vi.fn()
     const runtimeSession = createRuntimeSession()
     const stream = provider.streamTurn({
@@ -2793,11 +3138,12 @@ describe('codexProvider app-server integration', () => {
 
   it('falls back to the final Codex thread preview when name and title are omitted', async () => {
     const client = new FakeCodexAppServerClient({})
+    const titleClient = new FakeCodexAppServerClient({})
     client.threadStartName = null
     client.threadReadName = null
     client.threadReadPreview = 'Final Codex preview'
-    client.generatedThreadTitle = null
-    const provider = createProvider(client)
+    titleClient.generatedThreadTitle = null
+    const provider = createProviderWithClients([client, titleClient])
     const reportSessionTitle = vi.fn()
     const runtimeSession = createRuntimeSession()
     const stream = provider.streamTurn({
@@ -3769,6 +4115,7 @@ describe('codexProvider app-server integration', () => {
     await vi.waitFor(() => {
       expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
     })
+    expect(client.skillExtraRootsRequests).toEqual([{ extraRoots: ['/tmp/cradle-skill'] }])
 
     await provider.steerTurn({
       runtimeSession,

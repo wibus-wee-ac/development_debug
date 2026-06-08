@@ -17,16 +17,18 @@ export function ComposerSlotShell({ stateName, testId, className, children }: Co
   return (
     <div
       className={cn(
-        'pointer-events-auto relative z-0 mx-1.5 -mb-px max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-background px-3.5 py-2 text-xs text-muted-foreground',
+        'pointer-events-auto relative z-0 mx-1.5 -mb-px max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-transparent px-3.5 py-2 text-xs text-muted-foreground',
         'border border-border border-b-0 shadow-sm',
-        'dark:bg-background',
         className,
       )}
       data-chat-runtime-slot-state={stateName}
       data-testid={testId}
     >
+      <div className="pointer-events-none absolute inset-px rounded-[inherit] bg-background/80 [-webkit-backdrop-filter:blur(64px)] [backdrop-filter:blur(64px)]" />
       <div className="pointer-events-none absolute inset-x-4 bottom-0 h-px bg-gradient-to-r from-transparent via-border/60 to-transparent" />
-      {children}
+      <div className="relative z-10 opacity-(--composer-slot-content-opacity) [filter:blur(var(--composer-slot-content-blur,0px))]">
+        {children}
+      </div>
     </div>
   )
 }

@@ -555,6 +555,12 @@ export interface CodexProviderSnapshot {
   codex?: {
     compact?: CodexCompactSnapshot
     goal?: CodexGoalSnapshot | null
+    sideConversation?: {
+      threadId: string
+      liveFork: boolean
+      parentThreadId: string | null
+      updatedAt: number
+    }
     nativeHistory?: CodexNativeHistorySnapshot
     previousNativeHistory?: CodexNativeHistorySnapshot
     model?: {

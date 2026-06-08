@@ -1,7 +1,7 @@
 import { ArrowLeftIcon, CheckIcon, DicesIcon, XIcon } from 'lucide-react'
 import { m } from 'motion/react'
 import { Select as RadixSelect } from 'radix-ui'
-import { useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'
 import { FormProvider, useForm, useFormContext, useWatch } from 'react-hook-form'
 import { useTranslation } from 'react-i18next'
 
@@ -25,6 +25,7 @@ import type { ClaudeAgentConfig } from '~/features/agent-runtime/agent-config-sc
 import { AgentRuntimeConfigJsonSchema, AgentRuntimeConfigSchema } from '~/features/agent-runtime/agent-config-schema'
 import { buildAvatarUrl } from '~/features/agent-runtime/avatar-url'
 import { runtimeSupportsProviderKind } from '~/features/agent-runtime/runtime-compatibility'
+import type { CliTuiLaunchConfig, ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
 import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
 import type { Agent, CreateAgentInput } from '~/features/agent-runtime/use-agents'
 import { useAgents } from '~/features/agent-runtime/use-agents'
@@ -36,7 +37,6 @@ import { CurrentProviderModelList } from '~/features/composer-toolbar/provider-m
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
 import { SkillManager } from '~/features/skills'
 import { cn } from '~/lib/cn'
-import type { CliTuiLaunchConfig, ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 
@@ -117,6 +117,7 @@ const AGENT_THINKING_EFFORTS: Array<{ value: ThinkingEffort }> = [
   { value: 'high' },
   { value: 'xhigh' },
 ]
+const EMPTY_MODEL_DESCRIPTORS: ModelDescriptor[] = []
 
 const thinkingLabelKeys = {
   low: 'detail.thinking.low.label',
@@ -462,7 +463,9 @@ function AgentProviderModelPicker({
     successfulProviderTargetIds,
     requestProviderTargetModels,
   } = useProviderTargetModelMap(providerTargets, initialModelProviderTargetIds)
-  const models = selectedProviderTargetId ? modelsByProviderTargetId[selectedProviderTargetId] ?? [] : []
+  const models = selectedProviderTargetId
+    ? modelsByProviderTargetId[selectedProviderTargetId] ?? EMPTY_MODEL_DESCRIPTORS
+    : EMPTY_MODEL_DESCRIPTORS
   const selectedModelId = pendingProviderTargetId ? null : modelId
   const selectedModel = models.find(model => model.id === selectedModelId) ?? null
   const isLoadingModels = selectedProviderTargetId ? loadingProviderTargetIds.has(selectedProviderTargetId) : false
@@ -1227,14 +1230,16 @@ function useAgentDetailOwner({
   const savedClearTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
   const syncedAgentIdRef = useRef<string | null>(agent?.id ?? null)
 
-  const clearTimers = () => {
+  const clearTimers = useCallback(() => {
     if (autoSaveTimerRef.current) {
       clearTimeout(autoSaveTimerRef.current)
+      autoSaveTimerRef.current = null
     }
     if (savedClearTimerRef.current) {
       clearTimeout(savedClearTimerRef.current)
+      savedClearTimerRef.current = null
     }
-  }
+  }, [])
 
   useEffect(() => {
     return () => {
@@ -1373,7 +1378,10 @@ function useAgentDetailOwner({
   })
 
   useEffect(() => {
-    if (isCreate || !isDirty || saveState === 'saving') {
+    if (isCreate || saveState === 'saving') {
+      return
+    }
+    if (!isDirty && saveState !== 'pending') {
       return
     }
 

@@ -195,6 +195,7 @@ export function DraftChatComposer({
         name: skill.name,
         description: skill.description,
         scope: skill.scope,
+        location: skill.location,
         skillDir: skill.skillDir,
       })
     }

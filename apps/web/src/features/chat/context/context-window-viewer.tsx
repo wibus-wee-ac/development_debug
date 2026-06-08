@@ -187,11 +187,12 @@ function ContextAggregateFallback({ compactState }: { compactState: ChatRuntimeC
   if (!compactState) {
     return null
   }
+  const usage = readCompactWindowUsage(compactState)
   const rows = [
-    { label: 'Input', value: compactState.total.inputTokens },
-    { label: 'Cached input', value: compactState.total.cachedInputTokens },
-    { label: 'Output', value: compactState.total.outputTokens },
-    { label: 'Reasoning', value: compactState.total.reasoningOutputTokens },
+    { label: 'Input', value: usage.inputTokens },
+    { label: 'Cached input', value: usage.cachedInputTokens },
+    { label: 'Output', value: usage.outputTokens },
+    { label: 'Reasoning', value: usage.reasoningOutputTokens },
   ].filter(row => row.value > 0)
 
   if (rows.length === 0) {
@@ -226,15 +227,25 @@ function readContextAggregate(
       source: 'details',
     }
   }
-  if (!compactState || compactState.total.totalTokens <= 0) {
+  if (!compactState) {
+    return null
+  }
+  const displayUsage = readCompactWindowUsage(compactState)
+  if (displayUsage.totalTokens <= 0) {
     return null
   }
   return {
-    totalTokens: compactState.total.totalTokens,
+    totalTokens: displayUsage.totalTokens,
     maxTokens: compactState.modelContextWindow,
-    percentage: compactState.usagePercent,
+    percentage: compactState.modelContextWindow && compactState.modelContextWindow > 0
+      ? (displayUsage.totalTokens / compactState.modelContextWindow) * 100
+      : null,
     source: 'compact',
   }
+}
+
+function readCompactWindowUsage(compactState: ChatRuntimeCompactUiSlotState) {
+  return compactState.last.totalTokens > 0 ? compactState.last : compactState.total
 }
 
 function readContextSections(usage: ChatRuntimeContextUsage | null): ChatRuntimeContextUsageSection[] {

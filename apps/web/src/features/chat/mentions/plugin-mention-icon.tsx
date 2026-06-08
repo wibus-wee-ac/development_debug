@@ -23,7 +23,7 @@ export function PluginMentionIcon({
 
   return (
     <PlugIcon
-      className={cn('size-3.5 shrink-0 text-primary/70', className)}
+      className={cn('size-3.5 shrink-0 text-sky-600 dark:text-sky-400', className)}
       aria-hidden="true"
     />
   )

@@ -164,6 +164,7 @@ const EMPTY_PLUGINS: PluginMentionItem[] = []
 const EMPTY_SKILLS: SkillMentionItem[] = []
 const EMPTY_SLASH_COMMANDS: ChatComposerSlashCommand[] = []
 const LEADING_HORIZONTAL_WHITESPACE_RE = /^[ \t]+/
+const BTW_QUICK_QUESTION_RE = /^\/btw\s+([\s\S]+)$/i
 const textareaRowsClasses: Record<number, string> = {
   1: 'min-h-11 max-h-40',
   2: 'min-h-14 max-h-48',
@@ -984,7 +985,7 @@ export function Composer({
     }
 
     if (onQuickQuestion) {
-      const btwMatch = text.match(/^\/btw\s+(.+)$/i)
+      const btwMatch = text.match(BTW_QUICK_QUESTION_RE)
       if (btwMatch?.[1]) {
         const question = btwMatch[1].trim()
         onQuickQuestion(question)

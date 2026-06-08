@@ -8,15 +8,17 @@ import {
   putProfilesByIdMutation,
 } from '~/api-gen/@tanstack/react-query.gen'
 
+import type { AgentProfile } from './types'
 import { AGENT_MODELS_QUERY_KEY } from './use-agent-models'
 import { AGENTS_QUERY_KEY } from './use-agents'
 
 const AGENT_PROFILES_QUERY_KEY = getProfilesQueryKey()
+const EMPTY_AGENT_PROFILES: AgentProfile[] = []
 
 export function useAgentProfiles() {
   const queryClient = useQueryClient()
 
-  const { data: profiles = [], isLoading, isSuccess, refetch } = useQuery({
+  const { data: profiles = EMPTY_AGENT_PROFILES, isLoading, isSuccess, refetch } = useQuery({
     ...getProfilesOptions(),
   })
 

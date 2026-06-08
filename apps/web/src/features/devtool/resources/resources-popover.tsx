@@ -33,6 +33,7 @@ import {
 } from '~/lib/number-format'
 
 const REFRESH_INTERVAL_MS = 3000
+const SUMMARY_REFRESH_INTERVAL_MS = 15000
 const PATH_SEGMENT_SEPARATOR_PATTERN = /[\\/]/
 
 const ServerHealthSchema = z.looseObject({
@@ -366,7 +367,7 @@ function parseChronicleResources(data: unknown): ChronicleResources {
   return ChronicleResourcesSchema.parse(data)
 }
 
-function useResourceSnapshot() {
+function useResourceSnapshot(open: boolean) {
   const [renderer, setRenderer] = useState(readRendererMemory)
   const [timestamp, setTimestamp] = useState(Date.now)
 
@@ -379,7 +380,7 @@ function useResourceSnapshot() {
   } = useQuery({
     ...getHealthOptions(),
     select: parseServerHealth,
-    refetchInterval: REFRESH_INTERVAL_MS,
+    refetchInterval: open ? REFRESH_INTERVAL_MS : SUMMARY_REFRESH_INTERVAL_MS,
   })
   const {
     data: pty,
@@ -390,6 +391,7 @@ function useResourceSnapshot() {
   } = useQuery({
     ...getTerminalSessionsResourcesOptions(),
     select: parsePtyResources,
+    enabled: open,
     refetchInterval: REFRESH_INTERVAL_MS,
   })
   const {
@@ -402,11 +404,12 @@ function useResourceSnapshot() {
   } = useQuery({
     ...getChronicleStatusOptions(),
     select: selectChronicleStatus,
+    enabled: open,
     refetchInterval: query =>
-      query.state.status === 'error' ? false : REFRESH_INTERVAL_MS,
+      open && query.state.status !== 'error' ? REFRESH_INTERVAL_MS : false,
     retry: false,
   })
-  const chronicleResourcesEnabled = chronicleStatus?.running === true
+  const chronicleResourcesEnabled = open && chronicleStatus?.running === true
   const {
     data: chronicleResources,
     isError: chronicleResourcesError,
@@ -426,22 +429,27 @@ function useResourceSnapshot() {
   })
 
   useEffect(() => {
+    if (!open) {
+      return
+    }
+
     const refreshRenderer = () => {
       setRenderer(readRendererMemory())
       setTimestamp(Date.now())
     }
+    refreshRenderer()
     const intervalId = setInterval(refreshRenderer, REFRESH_INTERVAL_MS)
     return () => clearInterval(intervalId)
-  }, [])
+  }, [open])
 
   const refresh = async () => {
     setRenderer(readRendererMemory())
     setTimestamp(Date.now())
-    const refetches: Array<Promise<unknown>> = [
-      refetchHealth(),
-      refetchPty(),
-      refetchChronicleStatus(),
-    ]
+    const refetches: Array<Promise<unknown>> = [refetchHealth()]
+
+    if (open) {
+      refetches.push(refetchPty(), refetchChronicleStatus())
+    }
 
     if (chronicleResourcesEnabled) {
       refetches.push(refetchChronicleResources())
@@ -487,8 +495,8 @@ function useResourceSnapshot() {
 }
 
 export function ResourcesPopover() {
-  const { snap, loading, refresh, resourcesReady } = useResourceSnapshot()
   const [open, setOpen] = useState(false)
+  const { snap, loading, refresh, resourcesReady } = useResourceSnapshot(open)
 
   const handleOpenChange = (nextOpen: boolean) => {
     setOpen(nextOpen)

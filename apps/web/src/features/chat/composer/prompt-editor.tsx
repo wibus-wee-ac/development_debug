@@ -355,7 +355,7 @@ export const PromptEditor = forwardRef((
       const node = promptEditorSchema.nodes.skillMention.create({
         name: item.name,
         displayName: item.name,
-        path: item.skillDir,
+        path: item.location,
         description: item.description,
         scope: item.scope,
       })

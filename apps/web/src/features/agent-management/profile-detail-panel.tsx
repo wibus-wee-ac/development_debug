@@ -2,7 +2,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import { CheckIcon, CircleAlertIcon, Trash2Icon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import type { MutableRefObject, ReactNode } from 'react'
-import { useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
 import { z } from 'zod'
 
@@ -45,9 +45,9 @@ import { Switch } from '~/components/ui/switch'
 import { toastManager } from '~/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
+import type { AgentProfile, ModelDescriptor, ProviderTarget } from '~/features/agent-runtime/types'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { cn } from '~/lib/cn'
-import type { AgentProfile, ModelDescriptor, ProviderTarget } from '~/features/agent-runtime/types'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { CustomModelsEditor } from './custom-models-editor'
@@ -259,8 +259,11 @@ export function ProfileDetailPanel({
   const modelsRequestRef = useRef(0)
   const saveRequestRef = useRef(0)
   const savedSignatureRef = useRef(createProfileSignature(getProfileFormValues(profile)))
+  const latestProfileRef = useRef(profile)
 
-  const createProviderRequestBody = () => buildProviderRequestBody(profile)
+  useEffect(() => {
+    latestProfileRef.current = profile
+  }, [profile])
 
   const setTextField = (field: ProfileTextField, value: string) => {
       form.setValue(field, value, { shouldDirty: true })
@@ -286,13 +289,13 @@ export function ProfileDetailPanel({
 
   useEffect(() => {
     return () => {
-      clearAutoSaveTimer()
-      clearSavedClearTimer()
+      clearTimer(autoSaveTimerRef)
+      clearTimer(savedClearTimerRef)
     }
-  }, [clearAutoSaveTimer, clearSavedClearTimer])
+  }, [])
 
-  const fetchModelsFromProvider = (requestId: number) => {
-      postProvidersModels({ body: createProviderRequestBody() })
+  const fetchModelsFromProvider = useCallback((requestId: number) => {
+      postProvidersModels({ body: buildProviderRequestBody(latestProfileRef.current) })
         .then(({ data }) => {
           if (requestId !== modelsRequestRef.current) {
             return
@@ -310,7 +313,7 @@ export function ProfileDetailPanel({
           }
           dispatch({ type: 'models/failed' })
         })
-    }
+    }, [queryClient])
 
   // Reset state when switching profile
   const profileId = profile.id
@@ -323,8 +326,7 @@ export function ProfileDetailPanel({
     savedSignatureRef.current = createProfileSignature(initialValues)
     form.reset(initialValues)
     dispatch({ type: 'reset' })
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [profileId])
+  }, [form, profile, profileId])
 
   useEffect(() => {
     if (!supportsModels) {
@@ -364,7 +366,7 @@ export function ProfileDetailPanel({
         }
         dispatch({ type: 'models/failed' })
       })
-  }, [supportsModels, profile.id, queryClient, fetchModelsFromProvider])
+  }, [fetchModelsFromProvider, supportsModels, profile.id, queryClient])
 
   const handleRefreshModels = () => {
     const requestId = ++modelsRequestRef.current
@@ -461,8 +463,10 @@ export function ProfileDetailPanel({
       return
     }
 
-    dispatch({ type: 'save/set', state: 'pending' })
-    clearAutoSaveTimer()
+    if (saveState !== 'pending') {
+      dispatch({ type: 'save/set', state: 'pending' })
+    }
+    clearTimer(autoSaveTimerRef)
     const timeoutId = setTimeout(() => {
       void saveProfile()
     }, 1200)
@@ -475,7 +479,7 @@ export function ProfileDetailPanel({
         autoSaveTimerRef.current = null
       }
     }
-  }, [watchedSignature, saveState, clearAutoSaveTimer])
+  }, [saveState, watchedSignature])
 
   // ── Icon change handler ──
   const handleIconChange = (slug: string | null) => {

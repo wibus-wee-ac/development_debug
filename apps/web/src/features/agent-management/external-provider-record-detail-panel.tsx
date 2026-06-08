@@ -1,6 +1,6 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { CircleAlertIcon, CircleCheckIcon, CircleDashedIcon, TriangleAlertIcon } from 'lucide-react'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 
 import {
@@ -16,9 +16,9 @@ import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
 import { Switch } from '~/components/ui/switch'
 import { toastManager } from '~/components/ui/toast'
+import type { ApiProviderKind, ModelDescriptor, ProviderKind } from '~/features/agent-runtime/types'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { AGENTS_QUERY_KEY } from '~/features/agent-runtime/use-agents'
-import type { ApiProviderKind, ModelDescriptor, ProviderKind } from '~/features/agent-runtime/types'
 
 import { SettingsRow } from '../settings/settings-row'
 import { CustomModelsEditor } from './custom-models-editor'
@@ -140,9 +140,17 @@ export function ExternalProviderRecordDetailPanel({
   )
   const fetchModels = useMutation(postProvidersModelsMutation())
   const fetchProviderModels = fetchModels.mutateAsync
-  const providerTarget = record.providerTargetId ? { kind: 'external' as const, id: record.providerTargetId } : null
+  const providerTarget = useMemo(
+    () => record.providerTargetId
+      ? { kind: 'external' as const, id: record.providerTargetId }
+      : null,
+    [record.providerTargetId],
+  )
   const apiProviderKind = isApiProviderKind(record.providerKind) ? record.providerKind : null
-  const apiProviderTarget = apiProviderKind ? providerTarget : null
+  const apiProviderTarget = useMemo(
+    () => apiProviderKind ? providerTarget : null,
+    [apiProviderKind, providerTarget],
+  )
   const [runtimeTarget, setRuntimeTarget] = useState<ExternalProviderRuntimeTargetView | null>(null)
   const [models, setModels] = useState<ModelDescriptor[]>([])
   const [enabledModels, setEnabledModels] = useState<string[]>([])

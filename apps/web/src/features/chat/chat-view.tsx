@@ -212,7 +212,7 @@ function ChatAwaitBanner({
   }
 
   return (
-    <div className="mb-2 flex items-center gap-2 rounded-md bg-muted/50 px-3 py-2 text-xs text-muted-foreground">
+    <div className="mb-2 flex items-center gap-2 rounded-md bg-muted/50 backdrop-blur-3xl px-3 py-2 text-xs text-muted-foreground">
       <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin" />
       <span className="min-w-0 truncate">
         {(awaitSummary.reason as string) ?? t('await.waitingFor', { source: (awaitSummary.primarySource as string) ?? t('await.source.event') })}

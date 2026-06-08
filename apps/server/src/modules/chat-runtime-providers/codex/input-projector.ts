@@ -4,6 +4,8 @@
  * Position: Codex provider package boundary from Chat Runtime input to app-server UserInput.
  */
 
+import { existsSync } from 'node:fs'
+import { join } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 import type { UIMessage } from 'ai'
@@ -69,6 +71,10 @@ export function projectCodexUserInput(message: CodexRuntimeMessageInput, runtime
     if (part.type === 'file') {
       if (part.mediaType.startsWith('image/')) {
         input.push(toCodexImageInput(part))
+        const accessibilityText = projectCradleAppshotAccessibilityText(part)
+        if (accessibilityText) {
+          input.push(toTextUserInput(accessibilityText))
+        }
       }
       else {
         unsupportedParts.push(describeUnsupportedFilePart(part))
@@ -77,7 +83,7 @@ export function projectCodexUserInput(message: CodexRuntimeMessageInput, runtime
     }
     const skillPart = readChatSkillContextPart(part)
     if (skillPart) {
-      input.push({ type: 'skill', name: skillPart.name, path: skillPart.path })
+      input.push({ type: 'skill', name: skillPart.name, path: resolveCodexSkillFilePath(skillPart.path) })
       continue
     }
     const pluginPart = readChatPluginContextPart(part)
@@ -126,6 +132,11 @@ function toTextUserInput(text: string): CodexUserInput {
   return { type: 'text', text, text_elements: [] }
 }
 
+function resolveCodexSkillFilePath(inputPath: string): string {
+  const skillFilePath = join(inputPath, 'SKILL.md')
+  return existsSync(skillFilePath) ? skillFilePath : inputPath
+}
+
 function describeCradlePluginContext(part: NonNullable<ReturnType<typeof readChatPluginContextPart>>): string {
   const labels = [
     `@${part.displayName || part.pluginName}`,
@@ -142,6 +153,41 @@ function toCodexImageInput(part: Extract<MessagePart, { type: 'file' }>): CodexU
     return { type: 'localImage', path: fileURLToPath(part.url) }
   }
   return { type: 'image', url: part.url }
+}
+
+function projectCradleAppshotAccessibilityText(part: Extract<MessagePart, { type: 'file' }>): string | null {
+  const metadata = readRecord(part.providerMetadata)
+  const cradle = readRecord(metadata.cradle)
+  const appshot = readRecord(cradle.appshot)
+  if (appshot.kind !== 'cradle-appshot') {
+    return null
+  }
+
+  const axTree = readString(appshot.axTree)?.trim()
+  if (!axTree) {
+    return null
+  }
+
+  const appName = readString(appshot.appName)
+  const windowTitle = readString(appshot.windowTitle)
+  const bundleIdentifier = readString(appshot.bundleIdentifier)
+  const context = [
+    'Attached app screenshot accessibility tree (AXTree).',
+    appName ? `App: ${appName}` : '',
+    windowTitle ? `Window: ${windowTitle}` : '',
+    bundleIdentifier ? `Bundle: ${bundleIdentifier}` : '',
+  ].filter(Boolean)
+  return `${context.join('\n')}\n\n${axTree}`
+}
+
+function readRecord(value: unknown): Record<string, unknown> {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : {}
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null
 }
 
 function describeUnsupportedFilePart(part: Extract<MessagePart, { type: 'file' }>): string {

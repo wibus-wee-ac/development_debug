@@ -11,6 +11,7 @@ afterEach(() => {
 
 class FakeBridgeAppServerClient {
   readonly requests: Array<{ method: string, params?: unknown }> = []
+  readonly skillExtraRootsRequests: unknown[] = []
   close = vi.fn()
   initialize = vi.fn(async () => undefined)
 
@@ -20,6 +21,10 @@ class FakeBridgeAppServerClient {
   constructor(private readonly responseByMethod: Record<string, unknown> = {}) {}
 
   async request(method: string, params?: unknown): Promise<unknown> {
+    if (method === 'skills/extraRoots/set') {
+      this.skillExtraRootsRequests.push(params)
+      return {}
+    }
     this.requests.push({ method, params })
     return this.responseByMethod[method] ?? {}
   }
@@ -137,6 +142,7 @@ describe('codexAppServerBridge stream lifecycle', () => {
     expect(client.requests).toEqual([
       { method: 'command/exec', params: { command: 'pwd' } },
     ])
+    expect(client.skillExtraRootsRequests).toEqual([{ extraRoots: ['/tmp/cradle-skill'] }])
     expect(events.map(event => event.event)).toEqual(['request_started', 'result', 'done'])
     expect(client.close).toHaveBeenCalledOnce()
   })

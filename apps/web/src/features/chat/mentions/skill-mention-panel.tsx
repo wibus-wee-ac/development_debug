@@ -9,6 +9,7 @@ export interface SkillMentionItem {
   name: string
   description: string | null
   scope: SkillScope
+  location: string
   skillDir: string
 }
 

@@ -197,8 +197,15 @@ export function useChatComposerRuntime({
     if (!compactSlotState?.modelContextWindow) {
       return null
     }
+    // Use the last turn's window occupancy (current context fill), not the
+    // session-cumulative `total` which sums every turn and overflows the window.
+    // Mirrors readCompactWindowUsage in context-usage-detail-panel.tsx so the
+    // ring and the breakdown panel agree.
+    const windowUsage = compactSlotState.last.totalTokens > 0
+      ? compactSlotState.last
+      : compactSlotState.total
     return {
-      tokens: compactSlotState.total.totalTokens,
+      tokens: windowUsage.totalTokens,
       contextWindow: compactSlotState.modelContextWindow,
     }
   }, [compactSlotState])

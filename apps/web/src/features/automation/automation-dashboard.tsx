@@ -1525,7 +1525,7 @@ export function AutomationDashboard({ onBack }: AutomationDashboardProps) {
         </aside>
 
         {/* Right panel — detail or create/edit */}
-        <main className="min-h-0 overflow-hidden">
+        <main className="min-h-0 overflow-y-auto">
           {draft
 ? (
             <CreateAutomationPanel

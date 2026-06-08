@@ -7,7 +7,7 @@ import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
 import type { UIMessage, UIMessageChunk } from 'ai'
 
-import { langfuseEnabled } from '../../../langfuse'
+import { aiTelemetryEnabled } from '../../../telemetry/config'
 import { getRegisteredMcpServers } from '../../../plugins'
 import { isCodexGoalContinuationMessage } from '../../chat-runtime/message-snapshots'
 import type {
@@ -21,6 +21,7 @@ import type {
   ForkRuntimeSessionInput,
   GenerateSessionTitleInput,
   GetCapabilitiesInput,
+  GetContextUsageInput,
   GetUiSlotStatesInput,
   ProviderContext,
   ProviderNativeAppServerCapabilityManifest,
@@ -39,6 +40,7 @@ import type {
   QuickQuestionInput,
   ResumeChatSessionInput,
   RuntimePresentationCapabilities,
+  RuntimeContextUsage,
   RuntimeSession,
   RuntimeUiSlotState,
   RuntimeUserInputQuestion,
@@ -94,6 +96,7 @@ import {
   createCodexAppServerMapperState,
   mapCodexAppServerNotificationToChunks,
 } from './event-to-chunk-mapper'
+import { projectCodexEstimatedContextUsage } from './context-usage-projector'
 import {
   describeCodexUserInput,
   isCodexCompactCommand,
@@ -186,6 +189,8 @@ const CODEX_SIDE_BOUNDARY_PROMPT = [
   'Cradle owns this side boundary: this child session grows from the parent conversation context, but it is a separate workspace for exploration. Use the inherited context as background, do not treat the side conversation as a continuation that should mutate the parent transcript, and keep any conclusions local until the user explicitly carries them back.',
 ].join('\n')
 const CODEX_SHELL_COMMAND_RESULT_TIMEOUT_MS = 60_000
+const CODEX_EPHEMERAL_REQUEST_TIMEOUT_MS = 20_000
+const CODEX_QUICK_QUESTION_TIMEOUT_MS = 60_000
 const CODEX_THREAD_TITLE_MAX_LENGTH = 36
 const CODEX_THREAD_TITLE_TIMEOUT_MS = 20_000
 type CodexTitleGenerationThinkingEffort = 'minimal' | 'low' | 'medium' | 'high' | 'xhigh'
@@ -204,8 +209,53 @@ function codexRequestError(method: string, detail: string): ProviderRuntimeError
   return new ProviderRuntimeError(ProviderErrors.requestFailed(RUNTIME_KIND, method, detail))
 }
 
+function resolveCodexSkillExtraRoots(
+  config: CodexConfig,
+  workspacePath: string,
+  resolveSkillPaths: (workspacePath: string) => string[],
+): string[] {
+  return config.skillPaths.length > 0
+    ? config.skillPaths
+    : resolveSkillPaths(workspacePath)
+}
+
+async function syncCodexSkillExtraRoots(client: CodexAppServerClientLike, extraRoots: string[]): Promise<void> {
+  if (extraRoots.length === 0) {
+    return
+  }
+  try {
+    await client.request('skills/extraRoots/set', { extraRoots })
+  }
+  catch (error) {
+    throw codexRequestError('skills/extraRoots/set', formatUnknownError(error))
+  }
+}
+
 function formatUnknownError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+async function requestCodexAppServerWithTimeout<T>(
+  client: CodexAppServerClientLike,
+  method: string,
+  params: unknown,
+  timeoutMs: number,
+): Promise<T> {
+  let timeout: ReturnType<typeof setTimeout> | undefined
+  const timeoutPromise = new Promise<never>((_, reject) => {
+    timeout = setTimeout(() => reject(new Error(`timed out after ${timeoutMs}ms`)), timeoutMs)
+  })
+  try {
+    return await Promise.race([
+      client.request(method, params),
+      timeoutPromise,
+    ]) as T
+  }
+  finally {
+    if (timeout) {
+      clearTimeout(timeout)
+    }
+  }
 }
 
 export function createCodexProvider(ctx: ProviderContext, config: CodexProviderConfig = {}): ChatRuntime {
@@ -311,6 +361,7 @@ export class CodexProvider implements ChatRuntime {
     const agentId = input.agentId ?? snapshot.agentId ?? null
     const runtimeContext = resolveCodexRuntimeContext(workspacePath, agentId)
     const effectiveModel = input.modelId ?? snapshot.models.currentModelId ?? config.model
+    const skillExtraRoots = resolveCodexSkillExtraRoots(config, workspacePath, this.resolveSkillPaths)
     const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel)
     const hostLease = await this.acquireCodexAppServerHost({
       providerTargetId: input.profile.providerTargetId,
@@ -336,6 +387,7 @@ export class CodexProvider implements ChatRuntime {
     const client = hostLease.resource.client
 
     try {
+      await syncCodexSkillExtraRoots(client, skillExtraRoots)
       const forkParams: ThreadForkParams = {
         threadId: input.sourceRuntimeSession.providerSessionId,
         path: null,
@@ -368,6 +420,14 @@ export class CodexProvider implements ChatRuntime {
           agentId,
           agentHome: runtimeContext.agentHome,
           models: { currentModelId: response.model ?? effectiveModel ?? null },
+          codex: {
+            sideConversation: {
+              threadId,
+              liveFork: true,
+              parentThreadId: input.sourceRuntimeSession.providerSessionId,
+              updatedAt: Date.now(),
+            },
+          },
         }),
       }
       writeCodexThreadSnapshot(runtimeSession, {
@@ -398,12 +458,13 @@ export class CodexProvider implements ChatRuntime {
     const runtimeContext = resolveCodexRuntimeContext(workspacePath, snapshot.agentId ?? null)
     const effectiveModel = snapshot.models.currentModelId ?? config.model
 
-    // Build minimal codex config for quick question (no tools, minimal context)
+    // Build minimal codex config for quick question. It still receives the full
+    // transcript below, but it must not initialize tool or skill surfaces.
     const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel)
-    // Disable tools for quick questions
     codexConfig.mcp = false
     codexConfig.computer_use = false
     codexConfig.use_bash = false
+    delete codexConfig.mcp_servers
 
     const codexEnv = buildCradleCodexAppServerEnv({
       chatSessionId: input.runtimeSession.chatSessionId,
@@ -430,20 +491,32 @@ export class CodexProvider implements ChatRuntime {
     })
     const client = hostLease.resource.client
     const abortController = new AbortController()
+    let quickQuestionTimedOut = false
+    let lastCodexErrorDetail: string | null = null
+    const quickQuestionTimeout = setTimeout(() => {
+      quickQuestionTimedOut = true
+      abortController.abort()
+    }, CODEX_QUICK_QUESTION_TIMEOUT_MS)
 
     try {
       // Create ephemeral thread for this quick question
-      const threadResponse = await client.request('thread/start', {
-        path: null,
-        cwd: runtimeContext.cwd,
-        runtimeWorkspaceRoots: runtimeContext.runtimeWorkspaceRoots,
-        approvalPolicy: config.approvalPolicy,
-        sandbox: config.sandboxMode,
-        config: codexConfig,
-        model: effectiveModel ?? null,
-        ephemeral: true,
-        threadSource: 'user',
-      }) as ThreadResponse
+      let threadResponse: ThreadResponse
+      try {
+        threadResponse = await requestCodexAppServerWithTimeout(client, 'thread/start', {
+          path: null,
+          cwd: runtimeContext.cwd,
+          runtimeWorkspaceRoots: runtimeContext.runtimeWorkspaceRoots,
+          approvalPolicy: config.approvalPolicy,
+          sandbox: config.sandboxMode,
+          config: codexConfig,
+          model: effectiveModel ?? null,
+          ephemeral: true,
+          threadSource: 'user',
+        }, CODEX_EPHEMERAL_REQUEST_TIMEOUT_MS)
+      }
+      catch (error) {
+        throw codexRequestError('thread/start', formatUnknownError(error))
+      }
 
       const threadId = threadResponse.thread?.id
       if (!threadId) {
@@ -455,16 +528,22 @@ export class CodexProvider implements ChatRuntime {
 
       // Submit the quick question
       const userInput = projectCodexUserInput(input.question, 'QuickQuestion')
-      const turnResponse = await client.request('turn/start', {
-        threadId,
-        input: userInput,
-        cwd: runtimeContext.cwd,
-        runtimeWorkspaceRoots: runtimeContext.runtimeWorkspaceRoots,
-        approvalPolicy: config.approvalPolicy,
-        sandboxPolicy: toSandboxPolicy(config.sandboxMode, runtimeContext.runtimeWorkspaceRoots, config.additionalDirectories),
-        model: effectiveModel,
-        effort: null,
-      }) as TurnResponse
+      let turnResponse: TurnResponse
+      try {
+        turnResponse = await requestCodexAppServerWithTimeout(client, 'turn/start', {
+          threadId,
+          input: userInput,
+          cwd: runtimeContext.cwd,
+          runtimeWorkspaceRoots: runtimeContext.runtimeWorkspaceRoots,
+          approvalPolicy: config.approvalPolicy,
+          sandboxPolicy: toSandboxPolicy(config.sandboxMode, runtimeContext.runtimeWorkspaceRoots, config.additionalDirectories),
+          model: effectiveModel,
+          effort: null,
+        }, CODEX_EPHEMERAL_REQUEST_TIMEOUT_MS)
+      }
+      catch (error) {
+        throw codexRequestError('turn/start', formatUnknownError(error))
+      }
 
       const turnId = turnResponse.turn?.id ?? turnResponse.turnId ?? null
       const textItemId = randomUUID()
@@ -483,6 +562,13 @@ export class CodexProvider implements ChatRuntime {
           break
         }
 
+        if (notification.method === 'error') {
+          lastCodexErrorDetail = readCodexAppServerErrorDetail(notification)
+          if (!isRetryableCodexAppServerError(notification)) {
+            throw codexRequestError('quickQuestion', lastCodexErrorDetail)
+          }
+        }
+
         const chunks = mapCodexAppServerNotificationToChunks(notification, mapperState)
         for (const chunk of chunks) {
           yield chunk
@@ -491,6 +577,13 @@ export class CodexProvider implements ChatRuntime {
         if (notification.method === 'turn/completed') {
           break
         }
+      }
+
+      if (quickQuestionTimedOut) {
+        const detail = lastCodexErrorDetail
+          ? `timed out after ${CODEX_QUICK_QUESTION_TIMEOUT_MS}ms; last Codex error: ${lastCodexErrorDetail}`
+          : `timed out after ${CODEX_QUICK_QUESTION_TIMEOUT_MS}ms`
+        throw codexRequestError('quickQuestion', detail)
       }
 
       // Emit final chunks
@@ -503,6 +596,7 @@ export class CodexProvider implements ChatRuntime {
       }
     }
     finally {
+      clearTimeout(quickQuestionTimeout)
       abortController.abort()
       hostLease.release()
     }
@@ -518,6 +612,16 @@ export class CodexProvider implements ChatRuntime {
 
   getProviderNativeAppServerCapabilities(): ProviderNativeAppServerCapabilityManifest {
     return getCodexAppServerCapabilities()
+  }
+
+  async getContextUsage(input: GetContextUsageInput): Promise<RuntimeContextUsage | null> {
+    return projectCodexEstimatedContextUsage({
+      providerSessionId: input.runtimeSession.providerSessionId,
+      providerStateSnapshot: input.runtimeSession.providerStateSnapshot,
+      systemPrompt: input.systemPrompt ?? null,
+      modelId: input.modelId ?? null,
+      updatedAt: Date.now(),
+    })
   }
 
   async invokeProviderNativeAppServer(
@@ -542,6 +646,7 @@ export class CodexProvider implements ChatRuntime {
     const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
     const workspacePath = snapshot.workspacePath ?? input.workspacePath
     const runtimeContext = resolveCodexRuntimeContext(workspacePath, input.agentId ?? snapshot.agentId ?? null)
+    const skillExtraRoots = resolveCodexSkillExtraRoots(config, workspacePath, this.resolveSkillPaths)
     const runtimeSession = input.runtimeSession.providerSessionId
       ? input.runtimeSession
       : await this.resumeChatSession({
@@ -580,6 +685,7 @@ export class CodexProvider implements ChatRuntime {
     const client = hostLease.resource.client
 
     try {
+      await syncCodexSkillExtraRoots(client, skillExtraRoots)
       const [goalResult, configResult, providerCapabilitiesResult, modelListResult, mcpStatusResult, rateLimitsResult, configRequirementsResult, skillsResult, pluginResult, appsResult, collaborationModesResult] = await Promise.allSettled([
         client.request('thread/goal/get', {
           threadId: runtimeSession.providerSessionId,
@@ -806,6 +912,7 @@ export class CodexProvider implements ChatRuntime {
     const agentId = input.agentId ?? snapshot.agentId ?? null
     const runtimeContext = resolveCodexRuntimeContext(workspacePath, agentId)
     const effectiveModel = input.modelId ?? snapshot.models.currentModelId ?? config.model
+    const skillExtraRoots = resolveCodexSkillExtraRoots(config, workspacePath, this.resolveSkillPaths)
     const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel)
     const hostLease = await this.acquireCodexAppServerHost({
       providerTargetId: input.profile.providerTargetId,
@@ -831,6 +938,7 @@ export class CodexProvider implements ChatRuntime {
     const startedAt = Date.now()
 
     try {
+      await syncCodexSkillExtraRoots(client, skillExtraRoots)
       const threadStart = await startOrResumeThread(client, input.runtimeSession, {
         model: effectiveModel,
         cwd: runtimeContext.cwd,
@@ -893,6 +1001,7 @@ export class CodexProvider implements ChatRuntime {
           additionalDirectories: config.additionalDirectories,
         })
       : null
+    const skillExtraRoots = resolveCodexSkillExtraRoots(config, workspacePath, this.resolveSkillPaths)
     const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, systemPromptFile, effectiveModel)
     if (runtimeAccess) {
       codexConfig.approval_policy = runtimeAccess.approvalPolicy
@@ -937,6 +1046,7 @@ export class CodexProvider implements ChatRuntime {
     const sessionId = input.runtimeSession.chatSessionId
     const shouldInjectReconstructedHistory = !input.runtimeSession.providerSessionId
     const isFreshProviderThread = !input.runtimeSession.providerSessionId
+    const isLiveSideFork = isLiveCodexSideFork(input.runtimeSession)
     this._lastUsage = null
     this._lastModelId = effectiveModel ?? null
 
@@ -947,7 +1057,7 @@ export class CodexProvider implements ChatRuntime {
     let activeEntry: ActiveCodexTurn | null = null
 
     let generation: LangfuseGeneration | null = null
-    if (langfuseEnabled) {
+    if (aiTelemetryEnabled()) {
       generation = startObservation('codex-generation', {
         model: effectiveModel ?? 'codex',
         input: input.systemPrompt
@@ -961,14 +1071,17 @@ export class CodexProvider implements ChatRuntime {
     const outputTextCollector = createBoundedTextCollector()
 
     try {
-      const threadStart = await startOrResumeThread(client, input.runtimeSession, {
-        model: effectiveModel,
-        cwd: runtimeContext.cwd,
-        runtimeWorkspaceRoots: runtimeContext.runtimeWorkspaceRoots,
-        approvalPolicy: runtimeAccess?.approvalPolicy ?? config.approvalPolicy,
-        sandbox: runtimeAccess?.sandbox ?? config.sandboxMode,
-        config: codexConfig,
-      })
+      await syncCodexSkillExtraRoots(client, skillExtraRoots)
+      const threadStart = isLiveSideFork
+        ? readLiveSideForkThreadStart(input.runtimeSession, effectiveModel)
+        : await startOrResumeThread(client, input.runtimeSession, {
+            model: effectiveModel,
+            cwd: runtimeContext.cwd,
+            runtimeWorkspaceRoots: runtimeContext.runtimeWorkspaceRoots,
+            approvalPolicy: runtimeAccess?.approvalPolicy ?? config.approvalPolicy,
+            sandbox: runtimeAccess?.sandbox ?? config.sandboxMode,
+            config: codexConfig,
+          })
       const threadId = threadStart.threadId
       input.runtimeSession.providerSessionId = threadId
       this._lastModelId = threadStart.modelId ?? effectiveModel ?? null
@@ -1024,7 +1137,7 @@ export class CodexProvider implements ChatRuntime {
         await injectCodexNativeHistory(client, threadId, readCodexProviderSnapshot(input.runtimeSession.providerStateSnapshot).codex?.previousNativeHistory)
         await injectCradleTranscriptHistory(client, threadId, input.transcript?.history ?? input.history)
       }
-      else {
+      else if (!isLiveSideFork) {
         await hydrateCodexNativeHistory(client, input.runtimeSession, threadId)
       }
 
@@ -1160,7 +1273,9 @@ export class CodexProvider implements ChatRuntime {
       if (finalTitle) {
         input.reportSessionTitle?.(finalTitle)
       }
-      await hydrateCodexNativeHistory(client, input.runtimeSession, threadId)
+      if (!isLiveSideFork) {
+        await hydrateCodexNativeHistory(client, input.runtimeSession, threadId)
+      }
 
       for (const chunk of closeOpenCodexAppServerReasoning(mapperState)) {
         diagnostics.mappedEvents += 1
@@ -1560,6 +1675,7 @@ export class CodexProvider implements ChatRuntime {
         approvalPolicy: config.approvalPolicy,
         sandbox: config.sandboxMode,
         config: codexConfig,
+        requestTimeoutMs: CODEX_THREAD_TITLE_TIMEOUT_MS,
       })
       input.runtimeSession.providerSessionId = threadStart.threadId
       this._lastModelId = threadStart.modelId ?? effectiveModel
@@ -2022,10 +2138,10 @@ async function setCodexThreadTitleName(
   },
 ): Promise<void> {
   try {
-    await primaryClient.request('thread/name/set', params)
+    await requestCodexAppServerWithTimeout(primaryClient, 'thread/name/set', params, CODEX_THREAD_TITLE_TIMEOUT_MS)
   }
   catch {
-    await fallbackClient.request('thread/name/set', params)
+    await requestCodexAppServerWithTimeout(fallbackClient, 'thread/name/set', params, CODEX_THREAD_TITLE_TIMEOUT_MS)
   }
 }
 
@@ -2048,7 +2164,7 @@ async function generateCodexThreadTitle(
   try {
     let threadResponse: ThreadResponse
     try {
-      threadResponse = await client.request('thread/start', {
+      threadResponse = await requestCodexAppServerWithTimeout(client, 'thread/start', {
         model,
         cwd: input.cwd,
         runtimeWorkspaceRoots: input.runtimeWorkspaceRoots,
@@ -2057,7 +2173,7 @@ async function generateCodexThreadTitle(
         config: titleConfig,
         ephemeral: true,
         threadSource: 'user',
-      }) as ThreadResponse
+      }, CODEX_THREAD_TITLE_TIMEOUT_MS)
     }
     catch (error) {
       throw codexRequestError('thread/start', formatUnknownError(error))
@@ -2069,7 +2185,7 @@ async function generateCodexThreadTitle(
 
     let turnResponse: TurnResponse
     try {
-      turnResponse = await client.request('turn/start', {
+      turnResponse = await requestCodexAppServerWithTimeout(client, 'turn/start', {
         threadId: titleThreadId,
         input: buildCodexThreadTitleInput(input.promptText),
         cwd: input.cwd,
@@ -2078,7 +2194,7 @@ async function generateCodexThreadTitle(
         sandboxPolicy: toSandboxPolicy('read-only', input.runtimeWorkspaceRoots, []),
         model,
         effort: input.thinkingEffort,
-      }) as TurnResponse
+      }, CODEX_THREAD_TITLE_TIMEOUT_MS)
     }
     catch (error) {
       throw codexRequestError('turn/start', formatUnknownError(error))
@@ -2118,7 +2234,11 @@ async function readGeneratedCodexThreadTitle(
   signal: AbortSignal,
 ): Promise<string | null> {
   const titleAbortController = new AbortController()
-  const timeout = setTimeout(() => titleAbortController.abort(), CODEX_THREAD_TITLE_TIMEOUT_MS)
+  let timedOut = false
+  const timeout = setTimeout(() => {
+    timedOut = true
+    titleAbortController.abort()
+  }, CODEX_THREAD_TITLE_TIMEOUT_MS)
   const abortTitleRead = () => titleAbortController.abort()
   signal.addEventListener('abort', abortTitleRead, { once: true })
   const deltas = createBoundedTextCollector()
@@ -2131,6 +2251,9 @@ async function readGeneratedCodexThreadTitle(
       }
       catch (error) {
         if (titleAbortController.signal.aborted) {
+          if (timedOut && !signal.aborted) {
+            throw codexRequestError('title/generate', `timed out after ${CODEX_THREAD_TITLE_TIMEOUT_MS}ms`)
+          }
           return null
         }
         throw error
@@ -2167,6 +2290,9 @@ async function readGeneratedCodexThreadTitle(
         return normalizeGeneratedCodexThreadTitle(completedText ?? deltas.read())
       }
     }
+    if (timedOut && !signal.aborted) {
+      throw codexRequestError('title/generate', `timed out after ${CODEX_THREAD_TITLE_TIMEOUT_MS}ms`)
+    }
     return null
   }
   finally {
@@ -2198,18 +2324,29 @@ function readCodexAppServerErrorDetail(notification: CodexAppServerMessage): str
   if (!params || typeof params !== 'object') {
     return 'Codex app-server reported an error'
   }
-  const candidate = params as { message?: unknown, error?: unknown, code?: unknown, details?: unknown }
+  const candidate = params as { message?: unknown, error?: unknown, code?: unknown, details?: unknown, additionalDetails?: unknown }
+  const nestedError = candidate.error && typeof candidate.error === 'object'
+    ? candidate.error as { message?: unknown, details?: unknown, additionalDetails?: unknown }
+    : null
   const message = typeof candidate.message === 'string'
     ? candidate.message
     : typeof candidate.error === 'string'
       ? candidate.error
-      : null
+      : typeof nestedError?.message === 'string'
+        ? nestedError.message
+        : null
   const code = typeof candidate.code === 'string' || typeof candidate.code === 'number'
     ? String(candidate.code)
     : null
   const details = typeof candidate.details === 'string'
     ? candidate.details
-    : null
+    : typeof candidate.additionalDetails === 'string'
+      ? candidate.additionalDetails
+      : typeof nestedError?.details === 'string'
+        ? nestedError.details
+        : typeof nestedError?.additionalDetails === 'string'
+          ? nestedError.additionalDetails
+          : null
   return [code ? `[${code}]` : null, message, details].filter(Boolean).join(' ') || 'Codex app-server reported an error'
 }
 
@@ -2231,6 +2368,42 @@ function readGeneratedCodexThreadTitleCandidate(title: string | null | undefined
   return unfenced.split('\n').map(line => line.trim()).find(Boolean) ?? null
 }
 
+function isLiveCodexSideFork(runtimeSession: RuntimeSession): boolean {
+  if (!runtimeSession.providerSessionId) {
+    return false
+  }
+  const sideConversation = readCodexProviderSnapshot(runtimeSession.providerStateSnapshot).codex?.sideConversation
+  return sideConversation?.liveFork === true
+    && sideConversation.threadId === runtimeSession.providerSessionId
+}
+
+function readLiveSideForkThreadStart(
+  runtimeSession: RuntimeSession,
+  fallbackModelId?: string | null,
+): {
+  threadId: string
+  title: string | null
+  modelId: string | null
+  modelProvider: string | null
+  serviceTier: string | null
+  reasoningEffort: string | null
+  status: CodexThreadStatus | null
+} {
+  if (!runtimeSession.providerSessionId) {
+    throw codexRequestError('liveSideFork', 'Codex side conversation is missing a live thread id')
+  }
+  const snapshot = readCodexProviderSnapshot(runtimeSession.providerStateSnapshot)
+  return {
+    threadId: runtimeSession.providerSessionId,
+    title: null,
+    modelId: snapshot.codex?.model?.modelId ?? fallbackModelId ?? snapshot.models?.currentModelId ?? null,
+    modelProvider: snapshot.codex?.model?.modelProvider ?? null,
+    serviceTier: snapshot.codex?.model?.serviceTier ?? null,
+    reasoningEffort: snapshot.codex?.reasoning?.effort ?? null,
+    status: snapshot.codex?.status?.status ?? null,
+  }
+}
+
 async function startOrResumeThread(
   client: CodexAppServerClientLike,
   runtimeSession: RuntimeSession,
@@ -2241,6 +2414,7 @@ async function startOrResumeThread(
     approvalPolicy: CodexConfig['approvalPolicy']
     sandbox: CodexConfig['sandboxMode']
     config: Record<string, unknown>
+    requestTimeoutMs?: number
   },
 ): Promise<{
   threadId: string
@@ -2259,12 +2433,19 @@ async function startOrResumeThread(
     sandbox: params.sandbox,
     config: params.config,
   }
-  const response = await client.request(
-    runtimeSession.providerSessionId ? 'thread/resume' : 'thread/start',
-    runtimeSession.providerSessionId
-      ? { ...baseParams, threadId: runtimeSession.providerSessionId, excludeTurns: true }
-      : baseParams,
-  ) as ThreadResponse
+  const method = runtimeSession.providerSessionId ? 'thread/resume' : 'thread/start'
+  const requestParams = runtimeSession.providerSessionId
+    ? { ...baseParams, threadId: runtimeSession.providerSessionId, excludeTurns: true }
+    : baseParams
+  let response: ThreadResponse
+  try {
+    response = params.requestTimeoutMs
+      ? await requestCodexAppServerWithTimeout<ThreadResponse>(client, method, requestParams, params.requestTimeoutMs)
+      : await client.request(method, requestParams) as ThreadResponse
+  }
+  catch (error) {
+    throw codexRequestError(method, formatUnknownError(error))
+  }
   const threadId = response.thread?.id
   if (!threadId) {
     throw codexRequestError('startOrResumeCodexThread', 'Codex app-server did not return a thread id')
@@ -2650,15 +2831,11 @@ function readCodexThreadSpawnParentThreadId(source: Thread['source']): string | 
 
 function buildCodexConfig(
   config: CodexConfig,
-  workspacePath: string,
-  resolveSkillPaths: (workspacePath: string) => string[],
+  _workspacePath: string,
+  _resolveSkillPaths: (workspacePath: string) => string[],
   systemPromptFile: string | null,
   effectiveModel?: string | null,
 ): NonNullable<ThreadForkParams['config']> {
-  const skillPaths = config.skillPaths.length > 0
-    ? config.skillPaths
-    : resolveSkillPaths(workspacePath)
-  const instructionPaths = [...skillPaths, ...(systemPromptFile ? [systemPromptFile] : [])]
   const codexConfig: NonNullable<ThreadForkParams['config']> = {
     network_access: 'enabled',
     show_raw_agent_reasoning: true,
@@ -2670,8 +2847,8 @@ function buildCodexConfig(
   if (Object.keys(mcpServers).length > 0) {
     codexConfig.mcp_servers = mcpServers
   }
-  if (instructionPaths.length > 0) {
-    codexConfig.instructions_paths = instructionPaths
+  if (systemPromptFile) {
+    codexConfig.instructions_paths = [systemPromptFile]
   }
   if (config.baseUrl) {
     codexConfig.model_provider = CRADLE_CODEX_MODEL_PROVIDER

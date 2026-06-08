@@ -1,6 +1,6 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { CircleAlertIcon, DownloadIcon, GlobeIcon, KeyIcon } from 'lucide-react'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 
 import { postSecrets } from '~/api-gen/sdk.gen'
@@ -24,12 +24,12 @@ import {
   SelectValue,
 } from '~/components/ui/select'
 import { Spinner } from '~/components/ui/spinner'
+import type { ApiProviderKind } from '~/features/agent-runtime/types'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { cn } from '~/lib/cn'
-import type { ApiProviderKind } from '~/features/agent-runtime/types'
 
-import type { ParsedProvider } from './import-provider-parser'
+import type { ParsedProvider, ParseResult } from './import-provider-parser'
 import { parseProviderConfig } from './import-provider-parser'
 import { warmManualProviderModelCache } from './provider-model-cache'
 import { buildProfileId } from './provider-settings-utils'
@@ -70,6 +70,13 @@ function fingerprintProvider(provider: ParsedProvider): string {
   return `${provider.providerKind}:${provider.baseUrl}:${hash.toString(36)}`
 }
 
+function parsedConfigFingerprint(parseResult: ParseResult): string {
+  return [
+    parseResult.token ?? '',
+    ...parseResult.providers.map(fingerprintProvider),
+  ].join('\n')
+}
+
 function stringArraysEqual(a: string[], b: string[]): boolean {
   return a.length === b.length && a.every((value, index) => value === b[index])
 }
@@ -95,13 +102,6 @@ export function ImportProviderDialog({
     if (!text.trim()) { return null }
     return parseProviderConfig(text)
   }, [text])
-  const parsedConfigKey = useMemo(() => {
-    if (!parseResult) { return null }
-    return [
-      parseResult.token ?? '',
-      ...parseResult.providers.map(fingerprintProvider),
-    ].join('\n')
-  }, [parseResult])
 
   // Deduplicate provider names: append " (2)", " (3)" etc for same-name entries
   const computeResolvedNames = useCallback((parsed: ParsedProvider[]) => {
@@ -123,25 +123,38 @@ export function ImportProviderDialog({
 
   const [resolvedNames, setResolvedNames] = useState<string[]>([])
 
-  useEffect(() => {
-    if (!parseResult) {
+  const handleTextChange = (value: string) => {
+    setText(value)
+
+    const nextParseResult = value.trim() ? parseProviderConfig(value) : null
+    const nextConfigKey = nextParseResult ? parsedConfigFingerprint(nextParseResult) : null
+    if (nextConfigKey === prevParsedConfigKeyRef.current) { return }
+
+    prevParsedConfigKeyRef.current = nextConfigKey
+
+    if (!nextParseResult) {
       setResolvedNames(prev => (prev.length === 0 ? prev : []))
+      setKinds(prev => (prev.length === 0 ? prev : []))
+      setEnabledSet(prev => (prev.size === 0 ? prev : new Set()))
+      setManualUrl('')
       return
     }
 
-    const next = computeResolvedNames(parseResult.providers)
-    setResolvedNames(prev => (stringArraysEqual(prev, next) ? prev : next))
-  }, [computeResolvedNames, parseResult])
+    const nextNames = computeResolvedNames(nextParseResult.providers)
+    setResolvedNames(prev => (stringArraysEqual(prev, nextNames) ? prev : nextNames))
+    setKinds(nextParseResult.providers.map(p => p.providerKind))
+    setManualUrl('')
+    setEnabledSet(new Set(nextParseResult.providers.map((_, i) => i)))
+  }
 
-  useEffect(() => {
-    if (!parseResult) { return }
-    if (parsedConfigKey !== prevParsedConfigKeyRef.current) {
-      prevParsedConfigKeyRef.current = parsedConfigKey
-      setKinds(parseResult.providers.map(p => p.providerKind))
-      setManualUrl('')
-      setEnabledSet(new Set(parseResult.providers.map((_, i) => i)))
-    }
-  }, [parseResult, parsedConfigKey])
+  const resetImportDraft = () => {
+    prevParsedConfigKeyRef.current = null
+    setText('')
+    setManualUrl('')
+    setResolvedNames([])
+    setKinds([])
+    setEnabledSet(new Set())
+  }
 
   const token = parseResult?.token ?? null
   const hasProviders = parseResult && parseResult.providers.length > 0
@@ -214,8 +227,7 @@ export function ImportProviderDialog({
           .catch(error => console.error('[ImportProvider] model cache warm failed', error))
       }
       onOpenChange(false)
-      setText('')
-      setManualUrl('')
+      resetImportDraft()
       setImporting(false)
     }
     catch (err) {
@@ -226,8 +238,7 @@ export function ImportProviderDialog({
 
   const handleClose = () => {
     if (importing) { return }
-    setText('')
-    setManualUrl('')
+    resetImportDraft()
     onOpenChange(false)
   }
 
@@ -251,7 +262,7 @@ export function ImportProviderDialog({
           <textarea
             aria-label="Provider configuration snippet"
             value={text}
-            onChange={e => setText(e.target.value)}
+            onChange={e => handleTextChange(e.target.value)}
             placeholder={`token: sk-xxxxxxxx\nhttps://api.example.com/v1\nhttps://api.example.com/anthropic`}
             className={cn(
               'w-full rounded-lg border bg-muted/40 px-3 py-2.5 font-mono text-[12px] leading-relaxed',

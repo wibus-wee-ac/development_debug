@@ -4,7 +4,7 @@ import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
 import type { UIMessageChunk } from 'ai'
 
-import { langfuseEnabled } from '../../../langfuse'
+import { aiTelemetryEnabled } from '../../../telemetry/config'
 import type {
   CancelTurnInput,
   ChatRuntime,
@@ -67,6 +67,8 @@ type ActiveClaudeQuery = {
 
 type ContextUsageRuntimeInput = Pick<GetContextUsageInput, 'runtimeSession'>
 
+const COMPACT_SLOT_CONTEXT_USAGE_TTL_MS = 15_000
+
 export function createClaudeAgentProvider(ctx: ProviderContext): ChatRuntime {
   return new ClaudeAgentProvider(ctx)
 }
@@ -79,6 +81,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
   private readonly activeQueries = new Map<string, ActiveClaudeQuery>()
   private readonly compactStates = new Map<string, RuntimeCompactUiSlotState>()
   private readonly lastContextUsageBySession = new Map<string, RuntimeContextUsage>()
+  private readonly lastContextUsageSampledAtBySession = new Map<string, number>()
   private _lastUsage: TokenUsage | null = null
   private _totalUsage: TokenUsage | null = null
 
@@ -262,7 +265,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
 
     // Langfuse tracing via @langfuse/tracing SDK
     let generation: LangfuseGeneration | null = null
-    if (langfuseEnabled) {
+    if (aiTelemetryEnabled()) {
       generation = startObservation('claude-agent-generation', {
         model: effectiveModel,
         input: input.systemPrompt
@@ -468,9 +471,20 @@ export class ClaudeAgentProvider implements ChatRuntime {
   }
 
   private async readCompactState(input: GetUiSlotStatesInput): Promise<RuntimeCompactUiSlotState | null> {
-    return await this.refreshCompactState(input)
-      ?? this.compactStates.get(input.runtimeSession.chatSessionId)
-      ?? null
+    const sessionId = input.runtimeSession.chatSessionId
+    const cached = this.readFreshCompactState(sessionId)
+    if (cached) {
+      return cached
+    }
+
+    try {
+      return await this.refreshCompactState(input)
+        ?? this.compactStates.get(sessionId)
+        ?? null
+    }
+    catch {
+      return this.compactStates.get(sessionId) ?? null
+    }
   }
 
   private async readContextUsage(input: ContextUsageRuntimeInput): Promise<RuntimeContextUsage | null> {
@@ -488,7 +502,18 @@ export class ClaudeAgentProvider implements ChatRuntime {
       updatedAt,
     })
     this.lastContextUsageBySession.set(sessionId, usage)
+    this.lastContextUsageSampledAtBySession.set(sessionId, Date.now())
+    this.compactStates.set(sessionId, this.projectCompactState(input.runtimeSession, usage))
     return usage
+  }
+
+  private readFreshCompactState(sessionId: string): RuntimeCompactUiSlotState | null {
+    const compactState = this.compactStates.get(sessionId)
+    const sampledAt = this.lastContextUsageSampledAtBySession.get(sessionId)
+    if (!compactState || !sampledAt) {
+      return null
+    }
+    return Date.now() - sampledAt <= COMPACT_SLOT_CONTEXT_USAGE_TTL_MS ? compactState : null
   }
 
   private async refreshCompactState(input: ContextUsageRuntimeInput): Promise<RuntimeCompactUiSlotState | null> {
@@ -496,14 +521,21 @@ export class ClaudeAgentProvider implements ChatRuntime {
     if (!usage) {
       return null
     }
-    const compactState = projectClaudeAgentCompactState({
-      threadId: input.runtimeSession.chatSessionId,
+    const compactState = this.projectCompactState(input.runtimeSession, usage)
+    this.compactStates.set(input.runtimeSession.chatSessionId, compactState)
+    return compactState
+  }
+
+  private projectCompactState(
+    runtimeSession: ContextUsageRuntimeInput['runtimeSession'],
+    usage: RuntimeContextUsage,
+  ): RuntimeCompactUiSlotState {
+    return projectClaudeAgentCompactState({
+      threadId: runtimeSession.chatSessionId,
       turnId: null,
       usage,
       updatedAt: usage.updatedAt,
     })
-    this.compactStates.set(input.runtimeSession.chatSessionId, compactState)
-    return compactState
   }
 
   private async updateActiveQueryPermissionMode(

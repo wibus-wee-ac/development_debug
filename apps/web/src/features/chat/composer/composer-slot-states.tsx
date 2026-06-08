@@ -145,11 +145,11 @@ export function ComposerSlotStates({ slots, states, actions, plan, quickQuestion
 function ComposerSlotMotionItem({ index, children }: { index: number, children: ReactNode }) {
   const shouldReduceMotion = useReducedMotion()
   const hiddenState = shouldReduceMotion
-    ? { opacity: 0 }
-    : { opacity: 0, y: 18, filter: 'blur(2px)' }
+    ? { y: 0, '--composer-slot-content-blur': '0px', '--composer-slot-content-opacity': 0 }
+    : { y: 18, '--composer-slot-content-blur': '2px', '--composer-slot-content-opacity': 0 }
   const visibleState = shouldReduceMotion
-    ? { opacity: 1 }
-    : { opacity: 1, y: 0, filter: 'blur(0px)' }
+    ? { y: 0, '--composer-slot-content-blur': '0px', '--composer-slot-content-opacity': 1 }
+    : { y: 0, '--composer-slot-content-blur': '0px', '--composer-slot-content-opacity': 1 }
 
   return (
     <m.div
@@ -174,7 +174,6 @@ function ComposerSlotMotionItem({ index, children }: { index: number, children: 
           ...hiddenState,
           transition: shouldReduceMotion ? COMPOSER_SLOT_REDUCED_TRANSITION : COMPOSER_SLOT_CONTENT_EXIT_TRANSITION,
         }}
-        className="transform-gpu"
       >
         {children}
       </m.div>

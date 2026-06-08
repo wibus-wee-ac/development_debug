@@ -1313,7 +1313,7 @@ describe('claudeAgentProvider MCP integration', () => {
       workspacePath: '/tmp/cradle-workspace',
     })
 
-    expect(activeQuery.getContextUsage).toHaveBeenCalledTimes(2)
+    expect(activeQuery.getContextUsage).toHaveBeenCalledOnce()
     expect(slotStates).toEqual([
       expect.objectContaining({
         kind: 'compact',
@@ -1362,6 +1362,64 @@ describe('claudeAgentProvider MCP integration', () => {
 
     activeQuery.close()
     await pendingNext
+  })
+
+  it('reuses cached compact slot state when Claude Agent context usage refresh fails', async () => {
+    vi.useFakeTimers()
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+
+    const activeQuery = createPendingQuery()
+    sdkMocks.query.mockReturnValue(activeQuery)
+
+    const runtimeSession = createResumedRuntimeSession({
+      providerSessionId: 'claude-session-context-cache',
+    })
+    try {
+      const pendingStream = (async () => {
+        for await (const _chunk of provider.streamTurn({
+          runId: 'run-claude-agent-context-cache',
+          runtimeSession,
+          profile: createProfile(),
+          message: createUserMessage('Keep running'),
+          workspaceId: 'workspace-1',
+        })) {
+          // Keep stream active until the query closes.
+        }
+      })()
+
+      await provider.getContextUsage({
+        runtimeSession,
+        profile: createProfile(),
+        workspacePath: '/tmp/cradle-workspace',
+      })
+      await provider.getUiSlotStates({
+        runtimeSession,
+        profile: createProfile(),
+        workspacePath: '/tmp/cradle-workspace',
+      })
+
+      vi.setSystemTime(Date.now() + 20_000)
+      activeQuery.getContextUsage.mockRejectedValueOnce(new Error('Query closed before response received'))
+
+      await expect(provider.getUiSlotStates({
+        runtimeSession,
+        profile: createProfile(),
+        workspacePath: '/tmp/cradle-workspace',
+      })).resolves.toEqual([
+        expect.objectContaining({
+          kind: 'compact',
+          slotId: 'claude-agent:compact',
+        }),
+      ])
+
+      activeQuery.close()
+      await pendingStream
+    }
+    finally {
+      vi.useRealTimers()
+    }
   })
 
   it('returns null context usage when no Claude Agent query is active', async () => {

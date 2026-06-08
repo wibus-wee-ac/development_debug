@@ -183,7 +183,7 @@ function readCodexBaselineSkillParts(existingSkillNames: Set<string>): ChatConte
       ? [{
           type: 'data-cradle-skill' as const,
           name: skill.name,
-          path: skill.skillDir,
+          path: skill.location,
           scope: skill.scope,
           description: skill.description,
         }]
@@ -1481,6 +1481,7 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
     })
   }
 
+  releaseTerminalPersistedActiveRunForSession(sessionId)
   if (!activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId)) {
     failOrphanedPersistedStreamingSession(sessionId)
   }
@@ -3253,6 +3254,7 @@ export async function createRun(input: {
   queueItemId?: string
   internalContinuation?: 'codexGoal'
 }) {
+  releaseTerminalPersistedActiveRunForSession(input.sessionId)
   if (activeRunIdsBySession.has(input.sessionId) || pendingRunSessions.has(input.sessionId)) {
     throw new AppError({
       code: 'chat_run_in_progress',
@@ -3782,6 +3784,7 @@ async function readSessionTranscript(sessionId: string): Promise<UIMessage[]> {
 
 export function openSessionRunStream(sessionId: string): ReadableStream<Uint8Array> {
   assertStoredSession(sessionId)
+  releaseTerminalPersistedActiveRunForSession(sessionId)
 
   const runId = activeRunIdsBySession.get(sessionId)
   if (!runId) {
@@ -3826,6 +3829,9 @@ export async function abortRun(runId: string): Promise<void> {
  * POST /chat/sessions/:sessionId/cancel
  */
 export async function cancelSession(sessionId: string): Promise<void> {
+  if (releaseTerminalPersistedActiveRunForSession(sessionId)) {
+    return
+  }
   const runId = activeRunIdsBySession.get(sessionId)
   if (!runId) {
     const pendingState = pendingRunSessions.get(sessionId)
@@ -6440,6 +6446,33 @@ function markPersistedStreamingMessages(
 
     tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, sessionId)).run()
   })
+}
+
+function releaseTerminalPersistedActiveRunForSession(sessionId: string): boolean {
+  const runId = activeRunIdsBySession.get(sessionId)
+  if (!runId) {
+    return false
+  }
+
+  const run = getRun(runId)
+  if (!run) {
+    return false
+  }
+  const status = readTerminalRunProjectionStatus(run.status)
+  if (!status) {
+    return false
+  }
+
+  const activeRun = activeRuns.get(runId)
+  if (activeRun) {
+    activeRun.terminalStatus ??= status
+    releaseActiveRun(activeRun)
+  }
+  else {
+    activeRunIdsBySession.delete(sessionId)
+  }
+  repairTerminalRunProjection(run)
+  return true
 }
 
 function releaseActiveRun(activeRun: ActiveRun): void {

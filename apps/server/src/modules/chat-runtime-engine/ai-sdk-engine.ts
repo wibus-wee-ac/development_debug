@@ -4,7 +4,7 @@
 import type { LanguageModel, ModelMessage, ToolSet, UIMessage, UIMessageChunk } from 'ai'
 import { convertToModelMessages, stepCountIs, streamText } from 'ai'
 
-import { langfuseEnabled } from '../../langfuse'
+import { aiTelemetryEnabled } from '../../telemetry/config'
 import { readChatPluginContextPart, readChatSkillContextPart } from '../chat-runtime/context-parts'
 import type { ChatThinkingEffort } from '../chat-runtime/runtime-provider-types'
 import type { BudgetConfig } from '../usage/budget'
@@ -98,7 +98,7 @@ function createAiSdkStreamResult(input: AiSdkEngineInput): {
     providerOptions,
     stopWhen: maxSteps > 1 ? stepCountIs(maxSteps) : undefined,
     abortSignal: effectiveAbortSignal,
-    experimental_telemetry: langfuseEnabled
+    experimental_telemetry: aiTelemetryEnabled()
       ? {
           isEnabled: true,
           metadata: {

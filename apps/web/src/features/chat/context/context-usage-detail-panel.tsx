@@ -5,6 +5,7 @@ import { AnimatePresence, m } from 'motion/react'
 import { cn } from '~/lib/cn'
 import { clampPercent, formatTokenCount } from '~/lib/number-format'
 import { useBrowserPanelStore } from '~/store/browser-panel'
+import { useLayoutStore } from '~/store/layout'
 
 import type {
   ChatRuntimeCompactUiSlotState,
@@ -100,6 +101,8 @@ export function ContextUsageDetailPanel({
   const openContextUsageReportTab = useBrowserPanelStore(
     state => state.openContextUsageReportTab,
   )
+  const browserPanelOwnerId = useLayoutStore(state => state.activeBrowserPanelOwnerId)
+  const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
   const { data, isError, isLoading } = useQuery({
     queryKey: ['chat', 'context-window-usage', sessionId ?? 'no-session'],
     queryFn: ({ signal }) => getChatRuntimeContextUsage(sessionId!, signal),
@@ -117,7 +120,8 @@ export function ContextUsageDetailPanel({
     if (!sessionId) {
       return
     }
-    openContextUsageReportTab({ sessionId })
+    openContextUsageReportTab({ sessionId, ownerId: browserPanelOwnerId })
+    setBrowserPanelOpen(true, browserPanelOwnerId)
     onClose()
   }
 
@@ -353,11 +357,12 @@ function readCompactRows(compactState: ChatRuntimeCompactUiSlotState | null | un
   if (!compactState) {
     return []
   }
+  const usage = readCompactWindowUsage(compactState)
   return [
-    { label: 'Input', value: compactState.total.inputTokens },
-    { label: 'Cached input', value: compactState.total.cachedInputTokens },
-    { label: 'Output', value: compactState.total.outputTokens },
-    { label: 'Reasoning', value: compactState.total.reasoningOutputTokens },
+    { label: 'Input', value: usage.inputTokens },
+    { label: 'Cached input', value: usage.cachedInputTokens },
+    { label: 'Output', value: usage.outputTokens },
+    { label: 'Reasoning', value: usage.reasoningOutputTokens },
   ].filter(row => row.value > 0)
 }
 
@@ -464,15 +469,25 @@ function readContextAggregate(
       source: 'details',
     }
   }
-  if (!compactState || compactState.total.totalTokens <= 0) {
+  if (!compactState) {
+    return null
+  }
+  const displayUsage = readCompactWindowUsage(compactState)
+  if (displayUsage.totalTokens <= 0) {
     return null
   }
   return {
-    totalTokens: compactState.total.totalTokens,
+    totalTokens: displayUsage.totalTokens,
     maxTokens: compactState.modelContextWindow,
-    percentage: compactState.usagePercent,
+    percentage: compactState.modelContextWindow && compactState.modelContextWindow > 0
+      ? (displayUsage.totalTokens / compactState.modelContextWindow) * 100
+      : null,
     source: 'compact',
   }
+}
+
+function readCompactWindowUsage(compactState: ChatRuntimeCompactUiSlotState) {
+  return compactState.last.totalTokens > 0 ? compactState.last : compactState.total
 }
 
 function readContextSections(usage: ChatRuntimeContextUsage | null): ChatRuntimeContextUsageSection[] {

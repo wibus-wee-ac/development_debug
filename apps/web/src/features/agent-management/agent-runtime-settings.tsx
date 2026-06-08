@@ -13,7 +13,7 @@ import {
   Trash2Icon,
   XIcon,
 } from 'lucide-react'
-import { useDeferredValue, useEffect, useRef, useState } from 'react'
+import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
@@ -40,11 +40,11 @@ import { ScrollArea } from '~/components/ui/scroll-area'
 import { Separator } from '~/components/ui/separator'
 import { toastManager } from '~/components/ui/toast'
 import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
+import type { AgentProfile } from '~/features/agent-runtime/types'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
 import { AGENTS_QUERY_KEY } from '~/features/agent-runtime/use-agents'
 import { cn } from '~/lib/cn'
-import type { AgentProfile } from '~/features/agent-runtime/types'
 
 import { DraftSetupPanel } from './draft-setup-panel'
 import { ExternalProviderRecordDetailPanel } from './external-provider-record-detail-panel'
@@ -228,12 +228,24 @@ export function AgentRuntimeSettings() {
   } = useQuery(
     getExternalProviderSourcesRecordsOptions(),
   )
-  const ccSwitchSources = (externalSources as ExternalProviderSourceView[])
-      .filter(source => source.sourceId === 'cc-switch')
-  const ccSwitchSourceIds = new Set(ccSwitchSources.map(source => source.id))
-  const ccSwitchRecords = (externalRecords as ExternalProviderRecordView[])
-      .filter(record => ccSwitchSourceIds.has(record.sourceKey))
-  const sourceById = new Map(ccSwitchSources.map(source => [source.id, source]))
+  const ccSwitchSources = useMemo(
+    () => (externalSources as ExternalProviderSourceView[])
+      .filter(source => source.sourceId === 'cc-switch'),
+    [externalSources],
+  )
+  const ccSwitchSourceIds = useMemo(
+    () => new Set(ccSwitchSources.map(source => source.id)),
+    [ccSwitchSources],
+  )
+  const ccSwitchRecords = useMemo(
+    () => (externalRecords as ExternalProviderRecordView[])
+      .filter(record => ccSwitchSourceIds.has(record.sourceKey)),
+    [ccSwitchSourceIds, externalRecords],
+  )
+  const sourceById = useMemo(
+    () => new Map(ccSwitchSources.map(source => [source.id, source])),
+    [ccSwitchSources],
+  )
   const settingsProvidersReady = profilesReady && externalSourcesReady && externalRecordsReady
 
   const refreshExternalSources = useMutation({
@@ -273,8 +285,11 @@ export function AgentRuntimeSettings() {
     patchExternalProviderSourcesBySourceKeyRecordsByExternalRecordIdRuntimeTargetMutation(),
   )
 
-  const providerGroups = collectProviderListGroups(profiles, ccSwitchRecords, ccSwitchSources)
-  const visibleProfileGroups = (() => {
+  const providerGroups = useMemo(
+    () => collectProviderListGroups(profiles, ccSwitchRecords, ccSwitchSources),
+    [ccSwitchRecords, ccSwitchSources, profiles],
+  )
+  const visibleProfileGroups = useMemo(() => {
     if (!deferredFilter.trim()) {
       return providerGroups
     }
@@ -298,17 +313,39 @@ export function AgentRuntimeSettings() {
         }),
       }))
       .filter(group => group.entries.length > 0)
-  })()
-  const providerEntries = providerGroups.flatMap(group => group.entries)
-  const visibleEntries = visibleProfileGroups.flatMap(group => group.entries)
+  }, [deferredFilter, providerGroups])
+  const providerEntries = useMemo(
+    () => providerGroups.flatMap(group => group.entries),
+    [providerGroups],
+  )
+  const visibleEntries = useMemo(
+    () => visibleProfileGroups.flatMap(group => group.entries),
+    [visibleProfileGroups],
+  )
+  const availableEntryIds = useMemo(
+    () => new Set(providerEntries.map(entry => entry.id)),
+    [providerEntries],
+  )
 
   const selectedEntryId = selectedIdFromSet(selectedIds)
-  const selectedEntry = selectedEntryId
-    ? (providerEntries.find(entry => entry.id === selectedEntryId) ?? null)
-    : null
-  const selectedEntries = selectedRecords(providerEntries, selectedIds)
-  const selectedProfiles = selectedEntries.flatMap(entry => (entry.kind === 'manual' ? [entry.profile] : []))
-  const selectedExternalRecords = selectedEntries.flatMap(entry => (entry.kind === 'external' ? [entry.record] : []))
+  const selectedEntry = useMemo(
+    () => selectedEntryId
+      ? (providerEntries.find(entry => entry.id === selectedEntryId) ?? null)
+      : null,
+    [providerEntries, selectedEntryId],
+  )
+  const selectedEntries = useMemo(
+    () => selectedRecords(providerEntries, selectedIds),
+    [providerEntries, selectedIds],
+  )
+  const selectedProfiles = useMemo(
+    () => selectedEntries.flatMap(entry => (entry.kind === 'manual' ? [entry.profile] : [])),
+    [selectedEntries],
+  )
+  const selectedExternalRecords = useMemo(
+    () => selectedEntries.flatMap(entry => (entry.kind === 'external' ? [entry.record] : [])),
+    [selectedEntries],
+  )
   const toggleableSelectedProfiles = selectedProfiles
   const toggleableSelectedExternalRecords = selectedExternalRecords.filter(externalRecordCanToggle)
   const removableSelectedProfiles = selectedProfiles
@@ -332,12 +369,11 @@ export function AgentRuntimeSettings() {
     if (isDraftSelected) {
       return
     }
-    const available = new Set(providerEntries.map(entry => entry.id))
-    setSelectedIds(prev => pruneSelectedIds(prev, available))
-    if (selectionAnchorIdRef.current && !available.has(selectionAnchorIdRef.current)) {
+    setSelectedIds(prev => pruneSelectedIds(prev, availableEntryIds))
+    if (selectionAnchorIdRef.current && !availableEntryIds.has(selectionAnchorIdRef.current)) {
       selectionAnchorIdRef.current = null
     }
-  }, [providerEntries, isDraftSelected])
+  }, [availableEntryIds, isDraftSelected])
 
   const startDraft = () => {
     const id = `draft-${Date.now()}`
@@ -520,12 +556,12 @@ export function AgentRuntimeSettings() {
       data-settings-providers-ready={settingsProvidersReady ? 'true' : 'false'}
       className="flex h-full min-w-0 flex-col overflow-hidden"
     >
-      <header className="flex min-w-0 flex-wrap items-start justify-between gap-3 pb-5">
-        <div className="min-w-0 flex-1 space-y-1">
-          <h3 className="font-heading text-[15px] font-medium tracking-tight text-foreground text-balance">
+      <header className="flex min-w-0 flex-wrap items-start justify-between gap-3 pb-4">
+        <div className="min-w-0 flex-1 space-y-1.5">
+          <h3 className="text-[18px] font-semibold leading-tight tracking-[-0.01em] text-foreground text-balance">
             {t('runtime.header.title')}
           </h3>
-          <p className="max-w-full break-words text-[12.5px] leading-relaxed text-muted-foreground text-pretty">
+          <p className="max-w-full break-words text-[13px] leading-relaxed text-muted-foreground text-pretty">
             {t('runtime.header.description')}
           </p>
         </div>
