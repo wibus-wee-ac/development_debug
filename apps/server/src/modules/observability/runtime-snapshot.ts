@@ -46,6 +46,11 @@ function readNestedRecord(record: Record<string, unknown>, key: string): Record<
   return value && typeof value === 'object' && !Array.isArray(value) ? value as Record<string, unknown> : undefined
 }
 
+function readNestedArray(record: Record<string, unknown>, key: string): unknown[] {
+  const value = record[key]
+  return Array.isArray(value) ? value : []
+}
+
 function toBytesFromKiB(value: number | null): number | null {
   return value === null ? null : value * 1024
 }
@@ -132,6 +137,37 @@ export async function getRuntimeSnapshot() {
       mainMemoryBytesByKind[key] = bytes
     }
   }
+  const rendererMemoryBytesByKind: Record<string, number> = {}
+  const rendererChatStoreTotals: Record<string, number> = {}
+  const latestDesktopSampleRecord = latestDesktopSample as unknown as Record<string, unknown> | undefined
+  const diagnostics = latestDesktopSampleRecord
+    ? readNestedRecord(latestDesktopSampleRecord, 'diagnostics')
+    : undefined
+  for (const item of readNestedArray(diagnostics ?? {}, 'renderers')) {
+    if (!item || typeof item !== 'object' || Array.isArray(item)) {
+      continue
+    }
+    const renderer = readNestedRecord(item as Record<string, unknown>, 'renderer')
+    if (!renderer) {
+      continue
+    }
+    const rendererMemory = readNestedRecord(renderer, 'rendererMemory')
+    const currentMemory = readNestedRecord(rendererMemory ?? {}, 'current')
+    for (const key of ['usedJSHeapSize', 'totalJSHeapSize', 'jsHeapSizeLimit']) {
+      const value = readRecordNumber(currentMemory, key)
+      if (value !== null) {
+        incrementBucket(rendererMemoryBytesByKind, key, value)
+      }
+    }
+
+    const chatStore = readNestedRecord(renderer, 'chatStore')
+    const totals = readNestedRecord(chatStore ?? {}, 'totals')
+    for (const [key, value] of Object.entries(totals ?? {})) {
+      if (typeof value === 'number' && Number.isFinite(value)) {
+        incrementBucket(rendererChatStoreTotals, key, value)
+      }
+    }
+  }
 
   updateServerProcessMetrics({
     ...serverMemory,
@@ -172,6 +208,8 @@ export async function getRuntimeSnapshot() {
     appProcessCountByType,
     appProcessMemoryBytesByType,
     mainMemoryBytesByKind,
+    rendererMemoryBytesByKind,
+    rendererChatStoreTotals,
   })
   updateObservabilityMetrics(observability)
 

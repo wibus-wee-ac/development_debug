@@ -28,6 +28,7 @@ export const ObservabilityModel = {
     main: t.Record(t.String(), t.Unknown()),
     appMetrics: t.Array(t.Record(t.String(), t.Unknown())),
     windows: t.Array(t.Record(t.String(), t.Unknown())),
+    diagnostics: t.Optional(t.Record(t.String(), t.Unknown())),
   }),
 
   heapSnapshotBody: t.Object({
@@ -295,6 +296,7 @@ export const ObservabilityModel = {
         main: t.Record(t.String(), t.Unknown()),
         appMetrics: t.Array(t.Record(t.String(), t.Unknown())),
         windows: t.Array(t.Record(t.String(), t.Unknown())),
+        diagnostics: t.Optional(t.Record(t.String(), t.Unknown())),
       })),
     }),
     observability: t.Object({

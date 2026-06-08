@@ -1,6 +1,6 @@
 import { metrics } from '@opentelemetry/api'
 
-const meter = metrics.getMeter('cradle-server')
+let initialized = false
 
 export interface ServerProcessMetricSnapshot {
   rssMB: number
@@ -55,6 +55,8 @@ export interface DesktopMetricSnapshot {
   appProcessCountByType: Record<string, number>
   appProcessMemoryBytesByType: Record<string, number>
   mainMemoryBytesByKind: Record<string, number>
+  rendererMemoryBytesByKind: Record<string, number>
+  rendererChatStoreTotals: Record<string, number>
 }
 
 let serverProcessSnapshot: ServerProcessMetricSnapshot | null = null
@@ -65,227 +67,256 @@ let chronicleSnapshot: ChronicleMetricSnapshot | null = null
 let observabilitySnapshot: ObservabilityMetricSnapshot | null = null
 let desktopSnapshot: DesktopMetricSnapshot | null = null
 
-const droppedEventsCounter = meter.createCounter('cradle_observability_events_dropped_total', {
-  description: 'Number of observability events dropped before durable persistence.',
-})
+let recordDroppedEvents: ((count: number) => void) | null = null
 
-const processMemoryGauge = meter.createObservableGauge('cradle_process_memory_bytes', {
-  description: 'Cradle server process memory usage in bytes.',
-})
-
-const processCpuGauge = meter.createObservableGauge('cradle_process_cpu_percent', {
-  description: 'Cradle server process CPU percent.',
-})
-processCpuGauge.addCallback((result) => {
-  if (serverProcessSnapshot?.cpuPercent !== null && serverProcessSnapshot?.cpuPercent !== undefined) {
-    result.observe(serverProcessSnapshot.cpuPercent, { process: 'server' })
-  }
-})
-
-const processUptimeGauge = meter.createObservableGauge('cradle_process_uptime_seconds', {
-  description: 'Cradle server process uptime in seconds.',
-})
-processUptimeGauge.addCallback((result) => {
-  if (serverProcessSnapshot) {
-    result.observe(serverProcessSnapshot.uptimeSeconds, { process: 'server' })
-  }
-})
-
-const processActiveResourcesGauge = meter.createObservableGauge('cradle_process_active_resources_total', {
-  description: 'Cradle server active Node handles and requests.',
-})
-processActiveResourcesGauge.addCallback((result) => {
-  if (!serverProcessSnapshot) {
+export function initializeCradleMetrics(): void {
+  if (initialized) {
     return
   }
-  result.observe(serverProcessSnapshot.activeHandles, { process: 'server', kind: 'handles' })
-  result.observe(serverProcessSnapshot.activeRequests, { process: 'server', kind: 'requests' })
-})
-processMemoryGauge.addCallback((result) => {
-  if (!serverProcessSnapshot) {
-    return
-  }
-  result.observe(serverProcessSnapshot.rssMB * 1024 * 1024, { process: 'server', kind: 'rss' })
-  result.observe(serverProcessSnapshot.heapUsedMB * 1024 * 1024, { process: 'server', kind: 'heap_used' })
-  result.observe(serverProcessSnapshot.heapTotalMB * 1024 * 1024, { process: 'server', kind: 'heap_total' })
-  result.observe(serverProcessSnapshot.externalMB * 1024 * 1024, { process: 'server', kind: 'external' })
-  result.observe(serverProcessSnapshot.arrayBuffersMB * 1024 * 1024, { process: 'server', kind: 'array_buffers' })
-})
+  initialized = true
 
-const activeRunsGauge = meter.createObservableGauge('cradle_chat_active_runs_total', {
-  description: 'Current active chat runs grouped by runtime kind.',
-})
-activeRunsGauge.addCallback((result) => {
-  for (const [runtimeKind, count] of Object.entries(chatRuntimeSnapshot?.activeRunsByRuntimeKind ?? {})) {
-    result.observe(count, { runtime_kind: runtimeKind })
-  }
-})
+  const meter = metrics.getMeter('cradle-server')
+  const droppedEventsCounter = meter.createCounter('cradle_observability_events_dropped_total', {
+    description: 'Number of observability events dropped before durable persistence.',
+  })
+  recordDroppedEvents = count => droppedEventsCounter.add(count)
 
-const replayBufferGauge = meter.createObservableGauge('cradle_chat_replay_buffer_chunks', {
-  description: 'Current active chat replay buffer chunks grouped by runtime kind.',
-})
+  const processMemoryGauge = meter.createObservableGauge('cradle_process_memory_bytes', {
+    description: 'Cradle server process memory usage in bytes.',
+  })
+  processMemoryGauge.addCallback((result) => {
+    if (!serverProcessSnapshot) {
+      return
+    }
+    result.observe(serverProcessSnapshot.rssMB * 1024 * 1024, { process: 'server', kind: 'rss' })
+    result.observe(serverProcessSnapshot.heapUsedMB * 1024 * 1024, { process: 'server', kind: 'heap_used' })
+    result.observe(serverProcessSnapshot.heapTotalMB * 1024 * 1024, { process: 'server', kind: 'heap_total' })
+    result.observe(serverProcessSnapshot.externalMB * 1024 * 1024, { process: 'server', kind: 'external' })
+    result.observe(serverProcessSnapshot.arrayBuffersMB * 1024 * 1024, { process: 'server', kind: 'array_buffers' })
+  })
 
-const replayBufferDeltaGauge = meter.createObservableGauge('cradle_chat_replay_buffer_deltas', {
-  description: 'Current active chat replay buffer delta counts grouped by runtime kind and delta kind.',
-})
-replayBufferDeltaGauge.addCallback((result) => {
-  for (const [runtimeKind, count] of Object.entries(chatRuntimeSnapshot?.replayTextDeltasByRuntimeKind ?? {})) {
-    result.observe(count, { runtime_kind: runtimeKind, kind: 'text' })
-  }
-  for (const [runtimeKind, count] of Object.entries(chatRuntimeSnapshot?.replayReasoningDeltasByRuntimeKind ?? {})) {
-    result.observe(count, { runtime_kind: runtimeKind, kind: 'reasoning' })
-  }
-  for (const [runtimeKind, count] of Object.entries(chatRuntimeSnapshot?.replayToolDeltasByRuntimeKind ?? {})) {
-    result.observe(count, { runtime_kind: runtimeKind, kind: 'tool' })
-  }
-})
-replayBufferGauge.addCallback((result) => {
-  for (const [runtimeKind, count] of Object.entries(chatRuntimeSnapshot?.replayBufferChunksByRuntimeKind ?? {})) {
-    result.observe(count, { runtime_kind: runtimeKind })
-  }
-})
+  const processCpuGauge = meter.createObservableGauge('cradle_process_cpu_percent', {
+    description: 'Cradle server process CPU percent.',
+  })
+  processCpuGauge.addCallback((result) => {
+    if (serverProcessSnapshot?.cpuPercent !== null && serverProcessSnapshot?.cpuPercent !== undefined) {
+      result.observe(serverProcessSnapshot.cpuPercent, { process: 'server' })
+    }
+  })
 
-const providerHostsGauge = meter.createObservableGauge('cradle_provider_runtime_hosts_total', {
-  description: 'Current provider runtime host count grouped by runtime kind.',
-})
+  const processUptimeGauge = meter.createObservableGauge('cradle_process_uptime_seconds', {
+    description: 'Cradle server process uptime in seconds.',
+  })
+  processUptimeGauge.addCallback((result) => {
+    if (serverProcessSnapshot) {
+      result.observe(serverProcessSnapshot.uptimeSeconds, { process: 'server' })
+    }
+  })
 
-const providerHostStateGauge = meter.createObservableGauge('cradle_provider_runtime_host_state_total', {
-  description: 'Provider runtime host state counts grouped by runtime kind.',
-})
-providerHostStateGauge.addCallback((result) => {
-  for (const [runtimeKind, count] of Object.entries(providerRuntimeSnapshot?.resourceHostsByRuntimeKind ?? {})) {
-    result.observe(count, { runtime_kind: runtimeKind, kind: 'has_resource' })
-  }
-  for (const [runtimeKind, count] of Object.entries(providerRuntimeSnapshot?.refCountsByRuntimeKind ?? {})) {
-    result.observe(count, { runtime_kind: runtimeKind, kind: 'ref_count' })
-  }
-  for (const [runtimeKind, count] of Object.entries(providerRuntimeSnapshot?.pinnedCountsByRuntimeKind ?? {})) {
-    result.observe(count, { runtime_kind: runtimeKind, kind: 'pinned_count' })
-  }
-})
+  const processActiveResourcesGauge = meter.createObservableGauge('cradle_process_active_resources_total', {
+    description: 'Cradle server active Node handles and requests.',
+  })
+  processActiveResourcesGauge.addCallback((result) => {
+    if (!serverProcessSnapshot) {
+      return
+    }
+    result.observe(serverProcessSnapshot.activeHandles, { process: 'server', kind: 'handles' })
+    result.observe(serverProcessSnapshot.activeRequests, { process: 'server', kind: 'requests' })
+  })
 
-const ptyTerminalGauge = meter.createObservableGauge('cradle_pty_sessions_total', {
-  description: 'Current terminal session count grouped by terminal role.',
-})
-ptyTerminalGauge.addCallback((result) => {
-  for (const [role, count] of Object.entries(ptySnapshot?.terminalCountByRole ?? {})) {
-    result.observe(count, { role })
-  }
-})
-providerHostsGauge.addCallback((result) => {
-  for (const [runtimeKind, count] of Object.entries(providerRuntimeSnapshot?.hostsByRuntimeKind ?? {})) {
-    result.observe(count, { runtime_kind: runtimeKind })
-  }
-})
+  const activeRunsGauge = meter.createObservableGauge('cradle_chat_active_runs_total', {
+    description: 'Current active chat runs grouped by runtime kind.',
+  })
+  activeRunsGauge.addCallback((result) => {
+    for (const [runtimeKind, count] of Object.entries(chatRuntimeSnapshot?.activeRunsByRuntimeKind ?? {})) {
+      result.observe(count, { runtime_kind: runtimeKind })
+    }
+  })
 
-const ptyRssGauge = meter.createObservableGauge('cradle_pty_rss_bytes', {
-  description: 'Terminal process tree RSS grouped by terminal role.',
-})
-ptyRssGauge.addCallback((result) => {
-  for (const [role, rssMB] of Object.entries(ptySnapshot?.rssMBByRole ?? {})) {
-    result.observe(rssMB * 1024 * 1024, { role })
-  }
-})
+  const replayBufferGauge = meter.createObservableGauge('cradle_chat_replay_buffer_chunks', {
+    description: 'Current active chat replay buffer chunks grouped by runtime kind.',
+  })
+  replayBufferGauge.addCallback((result) => {
+    for (const [runtimeKind, count] of Object.entries(chatRuntimeSnapshot?.replayBufferChunksByRuntimeKind ?? {})) {
+      result.observe(count, { runtime_kind: runtimeKind })
+    }
+  })
 
-const ptyCpuGauge = meter.createObservableGauge('cradle_pty_cpu_percent', {
-  description: 'Terminal process tree CPU percent grouped by terminal role.',
-})
+  const replayBufferDeltaGauge = meter.createObservableGauge('cradle_chat_replay_buffer_deltas', {
+    description: 'Current active chat replay buffer delta counts grouped by runtime kind and delta kind.',
+  })
+  replayBufferDeltaGauge.addCallback((result) => {
+    for (const [runtimeKind, count] of Object.entries(chatRuntimeSnapshot?.replayTextDeltasByRuntimeKind ?? {})) {
+      result.observe(count, { runtime_kind: runtimeKind, kind: 'text' })
+    }
+    for (const [runtimeKind, count] of Object.entries(chatRuntimeSnapshot?.replayReasoningDeltasByRuntimeKind ?? {})) {
+      result.observe(count, { runtime_kind: runtimeKind, kind: 'reasoning' })
+    }
+    for (const [runtimeKind, count] of Object.entries(chatRuntimeSnapshot?.replayToolDeltasByRuntimeKind ?? {})) {
+      result.observe(count, { runtime_kind: runtimeKind, kind: 'tool' })
+    }
+  })
 
-const ptyDescendantGauge = meter.createObservableGauge('cradle_pty_descendants_total', {
-  description: 'Current terminal process descendants grouped by terminal role.',
-})
-ptyDescendantGauge.addCallback((result) => {
-  for (const [role, count] of Object.entries(ptySnapshot?.descendantCountByRole ?? {})) {
-    result.observe(count, { role })
-  }
-})
-ptyCpuGauge.addCallback((result) => {
-  for (const [role, cpuPercent] of Object.entries(ptySnapshot?.cpuPercentByRole ?? {})) {
-    result.observe(cpuPercent, { role })
-  }
-})
+  const providerHostsGauge = meter.createObservableGauge('cradle_provider_runtime_hosts_total', {
+    description: 'Current provider runtime host count grouped by runtime kind.',
+  })
+  providerHostsGauge.addCallback((result) => {
+    for (const [runtimeKind, count] of Object.entries(providerRuntimeSnapshot?.hostsByRuntimeKind ?? {})) {
+      result.observe(count, { runtime_kind: runtimeKind })
+    }
+  })
 
-const chronicleRssGauge = meter.createObservableGauge('cradle_chronicle_daemon_rss_bytes', {
-  description: 'Chronicle daemon process RSS in bytes.',
-})
+  const providerHostStateGauge = meter.createObservableGauge('cradle_provider_runtime_host_state_total', {
+    description: 'Provider runtime host state counts grouped by runtime kind.',
+  })
+  providerHostStateGauge.addCallback((result) => {
+    for (const [runtimeKind, count] of Object.entries(providerRuntimeSnapshot?.resourceHostsByRuntimeKind ?? {})) {
+      result.observe(count, { runtime_kind: runtimeKind, kind: 'has_resource' })
+    }
+    for (const [runtimeKind, count] of Object.entries(providerRuntimeSnapshot?.refCountsByRuntimeKind ?? {})) {
+      result.observe(count, { runtime_kind: runtimeKind, kind: 'ref_count' })
+    }
+    for (const [runtimeKind, count] of Object.entries(providerRuntimeSnapshot?.pinnedCountsByRuntimeKind ?? {})) {
+      result.observe(count, { runtime_kind: runtimeKind, kind: 'pinned_count' })
+    }
+  })
 
-const chronicleStateGauge = meter.createObservableGauge('cradle_chronicle_daemon_state', {
-  description: 'Chronicle daemon running state and CPU percent.',
-})
-chronicleStateGauge.addCallback((result) => {
-  if (!chronicleSnapshot) {
-    return
-  }
-  result.observe(chronicleSnapshot.running ? 1 : 0, { kind: 'running' })
-  if (chronicleSnapshot.cpuPercent !== null) {
-    result.observe(chronicleSnapshot.cpuPercent, { kind: 'cpu_percent' })
-  }
-})
-chronicleRssGauge.addCallback((result) => {
-  if (chronicleSnapshot?.rssMB !== null && chronicleSnapshot?.rssMB !== undefined) {
-    result.observe(chronicleSnapshot.rssMB * 1024 * 1024, { process: 'chronicle-daemon' })
-  }
-})
+  const ptyTerminalGauge = meter.createObservableGauge('cradle_pty_sessions_total', {
+    description: 'Current terminal session count grouped by terminal role.',
+  })
+  ptyTerminalGauge.addCallback((result) => {
+    for (const [role, count] of Object.entries(ptySnapshot?.terminalCountByRole ?? {})) {
+      result.observe(count, { role })
+    }
+  })
 
-const observabilityQueueGauge = meter.createObservableGauge('cradle_observability_queue_depth', {
-  description: 'Current pending observability event queue depth.',
-})
+  const ptyRssGauge = meter.createObservableGauge('cradle_pty_rss_bytes', {
+    description: 'Terminal process tree RSS grouped by terminal role.',
+  })
+  ptyRssGauge.addCallback((result) => {
+    for (const [role, rssMB] of Object.entries(ptySnapshot?.rssMBByRole ?? {})) {
+      result.observe(rssMB * 1024 * 1024, { role })
+    }
+  })
 
-const observabilityStateGauge = meter.createObservableGauge('cradle_observability_state_total', {
-  description: 'Current observability queue and recent event state.',
-})
-observabilityStateGauge.addCallback((result) => {
-  if (!observabilitySnapshot) {
-    return
-  }
-  result.observe(observabilitySnapshot.recentEvents, { kind: 'recent_events' })
-  result.observe(observabilitySnapshot.droppedEvents, { kind: 'dropped_events' })
-  result.observe(observabilitySnapshot.pendingFlush ? 1 : 0, { kind: 'pending_flush' })
-})
+  const ptyCpuGauge = meter.createObservableGauge('cradle_pty_cpu_percent', {
+    description: 'Terminal process tree CPU percent grouped by terminal role.',
+  })
+  ptyCpuGauge.addCallback((result) => {
+    for (const [role, cpuPercent] of Object.entries(ptySnapshot?.cpuPercentByRole ?? {})) {
+      result.observe(cpuPercent, { role })
+    }
+  })
 
-const desktopWindowGauge = meter.createObservableGauge('cradle_desktop_windows_total', {
-  description: 'Latest reported desktop BrowserWindow count.',
-})
-desktopWindowGauge.addCallback((result) => {
-  if (desktopSnapshot) {
-    result.observe(desktopSnapshot.windowCount)
-  }
-})
+  const ptyDescendantGauge = meter.createObservableGauge('cradle_pty_descendants_total', {
+    description: 'Current terminal process descendants grouped by terminal role.',
+  })
+  ptyDescendantGauge.addCallback((result) => {
+    for (const [role, count] of Object.entries(ptySnapshot?.descendantCountByRole ?? {})) {
+      result.observe(count, { role })
+    }
+  })
 
-const desktopSampleAgeGauge = meter.createObservableGauge('cradle_desktop_sample_age_milliseconds', {
-  description: 'Age of latest desktop runtime sample in milliseconds.',
-})
-desktopSampleAgeGauge.addCallback((result) => {
-  if (desktopSnapshot?.latestSampleAgeMs !== null && desktopSnapshot?.latestSampleAgeMs !== undefined) {
-    result.observe(desktopSnapshot.latestSampleAgeMs)
-  }
-})
+  const chronicleRssGauge = meter.createObservableGauge('cradle_chronicle_daemon_rss_bytes', {
+    description: 'Chronicle daemon process RSS in bytes.',
+  })
+  chronicleRssGauge.addCallback((result) => {
+    if (chronicleSnapshot?.rssMB !== null && chronicleSnapshot?.rssMB !== undefined) {
+      result.observe(chronicleSnapshot.rssMB * 1024 * 1024, { process: 'chronicle-daemon' })
+    }
+  })
 
-const desktopProcessGauge = meter.createObservableGauge('cradle_desktop_processes_total', {
-  description: 'Latest reported Electron process count grouped by process type.',
-})
-desktopProcessGauge.addCallback((result) => {
-  for (const [type, count] of Object.entries(desktopSnapshot?.appProcessCountByType ?? {})) {
-    result.observe(count, { type })
-  }
-})
+  const chronicleStateGauge = meter.createObservableGauge('cradle_chronicle_daemon_state', {
+    description: 'Chronicle daemon running state and CPU percent.',
+  })
+  chronicleStateGauge.addCallback((result) => {
+    if (!chronicleSnapshot) {
+      return
+    }
+    result.observe(chronicleSnapshot.running ? 1 : 0, { kind: 'running' })
+    if (chronicleSnapshot.cpuPercent !== null) {
+      result.observe(chronicleSnapshot.cpuPercent, { kind: 'cpu_percent' })
+    }
+  })
 
-const desktopMemoryGauge = meter.createObservableGauge('cradle_desktop_memory_bytes', {
-  description: 'Latest reported Electron process memory grouped by process type and memory kind.',
-})
-desktopMemoryGauge.addCallback((result) => {
-  for (const [kind, bytes] of Object.entries(desktopSnapshot?.mainMemoryBytesByKind ?? {})) {
-    result.observe(bytes, { process: 'main', kind })
-  }
-  for (const [type, bytes] of Object.entries(desktopSnapshot?.appProcessMemoryBytesByType ?? {})) {
-    result.observe(bytes, { process: type, kind: 'working_set' })
-  }
-})
-observabilityQueueGauge.addCallback((result) => {
-  if (observabilitySnapshot) {
-    result.observe(observabilitySnapshot.queueDepth)
-  }
-})
+  const observabilityQueueGauge = meter.createObservableGauge('cradle_observability_queue_depth', {
+    description: 'Current pending observability event queue depth.',
+  })
+  observabilityQueueGauge.addCallback((result) => {
+    if (observabilitySnapshot) {
+      result.observe(observabilitySnapshot.queueDepth)
+    }
+  })
+
+  const observabilityStateGauge = meter.createObservableGauge('cradle_observability_state_total', {
+    description: 'Current observability queue and recent event state.',
+  })
+  observabilityStateGauge.addCallback((result) => {
+    if (!observabilitySnapshot) {
+      return
+    }
+    result.observe(observabilitySnapshot.recentEvents, { kind: 'recent_events' })
+    result.observe(observabilitySnapshot.droppedEvents, { kind: 'dropped_events' })
+    result.observe(observabilitySnapshot.pendingFlush ? 1 : 0, { kind: 'pending_flush' })
+  })
+
+  const desktopWindowGauge = meter.createObservableGauge('cradle_desktop_windows_total', {
+    description: 'Latest reported desktop BrowserWindow count.',
+  })
+  desktopWindowGauge.addCallback((result) => {
+    if (desktopSnapshot) {
+      result.observe(desktopSnapshot.windowCount)
+    }
+  })
+
+  const desktopSampleAgeGauge = meter.createObservableGauge('cradle_desktop_sample_age_milliseconds', {
+    description: 'Age of latest desktop runtime sample in milliseconds.',
+  })
+  desktopSampleAgeGauge.addCallback((result) => {
+    if (desktopSnapshot?.latestSampleAgeMs !== null && desktopSnapshot?.latestSampleAgeMs !== undefined) {
+      result.observe(desktopSnapshot.latestSampleAgeMs)
+    }
+  })
+
+  const desktopProcessGauge = meter.createObservableGauge('cradle_desktop_processes_total', {
+    description: 'Latest reported Electron process count grouped by process type.',
+  })
+  desktopProcessGauge.addCallback((result) => {
+    for (const [type, count] of Object.entries(desktopSnapshot?.appProcessCountByType ?? {})) {
+      result.observe(count, { type })
+    }
+  })
+
+  const desktopMemoryGauge = meter.createObservableGauge('cradle_desktop_memory_bytes', {
+    description: 'Latest reported Electron process memory grouped by process type and memory kind.',
+  })
+  desktopMemoryGauge.addCallback((result) => {
+    for (const [kind, bytes] of Object.entries(desktopSnapshot?.mainMemoryBytesByKind ?? {})) {
+      result.observe(bytes, { process: 'main', kind })
+    }
+    for (const [type, bytes] of Object.entries(desktopSnapshot?.appProcessMemoryBytesByType ?? {})) {
+      result.observe(bytes, { process: type, kind: 'working_set' })
+    }
+  })
+
+  const desktopRendererMemoryGauge = meter.createObservableGauge('cradle_desktop_renderer_memory_bytes', {
+    description: 'Latest reported Electron renderer JS heap memory grouped by memory kind.',
+  })
+  desktopRendererMemoryGauge.addCallback((result) => {
+    for (const [kind, bytes] of Object.entries(desktopSnapshot?.rendererMemoryBytesByKind ?? {})) {
+      result.observe(bytes, { kind })
+    }
+  })
+
+  const desktopRendererChatStoreGauge = meter.createObservableGauge('cradle_desktop_renderer_chat_store_total', {
+    description: 'Latest reported renderer chat store telemetry totals grouped by kind.',
+  })
+  desktopRendererChatStoreGauge.addCallback((result) => {
+    for (const [kind, count] of Object.entries(desktopSnapshot?.rendererChatStoreTotals ?? {})) {
+      result.observe(count, { kind })
+    }
+  })
+}
 
 export function updateServerProcessMetrics(snapshot: ServerProcessMetricSnapshot): void {
   serverProcessSnapshot = snapshot
@@ -317,6 +348,6 @@ export function updateDesktopMetrics(snapshot: DesktopMetricSnapshot): void {
 
 export function recordObservabilityDroppedEvents(count: number): void {
   if (count > 0) {
-    droppedEventsCounter.add(count)
+    recordDroppedEvents?.(count)
   }
 }

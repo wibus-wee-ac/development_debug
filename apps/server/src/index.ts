@@ -74,10 +74,11 @@ async function bootstrap() {
   initializeLogger()
   initializeTelemetry()
   installProcessFatalHandlers()
-  const [{ createServerApp }, { loadServerConfig }, { warmupModelsDevCache }] = await Promise.all([
+  const [{ createServerApp }, { loadServerConfig }, { warmupModelsDevCache }, { recoverPersistedRunProjections }] = await Promise.all([
     import('./app'),
     import('./config/server-config'),
     import('./modules/model-registry/model-info-registry'),
+    import('./modules/chat-runtime/service'),
   ])
 
   const config = loadServerConfig()
@@ -89,9 +90,9 @@ async function bootstrap() {
   app.listen({
     port: config.port,
     hostname: config.host,
-    reusePort: true,
   }, (server) => {
     runtimeServer = server
+    recoverPersistedRunProjections()
   })
 
   // Pre-warm models.dev cache so first model list request is fast
@@ -104,7 +105,12 @@ async function bootstrap() {
     if (shutdownStarted) { return }
     shutdownStarted = true
 
-    logger.info(`received ${signal}, shutting down gracefully...`)
+    logger.info('received process signal, shutting down gracefully...', {
+      signal,
+      pid: process.pid,
+      ppid: process.ppid,
+      desktopPid: process.env.CRADLE_DESKTOP_PID ?? null,
+    })
     try {
       if (runtimeServer) {
         await runtimeServer.stop()

@@ -78,4 +78,35 @@ export const ProviderTargetsModel = {
       capabilities: modelCapabilitiesSchema,
     }),
   ),
+
+  chatgptCredentialLoginStartBody: t.Object({
+    label: t.Optional(nullableString),
+  }, { additionalProperties: false }),
+
+  chatgptCredentialLoginStartResponse: t.Object({
+    loginId: t.String({ minLength: 1 }),
+    verificationUrl: t.String({ minLength: 1 }),
+    userCode: t.String({ minLength: 1 }),
+    expiresAt: t.Number(),
+  }, { additionalProperties: false }),
+
+  chatgptCredentialLoginStatus: t.Object({
+    loginId: t.String({ minLength: 1 }),
+    state: t.Union([
+      t.Literal('pending'),
+      t.Literal('completed'),
+      t.Literal('failed'),
+      t.Literal('cancelled'),
+    ]),
+    startedAt: t.Number(),
+    completedAt: t.Union([t.Number(), t.Null()]),
+    credentialRef: nullableString,
+    email: nullableString,
+    planType: nullableString,
+    error: nullableString,
+  }, { additionalProperties: false }),
+
+  chatgptCredentialLoginParams: t.Object({
+    loginId: t.String({ minLength: 1 }),
+  }),
 }

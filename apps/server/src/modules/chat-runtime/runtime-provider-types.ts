@@ -405,6 +405,7 @@ export interface RuntimeCrewUiSlotState {
   completedCount: number
   failedCount: number
   recentItems: RuntimeToolActivityItem[]
+  agents: RuntimeCrewAgentItem[]
   collaborationModeCount: number
   collaborationModes: RuntimeCrewCollaborationMode[]
   calls: RuntimeCrewCallItem[]

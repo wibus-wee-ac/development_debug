@@ -98,6 +98,7 @@ export interface DesktopRuntimeSample {
   main: Record<string, unknown>
   appMetrics: Array<Record<string, unknown>>
   windows: Array<Record<string, unknown>>
+  diagnostics?: Record<string, unknown>
 }
 
 // ---------------------------------------------------------------------------

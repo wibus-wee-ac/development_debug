@@ -466,6 +466,7 @@ const runtimeCrewUiSlotStateSchema = t.Object({
     startedAt: t.Union([t.Number(), t.Null()]),
     completedAt: t.Union([t.Number(), t.Null()]),
   })),
+  agents: t.Array(runtimeCrewAgentItemSchema),
   collaborationModeCount: t.Number(),
   collaborationModes: t.Array(runtimeCrewCollaborationModeSchema),
   calls: t.Array(runtimeCrewCallItemSchema),

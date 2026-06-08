@@ -80,6 +80,7 @@ const RuntimeSampleBodySchema = z.object({
   main: z.record(z.string(), z.unknown()),
   appMetrics: z.array(z.record(z.string(), z.unknown())),
   windows: z.array(z.record(z.string(), z.unknown())),
+  diagnostics: z.record(z.string(), z.unknown()).optional(),
 }).passthrough()
 
 const HeapSnapshotBodySchema = z.object({

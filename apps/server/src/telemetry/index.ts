@@ -6,6 +6,7 @@ import { getTelemetryConfig } from './config'
 import { createMetricReaders, createTraceSpanProcessors } from './exporters'
 import { createTelemetryInstrumentations } from './instrumentation'
 import { bindLangfuseTracerProvider } from './langfuse'
+import { initializeCradleMetrics } from './metrics'
 import { createTelemetryResource } from './resource'
 import { startRuntimeMetricSampler, stopRuntimeMetricSampler } from './runtime-sampler'
 
@@ -43,6 +44,7 @@ export function initializeTelemetry(): void {
   bindLangfuseTracerProvider(trace.getTracerProvider())
 
   if (config.metricsEnabled) {
+    initializeCradleMetrics()
     hostMetrics = new HostMetrics()
     hostMetrics.start()
     startRuntimeMetricSampler(config)

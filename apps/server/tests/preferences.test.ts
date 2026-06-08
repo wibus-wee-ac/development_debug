@@ -2,13 +2,20 @@ import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
 import { createServerApp } from '../src/app'
 import { shutdownInfra } from '../src/infra'
+import { setCodexChatgptCredentialLoginFetchForTests } from '../src/modules/chat-runtime-providers/codex/account-service'
+import { readSecret } from '../src/modules/secrets/service'
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
+}
+
+function makeJwt(payload: Record<string, unknown>): string {
+  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
+  return `${encode({ alg: 'none', typ: 'JWT' })}.${encode(payload)}.`
 }
 
 describe('preferences capability', () => {
@@ -195,6 +202,126 @@ describe('preferences capability', () => {
       }
       else {
         process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
+  it('creates independent ChatGPT auth credentials for provider targets', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousCredentialSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'test-secret'
+    const accessToken = makeJwt({
+      email: 'user@example.com',
+      'https://api.openai.com/auth': {
+        chatgpt_account_id: 'account-1',
+        chatgpt_plan_type: 'plus',
+      },
+    })
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0], init?: Parameters<typeof fetch>[1]) => {
+      const url = String(input)
+      if (url === 'https://auth.openai.com/api/accounts/deviceauth/usercode') {
+        expect(init?.headers).toEqual(expect.objectContaining({ 'Content-Type': 'application/json' }))
+        expect(JSON.parse(String(init?.body))).toEqual({
+          client_id: expect.any(String),
+        })
+        return new Response(JSON.stringify({
+          device_auth_id: 'device-auth-1',
+          user_code: 'ABCD-EFGH',
+          expires_at: new Date(Date.now() + 600_000).toISOString(),
+          interval: '1',
+        }))
+      }
+      if (url === 'https://auth.openai.com/api/accounts/deviceauth/token') {
+        expect(init?.headers).toEqual(expect.objectContaining({ 'Content-Type': 'application/json' }))
+        expect(JSON.parse(String(init?.body))).toEqual({
+          client_id: expect.any(String),
+          device_auth_id: 'device-auth-1',
+          user_code: 'ABCD-EFGH',
+        })
+        return new Response(JSON.stringify({
+          authorization_code: 'authorization-code-1',
+          code_verifier: 'code-verifier-1',
+        }))
+      }
+      if (url === 'https://auth.openai.com/oauth/token') {
+        const body = String(init?.body)
+        expect(body).toContain('grant_type=authorization_code')
+        expect(body).toContain('code=authorization-code-1')
+        expect(body).toContain('redirect_uri=https%3A%2F%2Fauth.openai.com%2Fdeviceauth%2Fcallback')
+        expect(body).toContain('code_verifier=code-verifier-1')
+        return new Response(JSON.stringify({
+          access_token: accessToken,
+          refresh_token: 'refresh-token-1',
+        }))
+      }
+      return new Response(JSON.stringify({ error: 'unexpected_url', url }), { status: 500 })
+    }) as typeof fetch
+    setCodexChatgptCredentialLoginFetchForTests(fetchMock)
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const loginRes = await app.handle(new Request('http://localhost/provider-targets/credentials/chatgpt/login', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ label: 'Work ChatGPT' }),
+      }))
+      expect(loginRes.status).toBe(200)
+      const login = await loginRes.json() as { loginId: string }
+      expect(login).toEqual(expect.objectContaining({
+        loginId: expect.any(String),
+        verificationUrl: 'https://auth.openai.com/codex/device',
+        userCode: 'ABCD-EFGH',
+        expiresAt: expect.any(Number),
+      }))
+
+      const pendingRes = await app.handle(new Request(`http://localhost/provider-targets/credentials/chatgpt/login/${login.loginId}`))
+      expect(pendingRes.status).toBe(200)
+      expect(await pendingRes.json()).toEqual(expect.objectContaining({
+        state: 'pending',
+        credentialRef: null,
+      }))
+
+      let credentialRef: string | null = null
+      await vi.waitFor(async () => {
+        const statusRes = await app!.handle(new Request(`http://localhost/provider-targets/credentials/chatgpt/login/${login.loginId}`))
+        expect(statusRes.status).toBe(200)
+        const status = await statusRes.json() as { state: string, credentialRef: string | null }
+        expect(status).toEqual(expect.objectContaining({
+          state: 'completed',
+          email: 'user@example.com',
+          credentialRef: expect.any(String),
+        }))
+        credentialRef = status.credentialRef
+      })
+
+      expect(credentialRef).toEqual(expect.any(String))
+      expect(existsSync(join(dataDir, 'preferences', 'codex.json'))).toBe(false)
+      expect(JSON.parse(readSecret(credentialRef!))).toEqual(expect.objectContaining({
+        kind: 'chatgpt-auth',
+        accessToken,
+        refreshToken: 'refresh-token-1',
+        chatgptAccountId: 'account-1',
+        chatgptPlanType: 'plus',
+      }))
+    }
+    finally {
+      setCodexChatgptCredentialLoginFetchForTests(null)
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousCredentialSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousCredentialSecret
       }
     }
   })

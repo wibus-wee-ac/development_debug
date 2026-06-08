@@ -40,6 +40,7 @@ import { workspace } from './modules/workspace'
 
 interface CreateServerAppOptions {
   startBackgroundTasks?: boolean
+  recoverPersistedRunsOnCreate?: boolean
 }
 
 interface CreateServerContractAppOptions {
@@ -134,7 +135,10 @@ export async function createServerContractApp(options: CreateServerContractAppOp
 }
 
 export async function createServerApp(options: CreateServerAppOptions = {}) {
-  const { startBackgroundTasks = process.env.NODE_ENV !== 'test' } = options
+  const {
+    recoverPersistedRunsOnCreate = false,
+    startBackgroundTasks = process.env.NODE_ENV !== 'test',
+  } = options
   const [
     { shutdownInfra },
     { flushAllActiveRunSnapshots, recoverPersistedRunProjections },
@@ -158,7 +162,9 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     import('./modules/provider-runtime/side-conversation-registry'),
     import('./plugins'),
   ])
-  recoverPersistedRunProjections()
+  if (recoverPersistedRunsOnCreate) {
+    recoverPersistedRunProjections()
+  }
 
   const app = await createServerContractApp({ includeRuntimeHttpPlugins: true })
 

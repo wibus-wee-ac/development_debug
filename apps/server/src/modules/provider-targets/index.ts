@@ -1,5 +1,10 @@
 import { Elysia, t } from 'elysia'
 
+import {
+  cancelCodexChatgptCredentialLogin,
+  readCodexChatgptCredentialLoginStatus,
+  startCodexChatgptCredentialLogin,
+} from '../chat-runtime-providers/codex/account-service'
 import { ProviderTargetsModel } from './model'
 import * as ProviderTargets from './service'
 
@@ -50,6 +55,40 @@ export const providerTargets = new Elysia({
         summary: 'Delete provider target',
       },
       params: ProviderTargetsModel.idParams,
+      response: { 200: t.Object({ ok: t.Literal(true) }) },
+    },
+  )
+  .post(
+    '/credentials/chatgpt/login',
+    ({ body }) => startCodexChatgptCredentialLogin({ label: body.label }),
+    {
+      detail: {
+        summary: 'Start ChatGPT credential login',
+        description: 'Start a Cradle-owned ChatGPT device auth flow and create an encrypted credential when it completes.',
+      },
+      body: ProviderTargetsModel.chatgptCredentialLoginStartBody,
+      response: { 200: ProviderTargetsModel.chatgptCredentialLoginStartResponse },
+    },
+  )
+  .get(
+    '/credentials/chatgpt/login/:loginId',
+    ({ params }) => readCodexChatgptCredentialLoginStatus(params.loginId),
+    {
+      detail: {
+        summary: 'Read ChatGPT credential login status',
+      },
+      params: ProviderTargetsModel.chatgptCredentialLoginParams,
+      response: { 200: ProviderTargetsModel.chatgptCredentialLoginStatus },
+    },
+  )
+  .post(
+    '/credentials/chatgpt/login/:loginId/cancel',
+    ({ params }) => cancelCodexChatgptCredentialLogin(params.loginId),
+    {
+      detail: {
+        summary: 'Cancel ChatGPT credential login',
+      },
+      params: ProviderTargetsModel.chatgptCredentialLoginParams,
       response: { 200: t.Object({ ok: t.Literal(true) }) },
     },
   )

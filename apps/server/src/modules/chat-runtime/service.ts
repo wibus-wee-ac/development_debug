@@ -303,6 +303,7 @@ interface ActiveRun {
 interface ProviderThreadStreamState {
   sessionId: string
   threadId: string
+  startedTurnIds: Set<string>
   chunks: UIMessageChunk[]
   terminal: boolean
 }
@@ -3254,7 +3255,7 @@ export async function createRun(input: {
   queueItemId?: string
   internalContinuation?: 'codexGoal'
 }) {
-  releaseTerminalPersistedActiveRunForSession(input.sessionId)
+  failOrphanedPersistedStreamingSessionIfIdle(input.sessionId)
   if (activeRunIdsBySession.has(input.sessionId) || pendingRunSessions.has(input.sessionId)) {
     throw new AppError({
       code: 'chat_run_in_progress',
@@ -4389,6 +4390,7 @@ export function listSessionQueueItems(sessionId: string): ChatSessionQueueItemDt
 export async function enqueueSessionQueueItem(
   input: EnqueueSessionQueueItemInput,
 ): Promise<ChatSessionQueueItemDto> {
+  failOrphanedPersistedStreamingSessionIfIdle(input.sessionId)
   const context = getSessionRunContext(input.sessionId, { providerTargetId: input.providerTargetId })
   if (!context) {
     throw new AppError({
@@ -4466,6 +4468,7 @@ export async function submitSessionSteerTurn(
     })
   }
 
+  failOrphanedPersistedStreamingSessionIfIdle(input.sessionId)
   const runId = activeRunIdsBySession.get(input.sessionId)
   if (!runId) {
     throw new AppError({
@@ -5543,12 +5546,25 @@ function publishUIMessageChunk(activeRun: ActiveRun, chunk: UIMessageChunk, term
 }
 
 function publishActiveProviderThreadEvent(activeRun: ActiveRun, event: ProviderThreadEvent): void {
+  if (event.providerTurnId) {
+    publishProviderThreadChunk({
+      sessionId: activeRun.sessionId,
+      threadId: event.providerThreadId,
+      chunk: {
+        type: 'start',
+        messageId: providerThreadAssistantMessageId(event.providerThreadId, event.providerTurnId, 0),
+      },
+      terminal: false,
+      providerTurnId: event.providerTurnId,
+    })
+  }
   for (const chunk of event.chunks) {
     publishProviderThreadChunk({
       sessionId: activeRun.sessionId,
       threadId: event.providerThreadId,
       chunk,
       terminal: isTerminalUIMessageChunk(chunk),
+      providerTurnId: event.providerTurnId,
     })
   }
 }
@@ -5558,15 +5574,24 @@ function publishProviderThreadChunk(input: {
   threadId: string
   chunk: UIMessageChunk
   terminal: boolean
+  providerTurnId: string | null
 }): void {
   const key = providerThreadStreamKey(input.sessionId, input.threadId)
   const state = providerThreadStreams.get(key) ?? {
     sessionId: input.sessionId,
     threadId: input.threadId,
+    startedTurnIds: new Set<string>(),
     chunks: [],
     terminal: false,
   }
   providerThreadStreams.set(key, state)
+
+  if (input.chunk.type === 'start' && input.providerTurnId) {
+    if (state.startedTurnIds.has(input.providerTurnId)) {
+      return
+    }
+    state.startedTurnIds.add(input.providerTurnId)
+  }
 
   if (!state.terminal) {
     state.chunks.push(input.chunk)
@@ -5601,6 +5626,10 @@ function publishProviderThreadChunk(input: {
 
 function providerThreadStreamKey(sessionId: string, threadId: string): string {
   return `${sessionId}:${threadId}`
+}
+
+function providerThreadAssistantMessageId(threadId: string, turnId: string, assistantMessageIndex: number): string {
+  return `provider-thread:${threadId}:turn:${turnId}:assistant:${assistantMessageIndex}`
 }
 
 function providerThreadReplayChunkLimit(): number {
@@ -6473,6 +6502,13 @@ function releaseTerminalPersistedActiveRunForSession(sessionId: string): boolean
   }
   repairTerminalRunProjection(run)
   return true
+}
+
+function failOrphanedPersistedStreamingSessionIfIdle(sessionId: string): void {
+  releaseTerminalPersistedActiveRunForSession(sessionId)
+  if (!activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId)) {
+    failOrphanedPersistedStreamingSession(sessionId)
+  }
 }
 
 function releaseActiveRun(activeRun: ActiveRun): void {
