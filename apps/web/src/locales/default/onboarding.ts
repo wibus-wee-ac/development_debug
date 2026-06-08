@@ -6,23 +6,6 @@ export default {
   'nav.getStarted': 'Get started',
   'nav.stepOf': '{{current}} of {{total}}',
 
-  // First run welcome
-  'welcome.brand': 'Cradle',
-  'welcome.title': 'What type of work do you do?',
-  'welcome.subtitle': 'Customize Cradle to fit the way you work.',
-  'role.engineering': 'Engineering',
-  'role.product': 'Product',
-  'role.data': 'Data',
-  'role.design': 'Design',
-  'role.marketing': 'Marketing',
-  'role.operations': 'Operations',
-  'role.finance': 'Finance',
-  'role.student': 'Student',
-  'personalizedSuggestions.toggle': 'Enable personalized suggestions',
-  'personalizedSuggestions.title': 'Suggest personalized tasks',
-  'personalizedSuggestions.description':
-    'Cradle can suggest what to do next from your selected role and connected workspaces.',
-
   // Step 1 – Welcome
   'step.welcome.eyebrow': 'Welcome to Cradle',
   'step.welcome.headline': 'Your AI workspace, fully under your control',
