@@ -1,25 +1,22 @@
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef } from 'react'
 
 import type { KanbanIssue } from '~/features/kanban/types'
+import { cn } from '~/lib/cn'
 
 interface IssueTitleProps {
   issue: KanbanIssue
   onUpdate: (patch: { title: string }) => void
+  readOnly?: boolean
 }
 
-export function IssueTitle({ issue, onUpdate }: IssueTitleProps) {
-  const [editorKey, setEditorKey] = useState(0)
-
-  useEffect(() => {
-    setEditorKey(key => key + 1)
-  }, [issue.id, issue.title])
-
+export function IssueTitle({ issue, onUpdate, readOnly = false }: IssueTitleProps) {
   return (
     <IssueTitleEditor
-      key={`${issue.id}:${editorKey}`}
+      key={`${issue.id}:${issue.title}`}
       initialTitle={issue.title}
+      readOnly={readOnly}
       onCommit={(title) => {
-        if (title !== issue.title) {
+        if (!readOnly && title !== issue.title) {
           onUpdate({ title })
         }
       }}
@@ -29,26 +26,29 @@ export function IssueTitle({ issue, onUpdate }: IssueTitleProps) {
 
 function IssueTitleEditor({
   initialTitle,
+  readOnly,
   onCommit,
 }: {
   initialTitle: string
+  readOnly: boolean
   onCommit: (title: string) => void
 }) {
   const ref = useRef<HTMLTextAreaElement>(null)
 
-  const adjustHeight = () => {
-    if (ref.current) {
-      ref.current.style.height = '0'
-      const h = ref.current.scrollHeight
-      ref.current.style.height = `${h}px`
-    }
-  }
-
   useEffect(() => {
-    requestAnimationFrame(adjustHeight)
-  }, [adjustHeight])
+    requestAnimationFrame(() => {
+      if (ref.current) {
+        ref.current.style.height = '0'
+        const h = ref.current.scrollHeight
+        ref.current.style.height = `${h}px`
+      }
+    })
+  }, [])
 
   const commitTitleEdit = () => {
+    if (readOnly) {
+      return
+    }
     const trimmed = ref.current?.value.trim() ?? ''
     if (trimmed) {
       onCommit(trimmed)
@@ -61,7 +61,11 @@ function IssueTitleEditor({
         ref={ref}
         defaultValue={initialTitle}
         aria-label="Issue title"
+        readOnly={readOnly}
         onChange={(e) => {
+          if (readOnly) {
+            return
+          }
           const el = e.currentTarget
           el.style.height = '0'
           const h = el.scrollHeight
@@ -69,6 +73,9 @@ function IssueTitleEditor({
         }}
         onBlur={commitTitleEdit}
         onKeyDown={(e) => {
+          if (readOnly) {
+            return
+          }
           if (e.key === 'Enter') {
             e.preventDefault()
             e.currentTarget.blur()
@@ -77,7 +84,10 @@ function IssueTitleEditor({
         placeholder="Issue title"
         rows={1}
         data-testid="issue-title-input"
-        className="w-full resize-none overflow-hidden border-none bg-transparent text-2xl font-semibold text-foreground outline-none placeholder:text-muted-foreground/50"
+        className={cn(
+          'w-full resize-none overflow-hidden border-none bg-transparent text-2xl font-semibold text-foreground outline-none placeholder:text-muted-foreground/50',
+          readOnly && 'cursor-default',
+        )}
       />
     </div>
   )

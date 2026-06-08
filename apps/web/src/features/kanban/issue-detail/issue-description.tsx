@@ -3,12 +3,16 @@ import { z } from 'zod'
 
 import { getIssuesSearch, getSessionsByIdMessages } from '~/api-gen/sdk.gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
-import type { SmartMentionAttrs, SmartMentionItem, SmartMentionKind } from '~/components/editor/smart-mention-utils'
+import type {
+  SmartMentionAttrs,
+  SmartMentionItem,
+  SmartMentionKind,
+} from '~/components/editor/smart-mention-utils'
 import { useAgents } from '~/features/agent-runtime/use-agents'
+import type { KanbanBoard, KanbanIssue } from '~/features/kanban/types'
 import { useWorkspaceSessions } from '~/features/workspace/use-session'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
-import type { KanbanBoard, KanbanIssue } from '~/features/kanban/types'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
@@ -21,38 +25,56 @@ import { useAllBoards, useIssues, useMilestones, useStatuses } from '../use-kanb
 interface IssueDescriptionProps {
   issue: KanbanIssue
   onUpdate: (patch: { description: string | null }) => void
+  readOnly?: boolean
 }
 
-const SessionMessageListSchema = z.array(z.object({
-  id: z.string(),
-})).default([])
+const SessionMessageListSchema = z
+  .array(
+    z.object({
+      id: z.string(),
+    }),
+  )
+  .default([])
 
-const IssueSearchListSchema = z.array(z.object({
-  id: z.string(),
-  workspaceId: z.string(),
-  number: z.number(),
-  statusId: z.string().nullable(),
-  milestoneId: z.string().nullable(),
-  parentIssueId: z.string().nullable(),
-  title: z.string(),
-  description: z.string().nullable(),
-  priority: z.enum(['none', 'low', 'medium', 'high', 'urgent']),
-  labels: z.array(z.string()),
-  assigneeKind: z.string().nullable(),
-  assigneeId: z.string().nullable(),
-  dueDate: z.number().nullable(),
-  createdByKind: z.enum(['user', 'agent', 'provider-target', 'system']),
-  createdById: z.string(),
-  sourceChatSessionId: z.string().nullable(),
-  delegateAgentId: z.string().nullable(),
-  delegateAgentProfileId: z.string().nullable(),
-  contextRefs: z.string(),
-  order: z.number(),
-  createdAt: z.number(),
-  updatedAt: z.number(),
-}).passthrough()).default([])
+const IssueSearchListSchema = z
+  .array(
+    z
+      .object({
+        id: z.string(),
+        workspaceId: z.string(),
+        number: z.number(),
+        statusId: z.string().nullable(),
+        milestoneId: z.string().nullable(),
+        parentIssueId: z.string().nullable(),
+        title: z.string(),
+        description: z.string().nullable(),
+        priority: z.enum(['none', 'low', 'medium', 'high', 'urgent']),
+        labels: z.array(z.string()),
+        assigneeKind: z.string().nullable(),
+        assigneeId: z.string().nullable(),
+        dueDate: z.number().nullable(),
+        createdByKind: z.enum(['user', 'agent', 'provider-target', 'system']),
+        createdById: z.string(),
+        sourceChatSessionId: z.string().nullable(),
+        delegateAgentId: z.string().nullable(),
+        delegateAgentProfileId: z.string().nullable(),
+        contextRefs: z.string(),
+        order: z.number(),
+        createdAt: z.number(),
+        updatedAt: z.number(),
+      })
+      .passthrough(),
+  )
+  .default([])
 
-const MENTION_KIND_ORDER: SmartMentionKind[] = ['issue', 'session', 'workspace', 'agent', 'milestone', 'file']
+const MENTION_KIND_ORDER: SmartMentionKind[] = [
+  'issue',
+  'session',
+  'workspace',
+  'agent',
+  'milestone',
+  'file',
+]
 
 const MENTION_KIND_PREFIX: Record<string, SmartMentionKind> = {
   issue: 'issue',
@@ -94,7 +116,9 @@ function itemMatches(item: SmartMentionItem, query: string) {
     item.title ?? '',
     item.detail ?? '',
     item.searchText ?? '',
-  ].join(' ').toLowerCase()
+  ]
+    .join(' ')
+    .toLowerCase()
 
   return searchText.includes(parsed.text)
 }
@@ -134,14 +158,17 @@ function balancedItems(items: SmartMentionItem[], query: string, limit: number) 
   return selected
 }
 
-function getFirstBoardForWorkspace(boards: KanbanBoard[] | undefined, workspaceId: string | null | undefined) {
+function getFirstBoardForWorkspace(
+  boards: KanbanBoard[] | undefined,
+  workspaceId: string | null | undefined,
+) {
   if (!workspaceId) {
     return null
   }
   return boards?.find(board => board.workspaceId === workspaceId) ?? null
 }
 
-export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
+export function IssueDescription({ issue, onUpdate, readOnly = false }: IssueDescriptionProps) {
   const { openTab } = useCradleNavigation()
   const openWorkspaceFileTab = useBrowserPanelStore(state => state.openWorkspaceFileTab)
   const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
@@ -195,37 +222,44 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
       }
     })
 
-    const workspaceItems = workspaces.map((workspace): SmartMentionItem => ({
-      kind: 'workspace',
-      id: workspace.id,
-      label: workspace.name,
-      title: workspace.name,
-      detail: workspace.path,
-      workspaceId: workspace.id,
-      searchText: `${workspace.identifier} ${workspace.path}`,
-    }))
+    const workspaceItems = workspaces.map(
+      (workspace): SmartMentionItem => ({
+        kind: 'workspace',
+        id: workspace.id,
+        label: workspace.name,
+        title: workspace.name,
+        detail: workspace.path,
+        workspaceId: workspace.id,
+        searchText: `${workspace.identifier} ${workspace.path}`,
+      }),
+    )
 
-    const agentItems = agents.map((agent): SmartMentionItem => ({
-      kind: 'agent',
-      id: agent.id,
-      label: agent.name,
-      title: agent.name,
-      detail: agent.enabled ? 'Enabled' : 'Disabled',
-      searchText: `${agent.description ?? ''} ${agent.runtimeKind}`,
-    }))
+    const agentItems = agents.map(
+      (agent): SmartMentionItem => ({
+        kind: 'agent',
+        id: agent.id,
+        label: agent.name,
+        title: agent.name,
+        detail: agent.enabled ? 'Enabled' : 'Disabled',
+        searchText: `${agent.description ?? ''} ${agent.runtimeKind}`,
+      }),
+    )
 
     const completedStatusIds = new Set(
-      statuses
-        .filter(status => status.category === 'completed')
-        .map(status => status.id),
+      statuses.filter(status => status.category === 'completed').map(status => status.id),
     )
 
     const milestoneItems = milestones.map((milestone): SmartMentionItem => {
-      const milestoneIssues = workspaceIssues.filter(candidate => candidate.milestoneId === milestone.id)
-      const completedCount = milestoneIssues.filter(candidate => candidate.statusId && completedStatusIds.has(candidate.statusId)).length
-      const progress = milestoneIssues.length > 0
-        ? `${completedCount}/${milestoneIssues.length} completed`
-        : 'No issues'
+      const milestoneIssues = workspaceIssues.filter(
+        candidate => candidate.milestoneId === milestone.id,
+      )
+      const completedCount = milestoneIssues.filter(
+        candidate => candidate.statusId && completedStatusIds.has(candidate.statusId),
+      ).length
+      const progress
+        = milestoneIssues.length > 0
+          ? `${completedCount}/${milestoneIssues.length} completed`
+          : 'No issues'
       return {
         kind: 'milestone',
         id: milestone.id,
@@ -249,13 +283,7 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
       searchText: `${currentWorkspace?.identifier ?? ''} ${issue.description ?? ''}`,
     }
 
-    return [
-      currentIssueItem,
-      ...sessionItems,
-      ...workspaceItems,
-      ...agentItems,
-      ...milestoneItems,
-    ]
+    return [currentIssueItem, ...sessionItems, ...workspaceItems, ...agentItems, ...milestoneItems]
   })()
 
   const getMentionItems = async (query: string): Promise<SmartMentionItem[]> => {
@@ -270,18 +298,24 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
     let fileItems: SmartMentionItem[] = []
     try {
       if (parsed.kind === 'file' || (!parsed.kind && parsed.text)) {
-        const files = await searchWorkspaceFiles({ workspaceId: issue.workspaceId, query: parsed.text, limit: 8 })
+        const files = await searchWorkspaceFiles({
+          workspaceId: issue.workspaceId,
+          query: parsed.text,
+          limit: 8,
+        })
         fileItems = files
           .filter(file => file.type === 'file')
-          .map((file): SmartMentionItem => ({
-            kind: 'file',
-            id: file.path,
-            label: file.name,
-            title: file.path,
-            detail: file.path,
-            workspaceId: issue.workspaceId,
-            searchText: file.path,
-          }))
+          .map(
+            (file): SmartMentionItem => ({
+              kind: 'file',
+              id: file.path,
+              label: file.name,
+              title: file.path,
+              detail: file.path,
+              workspaceId: issue.workspaceId,
+              searchText: file.path,
+            }),
+          )
       }
 
       if (parsed.kind && parsed.kind !== 'issue') {
@@ -303,7 +337,7 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
         }
       })
     }
-    catch (error) {
+ catch (error) {
       console.error('[IssueDescription] failed to search issue mentions:', error)
     }
 
@@ -349,9 +383,10 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
 
     if (attrs.kind === 'agent') {
       const tabStore = useCradleTabStore.getState()
-      const activeTabId = tabStore.activeTabId && tabStore.tabs.some(tab => tab.id === tabStore.activeTabId)
-        ? tabStore.activeTabId
-        : tabStore.openTab('home', {}, { pinned: true })
+      const activeTabId
+        = tabStore.activeTabId && tabStore.tabs.some(tab => tab.id === tabStore.activeTabId)
+          ? tabStore.activeTabId
+          : tabStore.openTab('home', {}, { pinned: true })
       setSettingsSection('agents')
       setAgentFocusTarget({ id: attrs.id })
       openSettings(activeTabId)
@@ -366,20 +401,21 @@ export function IssueDescription({ issue, onUpdate }: IssueDescriptionProps) {
 
   return (
     <div data-testid="issue-description-editor">
-    <MarkdownEditor
-      content={issue.description ?? ''}
-      documentId={issue.id}
-      onSave={(md) => {
-        if (md !== (issue.description ?? '')) {
-          onUpdate({ description: md || null })
-        }
-      }}
-      placeholder="Add description..."
-      smartMentions={{
-        getItems: getMentionItems,
-        onOpen: handleMentionOpen,
-      }}
-    />
+      <MarkdownEditor
+        content={issue.description ?? ''}
+        documentId={issue.id}
+        onSave={(md) => {
+          if (!readOnly && md !== (issue.description ?? '')) {
+            onUpdate({ description: md || null })
+          }
+        }}
+        readonly={readOnly}
+        placeholder="Add description..."
+        smartMentions={{
+          getItems: getMentionItems,
+          onOpen: handleMentionOpen,
+        }}
+      />
     </div>
   )
 }

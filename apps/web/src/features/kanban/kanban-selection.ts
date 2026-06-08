@@ -1,4 +1,4 @@
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
+import type { KanbanBoardIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 
 import type { ViewConfig } from './use-view-config'
 
@@ -9,34 +9,25 @@ interface IssueGroupDef {
 }
 
 export function orderedIssuesForKanbanView(
-  issues: KanbanIssue[],
+  issues: KanbanBoardIssue[],
   statuses: KanbanStatus[],
   milestones: KanbanMilestone[],
   config: Pick<ViewConfig, 'groupBy' | 'showEmptyGroups'>,
-): KanbanIssue[] {
+): KanbanBoardIssue[] {
   const groups: IssueGroupDef[] = (() => {
     if (config.groupBy === 'status') {
       return statuses.map(status => ({ id: status.id }))
     }
     if (config.groupBy === 'priority') {
-      return [
-        { id: 'urgent' },
-        { id: 'high' },
-        { id: 'medium' },
-        { id: 'low' },
-        { id: 'none' },
-      ]
+      return [{ id: 'urgent' }, { id: 'high' }, { id: 'medium' }, { id: 'low' }, { id: 'none' }]
     }
     if (config.groupBy === 'milestone') {
-      return [
-        ...milestones.map(milestone => ({ id: milestone.id })),
-        { id: '__none__' },
-      ]
+      return [...milestones.map(milestone => ({ id: milestone.id })), { id: '__none__' }]
     }
     return statuses.map(status => ({ id: status.id }))
   })()
 
-  const groupedIssues = new Map<string, KanbanIssue[]>()
+  const groupedIssues = new Map<string, KanbanBoardIssue[]>()
   for (const group of groups) {
     groupedIssues.set(group.id, [])
   }
@@ -46,13 +37,13 @@ export function orderedIssuesForKanbanView(
     if (config.groupBy === 'status') {
       groupId = issue.statusId ?? ''
     }
-    else if (config.groupBy === 'priority') {
+ else if (config.groupBy === 'priority') {
       groupId = issue.priority
     }
-    else if (config.groupBy === 'milestone') {
+ else if (config.groupBy === 'milestone') {
       groupId = issue.milestoneId ?? '__none__'
     }
-    else {
+ else {
       groupId = issue.statusId ?? ''
     }
 
@@ -60,7 +51,7 @@ export function orderedIssuesForKanbanView(
     if (groupIssues) {
       groupIssues.push(issue)
     }
-    else {
+ else {
       groupedIssues.set(groupId, [issue])
     }
   }
@@ -69,7 +60,7 @@ export function orderedIssuesForKanbanView(
     ? groups
     : groups.filter(group => (groupedIssues.get(group.id)?.length ?? 0) > 0)
 
-  const orderedIssues: KanbanIssue[] = []
+  const orderedIssues: KanbanBoardIssue[] = []
   for (const group of visibleGroups) {
     orderedIssues.push(...(groupedIssues.get(group.id) ?? []))
   }
@@ -83,7 +74,11 @@ export function orderedIssuesForKanbanView(
   return orderedIssues
 }
 
-export function issueRangeIds(issueIds: string[], anchorId: string | null, targetId: string): string[] {
+export function issueRangeIds(
+  issueIds: string[],
+  anchorId: string | null,
+  targetId: string,
+): string[] {
   const targetIndex = issueIds.indexOf(targetId)
   if (targetIndex < 0) {
     return []
@@ -104,7 +99,7 @@ export function toggleIssueSelection(selectedIds: Set<string>, issueId: string):
   if (next.has(issueId)) {
     next.delete(issueId)
   }
-  else {
+ else {
     next.add(issueId)
   }
   return next

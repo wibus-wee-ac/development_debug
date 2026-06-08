@@ -10,16 +10,17 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
-import type { KanbanIssue, KanbanStatus } from '~/features/kanban/types'
+import type { KanbanBoardIssue, KanbanStatus } from '~/features/kanban/types'
+import { isExternalKanbanIssue } from '~/features/kanban/types'
 
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
 import type { IssuePriority } from './use-kanban'
-import { useBulkUpdateIssues } from './use-kanban'
+import { useBulkUpdateIssues, useMoveExternalIssue } from './use-kanban'
 import type { StatusCategory } from './use-view-config'
 
 interface KanbanSelectionBarProps {
-  issues: KanbanIssue[]
+  issues: KanbanBoardIssue[]
   statuses: KanbanStatus[]
   onClear: () => void
 }
@@ -32,7 +33,10 @@ const priorityOptions: Array<{ value: IssuePriority, label: string }> = [
   { value: 'none', label: 'None' },
 ]
 
-const priorityLabelKeys: Record<IssuePriority, 'priority.none' | 'priority.low' | 'priority.medium' | 'priority.high' | 'priority.urgent'> = {
+const priorityLabelKeys: Record<
+  IssuePriority,
+  'priority.none' | 'priority.low' | 'priority.medium' | 'priority.high' | 'priority.urgent'
+> = {
   none: 'priority.none',
   low: 'priority.low',
   medium: 'priority.medium',
@@ -47,20 +51,40 @@ function statusCategory(status: KanbanStatus): StatusCategory {
 export function KanbanSelectionBar({ issues, statuses, onClear }: KanbanSelectionBarProps) {
   const { t } = useTranslation('kanban')
   const bulkUpdateIssues = useBulkUpdateIssues()
-  const issueIds = issues.map(issue => issue.id)
+  const moveExternalIssue = useMoveExternalIssue()
+  const nativeIssueIds: string[] = []
+  const externalIssueIds: string[] = []
+  for (const issue of issues) {
+    if (isExternalKanbanIssue(issue)) {
+      externalIssueIds.push(issue.id)
+    }
+    else {
+      nativeIssueIds.push(issue.id)
+    }
+  }
   const isVisible = issues.length > 0
-  const isMutating = bulkUpdateIssues.isPending
+  const isMutating = bulkUpdateIssues.isPending || moveExternalIssue.isPending
+  const canUpdateNativeFields = nativeIssueIds.length > 0
 
-  const handleStatusChange = (statusId: string) => {
-    bulkUpdateIssues.mutate(
-      { ids: issueIds, patch: { statusId: statusId || null } },
-      { onSuccess: onClear },
-    )
+  const handleStatusChange = async (statusId: string) => {
+    await Promise.all([
+      nativeIssueIds.length > 0
+        ? bulkUpdateIssues.mutateAsync({
+            ids: nativeIssueIds,
+            patch: { statusId: statusId || null },
+          })
+        : Promise.resolve(),
+      ...externalIssueIds.map(id => moveExternalIssue.mutateAsync({ id, statusId })),
+    ])
+    onClear()
   }
 
   const handlePriorityChange = (priority: string) => {
+    if (nativeIssueIds.length === 0) {
+      return
+    }
     bulkUpdateIssues.mutate(
-      { ids: issueIds, patch: { priority: priority as IssuePriority } },
+      { ids: nativeIssueIds, patch: { priority: priority as IssuePriority } },
       { onSuccess: onClear },
     )
   }
@@ -88,7 +112,12 @@ export function KanbanSelectionBar({ issues, statuses, onClear }: KanbanSelectio
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button type="button" variant="ghost" size="sm" disabled={isMutating || statuses.length === 0}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={isMutating || statuses.length === 0}
+                >
                   <CircleDashedIcon className="size-4" aria-hidden="true" />
                   {t('property.status')}
                 </Button>
@@ -107,7 +136,12 @@ export function KanbanSelectionBar({ issues, statuses, onClear }: KanbanSelectio
 
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
-                <Button type="button" variant="ghost" size="sm" disabled={isMutating}>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  disabled={isMutating || !canUpdateNativeFields}
+                >
                   <FlagIcon className="size-4" aria-hidden="true" />
                   {t('property.priority')}
                 </Button>
@@ -115,7 +149,11 @@ export function KanbanSelectionBar({ issues, statuses, onClear }: KanbanSelectio
               <DropdownMenuContent align="center" className="w-44">
                 <DropdownMenuRadioGroup onValueChange={handlePriorityChange}>
                   {priorityOptions.map(priority => (
-                    <DropdownMenuRadioItem key={priority.value} value={priority.value} disabled={isMutating}>
+                    <DropdownMenuRadioItem
+                      key={priority.value}
+                      value={priority.value}
+                      disabled={isMutating}
+                    >
                       <PriorityIcon priority={priority.value} size={14} />
                       {t(priorityLabelKeys[priority.value])}
                     </DropdownMenuRadioItem>
@@ -126,7 +164,13 @@ export function KanbanSelectionBar({ issues, statuses, onClear }: KanbanSelectio
 
             <span className="mx-1 h-5 w-px bg-border" aria-hidden="true" />
 
-            <Button type="button" variant="ghost" size="icon-sm" aria-label={t('selection.clearAria')} onClick={onClear}>
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t('selection.clearAria')}
+              onClick={onClear}
+            >
               <XIcon className="size-4" aria-hidden="true" />
             </Button>
           </div>

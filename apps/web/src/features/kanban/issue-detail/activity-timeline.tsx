@@ -1,33 +1,51 @@
 import { StaticRender } from '@cradle/streamdown'
 import type { TFunction } from 'i18next'
-import { CirclePlusIcon, GitBranchIcon, SparklesIcon, Trash2Icon, UserRoundCheckIcon, UserRoundMinusIcon } from 'lucide-react'
+import {
+  CirclePlusIcon,
+  GitBranchIcon,
+  SparklesIcon,
+  Trash2Icon,
+  UserRoundCheckIcon,
+  UserRoundMinusIcon,
+} from 'lucide-react'
 import type { ElementType, ReactNode } from 'react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
+import type {
+  IssueActivityAction,
+  IssueActivityField,
+  IssueActivityValue,
+  IssueActivityValueToken,
+  IssueCommentAuthor,
+  KanbanIssueActivityItem,
+} from '~/features/kanban/types'
 import { cn } from '~/lib/cn'
-import type { IssueActivityAction, IssueActivityField, IssueActivityValue, IssueActivityValueToken, IssueCommentAuthor, KanbanIssueActivityItem } from '~/features/kanban/types'
 
 import { AssigneeAvatar } from '../shared/assignee-avatar'
 import { useAddComment, useDeleteComment, useIssueActivity } from '../use-kanban'
 
 interface ActivityTimelineProps {
   issueId: string
+  readOnly?: boolean
 }
 
 type KanbanTranslation = TFunction<'kanban'>
 type KanbanKey = keyof typeof import('~/locales/default').default.kanban
 
-export const ActivityTimeline = ({ issueId }: ActivityTimelineProps) => {
+export const ActivityTimeline = ({ issueId, readOnly = false }: ActivityTimelineProps) => {
   const { t } = useTranslation('kanban')
-  const { data: activity = [] } = useIssueActivity(issueId)
+  const { data: activity = [] } = useIssueActivity(issueId, !readOnly)
   const addComment = useAddComment()
   const deleteComment = useDeleteComment()
   const [commentText, setCommentText] = useState('')
   const timelineItems = activity.toSorted((left, right) => left.createdAt - right.createdAt)
 
   const handleSubmit = () => {
+    if (readOnly) {
+      return
+    }
     const trimmed = commentText.trim()
     if (!trimmed) {
       return
@@ -37,19 +55,28 @@ export const ActivityTimeline = ({ issueId }: ActivityTimelineProps) => {
   }
 
   const handleDeleteComment = (commentId: string) => {
+    if (readOnly) {
+      return
+    }
     deleteComment.mutate({ id: commentId, issueId })
   }
 
   return (
     <div data-testid="issue-activity-timeline">
-      <h3 className="text-sm font-semibold text-foreground text-balance">{t('issue.activity.title')}</h3>
+      <h3 className="text-sm font-semibold text-foreground text-balance">
+        {t('issue.activity.title')}
+      </h3>
 
       <div className="mt-3 flex flex-col gap-3">
         {timelineItems.map(item => (
           <ActivityItem
             key={item.id}
             item={item}
-            onDeleteComment={item.kind === 'comment' && item.actor.kind === 'user' ? handleDeleteComment : undefined}
+            onDeleteComment={
+              !readOnly && item.kind === 'comment' && item.actor.kind === 'user'
+                ? handleDeleteComment
+                : undefined
+            }
           />
         ))}
       </div>
@@ -67,17 +94,23 @@ export const ActivityTimeline = ({ issueId }: ActivityTimelineProps) => {
           }}
           placeholder={t('issue.comment.placeholder')}
           rows={2}
+          readOnly={readOnly}
           data-testid="issue-comment-input"
-          className="w-full resize-none rounded-t-lg bg-transparent px-3 py-2.5 text-[13px] text-foreground outline-none placeholder:text-text-dim"
+          className={cn(
+            'w-full resize-none rounded-t-lg bg-transparent px-3 py-2.5 text-[13px] text-foreground outline-none placeholder:text-text-dim',
+            readOnly && 'cursor-default',
+          )}
         />
         <div className="flex items-center justify-between border-t border-border px-2.5 py-1.5">
-          <span className="text-[11px] text-text-dim">{t('issue.comment.submitHint', { shortcut: '⌘↵' })}</span>
+          <span className="text-[11px] text-text-dim">
+            {t('issue.comment.submitHint', { shortcut: '⌘↵' })}
+          </span>
           <Button
             variant="ghost"
             size="sm"
             className="h-6 text-[12px]"
             onClick={handleSubmit}
-            disabled={!commentText.trim()}
+            disabled={readOnly || !commentText.trim()}
             data-testid="issue-comment-submit"
           >
             {t('issue.comment.submit')}
@@ -179,7 +212,9 @@ const FieldChangeItem = ({ item }: { item: KanbanIssueActivityItem }) => {
       testId={`field-change-${item.id}`}
     >
       <span className="font-medium text-foreground">{formatActorName(item.actor, t)}</span>
-      <span className="text-text-dim">{formatAction(fieldChange.action, fieldChange.field, t)}</span>
+      <span className="text-text-dim">
+        {formatAction(fieldChange.action, fieldChange.field, t)}
+      </span>
       {fieldChange.fromValue && fieldChange.toValue && (
         <>
           <ActivityValue>{formatActivityValue(fieldChange.fromValue, t)}</ActivityValue>
@@ -229,27 +264,29 @@ const CommentItem = ({
   return (
     <div className="group flex gap-2.5" data-testid={`comment-${item.id}`}>
       {isAiAuthored
-        ? item.actor.avatarUrl
-          ? (
-            <img
-              src={item.actor.avatarUrl}
-              alt={item.actor.displayName}
-              className="size-5.5 shrink-0 rounded-full mt-0.5 object-cover"
-            />
-          )
-          : (
-            <div className="flex size-5.5 shrink-0 items-center justify-center mt-0.5">
-              <SparklesIcon className="size-3.5 text-text-tertiary" aria-hidden="true" />
-            </div>
-          )
-        : (
-          <AssigneeAvatar name={formatActorName(item.actor, t)} size={22} className="mt-0.5 shrink-0" />
-        )}
-      <div
-        className={cn(
-          'flex-1 min-w-0 rounded-lg border border-border px-3 py-2.5 bg-card',
-        )}
-      >
+? (
+        item.actor.avatarUrl
+? (
+          <img
+            src={item.actor.avatarUrl}
+            alt={item.actor.displayName}
+            className="size-5.5 shrink-0 rounded-full mt-0.5 object-cover"
+          />
+        )
+: (
+          <div className="flex size-5.5 shrink-0 items-center justify-center mt-0.5">
+            <SparklesIcon className="size-3.5 text-text-tertiary" aria-hidden="true" />
+          </div>
+        )
+      )
+: (
+        <AssigneeAvatar
+          name={formatActorName(item.actor, t)}
+          size={22}
+          className="mt-0.5 shrink-0"
+        />
+      )}
+      <div className={cn('flex-1 min-w-0 rounded-lg border border-border px-3 py-2.5 bg-card')}>
         <div className="flex items-center gap-2">
           <span className="text-[12px] font-medium text-foreground">
             {formatActorName(item.actor, t)}
@@ -299,9 +336,7 @@ function TimelineLine({
 }) {
   return (
     <div className="group flex gap-2.5" data-testid={testId}>
-      <div className="flex size-5.5 shrink-0 items-center justify-center mt-0.5">
-        {icon}
-      </div>
+      <div className="flex size-5.5 shrink-0 items-center justify-center mt-0.5">{icon}</div>
       <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1 text-[12px] leading-5">
         {children}
       </div>
@@ -323,9 +358,7 @@ function ActivityTime({ children }: { children: string }) {
   }
 
   return (
-    <span className="whitespace-nowrap text-[11px] text-text-dim tabular-nums">
-      {children}
-    </span>
+    <span className="whitespace-nowrap text-[11px] text-text-dim tabular-nums">{children}</span>
   )
 }
 
@@ -349,7 +382,11 @@ function formatActorLabel(actor: IssueCommentAuthor, t: KanbanTranslation): stri
   return actor.label
 }
 
-function formatAction(action: IssueActivityAction, field: IssueActivityField | null, t: KanbanTranslation): string {
+function formatAction(
+  action: IssueActivityAction,
+  field: IssueActivityField | null,
+  t: KanbanTranslation,
+): string {
   if (action === 'changed-field') {
     const fieldLabel = field ? t(fieldLabelKeys[field]) : t('issue.activity.field.metadata')
     return t(actionLabelKeys[action], { field: fieldLabel })

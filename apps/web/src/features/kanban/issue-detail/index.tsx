@@ -17,17 +17,30 @@ interface IssueDetailProps {
   issueId: string
   workspaceId: string
   issues: KanbanIssue[]
+  issueOverride?: KanbanIssue | null
+  readOnly?: boolean
   onOpenIssue: (id: string) => void
   onOpenMilestone?: (id: string) => void
   onBack: () => void
 }
 
-export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onOpenMilestone, onBack }: IssueDetailProps) {
-  const { data: issue, isLoading, isError, error } = useIssue(issueId)
+export function IssueDetail({
+  issueId,
+  workspaceId,
+  issues,
+  issueOverride,
+  readOnly = false,
+  onOpenIssue,
+  onOpenMilestone,
+  onBack,
+}: IssueDetailProps) {
+  const shouldLoadIssue = !issueOverride
+  const { data: loadedIssue, isLoading, isError, error } = useIssue(issueId, shouldLoadIssue)
   const { data: statuses = [] } = useStatuses(workspaceId)
   const { data: milestones = [] } = useMilestones(workspaceId)
   const updateIssue = useUpdateIssue()
   const deleteIssue = useDeleteIssue()
+  const issue = issueOverride ?? loadedIssue
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -40,10 +53,16 @@ export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onOpenM
   }, [onBack])
 
   const handleUpdate = (patch: Parameters<typeof updateIssue.mutate>[0]['patch']) => {
+    if (readOnly) {
+      return
+    }
     updateIssue.mutate({ id: issueId, patch })
   }
 
   const handleDelete = () => {
+    if (readOnly) {
+      return
+    }
     deleteIssue.mutate(issueId, {
       onSuccess: () => onBack(),
     })
@@ -53,7 +72,9 @@ export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onOpenM
 
   const subIssues = issue ? issues.filter(candidate => candidate.parentIssueId === issue.id) : []
 
-  const completedSubIssueCount = subIssues.filter(subIssue => statusById.get(subIssue.statusId ?? '')?.category === 'completed').length
+  const completedSubIssueCount = subIssues.filter(
+    subIssue => statusById.get(subIssue.statusId ?? '')?.category === 'completed',
+  ).length
 
   const siblingIssues = (() => {
     if (!issue?.parentIssueId) {
@@ -70,20 +91,31 @@ export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onOpenM
       })
   })()
 
-  const siblingIndex = issue ? siblingIssues.findIndex(candidate => candidate.id === issue.id) : -1
+  const siblingIndex = issue
+    ? siblingIssues.findIndex(candidate => candidate.id === issue.id)
+    : -1
 
-  const parentIssue = issue?.parentIssueId ? issues.find(candidate => candidate.id === issue.parentIssueId) : undefined
-
-  const currentMilestone = issue?.milestoneId ? milestones.find(milestone => milestone.id === issue.milestoneId) : undefined
-
-  const milestoneProgress = calculateMilestoneProgress(issues, statuses, currentMilestone?.id ?? null)
-
-  const previousSiblingIssue = siblingIndex > 0 ? siblingIssues[siblingIndex - 1] : undefined
-  const nextSiblingIssue = siblingIndex >= 0 && siblingIndex < siblingIssues.length - 1
-    ? siblingIssues[siblingIndex + 1]
+  const parentIssue = issue?.parentIssueId
+    ? issues.find(candidate => candidate.id === issue.parentIssueId)
     : undefined
 
-  if (isError) {
+  const currentMilestone = issue?.milestoneId
+    ? milestones.find(milestone => milestone.id === issue.milestoneId)
+    : undefined
+
+  const milestoneProgress = calculateMilestoneProgress(
+    issues,
+    statuses,
+    currentMilestone?.id ?? null,
+  )
+
+  const previousSiblingIssue = siblingIndex > 0 ? siblingIssues[siblingIndex - 1] : undefined
+  const nextSiblingIssue
+    = siblingIndex >= 0 && siblingIndex < siblingIssues.length - 1
+      ? siblingIssues[siblingIndex + 1]
+      : undefined
+
+  if (!issueOverride && isError) {
     return (
       <div className="flex flex-1 items-center justify-center px-4 text-center text-[13px] text-destructive">
         {error instanceof Error ? error.message : 'Failed to load issue'}
@@ -91,7 +123,7 @@ export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onOpenM
     )
   }
 
-  if (isLoading) {
+  if (!issueOverride && isLoading) {
     return (
       <div className="flex flex-1 flex-col overflow-hidden" data-testid="issue-detail-skeleton">
         <div className="flex h-11 shrink-0 items-center gap-2 border-b border-border px-3">
@@ -139,13 +171,14 @@ export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onOpenM
         onOpenIssue={onOpenIssue}
         onBack={onBack}
         onDelete={handleDelete}
+        readOnly={readOnly}
       />
 
       <div className="flex flex-1 overflow-hidden">
         {/* Main content */}
         <div className="flex-1 overflow-y-auto px-10 py-6">
           <div>
-            <IssueTitle issue={issue} onUpdate={handleUpdate} />
+            <IssueTitle issue={issue} onUpdate={handleUpdate} readOnly={readOnly} />
 
             {currentMilestone && (
               <MilestoneBanner
@@ -155,14 +188,20 @@ export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onOpenM
               />
             )}
 
-            <IssueDescription issue={issue} onUpdate={handleUpdate} />
+            <IssueDescription issue={issue} onUpdate={handleUpdate} readOnly={readOnly} />
 
             <div className="mt-8">
-              <SubIssuesList issueId={issueId} workspaceId={workspaceId} statuses={statuses} onOpenIssue={onOpenIssue} />
+              <SubIssuesList
+                issueId={issueId}
+                workspaceId={workspaceId}
+                statuses={statuses}
+                onOpenIssue={onOpenIssue}
+                readOnly={readOnly}
+              />
             </div>
 
             <div className="mt-8">
-              <ActivityTimeline issueId={issueId} />
+              <ActivityTimeline issueId={issueId} readOnly={readOnly} />
             </div>
           </div>
         </div>
@@ -175,6 +214,7 @@ export function IssueDetail({ issueId, workspaceId, issues, onOpenIssue, onOpenM
             statuses={statuses}
             milestones={milestones}
             onUpdate={handleUpdate}
+            readOnly={readOnly}
           />
         </div>
       </div>

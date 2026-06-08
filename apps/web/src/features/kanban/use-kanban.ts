@@ -23,9 +23,9 @@ import {
   getIssuesStatuses,
   getKanbanBoards,
   getSessionsByIdLinkedIssue,
+  patchExternalIssueSourcesItemsByIdStatus,
   patchIssuesBulk,
   patchIssuesById,
-  patchExternalIssueSourcesItemsByIdStatus,
   patchIssuesMilestonesById,
   patchIssuesStatusesById,
   patchKanbanBoardsById,
@@ -40,8 +40,21 @@ import {
   postKanbanBoards,
   postSessionsByIdLinkedIssue,
 } from '~/api-gen/sdk.gen'
+import type {
+  AgentSession,
+  ExternalIssueItem,
+  ExternalKanbanIssue,
+  KanbanBoard,
+  KanbanBoardIssue,
+  KanbanIssue,
+  KanbanIssueActivityItem,
+  KanbanIssueCommentView,
+  KanbanIssueFieldChangeView,
+  KanbanIssueRelation,
+  KanbanMilestone,
+  KanbanStatus,
+} from '~/features/kanban/types'
 import { queryRefreshPolicies, queryRefreshPolicy } from '~/lib/query-refresh-policy'
-import type { AgentSession, ExternalIssueItem, ExternalKanbanIssue, KanbanBoard, KanbanBoardIssue, KanbanIssue, KanbanIssueActivityItem, KanbanIssueCommentView, KanbanIssueFieldChangeView, KanbanIssueRelation, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 
 // ── Query keys ────────────────────────────────────────────────────────────────
 
@@ -65,15 +78,29 @@ type CreateBoardInput = { workspaceId: string, name: string, filterConfig?: stri
 type UpdateBoardInput = { id: string, patch: { name?: string, filterConfig?: string | null } }
 
 type CreateStatusInput = { workspaceId: string, name: string, color?: string | null }
-type UpdateStatusInput = { id: string, workspaceId: string, patch: { name?: string, color?: string | null } }
+type UpdateStatusInput = {
+  id: string
+  workspaceId: string
+  patch: { name?: string, color?: string | null }
+}
 type ReorderStatusesInput = { workspaceId: string, orderedIds: string[] }
 type DeleteStatusInput = { id: string, workspaceId: string }
 
-type CreateMilestoneInput = { workspaceId: string, title: string, description?: string | null, dueDate?: number | null }
+type CreateMilestoneInput = {
+  workspaceId: string
+  title: string
+  description?: string | null
+  dueDate?: number | null
+}
 type UpdateMilestoneInput = {
   id: string
   workspaceId: string
-  patch: { title?: string, description?: string | null, dueDate?: number | null, status?: 'open' | 'closed' }
+  patch: {
+    title?: string
+    description?: string | null
+    dueDate?: number | null
+    status?: 'open' | 'closed'
+  }
 }
 type DeleteMilestoneInput = { id: string, workspaceId: string }
 
@@ -135,7 +162,11 @@ type MoveIssueInput = { id: string, statusId: string | null }
 type MoveExternalIssueInput = { id: string, statusId: string }
 type AddCommentInput = { issueId: string, content: string }
 type DeleteCommentInput = { id: string, issueId: string }
-type AddRelationInput = { sourceIssueId: string, targetIssueId: string, type: 'blocks' | 'duplicates' | 'relates_to' }
+type AddRelationInput = {
+  sourceIssueId: string
+  targetIssueId: string
+  type: 'blocks' | 'duplicates' | 'relates_to'
+}
 type DeleteRelationInput = { id: string, issueId: string }
 
 type ApiKanbanIssue = KanbanIssue
@@ -173,65 +204,71 @@ const KanbanMilestoneSchema = z.object({
 })
 const KanbanMilestoneListSchema = z.array(KanbanMilestoneSchema).default([])
 
-const KanbanIssueSchema = z.object({
-  id: z.string(),
-  workspaceId: z.string(),
-  number: z.number(),
-  statusId: z.string().nullable(),
-  milestoneId: z.string().nullable(),
-  parentIssueId: z.string().nullable(),
-  title: z.string(),
-  description: z.string().nullable(),
-  priority: z.enum(['none', 'low', 'medium', 'high', 'urgent']),
-  labels: z.array(z.string()),
-  assigneeKind: z.string().nullable(),
-  assigneeId: z.string().nullable(),
-  dueDate: z.number().nullable(),
-  createdByKind: z.enum(['user', 'agent', 'provider-target', 'system']),
-  createdById: z.string(),
-  sourceChatSessionId: z.string().nullable(),
-  delegateAgentId: z.string().nullable(),
-  delegateAgentProfileId: z.string().nullable(),
-  contextRefs: z.string(),
-  order: z.number(),
-  createdAt: z.number(),
-  updatedAt: z.number(),
-}).passthrough() satisfies z.ZodType<ApiKanbanIssue>
+const KanbanIssueSchema = z
+  .object({
+    id: z.string(),
+    workspaceId: z.string(),
+    number: z.number(),
+    statusId: z.string().nullable(),
+    milestoneId: z.string().nullable(),
+    parentIssueId: z.string().nullable(),
+    title: z.string(),
+    description: z.string().nullable(),
+    priority: z.enum(['none', 'low', 'medium', 'high', 'urgent']),
+    labels: z.array(z.string()),
+    assigneeKind: z.string().nullable(),
+    assigneeId: z.string().nullable(),
+    dueDate: z.number().nullable(),
+    createdByKind: z.enum(['user', 'agent', 'provider-target', 'system']),
+    createdById: z.string(),
+    sourceChatSessionId: z.string().nullable(),
+    delegateAgentId: z.string().nullable(),
+    delegateAgentProfileId: z.string().nullable(),
+    contextRefs: z.string(),
+    order: z.number(),
+    createdAt: z.number(),
+    updatedAt: z.number(),
+  })
+  .passthrough() satisfies z.ZodType<ApiKanbanIssue>
 const KanbanIssueListSchema = z.array(KanbanIssueSchema).default([])
 
-const ExternalIssueItemSchema = z.object({
-  id: z.string(),
-  bindingId: z.string(),
-  workspaceId: z.string(),
-  statusId: z.string().nullable(),
-  sourceKey: z.string(),
-  externalId: z.string(),
-  externalKey: z.string(),
-  externalUrl: z.string().nullable(),
-  repositoryOwner: z.string(),
-  repositoryName: z.string(),
-  number: z.number(),
-  title: z.string(),
-  body: z.string().nullable(),
-  sourceState: z.enum(['open', 'closed']),
-  labels: z.array(z.string()),
-  assignees: z.array(z.string()),
-  milestone: z.string().nullable(),
-  sourceCreatedAt: z.string().nullable(),
-  sourceUpdatedAt: z.string().nullable(),
-  sourceClosedAt: z.string().nullable(),
-  syncStatus: z.enum(['active', 'missing', 'error']),
-  fingerprint: z.string(),
-  metadata: z.record(z.string(), z.unknown()),
-  warnings: z.array(z.object({
-    code: z.string(),
-    message: z.string(),
-    severity: z.enum(['info', 'warning', 'error']),
-  })),
-  lastSeenAt: z.number(),
-  createdAt: z.number(),
-  updatedAt: z.number(),
-}).passthrough() satisfies z.ZodType<ExternalIssueItem>
+const ExternalIssueItemSchema = z
+  .object({
+    id: z.string(),
+    bindingId: z.string(),
+    workspaceId: z.string(),
+    statusId: z.string().nullable(),
+    sourceKey: z.string(),
+    externalId: z.string(),
+    externalKey: z.string(),
+    externalUrl: z.string().nullable(),
+    repositoryOwner: z.string(),
+    repositoryName: z.string(),
+    number: z.number(),
+    title: z.string(),
+    body: z.string().nullable(),
+    sourceState: z.enum(['open', 'closed']),
+    labels: z.array(z.string()),
+    assignees: z.array(z.string()),
+    milestone: z.string().nullable(),
+    sourceCreatedAt: z.string().nullable(),
+    sourceUpdatedAt: z.string().nullable(),
+    sourceClosedAt: z.string().nullable(),
+    syncStatus: z.enum(['active', 'missing', 'error']),
+    fingerprint: z.string(),
+    metadata: z.record(z.string(), z.unknown()),
+    warnings: z.array(
+      z.object({
+        code: z.string(),
+        message: z.string(),
+        severity: z.enum(['info', 'warning', 'error']),
+      }),
+    ),
+    lastSeenAt: z.number(),
+    createdAt: z.number(),
+    updatedAt: z.number(),
+  })
+  .passthrough() satisfies z.ZodType<ExternalIssueItem>
 const ExternalIssueItemListSchema = z.array(ExternalIssueItemSchema).default([])
 
 const IssueCommentAuthorSchema = z.object({
@@ -245,7 +282,14 @@ const KanbanIssueCommentSchema = z.object({
   id: z.string(),
   issueId: z.string(),
   content: z.string(),
-  authorKind: z.enum(['user', 'agent', 'provider-target', 'system', 'system.delegated', 'system.undelegated']),
+  authorKind: z.enum([
+    'user',
+    'agent',
+    'provider-target',
+    'system',
+    'system.delegated',
+    'system.undelegated',
+  ]),
   authorId: z.string().nullable(),
   author: IssueCommentAuthorSchema,
   sourceChatSessionId: z.string().nullable(),
@@ -284,16 +328,39 @@ const KanbanIssueActivityItemSchema = z.object({
   issueId: z.string(),
   kind: z.enum(['comment', 'created', 'field-change']),
   actor: IssueCommentAuthorSchema,
-  comment: z.object({
-    content: z.string(),
-    systemKind: z.enum(['delegated', 'system', 'undelegated']).nullable(),
-  }).nullable(),
-  fieldChange: z.object({
-    action: z.enum(['added-description', 'changed-field', 'cleared-description', 'renamed-issue', 'updated-description']),
-    field: z.enum(['assignee', 'description', 'due-date', 'labels', 'metadata', 'milestone', 'parent', 'priority', 'status', 'title']).nullable(),
-    fromValue: IssueActivityValueSchema.nullable(),
-    toValue: IssueActivityValueSchema.nullable(),
-  }).nullable(),
+  comment: z
+    .object({
+      content: z.string(),
+      systemKind: z.enum(['delegated', 'system', 'undelegated']).nullable(),
+    })
+    .nullable(),
+  fieldChange: z
+    .object({
+      action: z.enum([
+        'added-description',
+        'changed-field',
+        'cleared-description',
+        'renamed-issue',
+        'updated-description',
+      ]),
+      field: z
+        .enum([
+          'assignee',
+          'description',
+          'due-date',
+          'labels',
+          'metadata',
+          'milestone',
+          'parent',
+          'priority',
+          'status',
+          'title',
+        ])
+        .nullable(),
+      fromValue: IssueActivityValueSchema.nullable(),
+      toValue: IssueActivityValueSchema.nullable(),
+    })
+    .nullable(),
   sourceChatSessionId: z.string().nullable(),
   createdAt: z.number(),
 })
@@ -321,20 +388,24 @@ const KanbanIssueRelationSchema = z.object({
 })
 const KanbanIssueRelationListSchema = z.array(KanbanIssueRelationSchema).default([])
 
-const AgentSessionSchema = z.object({
-  id: z.string(),
-  issueId: z.string(),
-  providerTargetId: z.string(),
-  agentId: z.string().nullable(),
-  chatSessionId: z.string().nullable(),
-  status: z.enum(['created', 'active', 'completed', 'stopped', 'failed']),
-  isCurrentDelegation: z.boolean(),
-  createdAt: z.number(),
-  updatedAt: z.number(),
-}).passthrough()
-const LinkedIssueRefSchema = z.object({
-  issueId: z.string().nullable(),
-}).nullable()
+const AgentSessionSchema = z
+  .object({
+    id: z.string(),
+    issueId: z.string(),
+    providerTargetId: z.string(),
+    agentId: z.string().nullable(),
+    chatSessionId: z.string().nullable(),
+    status: z.enum(['created', 'active', 'completed', 'stopped', 'failed']),
+    isCurrentDelegation: z.boolean(),
+    createdAt: z.number(),
+    updatedAt: z.number(),
+  })
+  .passthrough()
+const LinkedIssueRefSchema = z
+  .object({
+    issueId: z.string().nullable(),
+  })
+  .nullable()
 
 // ── Boards ────────────────────────────────────────────────────────────────────
 
@@ -415,7 +486,8 @@ export function useCreateStatus() {
       const { data } = await postIssuesStatuses({ body: input })
       return KanbanStatusSchema.parse(data) satisfies KanbanStatus
     },
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.statuses(vars.workspaceId) }),
+    onSuccess: (_data, vars) =>
+      qc.invalidateQueries({ queryKey: kanbanKeys.statuses(vars.workspaceId) }),
   })
 }
 
@@ -426,7 +498,8 @@ export function useUpdateStatus() {
       const { data } = await patchIssuesStatusesById({ path: { id: vars.id }, body: vars.patch })
       return KanbanStatusSchema.parse(data) satisfies KanbanStatus
     },
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.statuses(vars.workspaceId) }),
+    onSuccess: (_data, vars) =>
+      qc.invalidateQueries({ queryKey: kanbanKeys.statuses(vars.workspaceId) }),
   })
 }
 
@@ -436,7 +509,8 @@ export function useReorderStatuses() {
     mutationFn: async (vars: ReorderStatusesInput) => {
       await postIssuesStatusesReorder({ body: vars })
     },
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.statuses(vars.workspaceId) }),
+    onSuccess: (_data, vars) =>
+      qc.invalidateQueries({ queryKey: kanbanKeys.statuses(vars.workspaceId) }),
   })
 }
 
@@ -475,7 +549,8 @@ function useCreateMilestone() {
       const { data } = await postIssuesMilestones({ body: input })
       return KanbanMilestoneSchema.parse(data) satisfies KanbanMilestone
     },
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.milestones(vars.workspaceId) }),
+    onSuccess: (_data, vars) =>
+      qc.invalidateQueries({ queryKey: kanbanKeys.milestones(vars.workspaceId) }),
   })
 }
 
@@ -487,7 +562,8 @@ function useUpdateMilestone() {
       const { data } = await patchIssuesMilestonesById({ path: { id: vars.id }, body: vars.patch })
       return KanbanMilestoneSchema.parse(data) satisfies KanbanMilestone
     },
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.milestones(vars.workspaceId) }),
+    onSuccess: (_data, vars) =>
+      qc.invalidateQueries({ queryKey: kanbanKeys.milestones(vars.workspaceId) }),
   })
 }
 
@@ -498,7 +574,8 @@ function useDeleteMilestone() {
     mutationFn: async (vars: DeleteMilestoneInput) => {
       await deleteIssuesMilestonesById({ path: { id: vars.id } })
     },
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.milestones(vars.workspaceId) }),
+    onSuccess: (_data, vars) =>
+      qc.invalidateQueries({ queryKey: kanbanKeys.milestones(vars.workspaceId) }),
   })
 }
 
@@ -671,10 +748,15 @@ export function usePatchIssueLabels() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: PatchIssueLabelsInput) => {
-      const rows = await Promise.all(vars.patches.map(async (patch) => {
-        const { data } = await patchIssuesById({ path: { id: patch.issueId }, body: { labels: patch.labels } })
-        return KanbanIssueSchema.parse(data) satisfies KanbanIssue
-      }))
+      const rows = await Promise.all(
+        vars.patches.map(async (patch) => {
+          const { data } = await patchIssuesById({
+            path: { id: patch.issueId },
+            body: { labels: patch.labels },
+          })
+          return KanbanIssueSchema.parse(data) satisfies KanbanIssue
+        }),
+      )
       return rows
     },
     onSuccess: (_data, vars) => {
@@ -692,7 +774,10 @@ export function useMoveIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: MoveIssueInput) => {
-      const { data } = await patchIssuesById({ path: { id: vars.id }, body: { statusId: vars.statusId } })
+      const { data } = await patchIssuesById({
+        path: { id: vars.id },
+        body: { statusId: vars.statusId },
+      })
       return KanbanIssueSchema.parse(data) satisfies KanbanIssue
     },
     onSuccess: (_data, vars) => {
@@ -708,7 +793,10 @@ export function useMoveExternalIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: MoveExternalIssueInput) => {
-      const { data } = await patchExternalIssueSourcesItemsByIdStatus({ path: { id: vars.id }, body: { statusId: vars.statusId } })
+      const { data } = await patchExternalIssueSourcesItemsByIdStatus({
+        path: { id: vars.id },
+        body: { statusId: vars.statusId },
+      })
       return ExternalIssueItemSchema.parse(data) satisfies ExternalIssueItem
     },
     onSuccess: (_data, vars) => {
@@ -730,14 +818,14 @@ export function useDeleteIssue() {
 
 // ── Comments ──────────────────────────────────────────────────────────────────
 
-export function useIssueActivity(issueId: string) {
+export function useIssueActivity(issueId: string, enabled = true) {
   return useQuery({
     queryKey: kanbanKeys.activity(issueId),
     queryFn: async () => {
       const { data } = await getIssuesByIdActivity({ path: { id: issueId } })
       return KanbanIssueActivityListSchema.parse(data) satisfies KanbanIssueActivityItem[]
     },
-    enabled: !!issueId,
+    enabled: enabled && !!issueId,
     ...queryRefreshPolicies.interactive,
   })
 }
@@ -796,14 +884,14 @@ export function useDeleteComment() {
 
 // ── Relations ─────────────────────────────────────────────────────────────────
 
-export function useRelations(issueId: string) {
+export function useRelations(issueId: string, enabled = true) {
   return useQuery({
     queryKey: kanbanKeys.relations(issueId),
     queryFn: async () => {
       const { data } = await getIssuesByIdRelations({ path: { id: issueId } })
       return KanbanIssueRelationListSchema.parse(data) satisfies KanbanIssueRelation[]
     },
-    enabled: !!issueId,
+    enabled: enabled && !!issueId,
     ...queryRefreshPolicies.interactive,
   })
 }
@@ -828,7 +916,8 @@ export function useDeleteRelation() {
     mutationFn: async (vars: DeleteRelationInput) => {
       await deleteIssuesRelationsById({ path: { id: vars.id } })
     },
-    onSuccess: (_data, vars) => qc.invalidateQueries({ queryKey: kanbanKeys.relations(vars.issueId) }),
+    onSuccess: (_data, vars) =>
+      qc.invalidateQueries({ queryKey: kanbanKeys.relations(vars.issueId) }),
   })
 }
 
@@ -837,12 +926,16 @@ export function useDeleteRelation() {
 export function useDelegateIssue() {
   const qc = useQueryClient()
   return useMutation({
-    mutationFn: async (vars: { issueId: string, agentId: string, providerTargetId?: string | null }) => {
+    mutationFn: async (vars: {
+      issueId: string
+      agentId: string
+      providerTargetId?: string | null
+    }) => {
       const { data } = await postIssuesByIdDelegation({
         path: { id: vars.issueId },
         body: { providerTargetId: vars.providerTargetId, agentId: vars.agentId },
       })
-      return data === null ? null : AgentSessionSchema.parse(data) satisfies AgentSession
+      return data === null ? null : (AgentSessionSchema.parse(data) satisfies AgentSession)
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
@@ -892,7 +985,9 @@ function useRemoveContextRef() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: { issueId: string, index: number }) => {
-      await deleteIssuesByIdContextRefsByIndex({ path: { id: vars.issueId, index: String(vars.index) } })
+      await deleteIssuesByIdContextRefsByIndex({
+        path: { id: vars.issueId, index: String(vars.index) },
+      })
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
@@ -927,7 +1022,10 @@ export function useLinkIssue() {
   const qc = useQueryClient()
   return useMutation({
     mutationFn: async (vars: { chatSessionId: string, issueId: string }) => {
-      await postSessionsByIdLinkedIssue({ path: { id: vars.chatSessionId }, body: { issueId: vars.issueId } })
+      await postSessionsByIdLinkedIssue({
+        path: { id: vars.chatSessionId },
+        body: { issueId: vars.issueId },
+      })
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['kanban', 'linkedIssue', vars.chatSessionId] })

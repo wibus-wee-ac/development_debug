@@ -1,4 +1,11 @@
-import { ArrowLeftIcon, ChevronLeftIcon, ChevronRightIcon, CornerUpLeftIcon, MoreHorizontalIcon, TrashIcon } from 'lucide-react'
+import {
+  ArrowLeftIcon,
+  ChevronLeftIcon,
+  ChevronRightIcon,
+  CornerUpLeftIcon,
+  MoreHorizontalIcon,
+  TrashIcon,
+} from 'lucide-react'
 
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import type { KanbanIssue, KanbanStatus } from '~/features/kanban/types'
@@ -19,6 +26,7 @@ interface IssueHeaderProps {
   onOpenIssue: (id: string) => void
   onBack: () => void
   onDelete: () => void
+  readOnly?: boolean
 }
 
 export const IssueHeader = ({
@@ -34,9 +42,13 @@ export const IssueHeader = ({
   onOpenIssue,
   onBack,
   onDelete,
+  readOnly = false,
 }: IssueHeaderProps) => {
   return (
-    <div className="flex h-11 shrink-0 items-center gap-1.5 border-b border-border px-3" data-testid="issue-detail-header">
+    <div
+      className="flex h-11 shrink-0 items-center gap-1.5 border-b border-border px-3"
+      data-testid="issue-detail-header"
+    >
       <button
         type="button"
         onClick={onBack}
@@ -60,7 +72,10 @@ export const IssueHeader = ({
               <CornerUpLeftIcon className="size-3.5 shrink-0" aria-hidden="true" />
               <span className="truncate">{parentIssue.title}</span>
             </button>
-            <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/50" aria-hidden="true" />
+            <ChevronRightIcon
+              className="size-3 shrink-0 text-muted-foreground/50"
+              aria-hidden="true"
+            />
           </>
         )}
         {status && (
@@ -69,7 +84,10 @@ export const IssueHeader = ({
               <StatusIcon category={status.category as StatusCategory} size={13} />
               <span>{status.name}</span>
             </span>
-            <ChevronRightIcon className="size-3 text-muted-foreground/50 shrink-0" aria-hidden="true" />
+            <ChevronRightIcon
+              className="size-3 text-muted-foreground/50 shrink-0"
+              aria-hidden="true"
+            />
           </>
         )}
         <span className="text-foreground font-medium truncate">{issue.title}</span>
@@ -91,7 +109,10 @@ done
       )}
 
       {siblingNumber && siblingCount && siblingCount > 1 && (
-        <div className="flex shrink-0 items-center gap-0.5 rounded border border-border bg-card p-0.5" data-testid="issue-detail-sub-issue-switcher">
+        <div
+          className="flex shrink-0 items-center gap-0.5 rounded border border-border bg-card p-0.5"
+          data-testid="issue-detail-sub-issue-switcher"
+        >
           <button
             type="button"
             onClick={() => previousSiblingIssue && onOpenIssue(previousSiblingIssue.id)}
@@ -118,25 +139,27 @@ done
         </div>
       )}
 
-      <Menu>
-        <MenuTrigger
-          className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-fill hover:text-foreground transition-colors shrink-0"
-          data-testid="issue-detail-menu-trigger"
-          aria-label="Issue actions"
-        >
-          <MoreHorizontalIcon className="size-4" aria-hidden="true" />
-        </MenuTrigger>
-        <MenuPopup>
-          <MenuItem
-            onClick={onDelete}
-            className="text-red-500"
-            data-testid="issue-detail-delete-issue"
+      {!readOnly && (
+        <Menu>
+          <MenuTrigger
+            className="flex size-7 items-center justify-center rounded text-muted-foreground hover:bg-fill hover:text-foreground transition-colors shrink-0"
+            data-testid="issue-detail-menu-trigger"
+            aria-label="Issue actions"
           >
-            <TrashIcon className="size-3.5 mr-2" aria-hidden="true" />
-            Delete issue
-          </MenuItem>
-        </MenuPopup>
-      </Menu>
+            <MoreHorizontalIcon className="size-4" aria-hidden="true" />
+          </MenuTrigger>
+          <MenuPopup>
+            <MenuItem
+              onClick={onDelete}
+              className="text-red-500"
+              data-testid="issue-detail-delete-issue"
+            >
+              <TrashIcon className="size-3.5 mr-2" aria-hidden="true" />
+              Delete issue
+            </MenuItem>
+          </MenuPopup>
+        </Menu>
+      )}
     </div>
   )
 }
