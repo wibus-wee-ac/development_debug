@@ -1,40 +1,50 @@
 import { t } from 'elysia'
 
 import { SessionModel } from '../session/model'
-import {
-  runtimeSettingsPatchSchema,
-  runtimeSettingsSchema,
-} from './runtime-settings-model'
+import { runtimeSettingsPatchSchema, runtimeSettingsSchema } from './runtime-settings-model'
 
 const runtimeKindSchema = t.String({ minLength: 1 })
 
-const uiMessageSchema = t.Object({
-  id: t.String(),
-  role: t.Union([t.Literal('system'), t.Literal('user'), t.Literal('assistant')]),
-  parts: t.Array(t.Object({
-    type: t.String(),
-  }, { additionalProperties: t.Any() })),
-  metadata: t.Optional(t.Any()),
-}, { additionalProperties: true })
+const uiMessageSchema = t.Object(
+  {
+    id: t.String(),
+    role: t.Union([t.Literal('system'), t.Literal('user'), t.Literal('assistant')]),
+    parts: t.Array(
+      t.Object(
+        {
+          type: t.String()
+        },
+        { additionalProperties: t.Any() }
+      )
+    ),
+    metadata: t.Optional(t.Any())
+  },
+  { additionalProperties: true }
+)
 
 const chatMessageSnapshotSchema = t.Object({
   messageId: t.String(),
   role: t.Union([t.Literal('user'), t.Literal('assistant')]),
-  status: t.Union([t.Literal('streaming'), t.Literal('complete'), t.Literal('aborted'), t.Literal('failed')]),
+  status: t.Union([
+    t.Literal('streaming'),
+    t.Literal('complete'),
+    t.Literal('aborted'),
+    t.Literal('failed')
+  ]),
   errorText: t.Optional(t.String()),
   content: t.String(),
   message: uiMessageSchema,
   parentMessageId: t.Union([t.String(), t.Null()]),
   parentToolCallId: t.Union([t.String(), t.Null()]),
   taskId: t.Union([t.String(), t.Null()]),
-  depth: t.Number(),
+  depth: t.Number()
 })
 
 const slashCommandSchema = t.Object({
   name: t.String(),
   description: t.String(),
   argumentHint: t.String(),
-  aliases: t.Optional(t.Array(t.String())),
+  aliases: t.Optional(t.Array(t.String()))
 })
 
 const runtimeCatalogItemSchema = t.Object({
@@ -43,34 +53,21 @@ const runtimeCatalogItemSchema = t.Object({
   description: t.Optional(t.String()),
   providerKinds: t.Array(t.String()),
   iconKey: t.Optional(t.String()),
-  surfaces: t.Optional(t.Array(t.Union([
-    t.Literal('chat'),
-    t.Literal('jarvis'),
-  ]))),
+  surfaces: t.Optional(t.Array(t.Union([t.Literal('chat'), t.Literal('jarvis')]))),
   sortOrder: t.Optional(t.Number()),
-  source: t.Union([
-    t.Literal('builtin'),
-    t.Literal('plugin'),
-  ]),
-  pluginOwner: t.Union([t.String(), t.Null()]),
+  source: t.Union([t.Literal('builtin'), t.Literal('plugin')]),
+  pluginOwner: t.Union([t.String(), t.Null()])
 })
 
 const runtimeHealthItemSchema = t.Object({
   runtimeKind: t.String(),
-  source: t.Union([
-    t.Literal('builtin'),
-    t.Literal('plugin'),
-  ]),
+  source: t.Union([t.Literal('builtin'), t.Literal('plugin')]),
   pluginOwner: t.Union([t.String(), t.Null()]),
   hasHealthCheck: t.Boolean(),
-  status: t.Union([
-    t.Literal('healthy'),
-    t.Literal('unhealthy'),
-    t.Literal('unknown'),
-  ]),
+  status: t.Union([t.Literal('healthy'), t.Literal('unhealthy'), t.Literal('unknown')]),
   message: t.Optional(t.String()),
   latencyMs: t.Optional(t.Number()),
-  lastCheckedAt: t.Number(),
+  lastCheckedAt: t.Number()
 })
 
 const runtimeUiSlotSchema = t.Object({
@@ -80,43 +77,48 @@ const runtimeUiSlotSchema = t.Object({
   description: t.String(),
   argumentHint: t.String(),
   aliases: t.Optional(t.Array(t.String())),
-  iconKey: t.Optional(t.Union([
-    t.Literal('alert'),
-    t.Literal('approvals'),
-    t.Literal('code-review'),
-    t.Literal('compact'),
-    t.Literal('config'),
-    t.Literal('diff'),
-    t.Literal('feedback'),
-    t.Literal('filesystem'),
-    t.Literal('goal'),
-    t.Literal('crew'),
-    t.Literal('ide-context'),
-    t.Literal('mcp'),
-    t.Literal('model'),
-    t.Literal('personality'),
-    t.Literal('plugin'),
-    t.Literal('plan'),
-    t.Literal('quick-question'),
-    t.Literal('reasoning'),
-    t.Literal('search'),
-    t.Literal('side-chat'),
-    t.Literal('skills'),
-    t.Literal('status'),
-    t.Literal('terminal'),
-    t.Literal('tool-activity'),
-    t.Literal('usage'),
-  ])),
+  iconKey: t.Optional(
+    t.Union([
+      t.Literal('alert'),
+      t.Literal('approvals'),
+      t.Literal('code-review'),
+      t.Literal('compact'),
+      t.Literal('config'),
+      t.Literal('diff'),
+      t.Literal('feedback'),
+      t.Literal('filesystem'),
+      t.Literal('goal'),
+      t.Literal('crew'),
+      t.Literal('ide-context'),
+      t.Literal('mcp'),
+      t.Literal('model'),
+      t.Literal('personality'),
+      t.Literal('plugin'),
+      t.Literal('plan'),
+      t.Literal('quick-question'),
+      t.Literal('user-input'),
+      t.Literal('reasoning'),
+      t.Literal('search'),
+      t.Literal('side-chat'),
+      t.Literal('skills'),
+      t.Literal('status'),
+      t.Literal('terminal'),
+      t.Literal('tool-activity'),
+      t.Literal('usage')
+    ])
+  ),
   commandText: t.Optional(t.String()),
-  surfaces: t.Array(t.Union([
-    t.Literal('slashCommand'),
-    t.Literal('toolbarPicker'),
-    t.Literal('composerState'),
-    t.Literal('messageInline'),
-    t.Literal('runtimePanel'),
-    t.Literal('streamEvidence'),
-    t.Literal('recordOnly'),
-  ])),
+  surfaces: t.Array(
+    t.Union([
+      t.Literal('slashCommand'),
+      t.Literal('toolbarPicker'),
+      t.Literal('composerState'),
+      t.Literal('messageInline'),
+      t.Literal('runtimePanel'),
+      t.Literal('streamEvidence'),
+      t.Literal('recordOnly')
+    ])
+  )
 })
 
 const runtimeGoalStatusSchema = t.Union([
@@ -125,7 +127,7 @@ const runtimeGoalStatusSchema = t.Union([
   t.Literal('blocked'),
   t.Literal('usageLimited'),
   t.Literal('budgetLimited'),
-  t.Literal('complete'),
+  t.Literal('complete')
 ])
 
 const runtimeGoalUiSlotStateSchema = t.Object({
@@ -138,7 +140,7 @@ const runtimeGoalUiSlotStateSchema = t.Object({
   tokensUsed: t.Number(),
   timeUsedSeconds: t.Number(),
   createdAt: t.Number(),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const runtimeTokenUsageBreakdownSchema = t.Object({
@@ -146,7 +148,7 @@ const runtimeTokenUsageBreakdownSchema = t.Object({
   inputTokens: t.Number(),
   cachedInputTokens: t.Number(),
   outputTokens: t.Number(),
-  reasoningOutputTokens: t.Number(),
+  reasoningOutputTokens: t.Number()
 })
 
 const runtimeCompactStatusSchema = t.Union([
@@ -154,7 +156,7 @@ const runtimeCompactStatusSchema = t.Union([
   t.Literal('running'),
   t.Literal('nearLimit'),
   t.Literal('overLimit'),
-  t.Literal('compacted'),
+  t.Literal('compacted')
 ])
 
 const runtimeCompactUiSlotStateSchema = t.Object({
@@ -172,7 +174,7 @@ const runtimeCompactUiSlotStateSchema = t.Object({
   autoCompactPercent: t.Union([t.Number(), t.Null()]),
   lastCompactedAt: t.Union([t.Number(), t.Null()]),
   compactionItemId: t.Union([t.String(), t.Null()]),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const runtimeStatusUiSlotStateSchema = t.Object({
@@ -183,10 +185,10 @@ const runtimeStatusUiSlotStateSchema = t.Object({
     t.Literal('notLoaded'),
     t.Literal('idle'),
     t.Literal('systemError'),
-    t.Literal('active'),
+    t.Literal('active')
   ]),
   activeFlags: t.Array(t.String()),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const runtimeModelUiSlotStateSchema = t.Object({
@@ -200,7 +202,7 @@ const runtimeModelUiSlotStateSchema = t.Object({
   supportsImages: t.Union([t.Boolean(), t.Null()]),
   supportsWebSearch: t.Union([t.Boolean(), t.Null()]),
   supportsNamespaceTools: t.Union([t.Boolean(), t.Null()]),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const runtimeReasoningUiSlotStateSchema = t.Object({
@@ -209,17 +211,19 @@ const runtimeReasoningUiSlotStateSchema = t.Object({
   threadId: t.String(),
   effort: t.Union([t.String(), t.Null()]),
   summary: t.Union([t.String(), t.Null()]),
-  supportedEfforts: t.Array(t.Object({
-    id: t.String(),
-    description: t.String(),
-  })),
-  updatedAt: t.Number(),
+  supportedEfforts: t.Array(
+    t.Object({
+      id: t.String(),
+      description: t.String()
+    })
+  ),
+  updatedAt: t.Number()
 })
 
 const runtimePlanStepStatusSchema = t.Union([
   t.Literal('pending'),
   t.Literal('inProgress'),
-  t.Literal('completed'),
+  t.Literal('completed')
 ])
 
 const runtimePlanUiSlotStateSchema = t.Object({
@@ -229,21 +233,54 @@ const runtimePlanUiSlotStateSchema = t.Object({
   turnId: t.Union([t.String(), t.Null()]),
   explanation: t.Union([t.String(), t.Null()]),
   content: t.Union([t.String(), t.Null()]),
-  steps: t.Array(t.Object({
-    step: t.String(),
-    status: runtimePlanStepStatusSchema,
-  })),
+  steps: t.Array(
+    t.Object({
+      step: t.String(),
+      status: runtimePlanStepStatusSchema
+    })
+  ),
   currentStep: t.Union([t.String(), t.Null()]),
   pendingCount: t.Number(),
   inProgressCount: t.Number(),
   completedCount: t.Number(),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
+})
+
+const runtimeUserInputQuestionSchema = t.Object({
+  id: t.String(),
+  header: t.String(),
+  question: t.String(),
+  isOther: t.Boolean(),
+  isSecret: t.Boolean(),
+  options: t.Union([
+    t.Array(
+      t.Object({
+        label: t.String(),
+        description: t.String()
+      })
+    ),
+    t.Null()
+  ])
+})
+
+const runtimeUserInputUiSlotStateSchema = t.Object({
+  kind: t.Literal('userInput'),
+  slotId: t.String(),
+  threadId: t.Union([t.String(), t.Null()]),
+  runId: t.String(),
+  requestId: t.String(),
+  providerMethod: t.String(),
+  toolCallId: t.String(),
+  questionCount: t.Number(),
+  questions: t.Array(runtimeUserInputQuestionSchema),
+  createdAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const runtimeToolActivityStatusSchema = t.Union([
   t.Literal('running'),
   t.Literal('completed'),
-  t.Literal('failed'),
+  t.Literal('failed')
 ])
 
 const runtimeToolActivityUiSlotStateSchema = t.Object({
@@ -254,15 +291,17 @@ const runtimeToolActivityUiSlotStateSchema = t.Object({
   activeCount: t.Number(),
   completedCount: t.Number(),
   failedCount: t.Number(),
-  recentItems: t.Array(t.Object({
-    id: t.String(),
-    type: t.String(),
-    label: t.String(),
-    status: runtimeToolActivityStatusSchema,
-    startedAt: t.Union([t.Number(), t.Null()]),
-    completedAt: t.Union([t.Number(), t.Null()]),
-  })),
-  updatedAt: t.Number(),
+  recentItems: t.Array(
+    t.Object({
+      id: t.String(),
+      type: t.String(),
+      label: t.String(),
+      status: runtimeToolActivityStatusSchema,
+      startedAt: t.Union([t.Number(), t.Null()]),
+      completedAt: t.Union([t.Number(), t.Null()])
+    })
+  ),
+  updatedAt: t.Number()
 })
 
 const runtimeMcpServerStatusSchema = t.Union([
@@ -270,7 +309,7 @@ const runtimeMcpServerStatusSchema = t.Union([
   t.Literal('ready'),
   t.Literal('failed'),
   t.Literal('cancelled'),
-  t.Literal('unknown'),
+  t.Literal('unknown')
 ])
 
 const runtimeMcpAuthStatusSchema = t.Union([
@@ -278,7 +317,7 @@ const runtimeMcpAuthStatusSchema = t.Union([
   t.Literal('notLoggedIn'),
   t.Literal('bearerToken'),
   t.Literal('oAuth'),
-  t.Literal('unknown'),
+  t.Literal('unknown')
 ])
 
 const runtimeMcpUiSlotStateSchema = t.Object({
@@ -290,15 +329,17 @@ const runtimeMcpUiSlotStateSchema = t.Object({
   failedCount: t.Number(),
   needsLoginCount: t.Number(),
   recentProgress: t.Union([t.String(), t.Null()]),
-  servers: t.Array(t.Object({
-    name: t.String(),
-    status: runtimeMcpServerStatusSchema,
-    authStatus: runtimeMcpAuthStatusSchema,
-    toolCount: t.Number(),
-    resourceCount: t.Number(),
-    error: t.Union([t.String(), t.Null()]),
-  })),
-  updatedAt: t.Number(),
+  servers: t.Array(
+    t.Object({
+      name: t.String(),
+      status: runtimeMcpServerStatusSchema,
+      authStatus: runtimeMcpAuthStatusSchema,
+      toolCount: t.Number(),
+      resourceCount: t.Number(),
+      error: t.Union([t.String(), t.Null()])
+    })
+  ),
+  updatedAt: t.Number()
 })
 
 const runtimeDiffUiSlotStateSchema = t.Object({
@@ -310,7 +351,7 @@ const runtimeDiffUiSlotStateSchema = t.Object({
   addedLines: t.Number(),
   removedLines: t.Number(),
   hasDiff: t.Boolean(),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const runtimeTerminalUiSlotStateSchema = t.Object({
@@ -323,7 +364,7 @@ const runtimeTerminalUiSlotStateSchema = t.Object({
   failedCount: t.Number(),
   lastCommand: t.Union([t.String(), t.Null()]),
   lastOutputPreview: t.Union([t.String(), t.Null()]),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const runtimeApprovalStatusSchema = t.Union([
@@ -331,7 +372,7 @@ const runtimeApprovalStatusSchema = t.Union([
   t.Literal('approved'),
   t.Literal('denied'),
   t.Literal('timedOut'),
-  t.Literal('aborted'),
+  t.Literal('aborted')
 ])
 
 const runtimeApprovalsUiSlotStateSchema = t.Object({
@@ -342,23 +383,25 @@ const runtimeApprovalsUiSlotStateSchema = t.Object({
   pendingCount: t.Number(),
   approvedCount: t.Number(),
   deniedCount: t.Number(),
-  recentItems: t.Array(t.Object({
-    id: t.String(),
-    targetItemId: t.Union([t.String(), t.Null()]),
-    status: runtimeApprovalStatusSchema,
-    label: t.String(),
-    riskLevel: t.Union([t.String(), t.Null()]),
-    rationale: t.Union([t.String(), t.Null()]),
-    startedAt: t.Union([t.Number(), t.Null()]),
-    completedAt: t.Union([t.Number(), t.Null()]),
-  })),
-  updatedAt: t.Number(),
+  recentItems: t.Array(
+    t.Object({
+      id: t.String(),
+      targetItemId: t.Union([t.String(), t.Null()]),
+      status: runtimeApprovalStatusSchema,
+      label: t.String(),
+      riskLevel: t.Union([t.String(), t.Null()]),
+      rationale: t.Union([t.String(), t.Null()]),
+      startedAt: t.Union([t.Number(), t.Null()]),
+      completedAt: t.Union([t.Number(), t.Null()])
+    })
+  ),
+  updatedAt: t.Number()
 })
 
 const runtimeAlertSeveritySchema = t.Union([
   t.Literal('info'),
   t.Literal('warning'),
-  t.Literal('error'),
+  t.Literal('error')
 ])
 
 const runtimeAlertUiSlotStateSchema = t.Object({
@@ -367,14 +410,16 @@ const runtimeAlertUiSlotStateSchema = t.Object({
   threadId: t.Union([t.String(), t.Null()]),
   warningCount: t.Number(),
   errorCount: t.Number(),
-  recentItems: t.Array(t.Object({
-    id: t.String(),
-    severity: runtimeAlertSeveritySchema,
-    message: t.String(),
-    source: t.String(),
-    updatedAt: t.Number(),
-  })),
-  updatedAt: t.Number(),
+  recentItems: t.Array(
+    t.Object({
+      id: t.String(),
+      severity: runtimeAlertSeveritySchema,
+      message: t.String(),
+      source: t.String(),
+      updatedAt: t.Number()
+    })
+  ),
+  updatedAt: t.Number()
 })
 
 const runtimeFilesystemUiSlotStateSchema = t.Object({
@@ -383,7 +428,7 @@ const runtimeFilesystemUiSlotStateSchema = t.Object({
   threadId: t.String(),
   changedPathCount: t.Number(),
   recentPaths: t.Array(t.String()),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const runtimeSkillsUiSlotStateSchema = t.Object({
@@ -394,7 +439,7 @@ const runtimeSkillsUiSlotStateSchema = t.Object({
   disabledCount: t.Number(),
   errorCount: t.Number(),
   roots: t.Array(t.String()),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const runtimePluginUiSlotStateSchema = t.Object({
@@ -406,7 +451,7 @@ const runtimePluginUiSlotStateSchema = t.Object({
   appCount: t.Number(),
   marketplaceCount: t.Number(),
   errorCount: t.Number(),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const runtimeSearchUiSlotStateSchema = t.Object({
@@ -416,14 +461,14 @@ const runtimeSearchUiSlotStateSchema = t.Object({
   recentResultCount: t.Number(),
   recentQuery: t.Union([t.String(), t.Null()]),
   fuzzySessionActive: t.Boolean(),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const runtimeCrewCollaborationModeSchema = t.Object({
   name: t.String(),
   mode: t.Union([t.String(), t.Null()]),
   model: t.Union([t.String(), t.Null()]),
-  reasoningEffort: t.Union([t.String(), t.Null()]),
+  reasoningEffort: t.Union([t.String(), t.Null()])
 })
 
 const runtimeCrewAgentItemSchema = t.Object({
@@ -434,7 +479,7 @@ const runtimeCrewAgentItemSchema = t.Object({
   preview: t.Union([t.String(), t.Null()]),
   modelProvider: t.Union([t.String(), t.Null()]),
   agentNickname: t.Union([t.String(), t.Null()]),
-  agentRole: t.Union([t.String(), t.Null()]),
+  agentRole: t.Union([t.String(), t.Null()])
 })
 
 const runtimeCrewCallItemSchema = t.Object({
@@ -448,7 +493,7 @@ const runtimeCrewCallItemSchema = t.Object({
   reasoningEffort: t.Union([t.String(), t.Null()]),
   agents: t.Array(runtimeCrewAgentItemSchema),
   startedAt: t.Union([t.Number(), t.Null()]),
-  completedAt: t.Union([t.Number(), t.Null()]),
+  completedAt: t.Union([t.Number(), t.Null()])
 })
 
 const runtimeCrewUiSlotStateSchema = t.Object({
@@ -458,19 +503,21 @@ const runtimeCrewUiSlotStateSchema = t.Object({
   activeCount: t.Number(),
   completedCount: t.Number(),
   failedCount: t.Number(),
-  recentItems: t.Array(t.Object({
-    id: t.String(),
-    type: t.String(),
-    label: t.String(),
-    status: runtimeToolActivityStatusSchema,
-    startedAt: t.Union([t.Number(), t.Null()]),
-    completedAt: t.Union([t.Number(), t.Null()]),
-  })),
+  recentItems: t.Array(
+    t.Object({
+      id: t.String(),
+      type: t.String(),
+      label: t.String(),
+      status: runtimeToolActivityStatusSchema,
+      startedAt: t.Union([t.Number(), t.Null()]),
+      completedAt: t.Union([t.Number(), t.Null()])
+    })
+  ),
   agents: t.Array(runtimeCrewAgentItemSchema),
   collaborationModeCount: t.Number(),
   collaborationModes: t.Array(runtimeCrewCollaborationModeSchema),
   calls: t.Array(runtimeCrewCallItemSchema),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const runtimeUsageUiSlotStateSchema = t.Object({
@@ -488,7 +535,7 @@ const runtimeUsageUiSlotStateSchema = t.Object({
   hasCredits: t.Union([t.Boolean(), t.Null()]),
   rateLimitReachedType: t.Union([t.String(), t.Null()]),
   planType: t.Union([t.String(), t.Null()]),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const runtimeConfigUiSlotStateSchema = t.Object({
@@ -502,7 +549,7 @@ const runtimeConfigUiSlotStateSchema = t.Object({
   allowedSandboxModeCount: t.Union([t.Number(), t.Null()]),
   featureRequirementCount: t.Union([t.Number(), t.Null()]),
   webSearchModeCount: t.Union([t.Number(), t.Null()]),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const runtimeContextUsageItemSchema = t.Object({
@@ -510,7 +557,7 @@ const runtimeContextUsageItemSchema = t.Object({
   label: t.String(),
   tokenCount: t.Number(),
   metadata: t.Optional(t.Record(t.String(), t.Any())),
-  raw: t.Optional(t.Any()),
+  raw: t.Optional(t.Any())
 })
 
 const runtimeContextUsageSectionSchema = t.Object({
@@ -520,7 +567,7 @@ const runtimeContextUsageSectionSchema = t.Object({
   color: t.Union([t.String(), t.Null()]),
   isDeferred: t.Boolean(),
   items: t.Array(runtimeContextUsageItemSchema),
-  raw: t.Optional(t.Any()),
+  raw: t.Optional(t.Any())
 })
 
 const runtimeContextUsageSchema = t.Object({
@@ -536,7 +583,7 @@ const runtimeContextUsageSchema = t.Object({
   messageBreakdown: t.Union([t.Record(t.String(), t.Any()), t.Null()]),
   apiUsage: t.Union([t.Record(t.String(), t.Any()), t.Null()]),
   raw: t.Any(),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const runtimeUiSlotStateSchema = t.Union([
@@ -546,6 +593,7 @@ const runtimeUiSlotStateSchema = t.Union([
   runtimeModelUiSlotStateSchema,
   runtimeReasoningUiSlotStateSchema,
   runtimePlanUiSlotStateSchema,
+  runtimeUserInputUiSlotStateSchema,
   runtimeToolActivityUiSlotStateSchema,
   runtimeMcpUiSlotStateSchema,
   runtimeDiffUiSlotStateSchema,
@@ -558,64 +606,76 @@ const runtimeUiSlotStateSchema = t.Union([
   runtimeSearchUiSlotStateSchema,
   runtimeCrewUiSlotStateSchema,
   runtimeUsageUiSlotStateSchema,
-  runtimeConfigUiSlotStateSchema,
+  runtimeConfigUiSlotStateSchema
 ])
 
-const filePartSchema = t.Object({
-  type: t.Literal('file'),
-  mediaType: t.String({ minLength: 1 }),
-  filename: t.Optional(t.String()),
-  url: t.String({ minLength: 1 }),
-  providerMetadata: t.Optional(t.Any()),
-}, { additionalProperties: true })
+const filePartSchema = t.Object(
+  {
+    type: t.Literal('file'),
+    mediaType: t.String({ minLength: 1 }),
+    filename: t.Optional(t.String()),
+    url: t.String({ minLength: 1 }),
+    providerMetadata: t.Optional(t.Any())
+  },
+  { additionalProperties: true }
+)
 
 const contextPartSchema = t.Union([
-  t.Object({
-    type: t.Literal('data-cradle-skill'),
-    name: t.String({ minLength: 1 }),
-    path: t.String({ minLength: 1 }),
-    scope: t.Union([
-      t.Literal('builtin'),
-      t.Literal('legacy'),
-      t.Literal('global'),
-      t.Literal('repository'),
-      t.Literal('workspace'),
-      t.Literal('agent'),
-    ]),
-    description: t.Union([t.String(), t.Null()]),
-    position: t.Optional(t.Number({ minimum: 0 })),
-  }, { additionalProperties: false }),
-  t.Object({
-    type: t.Literal('data-cradle-plugin'),
-    provider: t.Optional(t.Union([
-      t.Literal('cradle'),
-      t.Literal('codex'),
-    ])),
-    pluginName: t.String({ minLength: 1 }),
-    displayName: t.String({ minLength: 1 }),
-    description: t.Union([t.String(), t.Null()]),
-    iconUrl: t.Optional(t.Union([t.String({ minLength: 1 }), t.Null()])),
-    routeSegment: t.String({ minLength: 1 }),
-    capabilities: t.Array(t.Object({
-      id: t.String({ minLength: 1 }),
-      type: t.String({ minLength: 1 }),
-      layer: t.Union([
-        t.Literal('server'),
-        t.Literal('web'),
-        t.Literal('desktop'),
+  t.Object(
+    {
+      type: t.Literal('data-cradle-skill'),
+      name: t.String({ minLength: 1 }),
+      path: t.String({ minLength: 1 }),
+      scope: t.Union([
+        t.Literal('builtin'),
+        t.Literal('legacy'),
+        t.Literal('global'),
+        t.Literal('repository'),
+        t.Literal('workspace'),
+        t.Literal('agent')
       ]),
-      label: t.Union([t.String(), t.Null()]),
-    }, { additionalProperties: false })),
-    mcpServers: t.Array(t.String({ minLength: 1 })),
-    nativeMention: t.Optional(t.Union([
-      t.Object({
-        name: t.String({ minLength: 1 }),
-        path: t.String({ minLength: 1 }),
-      }, { additionalProperties: false }),
-      t.Null(),
-    ])),
-    position: t.Optional(t.Number({ minimum: 0 })),
-  }, { additionalProperties: false }),
+      description: t.Union([t.String(), t.Null()]),
+      position: t.Optional(t.Number({ minimum: 0 }))
+    },
+    { additionalProperties: false }
+  ),
+  t.Object(
+    {
+      type: t.Literal('data-cradle-plugin'),
+      provider: t.Optional(t.Union([t.Literal('cradle'), t.Literal('codex')])),
+      pluginName: t.String({ minLength: 1 }),
+      displayName: t.String({ minLength: 1 }),
+      description: t.Union([t.String(), t.Null()]),
+      iconUrl: t.Optional(t.Union([t.String({ minLength: 1 }), t.Null()])),
+      routeSegment: t.String({ minLength: 1 }),
+      capabilities: t.Array(
+        t.Object(
+          {
+            id: t.String({ minLength: 1 }),
+            type: t.String({ minLength: 1 }),
+            layer: t.Union([t.Literal('server'), t.Literal('web'), t.Literal('desktop')]),
+            label: t.Union([t.String(), t.Null()])
+          },
+          { additionalProperties: false }
+        )
+      ),
+      mcpServers: t.Array(t.String({ minLength: 1 })),
+      nativeMention: t.Optional(
+        t.Union([
+          t.Object(
+            {
+              name: t.String({ minLength: 1 }),
+              path: t.String({ minLength: 1 })
+            },
+            { additionalProperties: false }
+          ),
+          t.Null()
+        ])
+      ),
+      position: t.Optional(t.Number({ minimum: 0 }))
+    },
+    { additionalProperties: false }
+  )
 ])
 
 const queueModeSchema = t.Literal('queue')
@@ -624,19 +684,19 @@ const queueStatusSchema = t.Union([
   t.Literal('running'),
   t.Literal('cancelled'),
   t.Literal('completed'),
-  t.Literal('failed'),
+  t.Literal('failed')
 ])
 const messageStatusSchema = t.Union([
   t.Literal('streaming'),
   t.Literal('complete'),
   t.Literal('aborted'),
-  t.Literal('failed'),
+  t.Literal('failed')
 ])
 const runSnapshotStatusSchema = t.Union([
   t.Literal('running'),
   t.Literal('complete'),
   t.Literal('aborted'),
-  t.Literal('failed'),
+  t.Literal('failed')
 ])
 const tracePhaseSchema = t.Union([
   t.Literal('run_started'),
@@ -646,14 +706,14 @@ const tracePhaseSchema = t.Union([
   t.Literal('sse_emit'),
   t.Literal('run_completed'),
   t.Literal('run_failed'),
-  t.Literal('run_aborted'),
+  t.Literal('run_aborted')
 ])
 
 const thinkingEffortSchema = t.Union([
   t.Literal('low'),
   t.Literal('medium'),
   t.Literal('high'),
-  t.Literal('xhigh'),
+  t.Literal('xhigh')
 ])
 
 const queueItemSchema = t.Object({
@@ -673,7 +733,7 @@ const queueItemSchema = t.Object({
   startedRunId: t.Union([t.String(), t.Null()]),
   errorText: t.Union([t.String(), t.Null()]),
   createdAt: t.Number(),
-  updatedAt: t.Number(),
+  updatedAt: t.Number()
 })
 
 const traceRecordSchema = t.Object({
@@ -687,7 +747,7 @@ const traceRecordSchema = t.Object({
   runtimeKind: t.String(),
   providerSessionId: t.Union([t.String(), t.Null()]),
   toolCallId: t.Union([t.String(), t.Null()]),
-  payload: t.Any(),
+  payload: t.Any()
 })
 
 const runTraceSchema = t.Object({
@@ -699,7 +759,7 @@ const runTraceSchema = t.Object({
   finishedAt: t.Union([t.Number(), t.Null()]),
   path: t.String(),
   recordCount: t.Number(),
-  records: t.Array(traceRecordSchema),
+  records: t.Array(traceRecordSchema)
 })
 
 const runSnapshotEventSchema = t.Object({
@@ -719,7 +779,7 @@ const runSnapshotEventSchema = t.Object({
   estimatedCostUsd: t.Optional(t.Number()),
   occurredAt: t.Number(),
   durationMs: t.Optional(t.Number()),
-  payload: t.Record(t.String(), t.Unknown()),
+  payload: t.Record(t.String(), t.Unknown())
 })
 
 const runSnapshotSchema = t.Object({
@@ -741,7 +801,7 @@ const runSnapshotSchema = t.Object({
   completionReason: t.Optional(t.String()),
   errorText: t.Optional(t.String()),
   summary: t.Record(t.String(), t.Unknown()),
-  events: t.Array(runSnapshotEventSchema),
+  events: t.Array(runSnapshotEventSchema)
 })
 
 const completedRunSchema = t.Object({
@@ -752,14 +812,14 @@ const completedRunSchema = t.Object({
   responseBody: t.Union([t.String(), t.Null()]),
   messagePreview: t.Union([t.String(), t.Null()]),
   startedAt: t.Number(),
-  finishedAt: t.Number(),
+  finishedAt: t.Number()
 })
 
 const runtimeStatusSchema = t.Union([
   t.Literal('idle'),
   t.Literal('pending'),
   t.Literal('streaming'),
-  t.Literal('cancelling'),
+  t.Literal('cancelling')
 ])
 const providerThreadSourceKindSchema = t.Union([
   t.Literal('cli'),
@@ -771,7 +831,7 @@ const providerThreadSourceKindSchema = t.Union([
   t.Literal('subAgentCompact'),
   t.Literal('subAgentThreadSpawn'),
   t.Literal('subAgentOther'),
-  t.Literal('unknown'),
+  t.Literal('unknown')
 ])
 
 const providerThreadSchema = t.Object({
@@ -790,7 +850,7 @@ const providerThreadSchema = t.Object({
   agentNickname: t.Union([t.String(), t.Null()]),
   agentRole: t.Union([t.String(), t.Null()]),
   name: t.Union([t.String(), t.Null()]),
-  cwd: t.Union([t.String(), t.Null()]),
+  cwd: t.Union([t.String(), t.Null()])
 })
 
 const providerThreadTurnSchema = t.Object({
@@ -800,7 +860,7 @@ const providerThreadTurnSchema = t.Object({
   completedAt: t.Union([t.Number(), t.Null()]),
   durationMs: t.Union([t.Number(), t.Null()]),
   itemsView: t.String(),
-  items: t.Array(t.Any()),
+  items: t.Array(t.Any())
 })
 
 const runtimeSessionRunSchema = t.Object({
@@ -812,7 +872,7 @@ const runtimeSessionRunSchema = t.Object({
   modelId: t.Union([t.String(), t.Null()]),
   providerSessionId: t.Union([t.String(), t.Null()]),
   queueItemId: t.Union([t.String(), t.Null()]),
-  runtimeSettings: runtimeSettingsSchema,
+  runtimeSettings: runtimeSettingsSchema
 })
 
 const codexAppServerCapabilitySchema = t.Object({
@@ -820,40 +880,40 @@ const codexAppServerCapabilitySchema = t.Object({
   paramsType: t.Nullable(t.String()),
   category: t.String(),
   operation: t.String(),
-  interaction: t.Union([t.Literal('request'), t.Literal('stream')]),
+  interaction: t.Union([t.Literal('request'), t.Literal('stream')])
 })
 
 const codexAppServerServerMessageSchema = t.Object({
   method: t.String(),
   paramsType: t.String(),
-  category: t.String(),
+  category: t.String()
 })
 
 export const ChatRuntimeModel = {
   sessionIdParams: t.Object({
-    sessionId: t.String({ minLength: 1 }),
+    sessionId: t.String({ minLength: 1 })
   }),
 
   runIdParams: t.Object({
-    runId: t.String({ minLength: 1 }),
+    runId: t.String({ minLength: 1 })
   }),
 
   sideConversationParams: t.Object({
-    sideConversationId: t.String({ minLength: 1 }),
+    sideConversationId: t.String({ minLength: 1 })
   }),
 
   completedRunsQuery: t.Object({
     since: t.Optional(t.Number({ minimum: 0 })),
-    limit: t.Optional(t.Number({ minimum: 1, maximum: 200 })),
+    limit: t.Optional(t.Number({ minimum: 1, maximum: 200 }))
   }),
 
   providerThreadParams: t.Object({
     sessionId: t.String({ minLength: 1 }),
-    threadId: t.String({ minLength: 1 }),
+    threadId: t.String({ minLength: 1 })
   }),
 
   draftRuntimeCapabilitiesQuery: t.Object({
-    runtimeKind: runtimeKindSchema,
+    runtimeKind: runtimeKindSchema
   }),
 
   providerThreadsQuery: t.Object({
@@ -863,28 +923,28 @@ export const ChatRuntimeModel = {
     sortDirection: t.Optional(t.Union([t.Literal('asc'), t.Literal('desc')])),
     sourceKinds: t.Optional(t.String()),
     archived: t.Optional(t.Boolean()),
-    searchTerm: t.Optional(t.String()),
+    searchTerm: t.Optional(t.String())
   }),
 
   providerThreadTurnsQuery: t.Object({
     cursor: t.Optional(t.String()),
     limit: t.Optional(t.Number()),
-    sortDirection: t.Optional(t.Union([t.Literal('asc'), t.Literal('desc')])),
+    sortDirection: t.Optional(t.Union([t.Literal('asc'), t.Literal('desc')]))
   }),
 
   queueItemParams: t.Object({
     sessionId: t.String({ minLength: 1 }),
-    queueItemId: t.String({ minLength: 1 }),
+    queueItemId: t.String({ minLength: 1 })
   }),
 
   userInputParams: t.Object({
     sessionId: t.String({ minLength: 1 }),
-    requestId: t.String({ minLength: 1 }),
+    requestId: t.String({ minLength: 1 })
   }),
 
   planImplementationApprovalParams: t.Object({
     sessionId: t.String({ minLength: 1 }),
-    messageId: t.String({ minLength: 1 }),
+    messageId: t.String({ minLength: 1 })
   }),
 
   responseBody: t.Object({
@@ -895,29 +955,29 @@ export const ChatRuntimeModel = {
     providerTargetId: t.Optional(t.String()),
     modelId: t.Optional(t.String()),
     thinkingEffort: t.Optional(thinkingEffortSchema),
-    runtimeSettings: t.Optional(runtimeSettingsPatchSchema),
+    runtimeSettings: t.Optional(runtimeSettingsPatchSchema)
   }),
 
   bangCommandBody: t.Object({
-    command: t.String({ minLength: 1 }),
+    command: t.String({ minLength: 1 })
   }),
 
   sideChatBody: t.Object({
     providerTargetId: t.Optional(t.String()),
-    modelId: t.Optional(t.String()),
+    modelId: t.Optional(t.String())
   }),
 
   quickQuestionBody: t.Object({
-    question: t.String({ minLength: 1 }),
+    question: t.String({ minLength: 1 })
   }),
 
   userInputBody: t.Object({
-    answers: t.Record(t.String(), t.Array(t.String())),
+    answers: t.Record(t.String(), t.Array(t.String()))
   }),
 
   planImplementationApprovalBody: t.Object({
     approvalId: t.String({ minLength: 1 }),
-    approved: t.Boolean(),
+    approved: t.Boolean()
   }),
 
   sideChatResponse: t.Object({
@@ -927,7 +987,7 @@ export const ChatRuntimeModel = {
     providerTargetId: t.Union([t.String(), t.Null()]),
     providerSessionId: t.Union([t.String(), t.Null()]),
     title: t.String(),
-    expiresAt: t.Number(),
+    expiresAt: t.Number()
   }),
 
   bangCommandResponse: t.Object({
@@ -941,22 +1001,22 @@ export const ChatRuntimeModel = {
     userMessageId: t.String(),
     resultMessageId: t.String(),
     userMessage: uiMessageSchema,
-    resultMessage: uiMessageSchema,
+    resultMessage: uiMessageSchema
   }),
 
   cancelResponse: t.Object({
-    ok: t.Literal(true),
+    ok: t.Literal(true)
   }),
 
   regeneratedTitleResponse: SessionModel.session,
 
   userInputResponse: t.Object({
     requestId: t.String(),
-    answers: t.Record(t.String(), t.Array(t.String())),
+    answers: t.Record(t.String(), t.Array(t.String()))
   }),
 
   planImplementationApprovalResponse: t.Object({
-    message: uiMessageSchema,
+    message: uiMessageSchema
   }),
 
   runtimeSettingsBody: runtimeSettingsPatchSchema,
@@ -964,7 +1024,7 @@ export const ChatRuntimeModel = {
   runtimeSettingsResponse: t.Object({
     sessionId: t.String(),
     runtimeSettings: runtimeSettingsSchema,
-    applied: t.Boolean(),
+    applied: t.Boolean()
   }),
 
   codexAppServerCapabilities: t.Object({
@@ -973,14 +1033,14 @@ export const ChatRuntimeModel = {
     generatedDate: t.String(),
     clientMethods: t.Array(codexAppServerCapabilitySchema),
     serverRequests: t.Array(codexAppServerServerMessageSchema),
-    serverNotifications: t.Array(codexAppServerServerMessageSchema),
+    serverNotifications: t.Array(codexAppServerServerMessageSchema)
   }),
 
   codexAppServerInvokeBody: t.Object({
     method: t.String({ minLength: 1 }),
     params: t.Optional(t.Any()),
     providerTargetId: t.Optional(t.String()),
-    modelId: t.Optional(t.String()),
+    modelId: t.Optional(t.String())
   }),
 
   codexAppServerStreamBody: t.Object({
@@ -988,40 +1048,40 @@ export const ChatRuntimeModel = {
     params: t.Optional(t.Any()),
     providerTargetId: t.Optional(t.String()),
     modelId: t.Optional(t.String()),
-    closeOnMethods: t.Optional(t.Array(t.String({ minLength: 1 }))),
+    closeOnMethods: t.Optional(t.Array(t.String({ minLength: 1 })))
   }),
 
   codexAppServerInvokeResponse: t.Object({
     method: t.String(),
     capability: codexAppServerCapabilitySchema,
-    result: t.Any(),
+    result: t.Any()
   }),
 
   runtimeCatalog: t.Object({
-    items: t.Array(runtimeCatalogItemSchema),
+    items: t.Array(runtimeCatalogItemSchema)
   }),
 
   runtimeHealth: t.Object({
-    items: t.Array(runtimeHealthItemSchema),
+    items: t.Array(runtimeHealthItemSchema)
   }),
 
   capabilities: t.Object({
     runtimeKind: t.String(),
     slashCommands: t.Array(slashCommandSchema),
     uiSlots: t.Array(runtimeUiSlotSchema),
-    skills: t.Array(t.String()),
+    skills: t.Array(t.String())
   }),
 
   uiSlotStates: t.Object({
     runtimeKind: t.String(),
-    states: t.Array(runtimeUiSlotStateSchema),
+    states: t.Array(runtimeUiSlotStateSchema)
   }),
 
   contextUsageResponse: t.Object({
     sessionId: t.String(),
     runtimeKind: t.String(),
     providerSessionId: t.Union([t.String(), t.Null()]),
-    usage: t.Union([runtimeContextUsageSchema, t.Null()]),
+    usage: t.Union([runtimeContextUsageSchema, t.Null()])
   }),
 
   runtimeStatus: t.Object({
@@ -1038,8 +1098,8 @@ export const ChatRuntimeModel = {
     latestRun: t.Union([runtimeSessionRunSchema, t.Null()]),
     queue: t.Object({
       pending: t.Number(),
-      running: t.Number(),
-    }),
+      running: t.Number()
+    })
   }),
 
   providerThreads: t.Object({
@@ -1047,13 +1107,13 @@ export const ChatRuntimeModel = {
     providerSessionId: t.Union([t.String(), t.Null()]),
     threads: t.Array(providerThreadSchema),
     nextCursor: t.Union([t.String(), t.Null()]),
-    backwardsCursor: t.Union([t.String(), t.Null()]),
+    backwardsCursor: t.Union([t.String(), t.Null()])
   }),
 
   providerThread: t.Object({
     runtimeKind: t.String(),
     providerSessionId: t.Union([t.String(), t.Null()]),
-    thread: providerThreadSchema,
+    thread: providerThreadSchema
   }),
 
   providerThreadTurns: t.Object({
@@ -1063,7 +1123,7 @@ export const ChatRuntimeModel = {
     turns: t.Array(providerThreadTurnSchema),
     messages: t.Array(uiMessageSchema),
     nextCursor: t.Union([t.String(), t.Null()]),
-    backwardsCursor: t.Union([t.String(), t.Null()]),
+    backwardsCursor: t.Union([t.String(), t.Null()])
   }),
 
   chatMessages: t.Array(chatMessageSnapshotSchema),
@@ -1071,7 +1131,7 @@ export const ChatRuntimeModel = {
   queueItem: queueItemSchema,
 
   queueListResponse: t.Object({
-    items: t.Array(queueItemSchema),
+    items: t.Array(queueItemSchema)
   }),
 
   traceRecord: traceRecordSchema,
@@ -1082,16 +1142,16 @@ export const ChatRuntimeModel = {
 
   sessionTraces: t.Object({
     sessionId: t.String(),
-    traces: t.Array(runTraceSchema),
+    traces: t.Array(runTraceSchema)
   }),
 
   sessionRunSnapshots: t.Object({
     sessionId: t.String(),
-    snapshots: t.Array(runSnapshotSchema),
+    snapshots: t.Array(runSnapshotSchema)
   }),
 
   completedRuns: t.Object({
-    runs: t.Array(completedRunSchema),
+    runs: t.Array(completedRunSchema)
   }),
 
   queueEnqueueBody: t.Object({
@@ -1101,14 +1161,14 @@ export const ChatRuntimeModel = {
     providerTargetId: t.Optional(t.String()),
     modelId: t.Optional(t.String()),
     thinkingEffort: t.Optional(thinkingEffortSchema),
-    runtimeSettings: t.Optional(runtimeSettingsPatchSchema),
+    runtimeSettings: t.Optional(runtimeSettingsPatchSchema)
   }),
 
   steerBody: t.Object({
     text: t.Optional(t.String({ minLength: 1 })),
     files: t.Optional(t.Array(filePartSchema)),
     contextParts: t.Optional(t.Array(contextPartSchema)),
-    providerTargetId: t.Optional(t.String()),
+    providerTargetId: t.Optional(t.String())
   }),
 
   steerResponse: t.Object({
@@ -1116,10 +1176,10 @@ export const ChatRuntimeModel = {
     sessionId: t.String(),
     runId: t.String(),
     sourceMessageId: t.String(),
-    message: uiMessageSchema,
+    message: uiMessageSchema
   }),
 
   queueReorderBody: t.Object({
-    queueItemIds: t.Array(t.String({ minLength: 1 })),
-  }),
+    queueItemIds: t.Array(t.String({ minLength: 1 }))
+  })
 }

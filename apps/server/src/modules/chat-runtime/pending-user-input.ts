@@ -2,7 +2,11 @@ import type { UIMessageChunk } from 'ai'
 
 import { AppError } from '../../errors/app-error'
 import { currentUnixSeconds } from '../../helpers/time'
-import type { RuntimeUserInputRequest, RuntimeUserInputResolution } from './runtime-provider-types'
+import type {
+  RuntimeUserInputRequest,
+  RuntimeUserInputResolution,
+  RuntimeUserInputUiSlotState
+} from './runtime-provider-types'
 
 interface PendingUserInputState {
   request: RuntimeUserInputRequest
@@ -20,15 +24,19 @@ export function setRuntimeUserInputPublisher(nextPublisher: RuntimeUserInputPubl
   publisher = nextPublisher
 }
 
-export function requestRuntimeUserInput(input: RuntimeUserInputRequest): Promise<RuntimeUserInputResolution> {
+export function requestRuntimeUserInput(
+  input: RuntimeUserInputRequest
+): Promise<RuntimeUserInputResolution> {
   const pendingKey = readPendingKey(input.sessionId, input.providerRequestId)
   if (pendingUserInputById.has(pendingKey)) {
-    return Promise.reject(new AppError({
-      code: 'chat_runtime_user_input_duplicate',
-      status: 409,
-      message: 'Runtime user input request is already pending',
-      details: { requestId: input.providerRequestId, sessionId: input.sessionId },
-    }))
+    return Promise.reject(
+      new AppError({
+        code: 'chat_runtime_user_input_duplicate',
+        status: 409,
+        message: 'Runtime user input request is already pending',
+        details: { requestId: input.providerRequestId, sessionId: input.sessionId }
+      })
+    )
   }
 
   return new Promise((resolve, reject) => {
@@ -36,7 +44,7 @@ export function requestRuntimeUserInput(input: RuntimeUserInputRequest): Promise
       request: input,
       createdAt: currentUnixSeconds(),
       resolve,
-      reject,
+      reject
     })
   })
 }
@@ -53,14 +61,14 @@ export function submitRuntimeUserInput(input: {
       code: 'chat_runtime_user_input_not_found',
       status: 404,
       message: 'Pending runtime user input request was not found',
-      details: { requestId: input.requestId, sessionId: input.sessionId },
+      details: { requestId: input.requestId, sessionId: input.sessionId }
     })
   }
 
   pendingUserInputById.delete(pendingKey)
   const resolution: RuntimeUserInputResolution = {
     requestId: input.requestId,
-    answers: input.answers,
+    answers: input.answers
   }
   pending.resolve(resolution)
   publisher?.(pending.request.runId, {
@@ -70,10 +78,37 @@ export function submitRuntimeUserInput(input: {
       type: 'cradle.runtime-user-input.resolved.v1',
       requestId: input.requestId,
       answers: input.answers,
-      acceptedAt: currentUnixSeconds(),
-    },
+      acceptedAt: currentUnixSeconds()
+    }
   })
   return resolution
+}
+
+export function listPendingRuntimeUserInputStates(input: {
+  sessionId: string
+  slotId: string
+  threadId: string | null
+}): RuntimeUserInputUiSlotState[] {
+  const states: RuntimeUserInputUiSlotState[] = []
+  for (const pending of pendingUserInputById.values()) {
+    if (pending.request.sessionId !== input.sessionId) {
+      continue
+    }
+    states.push({
+      kind: 'userInput',
+      slotId: input.slotId,
+      threadId: input.threadId,
+      runId: pending.request.runId,
+      requestId: pending.request.providerRequestId,
+      providerMethod: pending.request.providerMethod,
+      toolCallId: pending.request.toolCallId,
+      questionCount: pending.request.questions.length,
+      questions: pending.request.questions,
+      createdAt: pending.createdAt,
+      updatedAt: pending.createdAt
+    })
+  }
+  return states.sort((a, b) => a.createdAt - b.createdAt || a.requestId.localeCompare(b.requestId))
 }
 
 export function rejectPendingUserInputsForRun(runId: string, error: Error): void {

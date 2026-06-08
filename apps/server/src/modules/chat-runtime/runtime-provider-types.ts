@@ -27,42 +27,43 @@ export interface RuntimeSlashCommand {
   aliases?: string[]
 }
 
-export type RuntimeUiSlotSurface
-  = | 'slashCommand'
-    | 'toolbarPicker'
-    | 'composerState'
-    | 'messageInline'
-    | 'runtimePanel'
-    // Stream evidence is rendered from provider-emitted message/tool chunks, not from polled slot state.
-    | 'streamEvidence'
-    | 'recordOnly'
+export type RuntimeUiSlotSurface =
+  | 'slashCommand'
+  | 'toolbarPicker'
+  | 'composerState'
+  | 'messageInline'
+  | 'runtimePanel'
+  // Stream evidence is rendered from provider-emitted message/tool chunks, not from polled slot state.
+  | 'streamEvidence'
+  | 'recordOnly'
 
-export type RuntimeUiSlotIconKey
-  = | 'alert'
-    | 'approvals'
-    | 'code-review'
-    | 'compact'
-    | 'config'
-    | 'diff'
-    | 'feedback'
-    | 'filesystem'
-    | 'goal'
-    | 'crew'
-    | 'ide-context'
-    | 'mcp'
-    | 'model'
-    | 'personality'
-    | 'plugin'
-    | 'plan'
-    | 'quick-question'
-    | 'reasoning'
-    | 'search'
-    | 'side-chat'
-    | 'skills'
-    | 'status'
-    | 'terminal'
-    | 'tool-activity'
-    | 'usage'
+export type RuntimeUiSlotIconKey =
+  | 'alert'
+  | 'approvals'
+  | 'code-review'
+  | 'compact'
+  | 'config'
+  | 'diff'
+  | 'feedback'
+  | 'filesystem'
+  | 'goal'
+  | 'crew'
+  | 'ide-context'
+  | 'mcp'
+  | 'model'
+  | 'personality'
+  | 'plugin'
+  | 'plan'
+  | 'quick-question'
+  | 'user-input'
+  | 'reasoning'
+  | 'search'
+  | 'side-chat'
+  | 'skills'
+  | 'status'
+  | 'terminal'
+  | 'tool-activity'
+  | 'usage'
 
 export interface RuntimeUiSlot {
   id: string
@@ -76,15 +77,46 @@ export interface RuntimeUiSlot {
   surfaces: RuntimeUiSlotSurface[]
 }
 
-export type RuntimeUiSlotStateKind = 'alert' | 'approvals' | 'compact' | 'config' | 'crew' | 'diff' | 'filesystem' | 'goal' | 'mcp' | 'model' | 'plan' | 'plugin' | 'reasoning' | 'search' | 'skills' | 'status' | 'terminal' | 'toolActivity' | 'usage'
+export type RuntimeUiSlotStateKind =
+  | 'alert'
+  | 'approvals'
+  | 'compact'
+  | 'config'
+  | 'crew'
+  | 'diff'
+  | 'filesystem'
+  | 'goal'
+  | 'mcp'
+  | 'model'
+  | 'plan'
+  | 'plugin'
+  | 'reasoning'
+  | 'search'
+  | 'skills'
+  | 'status'
+  | 'terminal'
+  | 'toolActivity'
+  | 'usage'
+  | 'userInput'
 
-export type RuntimeGoalStatus = 'active' | 'paused' | 'blocked' | 'usageLimited' | 'budgetLimited' | 'complete'
+export type RuntimeGoalStatus =
+  | 'active'
+  | 'paused'
+  | 'blocked'
+  | 'usageLimited'
+  | 'budgetLimited'
+  | 'complete'
 export type RuntimeCompactStatus = 'idle' | 'running' | 'nearLimit' | 'overLimit' | 'compacted'
 export type RuntimeThreadStatus = 'notLoaded' | 'idle' | 'systemError' | 'active'
 export type RuntimePlanStepStatus = 'pending' | 'inProgress' | 'completed'
 export type RuntimeToolActivityStatus = 'running' | 'completed' | 'failed'
 export type RuntimeMcpServerStatus = 'starting' | 'ready' | 'failed' | 'cancelled' | 'unknown'
-export type RuntimeMcpAuthStatus = 'unsupported' | 'notLoggedIn' | 'bearerToken' | 'oAuth' | 'unknown'
+export type RuntimeMcpAuthStatus =
+  | 'unsupported'
+  | 'notLoggedIn'
+  | 'bearerToken'
+  | 'oAuth'
+  | 'unknown'
 export type RuntimeApprovalStatus = 'pending' | 'approved' | 'denied' | 'timedOut' | 'aborted'
 export type RuntimeAlertSeverity = 'info' | 'warning' | 'error'
 
@@ -190,7 +222,7 @@ export interface RuntimeReasoningUiSlotState {
   threadId: string
   effort: string | null
   summary: string | null
-  supportedEfforts: Array<{ id: string, description: string }>
+  supportedEfforts: Array<{ id: string; description: string }>
   updatedAt: number
 }
 
@@ -444,26 +476,41 @@ export interface RuntimeConfigUiSlotState {
   updatedAt: number
 }
 
-export type RuntimeUiSlotState
-  = | RuntimeAlertUiSlotState
-    | RuntimeApprovalsUiSlotState
-    | RuntimeCompactUiSlotState
-    | RuntimeConfigUiSlotState
-    | RuntimeCrewUiSlotState
-    | RuntimeDiffUiSlotState
-    | RuntimeFilesystemUiSlotState
-    | RuntimeGoalUiSlotState
-    | RuntimeMcpUiSlotState
-    | RuntimeModelUiSlotState
-    | RuntimePlanUiSlotState
-    | RuntimePluginUiSlotState
-    | RuntimeReasoningUiSlotState
-    | RuntimeSearchUiSlotState
-    | RuntimeSkillsUiSlotState
-    | RuntimeStatusUiSlotState
-    | RuntimeTerminalUiSlotState
-    | RuntimeToolActivityUiSlotState
-    | RuntimeUsageUiSlotState
+export interface RuntimeUserInputUiSlotState {
+  kind: 'userInput'
+  slotId: string
+  threadId: string | null
+  runId: string
+  requestId: string
+  providerMethod: string
+  toolCallId: string
+  questionCount: number
+  questions: RuntimeUserInputQuestion[]
+  createdAt: number
+  updatedAt: number
+}
+
+export type RuntimeUiSlotState =
+  | RuntimeAlertUiSlotState
+  | RuntimeApprovalsUiSlotState
+  | RuntimeCompactUiSlotState
+  | RuntimeConfigUiSlotState
+  | RuntimeCrewUiSlotState
+  | RuntimeDiffUiSlotState
+  | RuntimeFilesystemUiSlotState
+  | RuntimeGoalUiSlotState
+  | RuntimeMcpUiSlotState
+  | RuntimeModelUiSlotState
+  | RuntimePlanUiSlotState
+  | RuntimePluginUiSlotState
+  | RuntimeReasoningUiSlotState
+  | RuntimeSearchUiSlotState
+  | RuntimeSkillsUiSlotState
+  | RuntimeStatusUiSlotState
+  | RuntimeTerminalUiSlotState
+  | RuntimeToolActivityUiSlotState
+  | RuntimeUsageUiSlotState
+  | RuntimeUserInputUiSlotState
 
 export interface RuntimePresentationCapabilities {
   runtimeKind: RuntimeKind
@@ -535,20 +582,20 @@ export interface RuntimeUserInputResolution {
   answers: Record<string, string[]>
 }
 
-export type ProviderError
-  = | { _tag: 'provider_unsupported', provider: string }
-    | { _tag: 'session_not_found', provider: string, sessionId: string }
-    | { _tag: 'session_closed', provider: string, sessionId: string }
-    | { _tag: 'request_failed', provider: string, method: string, detail: string }
-    | { _tag: 'process_error', provider: string, detail: string }
-    | { _tag: 'auth_failed', provider: string }
-    | { _tag: 'rate_limited', provider: string, retryAfter?: number }
-    | { _tag: 'model_not_found', provider: string, model: string }
+export type ProviderError =
+  | { _tag: 'provider_unsupported'; provider: string }
+  | { _tag: 'session_not_found'; provider: string; sessionId: string }
+  | { _tag: 'session_closed'; provider: string; sessionId: string }
+  | { _tag: 'request_failed'; provider: string; method: string; detail: string }
+  | { _tag: 'process_error'; provider: string; detail: string }
+  | { _tag: 'auth_failed'; provider: string }
+  | { _tag: 'rate_limited'; provider: string; retryAfter?: number }
+  | { _tag: 'model_not_found'; provider: string; model: string }
 
 export class ProviderRuntimeError extends Error {
   constructor(
     readonly providerError: ProviderError,
-    options?: { cause?: unknown },
+    options?: { cause?: unknown }
   ) {
     super(formatProviderErrorMessage(providerError), options)
     this.name = 'ProviderRuntimeError'
@@ -583,43 +630,43 @@ function formatProviderErrorMessage(error: ProviderError): string {
 export const ProviderErrors = {
   providerUnsupported: (provider: string): ProviderError => ({
     _tag: 'provider_unsupported',
-    provider,
+    provider
   }),
   sessionNotFound: (provider: string, sessionId: string): ProviderError => ({
     _tag: 'session_not_found',
     provider,
-    sessionId,
+    sessionId
   }),
   sessionClosed: (provider: string, sessionId: string): ProviderError => ({
     _tag: 'session_closed',
     provider,
-    sessionId,
+    sessionId
   }),
   requestFailed: (provider: string, method: string, detail: string): ProviderError => ({
     _tag: 'request_failed',
     provider,
     method,
-    detail,
+    detail
   }),
   processError: (provider: string, detail: string): ProviderError => ({
     _tag: 'process_error',
     provider,
-    detail,
+    detail
   }),
   authFailed: (provider: string): ProviderError => ({
     _tag: 'auth_failed',
-    provider,
+    provider
   }),
   rateLimited: (provider: string, retryAfter?: number): ProviderError => ({
     _tag: 'rate_limited',
     provider,
-    ...(retryAfter === undefined ? {} : { retryAfter }),
+    ...(retryAfter === undefined ? {} : { retryAfter })
   }),
   modelNotFound: (provider: string, model: string): ProviderError => ({
     _tag: 'model_not_found',
     provider,
-    model,
-  }),
+    model
+  })
 } as const
 
 export type RuntimeCatalogSurface = 'chat' | 'jarvis'
@@ -720,17 +767,17 @@ export interface StreamTurnInput {
   onProviderThreadEvent?: (event: ProviderThreadEvent) => void
 }
 
-export type ProviderThreadSourceKind
-  = | 'cli'
-    | 'vscode'
-    | 'exec'
-    | 'appServer'
-    | 'subAgent'
-    | 'subAgentReview'
-    | 'subAgentCompact'
-    | 'subAgentThreadSpawn'
-    | 'subAgentOther'
-    | 'unknown'
+export type ProviderThreadSourceKind =
+  | 'cli'
+  | 'vscode'
+  | 'exec'
+  | 'appServer'
+  | 'subAgent'
+  | 'subAgentReview'
+  | 'subAgentCompact'
+  | 'subAgentThreadSpawn'
+  | 'subAgentOther'
+  | 'unknown'
 
 export interface ProviderThreadListInput extends GetCapabilitiesInput {
   cursor?: string | null
@@ -924,14 +971,20 @@ export interface ChatRuntime {
   resumeChatSession: (input: ResumeChatSessionInput) => Promise<RuntimeSession>
   forkRuntimeSession?: (input: ForkRuntimeSessionInput) => Promise<RuntimeSession>
   quickQuestion?: (input: QuickQuestionInput) => AsyncGenerator<UIMessageChunk, void, void>
-  getDraftPresentation?: () => Promise<RuntimePresentationCapabilities> | RuntimePresentationCapabilities
+  getDraftPresentation?: () =>
+    | Promise<RuntimePresentationCapabilities>
+    | RuntimePresentationCapabilities
   getPresentation?: (input: GetCapabilitiesInput) => Promise<RuntimePresentationCapabilities>
   getDynamicCapabilities?: (input: GetCapabilitiesInput) => Promise<ChatRuntimeCapabilities>
   getUiSlotStates?: (input: GetUiSlotStatesInput) => Promise<RuntimeUiSlotState[]>
   getContextUsage?: (input: GetContextUsageInput) => Promise<RuntimeContextUsage | null>
   getProviderNativeAppServerCapabilities?: () => ProviderNativeAppServerCapabilityManifest
-  invokeProviderNativeAppServer?: (input: ProviderNativeAppServerInvokeInput) => Promise<ProviderNativeAppServerInvokeResponse>
-  openProviderNativeAppServerStream?: (input: ProviderNativeAppServerStreamInput) => ReadableStream<Uint8Array>
+  invokeProviderNativeAppServer?: (
+    input: ProviderNativeAppServerInvokeInput
+  ) => Promise<ProviderNativeAppServerInvokeResponse>
+  openProviderNativeAppServerStream?: (
+    input: ProviderNativeAppServerStreamInput
+  ) => ReadableStream<Uint8Array>
   listProviderThreads?: (input: ProviderThreadListInput) => Promise<ProviderThreadListResult>
   readProviderThread?: (input: ProviderThreadReadInput) => Promise<ProviderThreadReadResult>
   listProviderThreadTurns?: (input: ProviderThreadTurnsInput) => Promise<ProviderThreadTurnsResult>
