@@ -8,7 +8,7 @@ import { cn } from '../cn'
 import { useTabsContext } from '../context'
 import type { TabInstance } from '../types'
 import type { ScreenCoordinates } from './screen-coordinates'
-import { getEventScreenCoordinates, isPointerOutsideWindow } from './screen-coordinates'
+import { getEventScreenCoordinates } from './screen-coordinates'
 
 export interface TabPresentation {
   icon?: React.ReactNode
@@ -68,6 +68,15 @@ function readNumberShortcutIndex(event: KeyboardEvent): number | null {
 }
 
 const metaTabHintDelayMs = 200
+const tearOffReleaseDistancePx = 48
+
+function getDragDistance(start: ScreenCoordinates | null, end: ScreenCoordinates | null): number {
+  if (!start || !end) {
+    return 0
+  }
+
+  return Math.hypot(end.screenX - start.screenX, end.screenY - start.screenY)
+}
 
 const SortableTabPill = memo(({
   tab,
@@ -206,8 +215,8 @@ export const TabBar = memo(({
   const { store } = useTabsContext()
   const tabs = store(s => s.tabs)
   const activeTabId = store(s => s.activeTabId)
-  const pointerRef = useRef<ScreenCoordinates | null>(null)
-  const dragWasTornOffRef = useRef(false)
+  const dragStartPointerRef = useRef<ScreenCoordinates | null>(null)
+  const dragReleasePointerRef = useRef<ScreenCoordinates | null>(null)
   const dragCleanupRef = useRef<(() => void) | null>(null)
   const [activeDragTab, setActiveDragTab] = useState<TabInstance | null>(null)
   const [showMetaTabHints, setShowMetaTabHints] = useState(false)
@@ -220,8 +229,8 @@ export const TabBar = memo(({
   const releaseCurrentDrag = useCallback(() => {
     dragCleanupRef.current?.()
     dragCleanupRef.current = null
-    pointerRef.current = null
-    dragWasTornOffRef.current = false
+    dragStartPointerRef.current = null
+    dragReleasePointerRef.current = null
   }, [])
 
   const handleActivate = useCallback((id: string) => {
@@ -310,17 +319,16 @@ export const TabBar = memo(({
       return false
     }
 
-    const pointer = pointerRef.current
-    pointerRef.current = null
+    const releasePointer = dragReleasePointerRef.current
+    dragReleasePointerRef.current = null
 
-    if (!isPointerOutsideWindow(pointer, window)) {
+    if (getDragDistance(dragStartPointerRef.current, releasePointer) <= tearOffReleaseDistancePx) {
       return false
     }
 
     const tab = store.getState().tabs.find(item => item.id === activeId)
-    if (tab && !tab.pinned && pointer) {
-      dragWasTornOffRef.current = true
-      onTabTearOff(tab, pointer.screenX, pointer.screenY)
+    if (tab && !tab.pinned && releasePointer) {
+      onTabTearOff(tab, releasePointer.screenX, releasePointer.screenY)
       return true
     }
 
@@ -328,8 +336,9 @@ export const TabBar = memo(({
   }, [onTabTearOff, store])
 
   const handleDragStart = useCallback((event: DragStartEvent) => {
-    pointerRef.current = getEventScreenCoordinates(event.activatorEvent, window)
-    dragWasTornOffRef.current = false
+    const startPointer = getEventScreenCoordinates(event.activatorEvent, window)
+    dragStartPointerRef.current = startPointer
+    dragReleasePointerRef.current = startPointer
     dragCleanupRef.current?.()
 
     const tab = store.getState().tabs.find(item => item.id === event.active.id)
@@ -338,17 +347,23 @@ export const TabBar = memo(({
       onDragStart?.(tab)
     }
 
-    const onMove = (moveEvent: MouseEvent | PointerEvent | TouchEvent) => {
-      pointerRef.current = getEventScreenCoordinates(moveEvent, window)
+    const updateReleasePointer = (pointerEvent: MouseEvent | PointerEvent | TouchEvent) => {
+      dragReleasePointerRef.current = getEventScreenCoordinates(pointerEvent, window)
     }
 
-    window.addEventListener('mousemove', onMove, true)
-    window.addEventListener('pointermove', onMove, true)
-    window.addEventListener('touchmove', onMove, true)
+    window.addEventListener('mousemove', updateReleasePointer, true)
+    window.addEventListener('pointermove', updateReleasePointer, true)
+    window.addEventListener('touchmove', updateReleasePointer, true)
+    window.addEventListener('mouseup', updateReleasePointer, true)
+    window.addEventListener('pointerup', updateReleasePointer, true)
+    window.addEventListener('touchend', updateReleasePointer, true)
     dragCleanupRef.current = () => {
-      window.removeEventListener('mousemove', onMove, true)
-      window.removeEventListener('pointermove', onMove, true)
-      window.removeEventListener('touchmove', onMove, true)
+      window.removeEventListener('mousemove', updateReleasePointer, true)
+      window.removeEventListener('pointermove', updateReleasePointer, true)
+      window.removeEventListener('touchmove', updateReleasePointer, true)
+      window.removeEventListener('mouseup', updateReleasePointer, true)
+      window.removeEventListener('pointerup', updateReleasePointer, true)
+      window.removeEventListener('touchend', updateReleasePointer, true)
     }
   }, [onDragStart, store])
 
@@ -360,11 +375,8 @@ export const TabBar = memo(({
     const { active, over } = event
     setActiveDragTab(null)
     onDragEnd?.()
-    if (dragWasTornOffRef.current) {
-      releaseCurrentDrag()
-      return
-    }
     if (checkTearOff(active.id)) {
+      releaseCurrentDrag()
       return
     }
     if (!over || active.id === over.id) {

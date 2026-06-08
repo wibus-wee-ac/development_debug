@@ -12,5 +12,5 @@ Stable runtime helpers used by generated command modules.
 - **manual-command.ts**: Local `man` command for inspecting generated command help
 - **operation-command.ts**: Commander registration for generated operation specs
 - **operation-command.test.ts**: Generated command registration tests for boolean flag projection and strict parsing
-- **output.ts**: Automatic human-readable output, explicit JSON, bordered tables, and NDJSON
+- **output.ts**: Automatic human-readable output, explicit JSON, bordered tables, NDJSON, and compact agent-readable search result rendering
 - **types.ts**: Shared runtime and generator-facing types

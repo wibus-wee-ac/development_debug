@@ -31,7 +31,8 @@ The Docker Prometheus container scrapes `host.docker.internal:9464/metrics`, whi
 
 ## Dashboards
 
-- `Cradle Runtime - Resources` (`/d/cradle-runtime`) covers Cradle-owned runtime metrics: server process, chat runtime, provider runtime, PTY, Chronicle, observability queue, and desktop samples.
+- `Cradle Runtime - Resources` (`/d/cradle-runtime`) covers Cradle-owned runtime metrics: server process, chat runtime, provider runtime, PTY, Chronicle, observability queue, desktop samples, and renderer diagnostics.
+- `Cradle Runtime - Correlations` (`/d/cradle-correlations`) overlays renderer, desktop, chat stream, provider, queue, and server pressure signals for leak and retention analysis. See [runtime-correlations.zh-CN.md](./runtime-correlations.zh-CN.md).
 - `Cradle Server - Runtime & HTTP` (`/d/cradle-server`) covers generic HTTP, Node.js runtime, V8, process, and host metrics from OpenTelemetry instrumentation.
 
 ## Stop

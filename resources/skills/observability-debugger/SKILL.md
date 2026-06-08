@@ -13,7 +13,7 @@ Use this skill when a chat turn behaves unexpectedly and you need concrete local
 - `observability_incidents` — deduplicated grouped events; `TURN_STREAM_FAILED` aggregates by code unless a producer supplies a narrower dedupe key
 - `backend_run_snapshots` — Cradle-owned runtime-neutral run envelope with millisecond lifecycle timestamps
 - `backend_run_snapshot_events` — ordered snapshot event stream for stable harness phases such as model text/reasoning boundaries, tool input/output availability, usage, and finalization
-- `GET /observability/runtime-snapshot` — live server/runtime resource view that includes server process health, active chat runs, replay buffers, provider runtime hosts, PTY resources, Chronicle daemon resources, latest desktop samples, and observability queue health
+- `GET /observability/runtime-snapshot` — live server/runtime resource view that includes server process health, active chat runs, replay buffers, provider runtime hosts, PTY resources, Chronicle daemon resources, latest desktop samples, renderer/browser drill-downs, and observability queue health
 - OpenTelemetry metrics — low-cardinality gauges/counters derived from runtime samples; use only as trend/correlation evidence during debugging
 - **Server logs** — pino-structured JSON written to `{CRADLE_DATA_DIR}/server.log` (or `$CRADLE_LOG_FILE`)
 
@@ -112,10 +112,22 @@ Important fields:
 - `providerRuntime.hosts` — runtime host ref counts, pin counts, resource ownership, and expiry
 - `pty` — terminal resources, process descendants, RSS, and CPU by role
 - `chronicle` — Chronicle daemon resource state
-- `desktop.latestSamples` — Electron main/app metrics, windows, and renderer diagnostics reported by desktop main
+- `desktop.latestSamples` — raw Electron main/app metrics, windows, BrowserPanel diagnostics, and renderer diagnostics reported by desktop main
+- `drilldowns.renderer` — top renderer windows, top chat sessions by estimated retained chars, and active streaming messages; use after Grafana shows renderer heap or chat payload pressure
+- `drilldowns.browserPanel` — BrowserPanel owner/thread/tab/runtime to WebContents/process mappings; use when Tab working set grows without matching renderer JS heap growth
+- `drilldowns.replay.topRuns` — active runs with the largest replay buffers, joined back to session/message/provider/model IDs
+- `drilldowns.providerRuntime.topHosts` — provider hosts sorted by ref/pin/resource/idle pressure, with expiry and idle timing
 - `observability` — event queue depth/drop/persistence health
 
 This command is server-backed only; it has no SQLite fallback because it reports live process state.
+
+Runtime snapshot drill-down sequence for memory and retention issues:
+
+1. If `drilldowns.renderer.topChatSessions` is large and aligns with renderer heap growth, inspect that session's durable snapshots/messages.
+2. If `drilldowns.renderer.rendererWindows` shows high Tab/renderer identity but chat sessions are small, inspect `drilldowns.browserPanel.liveTabs` and `drilldowns.browserPanel.runtimes` for retained WebContents/native BrowserPanel state.
+3. If stream/replay metrics stay non-zero, inspect `drilldowns.replay.topRuns` and `drilldowns.renderer.activeStreamingMessages` before checking logs.
+4. If provider host metrics stay non-zero after active runs fall, inspect `drilldowns.providerRuntime.topHosts` for ref count, pin count, expiry, and idle duration.
+5. If metrics disagree with drill-downs, suspect sampler/exporter lag or stale Prometheus range data before blaming the resource owner.
 
 ### metrics — trend and exporter cross-check
 
@@ -123,10 +135,10 @@ Use metrics as secondary evidence after `runtime-snapshot`, not as the first sou
 
 Debug sequence:
 
-1. Capture `cradle observability runtime-snapshot --json` and identify the suspect resource family: server memory/handles, active runs, replay buffers, provider hosts, PTY resources, Chronicle resources, desktop samples, or observability queue health.
+1. Capture `cradle observability runtime-snapshot --json` and identify the suspect resource family: server memory/handles, active runs, replay buffers, provider hosts, PTY resources, Chronicle resources, desktop samples, renderer/browser drill-downs, or observability queue health.
 2. Check the metric backend for the matching `cradle_*` series over the same time window.
 3. If JSON shows growth but metrics are flat or missing, suspect sampler/exporter/configuration drift rather than the resource owner.
-4. If both JSON and metrics grow, continue with owner-specific evidence: active run IDs, provider host IDs, PTY descendants, queue depth, or logs.
+4. If both JSON and metrics grow, continue with owner-specific evidence: `drilldowns.renderer.topChatSessions`, `drilldowns.browserPanel.liveTabs`, active run IDs, replay top runs, provider host IDs, PTY descendants, queue depth, or logs.
 5. If metrics grow but JSON is currently clean, treat it as a historical spike and correlate with incidents, durable run snapshots, or server logs around the metric peak.
 
 Do not spend time teaching telemetry setup from this skill. If metrics are unavailable, continue with `runtime-snapshot`, SQLite events/incidents/timeline, and logs.
@@ -157,7 +169,7 @@ The bundle includes observability events, incidents, and run snapshot timelines 
 1. If the server is running, start with `cradle observability error-patterns --limit 50` or `cradle observability incidents --status open`.
 2. Use `cradle observability events --code <CODE> --limit 50` to narrow to one session/run.
 3. Use `cradle chat snapshot run <runId>` or `cradle chat snapshot session <sessionId>` to inspect durable harness phases.
-4. Use `cradle observability runtime-snapshot --json` when the symptom looks live-resource related: memory growth, stuck active runs, retained replay buffers, provider host leaks, PTY process leaks, Chronicle daemons, desktop renderer pressure, or observability queue backpressure.
+4. Use `cradle observability runtime-snapshot --json` when the symptom looks live-resource related: memory growth, stuck active runs, retained replay buffers, provider host leaks, PTY process leaks, Chronicle daemons, desktop renderer pressure, BrowserPanel/WebContents retention, or observability queue backpressure.
 5. Use metrics only as a trend/exporter cross-check; compare them with `runtime-snapshot` before blaming the resource owner.
 6. Use `logs --filter "<chatSessionId>" --lines 100` when DB/API evidence is not enough.
 7. Use `cradle observability export ...` for API-faithful sharing; use the script `bundle` when the server is unavailable.

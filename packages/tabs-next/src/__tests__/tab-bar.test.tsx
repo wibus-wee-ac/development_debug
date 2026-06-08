@@ -1,6 +1,6 @@
 // @vitest-environment jsdom
 
-import { fireEvent, render, screen } from '@testing-library/react'
+import { cleanup, fireEvent, render, screen } from '@testing-library/react'
 import type { ReactNode } from 'react'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -11,6 +11,7 @@ import { createTabStore } from '../store'
 
 const dndMockState = vi.hoisted(() => ({
   activeId: 'mock-tab',
+  overId: null as string | null,
 }))
 
 vi.mock('@dnd-kit/core', () => ({
@@ -19,7 +20,7 @@ vi.mock('@dnd-kit/core', () => ({
     children: ReactNode
     onDragStart?: (event: { active: { id: string }, activatorEvent: Event }) => void
     onDragMove?: (event: { active: { id: string } }) => void
-    onDragEnd?: (event: { active: { id: string }, over: null }) => void
+    onDragEnd?: (event: { active: { id: string }, over: { id: string } | null }) => void
     onDragCancel?: (event: { active: { id: string } }) => void
   }) => (
     <div>
@@ -52,7 +53,7 @@ vi.mock('@dnd-kit/core', () => ({
         onClick={() => {
           onDragEnd?.({
             active: { id: dndMockState.activeId },
-            over: null,
+            over: dndMockState.overId ? { id: dndMockState.overId } : null,
           })
         }}
       >
@@ -129,6 +130,8 @@ function renderTabBarWithTearOff(onTabTearOff = vi.fn()) {
 
 describe('tabBar', () => {
   afterEach(() => {
+    cleanup()
+    dndMockState.overId = null
     vi.restoreAllMocks()
   })
 
@@ -206,48 +209,39 @@ describe('tabBar', () => {
     expect(removeListener).toHaveBeenCalledWith('pointermove', pointerMoveListener, true)
   })
 
-  it('tears off a tab only when the outside drag is released', () => {
-    const addListener = vi.spyOn(window, 'addEventListener')
+  it('reorders tabs when released inside the tear-off distance', () => {
     const { onTabTearOff, store, tabId } = renderTabBarWithTearOff()
-
-    Object.defineProperties(window, {
-      screenX: { configurable: true, value: 0 },
-      screenY: { configurable: true, value: 0 },
-      outerWidth: { configurable: true, value: 100 },
-      outerHeight: { configurable: true, value: 100 },
-    })
+    const secondTabId = store.getState().openTab('chat', { sessionId: 'two' })
+    dndMockState.overId = secondTabId
 
     fireEvent.click(screen.getByTestId('mock-drag-start'))
-    const mouseMoveListener = addListener.mock.calls.find(call => call[0] === 'mousemove')?.[1]
-
-    expect(mouseMoveListener).toBeTypeOf('function')
-
-    ;(mouseMoveListener as EventListener)(new MouseEvent('mousemove', { screenX: 140, screenY: 20 }))
-
-    expect(onTabTearOff).not.toHaveBeenCalled()
-
+    fireEvent.mouseUp(window, { screenX: 30, screenY: 30 })
     fireEvent.click(screen.getByTestId('mock-drag-end'))
 
-    expect(onTabTearOff).toHaveBeenCalledWith(store.getState().tabs.find(tab => tab.id === tabId), 140, 20)
+    expect(onTabTearOff).not.toHaveBeenCalled()
+    expect(store.getState().tabs.map(tab => tab.id)).toEqual([secondTabId, tabId])
   })
 
-  it('does not tear off a tab when the drag is canceled outside the window', () => {
-    const addListener = vi.spyOn(window, 'addEventListener')
-    const { onTabTearOff } = renderTabBarWithTearOff()
-
-    Object.defineProperties(window, {
-      screenX: { configurable: true, value: 0 },
-      screenY: { configurable: true, value: 0 },
-      outerWidth: { configurable: true, value: 100 },
-      outerHeight: { configurable: true, value: 100 },
-    })
+  it.each([
+    ['right', 59, 10],
+    ['left', -39, 10],
+    ['down', 10, 59],
+    ['up', 10, -39],
+  ])('tears off a tab from the release position when dragged past the limit toward %s', (_direction, screenX, screenY) => {
+    const { onTabTearOff, store, tabId } = renderTabBarWithTearOff()
 
     fireEvent.click(screen.getByTestId('mock-drag-start'))
-    const mouseMoveListener = addListener.mock.calls.find(call => call[0] === 'mousemove')?.[1]
+    fireEvent.mouseUp(window, { screenX, screenY })
+    fireEvent.click(screen.getByTestId('mock-drag-end'))
 
-    expect(mouseMoveListener).toBeTypeOf('function')
+    expect(onTabTearOff).toHaveBeenCalledWith(store.getState().tabs.find(tab => tab.id === tabId), screenX, screenY)
+  })
 
-    ;(mouseMoveListener as EventListener)(new MouseEvent('mousemove', { screenX: 140, screenY: 20 }))
+  it('does not tear off a tab when a past-limit drag is canceled', () => {
+    const { onTabTearOff } = renderTabBarWithTearOff()
+
+    fireEvent.click(screen.getByTestId('mock-drag-start'))
+    fireEvent.mouseUp(window, { screenX: 59, screenY: 10 })
     fireEvent.click(screen.getByTestId('mock-drag-cancel'))
 
     expect(onTabTearOff).not.toHaveBeenCalled()

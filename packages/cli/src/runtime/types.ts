@@ -1,7 +1,7 @@
 export type CliHttpMethod = 'delete' | 'get' | 'patch' | 'post' | 'put'
 
 export type CliValueType = 'boolean' | 'json' | 'number' | 'string' | 'string[]'
-export type CliOutputFormat = 'auto' | 'json' | 'ndjson' | 'pretty' | 'table'
+export type CliOutputFormat = 'agent' | 'auto' | 'json' | 'ndjson' | 'pretty' | 'table'
 
 export interface CliArgumentSpec {
   name: string

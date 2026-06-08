@@ -75,6 +75,16 @@ const ResultProjectionSchema = z.union([
 
 type ResultProjection = z.infer<typeof ResultProjectionSchema>
 type ResultItemProjection = z.infer<typeof ResultItemProjectionSchema>
+type JsonRecord = Record<string, unknown>
+
+interface AgentSearchResult {
+  id: string
+  kind: string
+  title: string | null
+  metadata: Array<readonly [string, string]>
+  preview: string | null
+  next: string | null
+}
 
 function getDisplayWidth(value: string): number {
   return value.length
@@ -170,6 +180,202 @@ function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
 
+function readString(record: JsonRecord, key: string): string | null {
+  const value = record[key]
+  return typeof value === 'string' && value.trim() ? value : null
+}
+
+function readNumber(record: JsonRecord, key: string): number | null {
+  const value = record[key]
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+function readRecord(record: JsonRecord, key: string): JsonRecord | null {
+  const value = record[key]
+  return isRecord(value) ? value : null
+}
+
+function readRecordArray(record: JsonRecord, key: string): JsonRecord[] {
+  const value = record[key]
+  return Array.isArray(value) ? value.filter(isRecord) : []
+}
+
+function normalizeWhitespace(value: string): string {
+  return value.replace(/\s+/g, ' ').trim()
+}
+
+function stripMarkTags(value: string): string {
+  return value.replace(/<\/?mark>/g, '')
+}
+
+function formatPreview(value: string): string {
+  return normalizeWhitespace(stripMarkTags(value))
+}
+
+function formatAgentResult(result: AgentSearchResult, index: number): string {
+  const lines = [`Result ${index + 1}`]
+  lines.push(`kind: ${result.kind}`)
+  lines.push(`id: ${result.id}`)
+  if (result.title) {
+    lines.push(`title: ${result.title}`)
+  }
+  for (const [key, value] of result.metadata) {
+    lines.push(`${key}: ${value}`)
+  }
+  if (result.preview) {
+    lines.push('preview:')
+    lines.push(result.preview)
+  }
+  if (result.next) {
+    lines.push('next:')
+    lines.push(result.next)
+  }
+  return lines.join('\n')
+}
+
+function projectThreadSearchHit(record: JsonRecord): AgentSearchResult | null {
+  const sessionId = readString(record, 'sessionId')
+  const snippets = readRecordArray(record, 'snippets')
+  if (!sessionId || snippets.length === 0) {
+    return null
+  }
+
+  const firstSnippet = snippets[0]
+  const messageRole = readString(firstSnippet, 'messageRole')
+  const preview = readString(firstSnippet, 'text')
+  const metadata: Array<readonly [string, string]> = []
+  const workspaceName = readString(record, 'workspaceName')
+  const matchCount = readNumber(record, 'matchCount')
+  if (workspaceName) {
+    metadata.push(['workspace', workspaceName])
+  }
+  if (messageRole) {
+    metadata.push(['messageRole', messageRole])
+  }
+  if (matchCount !== null) {
+    metadata.push(['matches', String(matchCount)])
+  }
+
+  return {
+    id: sessionId,
+    kind: 'thread',
+    metadata,
+    next: `cradle session messages ${sessionId}`,
+    preview: preview ? formatPreview(preview) : null,
+    title: readString(record, 'sessionTitle'),
+  }
+}
+
+function projectChronicleSearchHit(record: JsonRecord): AgentSearchResult | null {
+  const id = readString(record, 'id')
+  const type = readString(record, 'type')
+  const snippet = readRecord(record, 'snippet')
+  if (!id || !type || !snippet) {
+    return null
+  }
+
+  const metadata: Array<readonly [string, string]> = []
+  const workspaceName = readString(record, 'workspaceName')
+  const matchCount = readNumber(record, 'matchCount')
+  const memoryType = readString(record, 'memoryType')
+  const cardType = readString(record, 'cardType')
+  const dimension = readString(record, 'dimension')
+  if (workspaceName) {
+    metadata.push(['workspace', workspaceName])
+  }
+  if (memoryType) {
+    metadata.push(['memoryType', memoryType])
+  }
+  if (cardType) {
+    metadata.push(['cardType', cardType])
+  }
+  if (dimension) {
+    metadata.push(['dimension', dimension])
+  }
+  if (matchCount !== null) {
+    metadata.push(['matches', String(matchCount)])
+  }
+
+  const preview = readString(snippet, 'text')
+
+  return {
+    id,
+    kind: `chronicle-${type}`,
+    metadata,
+    next: type === 'memory'
+      ? `cradle chronicle memories get ${id}`
+      : `cradle chronicle knowledge-cards get ${id}`,
+    preview: preview ? formatPreview(preview) : null,
+    title: readString(record, 'title'),
+  }
+}
+
+function projectIssueSearchHit(record: JsonRecord): AgentSearchResult | null {
+  const id = readString(record, 'id')
+  const title = readString(record, 'title')
+  const number = readNumber(record, 'number')
+  if (!id || !title || number === null) {
+    return null
+  }
+
+  const metadata: Array<readonly [string, string]> = []
+  const priority = readString(record, 'priority')
+  const statusId = readString(record, 'statusId')
+  const workspaceId = readString(record, 'workspaceId')
+  if (workspaceId) {
+    metadata.push(['workspaceId', workspaceId])
+  }
+  if (priority) {
+    metadata.push(['priority', priority])
+  }
+  if (statusId) {
+    metadata.push(['statusId', statusId])
+  }
+
+  const description = readString(record, 'description')
+
+  return {
+    id,
+    kind: 'issue',
+    metadata,
+    next: `cradle issue get ${id}`,
+    preview: description ? formatPreview(description).slice(0, 260) : null,
+    title: `#${number} ${title}`,
+  }
+}
+
+function projectAgentSearchResult(value: unknown): AgentSearchResult | null {
+  if (!isRecord(value)) {
+    return null
+  }
+  return projectThreadSearchHit(value)
+    ?? projectChronicleSearchHit(value)
+    ?? projectIssueSearchHit(value)
+}
+
+function isAgentSearchResult(value: AgentSearchResult | null): value is AgentSearchResult {
+  return value !== null
+}
+
+function printAgent(result: unknown): boolean {
+  if (!Array.isArray(result)) {
+    return false
+  }
+
+  if (result.length === 0) {
+    console.log('No results')
+    return true
+  }
+
+  const projected = result.map(projectAgentSearchResult)
+  if (!projected.every(isAgentSearchResult)) {
+    return false
+  }
+
+  console.log(projected.map((item, index) => formatAgentResult(item, index)).join('\n\n'))
+  return true
+}
+
 function countExistingFields(record: Record<string, unknown>, fields: string[]): number {
   return fields.filter(field => Object.hasOwn(record, field)).length
 }
@@ -247,6 +453,10 @@ function printKeyValue(rows: Array<readonly [string, string]>): boolean {
 
 function printAuto(result: ResultProjection): void {
   if (result.kind === 'array') {
+    if (printAgent(result.raw)) {
+      return
+    }
+
     const columns = getTableColumns(result.items)
     if (columns.length > 0 || result.items.length === 0) {
       printTable(result.items, columns)
@@ -303,6 +513,14 @@ export function printResult(result: unknown, options: PrintResultOptions): void 
 
   if (format === 'ndjson') {
     printNdjson(projection)
+    return
+  }
+
+  if (format === 'agent') {
+    if (printAgent(selectedResult)) {
+      return
+    }
+    console.log(JSON.stringify(selectedResult, null, 2))
     return
   }
 

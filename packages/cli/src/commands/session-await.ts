@@ -5,7 +5,7 @@ import { getCommandContext } from '../runtime/context'
 import { printResult } from '../runtime/output'
 import type { CliOutputFormat } from '../runtime/types'
 
-const OutputFormatSchema = z.enum(['auto', 'json', 'pretty', 'table', 'ndjson'])
+const OutputFormatSchema = z.enum(['agent', 'auto', 'json', 'pretty', 'table', 'ndjson'])
 
 const JsonFieldsOptionSchema = z.union([
   z.string()
@@ -150,7 +150,7 @@ export function registerSessionAwaitCommand(root: Command): void {
     .option('--workspace-id <id>', 'Workspace ID. Defaults to CRADLE_WORKSPACE_ID')
     .option('--reason <text>', 'Visible wait reason')
     .option('--expires-at <unixSeconds>', 'Unix timestamp when this await expires')
-    .option('--format <format>', 'Output format: auto, json, pretty, table, ndjson', 'auto')
+    .option('--format <format>', 'Output format: agent, auto, json, pretty, table, ndjson', 'auto')
     .option('--json [fields]', 'Print JSON, optionally selecting comma-separated fields')
     .action(async (repo: string, options: GithubCIOptions, command: Command) => {
       const pr = readInteger(options.pr, '--pr')
@@ -184,7 +184,7 @@ export function registerSessionAwaitCommand(root: Command): void {
     .option('--workspace-id <id>', 'Workspace ID. Defaults to CRADLE_WORKSPACE_ID')
     .option('--reason <text>', 'Visible wait reason')
     .option('--expires-at <unixSeconds>', 'Unix timestamp when this await expires')
-    .option('--format <format>', 'Output format: auto, json, pretty, table, ndjson', 'auto')
+    .option('--format <format>', 'Output format: agent, auto, json, pretty, table, ndjson', 'auto')
     .option('--json [fields]', 'Print JSON, optionally selecting comma-separated fields')
     .action(async (repo: string, options: GithubReviewOptions, command: Command) => {
       const pr = readInteger(options.pr, '--pr')
@@ -207,7 +207,7 @@ export function registerSessionAwaitCommand(root: Command): void {
     .option('--chat-session-id <id>', 'Chat session ID. Defaults to CRADLE_CHAT_SESSION_ID')
     .option('--workspace-id <id>', 'Workspace ID. Defaults to CRADLE_WORKSPACE_ID')
     .option('--expires-at <unixSeconds>', 'Unix timestamp when this await expires')
-    .option('--format <format>', 'Output format: auto, json, pretty, table, ndjson', 'auto')
+    .option('--format <format>', 'Output format: agent, auto, json, pretty, table, ndjson', 'auto')
     .option('--json [fields]', 'Print JSON, optionally selecting comma-separated fields')
     .action(async (options: ManualAwaitOptions, command: Command) => {
       await createAwait(command, {
@@ -223,7 +223,7 @@ export function registerSessionAwaitCommand(root: Command): void {
     .argument('<await-id>', 'Session await ID')
     .option('--resume-text <text>', 'Replacement resume message')
     .option('--resume-payload-json <json>', 'Replacement resume payload JSON')
-    .option('--format <format>', 'Output format: auto, json, pretty, table, ndjson', 'auto')
+    .option('--format <format>', 'Output format: agent, auto, json, pretty, table, ndjson', 'auto')
     .option('--json [fields]', 'Print JSON, optionally selecting comma-separated fields')
     .action(async (awaitId: string, options: RetryDeliveryOptions, command: Command) => {
       const context = getCommandContext(command)

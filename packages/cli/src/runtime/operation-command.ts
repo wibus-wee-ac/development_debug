@@ -5,7 +5,7 @@ import { getCommandContext } from './context'
 import { printResult } from './output'
 import type { CliOperationSpec, CliOutputFormat, CliValueType } from './types'
 
-const OutputFormatSchema = z.enum(['auto', 'json', 'pretty', 'table', 'ndjson'])
+const OutputFormatSchema = z.enum(['agent', 'auto', 'json', 'pretty', 'table', 'ndjson'])
 const CliHttpMethodSchema = z.enum(['delete', 'get', 'patch', 'post', 'put'])
 const CliValueTypeSchema = z.enum(['boolean', 'json', 'number', 'string', 'string[]'])
 const CliArgumentSpecSchema = z.object({
@@ -177,7 +177,7 @@ export function registerOperationCommand(root: Command, rawSpec: CliOperationSpe
 
   const leaf = new Command(segments.at(-1)!)
   leaf.description(spec.description ?? `${spec.method.toUpperCase()} ${spec.path}`)
-  leaf.option('--format <format>', 'Output format: auto, json, pretty, table, ndjson', 'auto')
+  leaf.option('--format <format>', 'Output format: agent, auto, json, pretty, table, ndjson', 'auto')
   leaf.option('--json [fields]', 'Print JSON, optionally selecting comma-separated fields')
 
   for (const argument of spec.arguments) {
