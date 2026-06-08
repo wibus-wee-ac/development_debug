@@ -147,6 +147,21 @@ describe('browser panel shortcuts', () => {
     expect(useBrowserPanelStore.getState().activeTabId).toBe('tab-1')
   })
 
+  it('keeps the locally selected browser tab during native metadata updates', () => {
+    useBrowserPanelStore.getState().upsertOwnerState(threadState(1, 'tab-1', ['tab-1', 'tab-2']))
+    useBrowserPanelStore.getState().setActiveTab('tab-2')
+    useBrowserPanelStore.getState().upsertOwnerState(threadState(2, 'tab-1', ['tab-1', 'tab-2']))
+
+    expect(useBrowserPanelStore.getState().activeTabId).toBe('tab-2')
+  })
+
+  it('switches to a newly created native browser tab', () => {
+    useBrowserPanelStore.getState().upsertOwnerState(threadState(1, 'tab-1', ['tab-1']))
+    useBrowserPanelStore.getState().upsertOwnerState(threadState(2, 'tab-2', ['tab-1', 'tab-2']))
+
+    expect(useBrowserPanelStore.getState().activeTabId).toBe('tab-2')
+  })
+
   it('stores enabled script ids per browser tab', () => {
     const tabId = useBrowserPanelStore.getState().createTab('https://example.com')
 

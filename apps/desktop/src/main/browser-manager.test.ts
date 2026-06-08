@@ -276,6 +276,28 @@ describe('desktop browser manager tab runtime retention', () => {
     manager.dispose()
   })
 
+  it('does not select an inactive tab when capturing its screenshot', async () => {
+    vi.useFakeTimers()
+    const manager = await createManager()
+    const threadId = 'thread-1'
+
+    const initialState = manager.open({ threadId, initialUrl: 'https://one.test/' })
+    const firstTabId = initialState.activeTabId!
+    manager.setPanelBounds({ threadId, bounds, surface: 'native' })
+    await flushBrowserWork()
+
+    const nextState = manager.newTab({ threadId, url: 'https://two.test/', activate: false })
+    const secondTabId = nextState.tabs.find(tab => tab.id !== firstTabId)!.id
+    await manager.captureScreenshot({ threadId, tabId: secondTabId })
+    await flushBrowserWork()
+
+    expect(manager.getState({ threadId }).activeTabId).toBe(firstTabId)
+    expect(electronMocks.WebContentsView.instances).toHaveLength(2)
+    expect(electronMocks.WebContentsView.instances[1]!.webContents.capturePage).toHaveBeenCalledTimes(1)
+
+    manager.dispose()
+  })
+
   it('maps guest prompt requests to the owning browser tab runtime', async () => {
     vi.useFakeTimers()
     delete process.env.ELECTRON_RENDERER_URL

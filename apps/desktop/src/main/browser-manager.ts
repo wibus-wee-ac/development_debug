@@ -1523,22 +1523,18 @@ export class DesktopBrowserManager {
   }> {
     const state = this.ensureWorkspace(input.threadId)
     const tab = this.resolveTab(state, input.tabId)
-    if (state.activeTabId !== tab.id) {
-      state.activeTabId = tab.id
-      syncThreadLastError(state)
-      this.markThreadStateChanged(input.threadId)
-      this.emitState(input.threadId)
-    }
-
-    this.resumeThread(input.threadId)
+    const isActiveTab = state.activeTabId === tab.id
     const wasSuspended = tab.status === SUSPENDED_TAB_STATUS
     const runtime = this.ensureLiveRuntime(input.threadId, tab.id)
     const webContents = runtime.webContents
     const expectedUrl = normalizeUrlInput(tab.lastCommittedUrl ?? tab.url)
     const currentUrl = webContents.getURL()
     const bounds = this.getVisibleBoundsForThread(input.threadId)
-    if (bounds) {
-      this.attachActiveTab(input.threadId, bounds)
+    if (isActiveTab) {
+      this.resumeThread(input.threadId)
+      if (bounds) {
+        this.attachRuntime(runtime, bounds)
+      }
     }
 
     if (wasSuspended || currentUrl.length === 0 || currentUrl !== expectedUrl) {

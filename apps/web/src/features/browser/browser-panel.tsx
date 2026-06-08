@@ -1710,9 +1710,9 @@ export function BrowserPanel({
         setActiveTab(tabId, resolvedOwnerId)
         return
       }
+      setActiveTab(tabId, resolvedOwnerId)
       void runBrowserAction(async () => {
         upsertOwnerState(await bridge.selectTab({ threadId: resolvedOwnerId, tabId }))
-        setActiveTab(tabId, resolvedOwnerId)
       })
     }
 
