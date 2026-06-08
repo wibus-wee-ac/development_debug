@@ -14,6 +14,7 @@ let serverUrl: string | null = null
 const pendingEvents: DesktopObservabilityEvent[] = []
 let resourceReporterTimer: NodeJS.Timeout | null = null
 let resourceReporterInFlight = false
+let runtimeDiagnosticsProvider: DesktopRuntimeDiagnosticsProvider | null = null
 
 interface DesktopRuntimeSample {
   source: 'desktop-main'
@@ -21,7 +22,11 @@ interface DesktopRuntimeSample {
   main: Record<string, unknown>
   appMetrics: Array<Record<string, unknown>>
   windows: Array<Record<string, unknown>>
+  diagnostics?: Record<string, unknown>
 }
+
+type DesktopRuntimeDiagnosticsProvider =
+  () => Record<string, unknown> | Promise<Record<string, unknown>>
 
 function serializeError(error: unknown): Record<string, unknown> {
   if (error instanceof Error) {
@@ -67,9 +72,25 @@ async function sendEvent(event: DesktopObservabilityEvent): Promise<void> {
   })
 }
 
+async function readRuntimeDiagnostics(): Promise<Record<string, unknown> | undefined> {
+  if (!runtimeDiagnosticsProvider) {
+    return undefined
+  }
+
+  try {
+    return await runtimeDiagnosticsProvider()
+  }
+  catch (error) {
+    return {
+      runtimeDiagnosticsError: serializeError(error),
+    }
+  }
+}
+
 async function createRuntimeSample(): Promise<DesktopRuntimeSample> {
   const memory = await process.getProcessMemoryInfo()
-  return {
+  const diagnostics = await readRuntimeDiagnostics()
+  const sample: DesktopRuntimeSample = {
     source: 'desktop-main',
     sampledAt: Date.now(),
     main: {
@@ -102,6 +123,10 @@ async function createRuntimeSample(): Promise<DesktopRuntimeSample> {
       }
     }),
   }
+  if (diagnostics) {
+    sample.diagnostics = diagnostics
+  }
+  return sample
 }
 
 async function sendRuntimeSample(sample: DesktopRuntimeSample): Promise<void> {
@@ -145,6 +170,12 @@ export function bindDesktopObservabilityServerUrl(url: string): void {
     })
   }
   reportRuntimeSample()
+}
+
+export function setDesktopRuntimeDiagnosticsProvider(
+  provider: DesktopRuntimeDiagnosticsProvider | null,
+): void {
+  runtimeDiagnosticsProvider = provider
 }
 
 export function startDesktopResourceReporting(intervalMs = 10_000): void {

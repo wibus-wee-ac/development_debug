@@ -53,3 +53,53 @@ describe('desktop server process observability env', () => {
     })
   })
 })
+
+describe('desktop server process identity', () => {
+  it('recognizes Cradle development and packaged server process commands', async () => {
+    const { isDesktopServerProcessCommand } = await import('./server-process')
+
+    expect(isDesktopServerProcessCommand(
+      '/Users/wibus/.vite-plus/js_runtime/node/24.16.0/bin/node --import tsx /Users/wibus/dev/Cradle/apps/server/src/index.ts',
+    )).toBe(true)
+    expect(isDesktopServerProcessCommand(
+      '/Applications/Cradle.app/Contents/Resources/node /Applications/Cradle.app/Contents/Resources/server/dist/main.js',
+    )).toBe(true)
+  })
+
+  it('rejects unrelated node processes', async () => {
+    const { isDesktopServerProcessCommand } = await import('./server-process')
+
+    expect(isDesktopServerProcessCommand(
+      '/Users/wibus/.vite-plus/js_runtime/node/24.16.0/bin/node ./node_modules/.bin/../vite-node/dist/cli.mjs src/index.ts',
+    )).toBe(false)
+    expect(isDesktopServerProcessCommand(
+      '/Applications/Codex.app/Contents/Resources/node_repl',
+    )).toBe(false)
+  })
+})
+
+describe('desktop server exit classification', () => {
+  it('treats desktop-marked exits as intentional', async () => {
+    const { classifyDesktopServerExit } = await import('./server-process')
+
+    expect(classifyDesktopServerExit({
+      signal: 'SIGTERM',
+      expectation: {
+        pid: 123,
+        source: 'desktop',
+        reason: 'test shutdown',
+        requestedAt: '2026-06-08T00:00:00.000Z',
+        requestedSignal: 'SIGTERM',
+      },
+    })).toBe('desktop-requested')
+  })
+
+  it('treats unmarked signal exits as external kills', async () => {
+    const { classifyDesktopServerExit } = await import('./server-process')
+
+    expect(classifyDesktopServerExit({
+      signal: 'SIGTERM',
+      expectation: null,
+    })).toBe('external-signal-or-os-kill')
+  })
+})

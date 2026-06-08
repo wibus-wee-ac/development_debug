@@ -82,6 +82,16 @@ function readCapturedWebviewShape(): CapturedWebviewShape | undefined {
   return (globalThis as { __desktopWebviewShape?: CapturedWebviewShape }).__desktopWebviewShape
 }
 
+function createRendererWindow(url: string, tabId: string) {
+  return {
+    isDestroyed: vi.fn(() => false),
+    webContents: {
+      getURL: vi.fn(() => url),
+      executeJavaScript: vi.fn(async () => tabId),
+    },
+  }
+}
+
 describe('desktop plugin loader lifecycle', () => {
   afterEach(async () => {
     const { deactivateDesktopPlugins } = await import('./plugin-loader')
@@ -93,6 +103,7 @@ describe('desktop plugin loader lifecycle', () => {
     delete process.env.CRADLE_PLUGIN_ALLOWED_PERMISSIONS
     delete process.env.CRADLE_PLUGIN_ALLOWED_DESKTOP_CLEANUP_PERMISSIONS
     delete (globalThis as { __desktopWebviewShape?: CapturedWebviewShape }).__desktopWebviewShape
+    delete (globalThis as { __browserTabRequestResult?: string }).__browserTabRequestResult
     vi.resetModules()
     if (tempPluginsDir) {
       await rm(tempPluginsDir, { recursive: true, force: true })
@@ -288,5 +299,36 @@ describe('desktop plugin loader lifecycle', () => {
       hasRawDebugger: false,
       hasCdp: true,
     })
+  })
+
+  it('routes browser tab requests to the focused renderer window before the main chat window', async () => {
+    const mainWindow = createRendererWindow('http://localhost:5173/#/chat/session-main', 'main-tab')
+    const tearoffWindow = createRendererWindow(
+      'http://localhost:5173/tearoff.html?session=session-tearoff&tearoff=true',
+      'tearoff-tab',
+    )
+    electronMocks.BrowserWindow.getAllWindows.mockReturnValue([mainWindow, tearoffWindow] as never)
+    electronMocks.BrowserWindow.getFocusedWindow.mockReturnValue(tearoffWindow as never)
+
+    tempPluginsDir = await writeDesktopPluginPackage({
+      desktopSource: [
+        'export async function activate(ctx) {',
+        '  globalThis.__browserTabRequestResult = await ctx.browserTabs.request("https://example.test/")',
+        '}',
+      ],
+    })
+    process.env.CRADLE_PLUGINS_DIR = tempPluginsDir
+    process.env.ELECTRON_RENDERER_URL = 'http://localhost:5173'
+
+    const { activateDesktopPlugins } = await import('./plugin-loader')
+
+    await activateDesktopPlugins()
+
+    expect(tearoffWindow.webContents.executeJavaScript).toHaveBeenCalledWith(
+      'globalThis.__cradleBrowserUseCreateTab("https://example.test/")',
+      true,
+    )
+    expect(mainWindow.webContents.executeJavaScript).not.toHaveBeenCalled()
+    expect((globalThis as { __browserTabRequestResult?: string }).__browserTabRequestResult).toBe('tearoff-tab')
   })
 })

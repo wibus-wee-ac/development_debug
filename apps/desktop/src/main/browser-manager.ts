@@ -177,11 +177,11 @@ export interface BrowserAnnotationDesignInput extends BrowserTabInput {
   designChange: BrowserAnnotationDesignChange
 }
 
-export type BrowserAnnotationAnchor =
-  | { kind: 'point', x: number, y: number, scrollY?: number }
-  | { kind: 'region', x: number, y: number, width: number, height: number, scrollY?: number }
-  | { kind: 'text', text: string, x: number, y: number, width: number, height: number, scrollY?: number }
-  | { kind: 'element', element: BrowserAnnotationElement }
+export type BrowserAnnotationAnchor
+  = | { kind: 'point', x: number, y: number, scrollY?: number }
+    | { kind: 'region', x: number, y: number, width: number, height: number, scrollY?: number }
+    | { kind: 'text', text: string, x: number, y: number, width: number, height: number, scrollY?: number }
+    | { kind: 'element', element: BrowserAnnotationElement }
 
 export interface BrowserAnnotationRuntimeAnnotation {
   id: string
@@ -191,27 +191,27 @@ export interface BrowserAnnotationRuntimeAnnotation {
   status?: 'saved' | 'sent'
 }
 
-export type BrowserAnnotationLayoutHint =
+export type BrowserAnnotationLayoutHint
+  = | {
+    id: string
+    kind: 'placement'
+    componentType: string
+    label: string
+    x: number
+    y: number
+    width: number
+    height: number
+    scrollY: number
+  }
   | {
-      id: string
-      kind: 'placement'
-      componentType: string
-      label: string
-      x: number
-      y: number
-      width: number
-      height: number
-      scrollY: number
-    }
-  | {
-      id: string
-      kind: 'rearrange'
-      selector: string
-      label: string
-      from: { x: number, y: number, width: number, height: number }
-      to: { x: number, y: number, width: number, height: number }
-      scrollY: number
-    }
+    id: string
+    kind: 'rearrange'
+    selector: string
+    label: string
+    from: { x: number, y: number, width: number, height: number }
+    to: { x: number, y: number, width: number, height: number }
+    scrollY: number
+  }
 
 export interface BrowserAnnotationRuntimeInput extends BrowserTabInput {
   annotations?: BrowserAnnotationRuntimeAnnotation[]
@@ -240,13 +240,12 @@ export interface BrowserAnnotationRuntimeEvent {
     | 'delete'
     | 'edit'
     | 'layout-sync'
-    | 'send'
   anchor?: BrowserAnnotationAnchor
   annotationId?: string
+  runtimeAnnotationId?: string
   selectedElement?: BrowserAnnotationElement | null
   body?: string
   output?: string
-  webhookUrl?: string
   annotations?: BrowserAnnotationRuntimeAnnotation[]
   layoutHints?: BrowserAnnotationLayoutHint[]
   attachedImages?: BrowserPromptAttachmentInput[]
@@ -315,7 +314,7 @@ const LOCAL_SERVER_CANDIDATE_PORTS = [
 ] as const
 const BROWSER_ANNOTATION_RUNTIME_GLOBAL = '__CRADLE_BROWSER_ANNOTATION_RUNTIME__'
 const BROWSER_ANNOTATION_RUNTIME_COMMAND_CHANNEL = 'desktop:browser-annotation-runtime-command'
-const BROWSER_ANNOTATION_RUNTIME_INSTALL_EXPRESSION = `(() => {
+const _BROWSER_ANNOTATION_RUNTIME_INSTALL_EXPRESSION = `(() => {
   const runtimeKey = ${JSON.stringify(BROWSER_ANNOTATION_RUNTIME_GLOBAL)};
   if (window[runtimeKey]) {
     return true;
@@ -672,6 +671,54 @@ interface PendingRuntimeSync {
 const LIVE_TAB_STATUS: BrowserTabState['status'] = 'live'
 const SUSPENDED_TAB_STATUS: BrowserTabState['status'] = 'suspended'
 const BROWSER_PROMPT_ATTACHMENT_LIMIT = 16
+const BROWSER_PERFORMANCE_THREAD_LIMIT = 32
+const BROWSER_PERFORMANCE_TAB_LIMIT = 64
+const BROWSER_PERFORMANCE_RUNTIME_LIMIT = 64
+const BROWSER_DIAGNOSTIC_TEXT_LIMIT = 512
+
+interface BrowserPerformanceTabSnapshot {
+  id: string
+  status: BrowserTabState['status']
+  active: boolean
+  loading: boolean
+  hasRuntime: boolean
+  webContentsId: number | null
+  chromiumProcessId: number | null
+  osProcessId: number | null
+  url: string | null
+  title: string | null
+  lastCommittedUrl: string | null
+  lastError: string | null
+}
+
+interface BrowserPerformanceThreadSnapshot {
+  threadId: ThreadId
+  open: boolean
+  active: boolean
+  activeTabId: string | null
+  tabCount: number
+  liveTabCount: number
+  suspendedTabCount: number
+  runtimeCount: number
+  activeBounds: BrowserPanelBounds | null
+  lastError: string | null
+  tabs: BrowserPerformanceTabSnapshot[]
+}
+
+interface BrowserPerformanceRuntimeSnapshot {
+  key: string
+  threadId: ThreadId
+  tabId: string
+  attached: boolean
+  webContentsId: number
+  chromiumProcessId: number | null
+  osProcessId: number | null
+  destroyed: boolean
+  loading: boolean
+  debuggerAttached: boolean
+  url: string | null
+  title: string | null
+}
 
 interface BrowserPerformanceSnapshot {
   counters: {
@@ -683,8 +730,42 @@ interface BrowserPerformanceSnapshot {
     stateCloneCount: number
     runtimeSyncQueueFlushes: number
     syncRuntimeStateCalls: number
+    captureScreenshotCalls: number
+    copyScreenshotToClipboardCalls: number
+    captureScreenshotPngCalls: number
+    capturedScreenshotBytes: number
+    lastScreenshotBytes: number
+    lastScreenshotAt: number | null
   }
   trackedProcessIds: number[]
+  trackedOSProcessIds: number[]
+  panel: {
+    windowAttached: boolean
+    activeThreadId: ThreadId | null
+    activeBoundsThreadId: ThreadId | null
+    activeBounds: BrowserPanelBounds | null
+    attachedRuntimeKey: string | null
+    attachedBoundsSignature: string | null
+    stateCount: number
+    openThreadCount: number
+    runtimeCount: number
+    pendingRuntimeSyncCount: number
+    runtimeSyncFlushScheduled: boolean
+    listenerCount: number
+    webContentsListenerCount: number
+    promptRequestListenerCount: number
+    annotationRuntimeEventListenerCount: number
+  }
+  limits: {
+    threadLimit: number
+    tabLimit: number
+    runtimeLimit: number
+    truncatedThreads: number
+    truncatedTabs: number
+    truncatedRuntimes: number
+  }
+  threads: BrowserPerformanceThreadSnapshot[]
+  runtimes: BrowserPerformanceRuntimeSnapshot[]
 }
 
 export interface BrowserUseSnapshot {
@@ -927,6 +1008,89 @@ function readWebContentsTitle(webContents: WebContents): string | null {
   return title.trim() ? title : null
 }
 
+function limitDiagnosticText(value: string | null | undefined): string | null {
+  const trimmed = value?.trim() ?? ''
+  if (!trimmed) {
+    return null
+  }
+  return trimmed.length > BROWSER_DIAGNOSTIC_TEXT_LIMIT
+    ? `${trimmed.slice(0, BROWSER_DIAGNOSTIC_TEXT_LIMIT)}...`
+    : trimmed
+}
+
+function redactDiagnosticUrl(value: string | null | undefined): string | null {
+  const trimmed = value?.trim() ?? ''
+  if (!trimmed) {
+    return null
+  }
+
+  try {
+    const parsed = new URL(trimmed)
+    parsed.search = ''
+    parsed.hash = ''
+    return limitDiagnosticText(parsed.toString())
+  }
+ catch {
+    return limitDiagnosticText(trimmed)
+  }
+}
+
+function readWebContentsChromiumProcessId(webContents: WebContents): number | null {
+  try {
+    const processId = webContents.getProcessId()
+    return Number.isFinite(processId) && processId > 0 ? processId : null
+  }
+ catch {
+    return null
+  }
+}
+
+function readWebContentsOSProcessId(webContents: WebContents): number | null {
+  try {
+    const processId = webContents.getOSProcessId()
+    return Number.isFinite(processId) && processId > 0 ? processId : null
+  }
+ catch {
+    return null
+  }
+}
+
+function readDiagnosticWebContentsUrl(webContents: WebContents): string | null {
+  try {
+    return redactDiagnosticUrl(readWebContentsUrl(webContents))
+  }
+ catch {
+    return null
+  }
+}
+
+function readDiagnosticWebContentsTitle(webContents: WebContents): string | null {
+  try {
+    return limitDiagnosticText(readWebContentsTitle(webContents))
+  }
+ catch {
+    return null
+  }
+}
+
+function readWebContentsLoading(webContents: WebContents): boolean {
+  try {
+    return webContents.isLoading()
+  }
+ catch {
+    return false
+  }
+}
+
+function readWebContentsDebuggerAttached(webContents: WebContents): boolean {
+  try {
+    return webContents.debugger.isAttached()
+  }
+ catch {
+    return false
+  }
+}
+
 function browserBoundsSignature(bounds: BrowserPanelBounds | null): string {
   if (!bounds) {
     return 'hidden'
@@ -1036,6 +1200,12 @@ export class DesktopBrowserManager {
     stateCloneCount: 0,
     runtimeSyncQueueFlushes: 0,
     syncRuntimeStateCalls: 0,
+    captureScreenshotCalls: 0,
+    copyScreenshotToClipboardCalls: 0,
+    captureScreenshotPngCalls: 0,
+    capturedScreenshotBytes: 0,
+    lastScreenshotBytes: 0,
+    lastScreenshotAt: null as number | null,
   }
 
   setWindow(window: BrowserWindow | null): void {
@@ -1103,9 +1273,149 @@ export class DesktopBrowserManager {
   }
 
   getPerformanceSnapshot(): BrowserPerformanceSnapshot {
+    const stateEntries = [...this.states.entries()]
+    const runtimeEntries = [...this.runtimes.values()]
+    const runtimeCountByThreadId = new Map<ThreadId, number>()
+    for (const runtime of runtimeEntries) {
+      runtimeCountByThreadId.set(
+        runtime.threadId,
+        (runtimeCountByThreadId.get(runtime.threadId) ?? 0) + 1,
+      )
+    }
+    const orderedStateEntries = stateEntries
+      .map((entry, index) => {
+        const [threadId, state] = entry
+        const runtimeCount = runtimeCountByThreadId.get(threadId) ?? 0
+        const rank
+          = (threadId === this.activeThreadId ? 0 : 100)
+            + (state.open ? 0 : 10)
+            + (runtimeCount > 0 ? 0 : 1)
+        return { entry, index, rank }
+      })
+      .sort((a, b) => a.rank - b.rank || a.index - b.index)
+      .map(item => item.entry)
+    const orderedRuntimeEntries = runtimeEntries
+      .map((runtime, index) => {
+        const rank
+          = (runtime.key === this.attachedRuntimeKey ? 0 : 100)
+            + (runtime.threadId === this.activeThreadId ? 0 : 10)
+        return { runtime, index, rank }
+      })
+      .sort((a, b) => a.rank - b.rank || a.index - b.index)
+      .map(item => item.runtime)
+
+    let capturedTabCount = 0
+    const totalTabCount = stateEntries.reduce((total, [, state]) => total + state.tabs.length, 0)
+    const threads = orderedStateEntries
+      .slice(0, BROWSER_PERFORMANCE_THREAD_LIMIT)
+      .map(([threadId, state]) => {
+        const orderedTabs = state.tabs
+          .map((tab, index) => {
+            const rank
+              = (tab.id === state.activeTabId ? 0 : 100)
+                + (tab.status === LIVE_TAB_STATUS ? 0 : 10)
+            return { tab, index, rank }
+          })
+          .sort((a, b) => a.rank - b.rank || a.index - b.index)
+          .map(item => item.tab)
+        const tabs = orderedTabs
+          .slice(0, BROWSER_PERFORMANCE_TAB_LIMIT)
+          .map((tab) => {
+            const runtime = this.runtimes.get(buildRuntimeKey(threadId, tab.id))
+            const webContents = runtime?.webContents
+            const webContentsDestroyed = webContents?.isDestroyed() ?? true
+            return {
+              id: tab.id,
+              status: tab.status,
+              active: state.activeTabId === tab.id,
+              loading: tab.isLoading,
+              hasRuntime: runtime !== undefined,
+              webContentsId: webContents && !webContentsDestroyed ? webContents.id : null,
+              chromiumProcessId: webContents && !webContentsDestroyed
+                ? readWebContentsChromiumProcessId(webContents)
+                : null,
+              osProcessId: webContents && !webContentsDestroyed
+                ? readWebContentsOSProcessId(webContents)
+                : null,
+              url: webContents && !webContentsDestroyed
+                ? readDiagnosticWebContentsUrl(webContents)
+                : redactDiagnosticUrl(tab.url),
+              title: webContents && !webContentsDestroyed
+                ? readDiagnosticWebContentsTitle(webContents)
+                : limitDiagnosticText(tab.title),
+              lastCommittedUrl: redactDiagnosticUrl(tab.lastCommittedUrl),
+              lastError: limitDiagnosticText(tab.lastError),
+            }
+          })
+        capturedTabCount += tabs.length
+
+        return {
+          threadId,
+          open: state.open,
+          active: this.activeThreadId === threadId,
+          activeTabId: state.activeTabId,
+          tabCount: state.tabs.length,
+          liveTabCount: state.tabs.filter(tab => tab.status === LIVE_TAB_STATUS).length,
+          suspendedTabCount: state.tabs.filter(tab => tab.status === SUSPENDED_TAB_STATUS).length,
+          runtimeCount: runtimeCountByThreadId.get(threadId) ?? 0,
+          activeBounds: this.activeBoundsThreadId === threadId ? this.activeBounds : null,
+          lastError: limitDiagnosticText(state.lastError),
+          tabs,
+        }
+      })
+
+    const runtimes = orderedRuntimeEntries
+      .slice(0, BROWSER_PERFORMANCE_RUNTIME_LIMIT)
+      .map((runtime) => {
+        const webContents = runtime.webContents
+        const destroyed = webContents.isDestroyed()
+        return {
+          key: runtime.key,
+          threadId: runtime.threadId,
+          tabId: runtime.tabId,
+          attached: this.attachedRuntimeKey === runtime.key,
+          webContentsId: webContents.id,
+          chromiumProcessId: destroyed ? null : readWebContentsChromiumProcessId(webContents),
+          osProcessId: destroyed ? null : readWebContentsOSProcessId(webContents),
+          destroyed,
+          loading: destroyed ? false : readWebContentsLoading(webContents),
+          debuggerAttached: destroyed ? false : readWebContentsDebuggerAttached(webContents),
+          url: destroyed ? null : readDiagnosticWebContentsUrl(webContents),
+          title: destroyed ? null : readDiagnosticWebContentsTitle(webContents),
+        }
+      })
+
     return {
       counters: { ...this.perfCounters },
       trackedProcessIds: this.getTrackedProcessIds(),
+      trackedOSProcessIds: this.getTrackedOSProcessIds(),
+      panel: {
+        windowAttached: this.window !== null,
+        activeThreadId: this.activeThreadId,
+        activeBoundsThreadId: this.activeBoundsThreadId,
+        activeBounds: this.activeBounds,
+        attachedRuntimeKey: this.attachedRuntimeKey,
+        attachedBoundsSignature: this.attachedBoundsSignature,
+        stateCount: this.states.size,
+        openThreadCount: stateEntries.filter(([, state]) => state.open).length,
+        runtimeCount: this.runtimes.size,
+        pendingRuntimeSyncCount: this.pendingRuntimeSyncs.size,
+        runtimeSyncFlushScheduled: this.runtimeSyncFlushScheduled,
+        listenerCount: this.listeners.size,
+        webContentsListenerCount: this.webContentsListeners.size,
+        promptRequestListenerCount: this.promptRequestListeners.size,
+        annotationRuntimeEventListenerCount: this.annotationRuntimeEventListeners.size,
+      },
+      limits: {
+        threadLimit: BROWSER_PERFORMANCE_THREAD_LIMIT,
+        tabLimit: BROWSER_PERFORMANCE_TAB_LIMIT,
+        runtimeLimit: BROWSER_PERFORMANCE_RUNTIME_LIMIT,
+        truncatedThreads: Math.max(0, stateEntries.length - threads.length),
+        truncatedTabs: Math.max(0, totalTabCount - capturedTabCount),
+        truncatedRuntimes: Math.max(0, runtimeEntries.length - runtimes.length),
+      },
+      threads,
+      runtimes,
     }
   }
 
@@ -1190,6 +1500,7 @@ export class DesktopBrowserManager {
       this.detachAttachedRuntime()
       this.activeThreadId = null
     }
+    this.clearActiveBoundsForThread(input.threadId)
   }
 
   getState(input: BrowserThreadInput): ThreadBrowserState {
@@ -1469,7 +1780,6 @@ export class DesktopBrowserManager {
       && candidate.type !== 'delete'
       && candidate.type !== 'edit'
       && candidate.type !== 'layout-sync'
-      && candidate.type !== 'send'
     ) {
       return null
     }
@@ -1521,6 +1831,7 @@ export class DesktopBrowserManager {
     name: string
     pngBytes: Buffer
   }> {
+    this.perfCounters.captureScreenshotPngCalls += 1
     const state = this.ensureWorkspace(input.threadId)
     const tab = this.resolveTab(state, input.tabId)
     const isActiveTab = state.activeTabId === tab.id
@@ -1548,6 +1859,9 @@ export class DesktopBrowserManager {
     if (pngBytes.byteLength === 0) {
       throw new Error('Couldn\'t capture a browser screenshot.')
     }
+    this.perfCounters.capturedScreenshotBytes += pngBytes.byteLength
+    this.perfCounters.lastScreenshotBytes = pngBytes.byteLength
+    this.perfCounters.lastScreenshotAt = Date.now()
 
     return {
       name: screenshotFileNameForUrl(tab.lastCommittedUrl ?? tab.url),
@@ -1558,6 +1872,7 @@ export class DesktopBrowserManager {
   // Captures the current browser viewport as a PNG so the renderer can attach
   // it directly to the composer without introducing temp-file disk churn.
   async captureScreenshot(input: BrowserTabInput): Promise<BrowserCaptureScreenshotResult> {
+    this.perfCounters.captureScreenshotCalls += 1
     const { name, pngBytes } = await this.captureScreenshotPng(input)
 
     return {
@@ -1571,6 +1886,7 @@ export class DesktopBrowserManager {
   // Writes the current browser viewport screenshot straight to the native
   // clipboard so the renderer does not have to ferry image payloads over IPC.
   async copyScreenshotToClipboard(input: BrowserTabInput): Promise<void> {
+    this.perfCounters.copyScreenshotToClipboardCalls += 1
     const { pngBytes } = await this.captureScreenshotPng(input)
     const image = nativeImage.createFromBuffer(pngBytes)
     if (image.isEmpty()) {
@@ -2249,7 +2565,25 @@ export class DesktopBrowserManager {
       if (webContents.isDestroyed()) {
         continue
       }
-      processIds.add(webContents.getProcessId())
+      const processId = readWebContentsChromiumProcessId(webContents)
+      if (processId !== null) {
+        processIds.add(processId)
+      }
+    }
+    return [...processIds]
+  }
+
+  private getTrackedOSProcessIds(): number[] {
+    const processIds = new Set<number>()
+    for (const runtime of this.runtimes.values()) {
+      const webContents = runtime.webContents
+      if (webContents.isDestroyed()) {
+        continue
+      }
+      const processId = readWebContentsOSProcessId(webContents)
+      if (processId !== null) {
+        processIds.add(processId)
+      }
     }
     return [...processIds]
   }

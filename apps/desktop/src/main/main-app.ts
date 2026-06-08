@@ -18,7 +18,11 @@ import { MacBridgeManager } from './mac-bridge-manager'
 import type { MacInputBareModifier } from './mac-bridge-protocol'
 import { createNativeServices } from './native-services'
 import { NotificationCenterManager } from './notification-center-manager'
-import { bindDesktopObservabilityServerUrl, startDesktopResourceReporting } from './observability-reporter'
+import {
+  bindDesktopObservabilityServerUrl,
+  setDesktopRuntimeDiagnosticsProvider,
+  startDesktopResourceReporting,
+} from './observability-reporter'
 import type { PluginInstallResult, PluginInstallSummary } from './plugin-install-links'
 import {
   collectPluginInstallUrls,
@@ -67,6 +71,44 @@ let installQueue = Promise.resolve()
 let canProcessPluginInstallLinks = false
 const pendingPluginInstallUrls: string[] = []
 const browserManager = new DesktopBrowserManager()
+
+async function readRendererRuntimeDiagnostics(): Promise<Array<Record<string, unknown>>> {
+  const windows = BrowserWindow.getAllWindows().filter(window => !window.isDestroyed())
+  const diagnostics: Array<Record<string, unknown>> = []
+  for (const window of windows) {
+    const webContents = window.webContents
+    const base = {
+      windowId: window.id,
+      title: window.getTitle(),
+      visible: window.isVisible(),
+      webContentsId: webContents.id,
+      rendererProcessId: webContents.getOSProcessId(),
+      url: webContents.getURL(),
+    }
+    try {
+      const renderer = await webContents.executeJavaScript(
+        'globalThis.__CRADLE_RENDERER_DIAGNOSTICS__?.() ?? null',
+        true,
+      ) as unknown
+      diagnostics.push({ ...base, renderer })
+    }
+    catch (error) {
+      diagnostics.push({
+        ...base,
+        renderer: null,
+        error: error instanceof Error
+          ? { name: error.name, message: error.message, stack: error.stack }
+          : { message: String(error) },
+      })
+    }
+  }
+  return diagnostics
+}
+
+setDesktopRuntimeDiagnosticsProvider(async () => ({
+  browser: browserManager.getPerformanceSnapshot(),
+  renderers: await readRendererRuntimeDiagnostics(),
+}))
 
 interface DesktopRuntimePreferences {
   requireDoubleCommandQToQuit: boolean

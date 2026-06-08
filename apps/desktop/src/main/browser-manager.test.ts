@@ -276,6 +276,33 @@ describe('desktop browser manager tab runtime retention', () => {
     manager.dispose()
   })
 
+  it('does not restore a hidden browser view from stale bounds when selecting a tab', async () => {
+    vi.useFakeTimers()
+    const manager = await createManager()
+    const threadId = 'thread-1'
+
+    const initialState = manager.open({ threadId, initialUrl: 'https://one.test/' })
+    const tabId = initialState.activeTabId!
+    manager.setPanelBounds({ threadId, bounds, surface: 'native' })
+    await flushBrowserWork()
+
+    const view = electronMocks.WebContentsView.instances[0]!
+    expect(view.setBounds).toHaveBeenLastCalledWith(bounds)
+    expect(view.setVisible).toHaveBeenLastCalledWith(true)
+
+    manager.hide({ threadId })
+    expect(view.setBounds).toHaveBeenLastCalledWith(hiddenBounds)
+    expect(view.setVisible).toHaveBeenLastCalledWith(false)
+
+    manager.selectTab({ threadId, tabId })
+    await flushBrowserWork()
+
+    expect(view.setBounds).toHaveBeenLastCalledWith(hiddenBounds)
+    expect(view.setVisible).toHaveBeenLastCalledWith(false)
+
+    manager.dispose()
+  })
+
   it('does not select an inactive tab when capturing its screenshot', async () => {
     vi.useFakeTimers()
     const manager = await createManager()

@@ -42,6 +42,34 @@ const BrowserTabActivationSchema = z.boolean()
 
 let capabilitySequence = 0
 
+function isUsableRendererWindow(window: BrowserWindow | null | undefined): window is BrowserWindow {
+  return Boolean(window && !window.isDestroyed())
+}
+
+function selectActiveRendererWindow(): BrowserWindow | null {
+  const focusedWindow = BrowserWindow.getFocusedWindow()
+  if (isUsableRendererWindow(focusedWindow)) {
+    return focusedWindow
+  }
+
+  const windows = BrowserWindow.getAllWindows().filter(isUsableRendererWindow)
+  return windows.find(window => window.webContents.getURL().includes('/#/chat/'))
+    ?? windows[0]
+    ?? null
+}
+
+async function executeBrowserTabBridge<T>(
+  script: string,
+  schema: z.ZodType<T>,
+  actionLabel: string,
+): Promise<T> {
+  const window = selectActiveRendererWindow()
+  if (!window) {
+    throw new Error(`No renderer window available for browser tab ${actionLabel}`)
+  }
+  return schema.parse(await window.webContents.executeJavaScript(script, true))
+}
+
 function cloneDescriptor(descriptor: PluginDescriptor): PluginDescriptor {
   return {
     ...descriptor,
@@ -324,56 +352,32 @@ function createDesktopPluginContext(manifest: PluginManifest): DesktopPluginCont
     },
     browserTabs: {
       async request(url?: string): Promise<string | undefined> {
-        const window = BrowserWindow.getAllWindows().find(w => !w.isDestroyed() && w.webContents.getURL().includes('/#/chat/'))
-          ?? BrowserWindow.getFocusedWindow()
-          ?? BrowserWindow.getAllWindows().find(w => !w.isDestroyed())
-        if (!window) {
-          throw new Error('No renderer window available for browser tab creation')
-        }
-        const tabId = await window.webContents.executeJavaScript(
+        return executeBrowserTabBridge(
           `globalThis.__cradleBrowserUseCreateTab(${JSON.stringify(url)})`,
-          true,
+          BrowserTabIdSchema,
+          'creation',
         )
-        return BrowserTabIdSchema.parse(tabId)
       },
       async activate(tabId: string): Promise<boolean> {
-        const window = BrowserWindow.getAllWindows().find(w => !w.isDestroyed() && w.webContents.getURL().includes('/#/chat/'))
-          ?? BrowserWindow.getFocusedWindow()
-          ?? BrowserWindow.getAllWindows().find(w => !w.isDestroyed())
-        if (!window) {
-          throw new Error('No renderer window available for browser tab activation')
-        }
-        const activated = await window.webContents.executeJavaScript(
+        return executeBrowserTabBridge(
           `globalThis.__cradleBrowserUseActivateTab(${JSON.stringify(tabId)})`,
-          true,
+          BrowserTabActivationSchema,
+          'activation',
         )
-        return BrowserTabActivationSchema.parse(activated)
       },
       async goOffScreen(tabId?: string): Promise<boolean> {
-        const window = BrowserWindow.getAllWindows().find(w => !w.isDestroyed() && w.webContents.getURL().includes('/#/chat/'))
-          ?? BrowserWindow.getFocusedWindow()
-          ?? BrowserWindow.getAllWindows().find(w => !w.isDestroyed())
-        if (!window) {
-          throw new Error('No renderer window available for browser tab hiding')
-        }
-        const hidden = await window.webContents.executeJavaScript(
+        return executeBrowserTabBridge(
           `globalThis.__cradleBrowserUseGoOffScreen(${JSON.stringify(tabId)})`,
-          true,
+          BrowserTabActivationSchema,
+          'hiding',
         )
-        return BrowserTabActivationSchema.parse(hidden)
       },
       async getActive(): Promise<string | undefined> {
-        const window = BrowserWindow.getAllWindows().find(w => !w.isDestroyed() && w.webContents.getURL().includes('/#/chat/'))
-          ?? BrowserWindow.getFocusedWindow()
-          ?? BrowserWindow.getAllWindows().find(w => !w.isDestroyed())
-        if (!window) {
-          throw new Error('No renderer window available for browser tab lookup')
-        }
-        const tabId = await window.webContents.executeJavaScript(
+        return executeBrowserTabBridge(
           'globalThis.__cradleBrowserUseGetActiveTab()',
-          true,
+          BrowserTabLookupSchema,
+          'lookup',
         )
-        return BrowserTabLookupSchema.parse(tabId)
       },
     },
     sharedConfig: {

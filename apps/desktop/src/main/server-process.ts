@@ -1,7 +1,7 @@
 import type { ChildProcess } from 'node:child_process'
 import { execFile, fork } from 'node:child_process'
 import { randomBytes } from 'node:crypto'
-import { existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
+import { appendFileSync, existsSync, mkdirSync, readFileSync, renameSync, rmSync, writeFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { delimiter, dirname, isAbsolute, join, resolve } from 'node:path'
 
@@ -21,6 +21,7 @@ const MAX_RESTARTS = 3
 const SERVER_STARTUP_TIMEOUT_MS = 90_000
 const SERVER_RESTART_READY_TIMEOUT_MS = 60_000
 const SERVER_OUTPUT_LINE_LIMIT = 200
+const SERVER_PROCESS_COMMAND_TIMEOUT_MS = 1_000
 const LOGIN_SHELL_PATH_TIMEOUT_MS = 1500
 const SHELL_PATH_MARKER_START = '__CRADLE_SHELL_PATH_START__'
 const SHELL_PATH_MARKER_END = '__CRADLE_SHELL_PATH_END__'
@@ -30,6 +31,9 @@ const SAFE_STORAGE_PREFIX = 'v1-safe:'
 const PLAIN_STORAGE_PREFIX = 'v1-plain:'
 const KEYCHAIN_BACKUP_SUFFIX = '.keychain-backup'
 const CLI_SERVER_LOCATOR_FILE = 'cli/server.json'
+const SERVER_EXIT_DIAGNOSTICS_FILE = 'server-process-exits.ndjson'
+const DEV_SERVER_ENTRY_PATTERN = '/apps/server/src/index.ts'
+const PACKAGED_SERVER_ENTRY_PATTERN = '/server/dist/main.js'
 const DESKTOP_SERVER_OBSERVABILITY_ENV_KEYS = [
   'CRADLE_OTEL_ENABLED',
   'CRADLE_OTEL_SERVICE_NAME',
@@ -75,6 +79,19 @@ const ServerLocatorSchema = z.object({
 let currentServerUrl = ''
 const recentServerOutputLines: string[] = []
 
+interface DesktopServerExitExpectation {
+  pid: number | null
+  source: 'desktop'
+  reason: string
+  requestedAt: string
+  requestedSignal: NodeJS.Signals
+}
+
+type DesktopServerExitClassification = 'desktop-requested' | 'external-signal-or-os-kill' | 'process-exit-or-crash'
+
+let expectedServerExit: DesktopServerExitExpectation | null = null
+let lastServerSignalBeforeExit: { signal: string, line: string, observedAt: string } | null = null
+
 function resolveDevServerEntry(): string {
   const candidates = [
     resolve(process.cwd(), '../server/src/index.ts'),
@@ -95,6 +112,8 @@ function resolveDevServerEntry(): string {
  */
 export async function startServer(): Promise<string> {
   isServerShutdownRequested = false
+  expectedServerExit = null
+  lastServerSignalBeforeExit = null
   restartCount = 0
 
   const dataDir = join(app.getPath('userData'), 'data')
@@ -202,6 +221,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
     CRADLE_DATA_DIR: dataDir,
     CRADLE_VERSION: app.getVersion(),
     CRADLE_CREDENTIAL_SECRET: credentialSecret,
+    CRADLE_DESKTOP_PID: String(process.pid),
     CRADLE_PLUGINS_DIR: pluginsDir,
     CRADLE_PLUGINS_SOURCE_KIND: pluginsSourceKind,
     CRADLE_EXTERNAL_PLUGINS_DIRS: externalPluginsDirList,
@@ -222,22 +242,45 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
     detached: true,
     stdio: ['ignore', 'pipe', 'pipe', 'ipc'],
   })
+  const child = serverProcess
   locatedServerPid = serverProcess.pid ?? null
 
-  serverProcess.stdout?.on('data', chunk => recordServerOutput('stdout', chunk))
-  serverProcess.stderr?.on('data', chunk => recordServerOutput('stderr', chunk))
-  serverProcess.on('error', (err) => {
+  child.stdout?.on('data', chunk => recordServerOutput('stdout', chunk))
+  child.stderr?.on('data', chunk => recordServerOutput('stderr', chunk))
+  child.on('error', (err) => {
     const message = `[server:error] ${err instanceof Error ? err.stack ?? err.message : String(err)}`
     appendServerOutputLine(message)
     console.error(message)
   })
-  serverProcess.on('exit', (code, signal) => {
-    if (isServerShutdownRequested || signal === 'SIGTERM' || signal === 'SIGKILL') {
-      // Intentional shutdown
+  child.on('exit', (code, signal) => {
+    const expectation = takeExpectedServerExit(child.pid ?? null)
+    const observedServerSignal = lastServerSignalBeforeExit
+    const classification = classifyDesktopServerExit({
+      signal,
+      observedServerSignal: observedServerSignal?.signal ?? null,
+      expectation,
+    })
+    const diagnosticPath = writeServerExitDiagnostic({
+      child,
+      code,
+      signal,
+      observedServerSignal,
+      classification,
+      expectation,
+    })
+
+    if (classification === 'desktop-requested') {
+      console.warn(
+        `[desktop] Server process exited after desktop request `
+        + `(pid=${child.pid ?? 'unknown'}, code=${code}, signal=${signal}, reason=${expectation?.reason})`,
+      )
       return
     }
 
-    console.error(`[desktop] Server process exited unexpectedly (code=${code}, signal=${signal})`)
+    console.error(
+      `[desktop] Server process exited unexpectedly `
+      + `(pid=${child.pid ?? 'unknown'}, code=${code}, signal=${signal}, classification=${classification}, diagnostics=${diagnosticPath ?? 'unwritten'})`,
+    )
     removeCliServerLocator()
 
     if (restartCount < MAX_RESTARTS) {
@@ -273,6 +316,86 @@ export function pickDesktopServerObservabilityEnv(env: NodeJS.ProcessEnv = proce
   return picked
 }
 
+export function classifyDesktopServerExit(input: {
+  signal: NodeJS.Signals | null
+  observedServerSignal?: string | null
+  expectation: DesktopServerExitExpectation | null
+}): DesktopServerExitClassification {
+  if (input.expectation) {
+    return 'desktop-requested'
+  }
+  if (input.signal || input.observedServerSignal) {
+    return 'external-signal-or-os-kill'
+  }
+  return 'process-exit-or-crash'
+}
+
+function markExpectedServerExit(input: Pick<DesktopServerExitExpectation, 'pid' | 'reason' | 'requestedSignal'>): void {
+  expectedServerExit = {
+    pid: input.pid,
+    source: 'desktop',
+    reason: input.reason,
+    requestedSignal: input.requestedSignal,
+    requestedAt: new Date().toISOString(),
+  }
+}
+
+function takeExpectedServerExit(pid: number | null): DesktopServerExitExpectation | null {
+  const expectation = expectedServerExit
+  if (!expectation) {
+    return null
+  }
+  if (expectation.pid !== null && pid !== null && expectation.pid !== pid) {
+    return null
+  }
+  expectedServerExit = null
+  return expectation
+}
+
+function writeServerExitDiagnostic(input: {
+  child: ChildProcess
+  code: number | null
+  signal: NodeJS.Signals | null
+  observedServerSignal: { signal: string, line: string, observedAt: string } | null
+  classification: DesktopServerExitClassification
+  expectation: DesktopServerExitExpectation | null
+}): string | null {
+  const diagnosticsPath = join(app.getPath('userData'), 'data', SERVER_EXIT_DIAGNOSTICS_FILE)
+  try {
+    mkdirSync(dirname(diagnosticsPath), { recursive: true })
+    appendFileSync(
+      diagnosticsPath,
+      `${JSON.stringify({
+        at: new Date().toISOString(),
+        classification: input.classification,
+        pid: input.child.pid ?? null,
+        code: input.code,
+        signal: input.signal,
+        observedServerSignal: input.observedServerSignal,
+        expectedExit: input.expectation,
+        desktopPid: process.pid,
+        serverUrl: currentServerUrl || null,
+        command: readChildSpawnCommand(input.child),
+        recentServerOutput: recentServerOutputLines.slice(-40),
+      })}\n`,
+      { encoding: 'utf8', mode: 0o600 },
+    )
+    return diagnosticsPath
+  }
+  catch (err) {
+    console.error('[desktop] Failed to write server exit diagnostics:', err)
+    return null
+  }
+}
+
+function readChildSpawnCommand(child: ChildProcess): string[] {
+  const spawnargs = child.spawnargs
+  if (Array.isArray(spawnargs) && spawnargs.length > 0) {
+    return spawnargs
+  }
+  return child.spawnfile ? [child.spawnfile] : []
+}
+
 function recordServerOutput(source: 'stdout' | 'stderr', chunk: Buffer | string): void {
   const text = chunk.toString()
   for (const rawLine of text.split(/\r?\n/)) {
@@ -294,8 +417,21 @@ function recordServerOutput(source: 'stdout' | 'stderr', chunk: Buffer | string)
 
 function appendServerOutputLine(line: string): void {
   recentServerOutputLines.push(line)
+  rememberServerSignalLine(line)
   if (recentServerOutputLines.length > SERVER_OUTPUT_LINE_LIMIT) {
     recentServerOutputLines.splice(0, recentServerOutputLines.length - SERVER_OUTPUT_LINE_LIMIT)
+  }
+}
+
+function rememberServerSignalLine(line: string): void {
+  if (!line.includes('received process signal')) {
+    return
+  }
+  const signal = line.match(/signal[=:]"?(SIG[A-Z0-9]+)/)?.[1] ?? 'unknown'
+  lastServerSignalBeforeExit = {
+    signal,
+    line,
+    observedAt: new Date().toISOString(),
   }
 }
 
@@ -388,7 +524,7 @@ function readMarkedShellPath(output: string): string | null {
   }
 
   const value = output.slice(valueStart, end)
-  return value ? value : null
+  return value || null
 }
 
 function splitPath(value: string | null | undefined): string[] {
@@ -553,9 +689,19 @@ export async function stopServer(timeoutMs = 5_000): Promise<void> {
       return
     }
 
+    markExpectedServerExit({
+      pid: child.pid ?? null,
+      reason: 'desktop stopServer graceful shutdown',
+      requestedSignal: 'SIGTERM',
+    })
     child.kill('SIGTERM')
     forceTimer = setTimeout(() => {
       if (child.exitCode === null && child.signalCode === null) {
+        markExpectedServerExit({
+          pid: child.pid ?? null,
+          reason: 'desktop stopServer force kill after timeout',
+          requestedSignal: 'SIGKILL',
+        })
         child.kill('SIGKILL')
       }
       finish()
@@ -567,6 +713,12 @@ async function stopLocatedServer(timeoutMs: number): Promise<void> {
   const pid = locatedServerPid
   locatedServerPid = null
   if (!pid) {
+    removeCliServerLocator()
+    return
+  }
+
+  if (!await canStopLocatedServer(pid)) {
+    console.warn(`[desktop] Skipping located server stop because pid ${pid} no longer matches a Cradle server.`)
     removeCliServerLocator()
     return
   }
@@ -599,6 +751,60 @@ async function stopLocatedServer(timeoutMs: number): Promise<void> {
     // The located server may have exited after the timeout check.
   }
   removeCliServerLocator()
+}
+
+async function canStopLocatedServer(pid: number): Promise<boolean> {
+  if (!currentServerUrl) {
+    return false
+  }
+
+  try {
+    await waitForServer(currentServerUrl, 1_000)
+  }
+  catch {
+    return false
+  }
+
+  const commandLine = await readProcessCommandLine(pid)
+  return commandLine ? isDesktopServerProcessCommand(commandLine) : false
+}
+
+async function readProcessCommandLine(pid: number): Promise<string | null> {
+  if (process.platform === 'win32') {
+    return null
+  }
+
+  return await readUnixProcessCommandLine(pid, ['-p', String(pid), '-wwE', '-o', 'command='])
+    ?? await readUnixProcessCommandLine(pid, ['-p', String(pid), '-ww', '-o', 'command='])
+}
+
+function readUnixProcessCommandLine(pid: number, args: string[]): Promise<string | null> {
+  return new Promise((resolveCommand) => {
+    execFile(
+      'ps',
+      args,
+      {
+        encoding: 'utf8',
+        maxBuffer: 256 * 1024,
+        timeout: SERVER_PROCESS_COMMAND_TIMEOUT_MS,
+      },
+      (error, stdout) => {
+        if (error) {
+          resolveCommand(null)
+          return
+        }
+
+        const commandLine = stdout.trim()
+        resolveCommand(commandLine || null)
+      },
+    )
+  })
+}
+
+export function isDesktopServerProcessCommand(commandLine: string): boolean {
+  const normalizedCommand = commandLine.replaceAll('\\', '/')
+  return normalizedCommand.includes(DEV_SERVER_ENTRY_PATTERN)
+    || normalizedCommand.includes(PACKAGED_SERVER_ENTRY_PATTERN)
 }
 
 async function waitForServer(url: string, timeoutMs: number): Promise<void> {
