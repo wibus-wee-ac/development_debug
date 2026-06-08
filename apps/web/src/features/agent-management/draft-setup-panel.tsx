@@ -5,6 +5,7 @@ import {
   ChevronRightIcon,
   CircleAlertIcon,
   CircleCheckIcon,
+  CopyIcon,
   LogInIcon,
   XIcon,
 } from 'lucide-react'
@@ -25,15 +26,18 @@ import { nativeIpc } from '~/lib/electron'
 import { cn } from '~/lib/cn'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
+import { ChatgptCredentialSummary } from './chatgpt-credential-summary'
 import { warmManualProviderModelCache } from './provider-model-cache'
 import type { DraftProvider } from './provider-settings-utils'
 import { buildProfileId } from './provider-settings-utils'
 import type { ProviderPreset } from './provider-templates'
 import { PROVIDER_PRESETS } from './provider-templates'
 import {
+  type ChatgptCredentialLoginStart,
   useChatgptCredentialLoginActions,
   useChatgptCredentialLoginStatus,
 } from './use-chatgpt-credential-login'
+import { useCredentialMetadata } from './use-credential-metadata'
 
 interface PresetSetupFormValues {
   name: string
@@ -135,9 +139,11 @@ function PresetSetupForm({
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<{ ok: boolean, text: string } | null>(null)
   const [chatgptLoginId, setChatgptLoginId] = useState<string | null>(null)
+  const [activeChatgptLogin, setActiveChatgptLogin] = useState<ChatgptCredentialLoginStart | null>(null)
   const [chatgptCredentialRef, setChatgptCredentialRef] = useState<string | null>(null)
   const { startLogin, cancelLogin } = useChatgptCredentialLoginActions()
   const chatgptLoginStatus = useChatgptCredentialLoginStatus(chatgptLoginId)
+  const chatgptCredentialMetadata = useCredentialMetadata(chatgptCredentialRef)
 
   const form = useForm<PresetSetupFormValues>({
     defaultValues: {
@@ -155,6 +161,7 @@ function PresetSetupForm({
     form.reset({ name: preset.name, values: {} })
     setStatus(null)
     setChatgptLoginId(null)
+    setActiveChatgptLogin(null)
     setChatgptCredentialRef(null)
   }, [form, preset])
 
@@ -166,9 +173,11 @@ function PresetSetupForm({
     if (login.state === 'completed' && login.credentialRef) {
       setChatgptCredentialRef(login.credentialRef)
       setChatgptLoginId(null)
+      setActiveChatgptLogin(null)
       setStatus({ ok: true, text: 'ChatGPT credential connected' })
     }
     if (login.state === 'failed') {
+      setActiveChatgptLogin(null)
       setStatus({ ok: false, text: login.error ?? 'ChatGPT login failed' })
     }
   }, [chatgptLoginStatus.data])
@@ -177,6 +186,7 @@ function PresetSetupForm({
     try {
       const login = await startLogin.mutateAsync(`${name.trim() || preset.name} ChatGPT`)
       setChatgptLoginId(login.loginId)
+      setActiveChatgptLogin(login)
       await navigator.clipboard?.writeText(login.userCode).catch(() => undefined)
       if (nativeIpc?.native?.openExternal) {
         void nativeIpc.native.openExternal(login.verificationUrl)
@@ -197,6 +207,7 @@ function PresetSetupForm({
     }
     await cancelLogin.mutateAsync(chatgptLoginId).catch(() => undefined)
     setChatgptLoginId(null)
+    setActiveChatgptLogin(null)
   }
 
   const handleConnect = async () => {
@@ -313,10 +324,10 @@ function PresetSetupForm({
             <div key={field.key}>
               <SettingsDivider />
               <SettingsRow
-                label={field.label}
+                label={isApiKey ? 'Credential' : field.label}
                 description={
                   isApiKey
-                    ? 'Stored locally and encrypted.'
+                    ? 'Use an API key or connect a ChatGPT account for Codex.'
                     : undefined
                 }
               >
@@ -331,9 +342,12 @@ function PresetSetupForm({
                             setChatgptCredentialRef(null)
                             form.setValue(`values.${field.key}`, e.target.value, { shouldDirty: true })
                           }}
-                          placeholder={chatgptCredentialRef ? 'ChatGPT credential connected' : field.placeholder}
+                          placeholder={chatgptCredentialRef ? 'Paste API key to replace ChatGPT auth' : field.placeholder}
                           className={cn('h-9 text-[13px]', field.mono && 'font-mono')}
                         />
+                        {chatgptCredentialMetadata.data && (
+                          <ChatgptCredentialSummary credential={chatgptCredentialMetadata.data} />
+                        )}
                         {preset.providerKind === 'openai-compatible' && (
                           <div className="flex flex-wrap items-center gap-2">
                             {chatgptLoginId
@@ -360,12 +374,10 @@ function PresetSetupForm({
                                     Sign in with ChatGPT
                                   </Button>
                                 )}
-                            {chatgptCredentialRef && (
-                              <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
-                                Connected
-                              </span>
-                            )}
                           </div>
+                        )}
+                        {activeChatgptLogin && (
+                          <ChatgptDeviceCodeNotice login={activeChatgptLogin} />
                         )}
                       </div>
                     )
@@ -434,6 +446,30 @@ function PresetSetupForm({
         <Button size="sm" variant="ghost" onClick={onBack}>
           Back
         </Button>
+      </div>
+    </div>
+  )
+}
+
+function ChatgptDeviceCodeNotice({ login }: { login: ChatgptCredentialLoginStart }) {
+  const copyCode = () => {
+    void navigator.clipboard?.writeText(login.userCode).catch(() => undefined)
+  }
+
+  return (
+    <div className="rounded-md border border-foreground/8 bg-muted/35 px-2.5 py-2">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[11px] font-medium text-muted-foreground">Device code</span>
+        <Button type="button" size="xs" variant="ghost" className="h-6 px-1.5" onClick={copyCode}>
+          <CopyIcon className="size-3" />
+          Copy
+        </Button>
+      </div>
+      <div className="mt-1 font-mono text-[18px] font-semibold tracking-normal text-foreground">
+        {login.userCode}
+      </div>
+      <div className="mt-1 text-[11px] leading-snug text-muted-foreground">
+        Enter this code on the OpenAI Codex authorization page.
       </div>
     </div>
   )
