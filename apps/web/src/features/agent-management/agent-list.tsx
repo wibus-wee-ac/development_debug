@@ -36,7 +36,6 @@ import {
 } from '~/components/ui/empty'
 import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
-import { Separator } from '~/components/ui/separator'
 import { AgentRuntimeConfigJsonSchema } from '~/features/agent-runtime/agent-config-schema'
 import { buildAvatarUrl } from '~/features/agent-runtime/avatar-url'
 import { runtimeSupportsProviderKind } from '~/features/agent-runtime/runtime-compatibility'
@@ -54,6 +53,8 @@ import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-
 import { cn } from '~/lib/cn'
 import type { ModelDescriptor, ProviderTarget } from '~/features/agent-runtime/types'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
+
+import { SettingsMasterDetail } from '../settings/settings-container'
 
 import type { AgentBatchThinkingEffort, AgentProviderBatchSelection } from './agent-batch-configuration'
 import {
@@ -864,59 +865,33 @@ export function AgentList() {
     },
   })
 
-  return (
-    <div
-      data-testid="agent-list"
-      data-settings-agents-ready={settingsAgentsReady ? 'true' : 'false'}
-      className="flex h-full flex-col overflow-hidden"
-    >
-      <header className="flex items-end justify-between gap-6 pb-4">
-        <div className="space-y-1.5">
-          <h3 className="text-[18px] font-semibold leading-tight tracking-[-0.01em] text-foreground text-balance">
-            Agents
-          </h3>
-          <p className="text-[13px] leading-relaxed text-muted-foreground">
-            Create AI agents with unique identities, personas, and provider targets.
-          </p>
-        </div>
-        <div className="flex shrink-0 items-center gap-2">
-          {importMessage && (
-            <span className="max-w-52 truncate text-[11.5px] text-muted-foreground">
-              {importMessage}
-            </span>
-          )}
-          <Button
-            data-testid="import-agent-btn"
-            size="sm"
-            variant="outline"
-            onClick={() => void openImportDialog()}
-            disabled={previewLocalConfigImport.isPending || importLocalConfig.isPending}
-          >
-            <DownloadIcon />
-            {previewLocalConfigImport.isPending ? 'Scanning' : 'Import'}
-          </Button>
-          <Button data-testid="new-agent-btn" size="sm" onClick={startDraft} disabled={isDrafting}>
-            <PlusIcon />
-            Add agent
-          </Button>
-        </div>
-      </header>
+  const headerActions = (
+    <div className="flex shrink-0 items-center gap-2">
+      {importMessage && (
+        <span className="max-w-52 truncate text-[11.5px] text-muted-foreground">
+          {importMessage}
+        </span>
+      )}
+      <Button
+        data-testid="import-agent-btn"
+        size="sm"
+        variant="outline"
+        onClick={() => void openImportDialog()}
+        disabled={previewLocalConfigImport.isPending || importLocalConfig.isPending}
+      >
+        <DownloadIcon />
+        {previewLocalConfigImport.isPending ? 'Scanning' : 'Import'}
+      </Button>
+      <Button data-testid="new-agent-btn" size="sm" onClick={startDraft} disabled={isDrafting}>
+        <PlusIcon />
+        Add agent
+      </Button>
+    </div>
+  )
 
-      <AgentImportDialog
-        open={importDialogOpen}
-        preview={importPreview}
-        selectedIds={selectedImportCandidateIds}
-        busy={previewLocalConfigImport.isPending || importLocalConfig.isPending}
-        error={importError}
-        onOpenChange={setImportDialogOpen}
-        onToggleCandidate={toggleImportCandidate}
-        onImport={() => void confirmImportLocalConfig()}
-      />
-
-      <Separator className="bg-foreground/6" />
-
-      {!isDraftSelected && selectedIds.size > 0 && (
-        <div className="flex items-center justify-between gap-3 border-b border-foreground/6 py-2">
+  const toolbar = !isDraftSelected && selectedIds.size > 0
+    ? (
+        <div className="flex items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2">
           <div className="flex items-center gap-2 text-[12px] text-muted-foreground">
             <button
               type="button"
@@ -924,16 +899,12 @@ export function AgentList() {
               className="inline-flex items-center gap-1.5 rounded-md px-1 py-0.5 hover:bg-foreground/[0.035]"
             >
               {allVisibleSelected
-? (
-                <SquareCheckIcon className="size-3.5" />
-              )
-: (
-                <SquareIcon className="size-3.5" />
-              )}
+                ? <SquareCheckIcon className="size-3.5" />
+                : <SquareIcon className="size-3.5" />}
               <span>
-{selectedIds.size}
-{' '}
-selected
+                {selectedIds.size}
+                {' '}
+                selected
               </span>
             </button>
             <button
@@ -972,123 +943,126 @@ selected
             </Button>
           </div>
         </div>
-      )}
+      )
+    : null
 
-      <div className="grid flex-1 grid-cols-[260px_1fr] gap-0 overflow-hidden">
-        <aside
-          className="flex flex-col gap-3 overflow-y-auto border-r border-foreground/6 py-4 pr-4"
-          ref={selectionShortcutScopeRef}
-        >
-          <div className="relative">
-            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
-            <Input
-              value={filter}
-              onChange={e => setFilter(e.target.value)}
-              placeholder="Search agents"
-              className="h-8 pl-8 pr-2 text-[12.5px]"
-            />
-          </div>
+  const listPane = (
+    <div
+      ref={selectionShortcutScopeRef}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 p-3"
+    >
+      <div className="relative">
+        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+        <Input
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+          placeholder="Search agents"
+          className="h-8 pl-8 pr-2 text-[12.5px]"
+        />
+      </div>
 
-          <ScrollArea className="-mx-1 flex-1">
-            <div className="flex flex-col gap-0.5 px-1">
-              {isDrafting && (
-                <div
-                  className={cn(
-                    'group/sidebar-row relative flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left outline-none',
-                    'transition-[background-color] duration-150',
-                    'focus-within:ring-2 focus-within:ring-ring/50',
-                    isDraftSelected
-                      ? 'bg-accent text-accent-foreground'
-                      : 'opacity-90 hover:bg-foreground/[0.035]',
-                  )}
-                >
-                  <button
-                    type="button"
-                    onClick={() => setSelectedIds(new Set([DRAFT_ID]))}
-                    aria-pressed={isDraftSelected}
-                    className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none"
-                  >
-                    <span className="flex size-7 items-center justify-center rounded-lg border border-dashed border-foreground/15 text-muted-foreground">
-                      <SparklesIcon className="size-3.5" />
-                    </span>
-                    <span className="min-w-0 flex-1">
-                      <span className="block truncate text-[12.5px] leading-tight text-foreground/70">
-                        New agent
-                      </span>
-                      <span className="block truncate text-[10.5px] leading-tight text-muted-foreground/60">
-                        Set up identity
-                      </span>
-                    </span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={clearSelection}
-                    className="shrink-0 rounded p-0.5 text-muted-foreground/40 hover:text-muted-foreground"
-                  >
-                    <XIcon className="size-3" />
-                  </button>
-                </div>
+      <ScrollArea className="-mx-1 min-h-0 flex-1">
+        <div className="flex flex-col gap-0.5 px-1">
+          {isDrafting && (
+            <div
+              className={cn(
+                'group/sidebar-row relative flex w-full items-center gap-2.5 rounded-lg px-2 py-1.5 text-left outline-none',
+                'transition-[background-color] duration-150',
+                'focus-within:ring-2 focus-within:ring-ring/50',
+                isDraftSelected
+                  ? 'bg-accent text-accent-foreground'
+                  : 'opacity-90 hover:bg-foreground/[0.035]',
               )}
-
-              {visibleAgents.length > 0 && (
-                <div className="mb-1 flex items-center justify-between gap-2 px-2 py-0.5 text-[10.5px] text-muted-foreground/60">
-                  <span>
-{visibleAgents.length}
-{' '}
-visible
+            >
+              <button
+                type="button"
+                onClick={() => setSelectedIds(new Set([DRAFT_ID]))}
+                aria-pressed={isDraftSelected}
+                className="flex min-w-0 flex-1 items-center gap-2 text-left outline-none"
+              >
+                <span className="flex size-7 items-center justify-center rounded-lg border border-dashed border-foreground/15 text-muted-foreground">
+                  <SparklesIcon className="size-3.5" />
+                </span>
+                <span className="min-w-0 flex-1">
+                  <span className="block truncate text-[12.5px] leading-tight text-foreground/70">
+                    New agent
                   </span>
-                  <button
-                    type="button"
-                    onClick={toggleVisibleSelected}
-                    className="text-muted-foreground/70 hover:text-foreground"
-                  >
-                    {allVisibleSelected ? 'Unselect visible' : 'Select visible'}
-                  </button>
-                </div>
-              )}
-
-              {!isLoading
-                && visibleAgents.map(agent => (
-                  <AgentSidebarRow
-                    key={agent.id}
-                    agent={agent}
-                    providerTargets={providerOptions}
-                    active={selectedAgentId === agent.id && !isDraftSelected}
-                    selected={selectedIds.has(agent.id)}
-                    onClick={shiftKey => openAgent(agent.id, shiftKey)}
-                    onToggleSelected={(checked, shiftKey) =>
-                      selectAgent(agent.id, checked, shiftKey)}
-                  />
-                ))}
-
-              {!isLoading && visibleAgents.length === 0 && !isDrafting && (
-                <div className="px-2 py-6 text-center" data-testid="agent-empty-state">
-                  <p className="text-[11.5px] text-muted-foreground/70">
-                    {filter ? 'No matches' : 'No agents yet'}
-                  </p>
-                </div>
-              )}
-            </div>
-          </ScrollArea>
-
-          {agents.length > 0 && (
-            <div className="px-1 pt-1 text-[10.5px] tabular-nums text-muted-foreground/60">
-              {agents.length}
-{' '}
-agent
-{agents.length === 1 ? '' : 's'}
-{' '}
-·
-{agents.filter(a => a.enabled).length}
-{' '}
-active
+                  <span className="block truncate text-[10.5px] leading-tight text-muted-foreground/60">
+                    Set up identity
+                  </span>
+                </span>
+              </button>
+              <button
+                type="button"
+                onClick={clearSelection}
+                className="shrink-0 rounded p-0.5 text-muted-foreground/40 hover:text-muted-foreground"
+              >
+                <XIcon className="size-3" />
+              </button>
             </div>
           )}
-        </aside>
 
-        <section className="flex flex-col overflow-y-auto py-4 pl-6 pr-2">
-          {isDraftSelected
-? (
+          {visibleAgents.length > 0 && (
+            <div className="mb-1 flex items-center justify-between gap-2 px-2 py-0.5 text-[10.5px] text-muted-foreground/60">
+              <span>
+                {visibleAgents.length}
+                {' '}
+                visible
+              </span>
+              <button
+                type="button"
+                onClick={toggleVisibleSelected}
+                className="text-muted-foreground/70 hover:text-foreground"
+              >
+                {allVisibleSelected ? 'Unselect visible' : 'Select visible'}
+              </button>
+            </div>
+          )}
+
+          {!isLoading
+            && visibleAgents.map(agent => (
+              <AgentSidebarRow
+                key={agent.id}
+                agent={agent}
+                providerTargets={providerOptions}
+                active={selectedAgentId === agent.id && !isDraftSelected}
+                selected={selectedIds.has(agent.id)}
+                onClick={shiftKey => openAgent(agent.id, shiftKey)}
+                onToggleSelected={(checked, shiftKey) =>
+                  selectAgent(agent.id, checked, shiftKey)}
+              />
+            ))}
+
+          {!isLoading && visibleAgents.length === 0 && !isDrafting && (
+            <div className="px-2 py-6 text-center" data-testid="agent-empty-state">
+              <p className="text-[11.5px] text-muted-foreground/70">
+                {filter ? 'No matches' : 'No agents yet'}
+              </p>
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+
+      {agents.length > 0 && (
+        <div className="px-1 pb-1 pt-1 text-[10.5px] tabular-nums text-muted-foreground/60">
+          {agents.length}
+          {' '}
+          agent
+          {agents.length === 1 ? '' : 's'}
+          {' '}
+          ·
+          {agents.filter(a => a.enabled).length}
+          {' '}
+          active
+        </div>
+      )}
+    </div>
+  )
+
+  const detailPane = (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col py-5 pl-6 pr-5">
+      {isDraftSelected
+        ? (
             <div key={DRAFT_ID} className="flex-1">
               <AgentDetailPage
                 onCreated={handleCreated}
@@ -1096,50 +1070,72 @@ active
               />
             </div>
           )
-: selectedAgents.length > 1
-? (
-            <AgentBatchProviderPanel
-              key={selectedAgents.map(agent => agent.id).join('|')}
-              selectedAgents={selectedAgents}
-              providerTargets={providerOptions}
-              busy={batchBusy}
-              onApply={selection => void handleBatchConfigureProvider(selection)}
-              onClear={clearSelection}
-            />
-          )
-: selectedAgent
-? (
-            <div key={selectedAgent.id} className="flex-1">
-              <AgentDetailPage
-                agent={selectedAgent}
-                onDeleted={handleDeleted}
+        : selectedAgents.length > 1
+          ? (
+              <AgentBatchProviderPanel
+                key={selectedAgents.map(agent => agent.id).join('|')}
+                selectedAgents={selectedAgents}
+                providerTargets={providerOptions}
+                busy={batchBusy}
+                onApply={selection => void handleBatchConfigureProvider(selection)}
+                onClear={clearSelection}
               />
-            </div>
-          )
-: (
-            <div className="flex flex-1 items-center justify-center">
-              <Empty className="border-none">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <BotIcon />
-                  </EmptyMedia>
-                  <EmptyTitle>No agent selected</EmptyTitle>
-                  <EmptyDescription>
-                    Pick an agent on the left to view its configuration, or add a new one to get
-                    started.
-                  </EmptyDescription>
-                </EmptyHeader>
-                <EmptyContent>
-                  <Button size="sm" variant="outline" onClick={startDraft} disabled={isDrafting}>
-                    <PlusIcon />
-                    Add agent
-                  </Button>
-                </EmptyContent>
-              </Empty>
-            </div>
-          )}
-        </section>
-      </div>
+            )
+          : selectedAgent
+            ? (
+                <div key={selectedAgent.id} className="flex-1">
+                  <AgentDetailPage
+                    agent={selectedAgent}
+                    onDeleted={handleDeleted}
+                  />
+                </div>
+              )
+            : (
+                <div className="flex flex-1 items-center justify-center">
+                  <Empty className="border-none">
+                    <EmptyHeader>
+                      <EmptyMedia variant="icon">
+                        <BotIcon />
+                      </EmptyMedia>
+                      <EmptyTitle>No agent selected</EmptyTitle>
+                      <EmptyDescription>
+                        Pick an agent on the left to view its configuration, or add a new one to get
+                        started.
+                      </EmptyDescription>
+                    </EmptyHeader>
+                    <EmptyContent>
+                      <Button size="sm" variant="outline" onClick={startDraft} disabled={isDrafting}>
+                        <PlusIcon />
+                        Add agent
+                      </Button>
+                    </EmptyContent>
+                  </Empty>
+                </div>
+              )}
     </div>
+  )
+
+  return (
+    <SettingsMasterDetail
+      data-testid="agent-list"
+      data-settings-agents-ready={settingsAgentsReady ? 'true' : 'false'}
+      title="Agents"
+      description="Create AI agents with unique identities, personas, and provider targets."
+      action={headerActions}
+      toolbar={toolbar}
+      list={listPane}
+      detail={detailPane}
+    >
+      <AgentImportDialog
+        open={importDialogOpen}
+        preview={importPreview}
+        selectedIds={selectedImportCandidateIds}
+        busy={previewLocalConfigImport.isPending || importLocalConfig.isPending}
+        error={importError}
+        onOpenChange={setImportDialogOpen}
+        onToggleCandidate={toggleImportCandidate}
+        onImport={() => void confirmImportLocalConfig()}
+      />
+    </SettingsMasterDetail>
   )
 }

@@ -48,7 +48,9 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
     items: [
       { id: 'desktop', labelKey: 'nav.desktop', icon: MonitorIcon },
       { id: 'features', labelKey: 'nav.features', icon: FlagIcon },
-      { id: 'externalIssues', labelKey: 'nav.externalIssues', icon: BoxesIcon },
+      ...(import.meta.env.DEV
+        ? [{ id: 'externalIssues', labelKey: 'nav.externalIssues', icon: BoxesIcon } satisfies SettingsNavItem]
+        : []),
       { id: 'import', labelKey: 'nav.import', icon: ArrowDownToLineIcon },
     ],
   },

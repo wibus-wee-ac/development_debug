@@ -5,6 +5,7 @@ import {
   ChevronRightIcon,
   CircleAlertIcon,
   CircleCheckIcon,
+  LogInIcon,
   XIcon,
 } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
@@ -20,6 +21,7 @@ import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
+import { nativeIpc } from '~/lib/electron'
 import { cn } from '~/lib/cn'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
@@ -28,6 +30,10 @@ import type { DraftProvider } from './provider-settings-utils'
 import { buildProfileId } from './provider-settings-utils'
 import type { ProviderPreset } from './provider-templates'
 import { PROVIDER_PRESETS } from './provider-templates'
+import {
+  useChatgptCredentialLoginActions,
+  useChatgptCredentialLoginStatus,
+} from './use-chatgpt-credential-login'
 
 interface PresetSetupFormValues {
   name: string
@@ -128,6 +134,10 @@ function PresetSetupForm({
   const queryClient = useQueryClient()
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState<{ ok: boolean, text: string } | null>(null)
+  const [chatgptLoginId, setChatgptLoginId] = useState<string | null>(null)
+  const [chatgptCredentialRef, setChatgptCredentialRef] = useState<string | null>(null)
+  const { startLogin, cancelLogin } = useChatgptCredentialLoginActions()
+  const chatgptLoginStatus = useChatgptCredentialLoginStatus(chatgptLoginId)
 
   const form = useForm<PresetSetupFormValues>({
     defaultValues: {
@@ -144,21 +154,64 @@ function PresetSetupForm({
   useEffect(() => {
     form.reset({ name: preset.name, values: {} })
     setStatus(null)
+    setChatgptLoginId(null)
+    setChatgptCredentialRef(null)
   }, [form, preset])
+
+  useEffect(() => {
+    const login = chatgptLoginStatus.data
+    if (!login) {
+      return
+    }
+    if (login.state === 'completed' && login.credentialRef) {
+      setChatgptCredentialRef(login.credentialRef)
+      setChatgptLoginId(null)
+      setStatus({ ok: true, text: 'ChatGPT credential connected' })
+    }
+    if (login.state === 'failed') {
+      setStatus({ ok: false, text: login.error ?? 'ChatGPT login failed' })
+    }
+  }, [chatgptLoginStatus.data])
+
+  const handleChatgptLogin = async () => {
+    try {
+      const login = await startLogin.mutateAsync(`${name.trim() || preset.name} ChatGPT`)
+      setChatgptLoginId(login.loginId)
+      await navigator.clipboard?.writeText(login.userCode).catch(() => undefined)
+      if (nativeIpc?.native?.openExternal) {
+        void nativeIpc.native.openExternal(login.verificationUrl)
+      }
+      else {
+        window.open(login.verificationUrl, '_blank', 'noopener,noreferrer')
+      }
+      setStatus({ ok: true, text: 'ChatGPT login opened. Device code copied.' })
+    }
+    catch (error) {
+      setStatus({ ok: false, text: error instanceof Error ? error.message : 'ChatGPT login failed' })
+    }
+  }
+
+  const handleCancelChatgptLogin = async () => {
+    if (!chatgptLoginId) {
+      return
+    }
+    await cancelLogin.mutateAsync(chatgptLoginId).catch(() => undefined)
+    setChatgptLoginId(null)
+  }
 
   const handleConnect = async () => {
     const currentValues = form.getValues()
     setStatus(null)
 
     const requiresApiKey = preset.fields.some(f => f.key === 'apiKey')
-    if (requiresApiKey && !currentValues.values.apiKey) {
-      setStatus({ ok: false, text: 'API key secretRef is required' })
+    if (requiresApiKey && !currentValues.values.apiKey && !chatgptCredentialRef) {
+      setStatus({ ok: false, text: 'Credential is required' })
       return
     }
 
     setBusy(true)
     try {
-      let credentialRef: string | null = null
+      let credentialRef: string | null = chatgptCredentialRef
       const apiKey = currentValues.values.apiKey
       if (apiKey) {
         const { data: meta } = await postSecrets({
@@ -263,19 +316,70 @@ function PresetSetupForm({
                 label={field.label}
                 description={
                   isApiKey
-                    ? 'Stored locally and encrypted. Never sent to Cradle servers.'
+                    ? 'Stored locally and encrypted.'
                     : undefined
                 }
               >
-                <Input
-                  data-testid={testId}
-                  type={field.type === 'password' ? 'password' : 'text'}
-                  value={values[field.key] ?? ''}
-                  onChange={e =>
-                    form.setValue(`values.${field.key}`, e.target.value, { shouldDirty: true })}
-                  placeholder={field.placeholder}
-                  className={cn('h-9 w-56 text-[13px]', field.mono && 'font-mono')}
-                />
+                {isApiKey
+                  ? (
+                      <div className="flex w-56 flex-col gap-2">
+                        <Input
+                          data-testid={testId}
+                          type="password"
+                          value={values[field.key] ?? ''}
+                          onChange={(e) => {
+                            setChatgptCredentialRef(null)
+                            form.setValue(`values.${field.key}`, e.target.value, { shouldDirty: true })
+                          }}
+                          placeholder={chatgptCredentialRef ? 'ChatGPT credential connected' : field.placeholder}
+                          className={cn('h-9 text-[13px]', field.mono && 'font-mono')}
+                        />
+                        {preset.providerKind === 'openai-compatible' && (
+                          <div className="flex flex-wrap items-center gap-2">
+                            {chatgptLoginId
+                              ? (
+                                  <Button
+                                    type="button"
+                                    size="xs"
+                                    variant="outline"
+                                    onClick={() => void handleCancelChatgptLogin()}
+                                  >
+                                    <XIcon className="size-3" />
+                                    Cancel ChatGPT login
+                                  </Button>
+                                )
+                              : (
+                                  <Button
+                                    type="button"
+                                    size="xs"
+                                    variant="outline"
+                                    onClick={() => void handleChatgptLogin()}
+                                    disabled={startLogin.isPending}
+                                  >
+                                    {startLogin.isPending ? <Spinner className="size-3" /> : <LogInIcon className="size-3" />}
+                                    Sign in with ChatGPT
+                                  </Button>
+                                )}
+                            {chatgptCredentialRef && (
+                              <span className="text-[11px] font-medium text-emerald-600 dark:text-emerald-400">
+                                Connected
+                              </span>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )
+                  : (
+                      <Input
+                        data-testid={testId}
+                        type={field.type === 'password' ? 'password' : 'text'}
+                        value={values[field.key] ?? ''}
+                        onChange={e =>
+                          form.setValue(`values.${field.key}`, e.target.value, { shouldDirty: true })}
+                        placeholder={field.placeholder}
+                        className={cn('h-9 w-56 text-[13px]', field.mono && 'font-mono')}
+                      />
+                    )}
               </SettingsRow>
             </div>
           )

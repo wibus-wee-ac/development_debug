@@ -32,14 +32,14 @@ const SECTION_MAP: Record<string, React.ComponentType> = {
   about: AboutSettings,
 }
 
-const FIXED_HEIGHT_SECTIONS = new Set(['import', 'registry'])
+const FIXED_HEIGHT_SECTIONS = new Set(['import', 'providers', 'agents'])
 
 interface SettingsContentProps {
   section: string
 }
 
 export function SettingsContent({ section }: SettingsContentProps) {
-  const activeSection = !import.meta.env.DEV && section === 'chronicle' ? 'appearance' : section
+  const activeSection = !import.meta.env.DEV && (section === 'chronicle' || section === 'externalIssues') ? 'appearance' : section
   const ActiveSection = SECTION_MAP[activeSection] ?? AppearanceSettings
   const fixedHeight = FIXED_HEIGHT_SECTIONS.has(activeSection)
 

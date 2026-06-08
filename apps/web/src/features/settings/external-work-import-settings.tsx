@@ -302,8 +302,14 @@ export function ExternalWorkImportSettings() {
   const [message, setMessage] = useState<string | null>(null)
   const [warnings, setWarnings] = useState<string[]>([])
 
-  const itemByFingerprint = new Map(items.map(item => [item.fingerprint, item]))
-  const importableFingerprints = items.filter(item => item.importable).map(item => item.fingerprint)
+  const itemByFingerprint = new Map<string, ExternalWorkImportItem>()
+  const importableFingerprints: string[] = []
+  for (const item of items) {
+    itemByFingerprint.set(item.fingerprint, item)
+    if (item.importable) {
+      importableFingerprints.push(item.fingerprint)
+    }
+  }
   const importableCount = importableFingerprints.length
 
   const scan = async () => {
@@ -331,7 +337,12 @@ export function ExternalWorkImportSettings() {
       }
 
       const merged = mergePreviewItems(responses)
-      const nextFingerprints = merged.filter(item => item.importable).map(item => item.fingerprint)
+      const nextFingerprints: string[] = []
+      for (const item of merged) {
+        if (item.importable) {
+          nextFingerprints.push(item.fingerprint)
+        }
+      }
       setItems(merged)
       selectionStore.getState().replace(nextFingerprints)
       setWarnings(nextWarnings)
@@ -348,10 +359,13 @@ export function ExternalWorkImportSettings() {
     setStatus('importing')
     setMessage(null)
     try {
-      const selectedItems = Array.from(selectionStore.getState().fingerprints)
-        .map(fingerprint => itemByFingerprint.get(fingerprint))
-        .filter((item): item is ExternalWorkImportItem =>
-          Boolean(item?.importable && item.sourceKind === 'session'))
+      const selectedItems: ExternalWorkImportItem[] = []
+      for (const fingerprint of selectionStore.getState().fingerprints) {
+        const item = itemByFingerprint.get(fingerprint)
+        if (item?.importable && item.sourceKind === 'session') {
+          selectedItems.push(item)
+        }
+      }
       const result = await postJson<ImportResponse>('/external-work-import/import', {
         items: selectedItems,
       })

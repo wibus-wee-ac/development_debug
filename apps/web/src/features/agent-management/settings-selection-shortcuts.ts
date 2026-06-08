@@ -109,8 +109,8 @@ export function useSettingsSelectionShortcuts({
   onSelectVisible,
   onClearSelection,
   onDeleteSelection,
-}: SettingsSelectionShortcutHandlers): RefObject<HTMLElement | null> {
-  const shortcutScopeRef = useRef<HTMLElement>(null)
+}: SettingsSelectionShortcutHandlers): RefObject<HTMLDivElement | null> {
+  const shortcutScopeRef = useRef<HTMLDivElement>(null)
   const runShortcut = useEffectEvent((event: KeyboardEvent) => {
     const action = getSettingsSelectionShortcutAction(event, {
       canDeleteSelection,

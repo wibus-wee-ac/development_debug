@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { CheckIcon, CircleAlertIcon, Trash2Icon } from 'lucide-react'
+import { CheckIcon, CircleAlertIcon, LogInIcon, Trash2Icon, XIcon } from 'lucide-react'
 import { AnimatePresence, m } from 'motion/react'
 import type { MutableRefObject, ReactNode } from 'react'
 import { useCallback, useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'
@@ -48,6 +48,7 @@ import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config
 import type { AgentProfile, ModelDescriptor, ProviderTarget } from '~/features/agent-runtime/types'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { cn } from '~/lib/cn'
+import { nativeIpc } from '~/lib/electron'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { CustomModelsEditor } from './custom-models-editor'
@@ -63,6 +64,10 @@ import {
   updateProviderTargetCustomModels,
   updateProviderTargetModelVisibility,
 } from './provider-target-model-settings'
+import {
+  useChatgptCredentialLoginActions,
+  useChatgptCredentialLoginStatus,
+} from './use-chatgpt-credential-login'
 
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 type ProfileTextField = 'name' | 'apiKey' | 'baseUrl' | 'api'
@@ -260,10 +265,74 @@ export function ProfileDetailPanel({
   const saveRequestRef = useRef(0)
   const savedSignatureRef = useRef(createProfileSignature(getProfileFormValues(profile)))
   const latestProfileRef = useRef(profile)
+  const [chatgptLoginId, setChatgptLoginId] = useState<string | null>(null)
+  const { startLogin, cancelLogin } = useChatgptCredentialLoginActions()
+  const chatgptLoginStatus = useChatgptCredentialLoginStatus(chatgptLoginId)
 
   useEffect(() => {
     latestProfileRef.current = profile
   }, [profile])
+
+  useEffect(() => {
+    const login = chatgptLoginStatus.data
+    if (!login) {
+      return
+    }
+    if (login.state === 'completed' && login.credentialRef) {
+      setChatgptLoginId(null)
+      void putProfilesById({
+        path: { id: profile.id },
+        body: {
+          name: profile.name,
+          providerKind: profile.providerKind,
+          enabled: profile.enabled,
+          config: ProfileConfigJsonSchema.parse(profile.configJson),
+          credentialRef: login.credentialRef,
+        },
+      })
+        .then(() => {
+          dispatch({ type: 'save/set', state: 'saved' })
+          onSaved()
+          void queryClient.invalidateQueries({ queryKey: getProviderTargetsQueryKey() })
+          void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
+        })
+        .catch((error) => {
+          dispatch({ type: 'save/set', state: 'error' })
+          console.error('[ProfileDetailPanel] ChatGPT credential save failed', error)
+        })
+    }
+    if (login.state === 'failed') {
+      dispatch({ type: 'save/set', state: 'error' })
+    }
+  }, [chatgptLoginStatus.data, onSaved, profile, queryClient])
+
+  const handleChatgptLogin = async () => {
+    try {
+      const login = await startLogin.mutateAsync(`${profile.name} ChatGPT`)
+      setChatgptLoginId(login.loginId)
+      await navigator.clipboard?.writeText(login.userCode).catch(() => undefined)
+      if (nativeIpc?.native?.openExternal) {
+        void nativeIpc.native.openExternal(login.verificationUrl)
+      }
+      else {
+        window.open(login.verificationUrl, '_blank', 'noopener,noreferrer')
+      }
+      dispatch({ type: 'save/set', state: 'pending' })
+    }
+    catch (error) {
+      dispatch({ type: 'save/set', state: 'error' })
+      console.error('[ProfileDetailPanel] ChatGPT login failed', error)
+    }
+  }
+
+  const handleCancelChatgptLogin = async () => {
+    if (!chatgptLoginId) {
+      return
+    }
+    await cancelLogin.mutateAsync(chatgptLoginId).catch(() => undefined)
+    setChatgptLoginId(null)
+    dispatch({ type: 'save/set', state: 'idle' })
+  }
 
   const setTextField = (field: ProfileTextField, value: string) => {
       form.setValue(field, value, { shouldDirty: true })
@@ -530,6 +599,10 @@ export function ProfileDetailPanel({
           onTextFieldChange={setTextField}
           supportsModels={supportsModels}
           readOnly={false}
+          chatgptLoginPending={!!chatgptLoginId}
+          chatgptLoginBusy={startLogin.isPending}
+          onChatgptLogin={handleChatgptLogin}
+          onCancelChatgptLogin={handleCancelChatgptLogin}
         />
 
         {supportsModels && (
@@ -633,12 +706,20 @@ function ProfileGeneralSettings({
   onTextFieldChange,
   supportsModels,
   readOnly,
+  chatgptLoginPending,
+  chatgptLoginBusy,
+  onChatgptLogin,
+  onCancelChatgptLogin,
 }: {
   profile: AgentProfile
   values: Pick<ProfileDetailFormValues, ProfileTextField>
   onTextFieldChange: (field: ProfileTextField, value: string) => void
   supportsModels: boolean
   readOnly: boolean
+  chatgptLoginPending: boolean
+  chatgptLoginBusy: boolean
+  onChatgptLogin: () => void
+  onCancelChatgptLogin: () => void
 }) {
   const isUniversal = profile.providerKind === 'universal'
 
@@ -703,15 +784,46 @@ function ProfileGeneralSettings({
                 : 'Stored locally and encrypted.'
             }
           >
-            <Input
-              data-testid="provider-edit-apikey"
-              type="password"
-              value={values.apiKey}
-              onChange={e => onTextFieldChange('apiKey', e.target.value)}
-              disabled={readOnly}
-              placeholder={profile.credentialRef ? 'Configured · type to replace' : 'sk-…'}
-              className="h-9 w-56 text-[12.5px] font-mono"
-            />
+            <div className="flex w-56 flex-col gap-2">
+              <Input
+                data-testid="provider-edit-apikey"
+                type="password"
+                value={values.apiKey}
+                onChange={e => onTextFieldChange('apiKey', e.target.value)}
+                disabled={readOnly}
+                placeholder={profile.credentialRef ? 'Configured · type to replace' : 'sk-…'}
+                className="h-9 text-[12.5px] font-mono"
+              />
+              {profile.providerKind === 'openai-compatible' && (
+                <div className="flex flex-wrap items-center gap-2">
+                  {chatgptLoginPending
+                    ? (
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="outline"
+                          onClick={onCancelChatgptLogin}
+                          disabled={readOnly}
+                        >
+                          <XIcon className="size-3" />
+                          Cancel ChatGPT login
+                        </Button>
+                      )
+                    : (
+                        <Button
+                          type="button"
+                          size="xs"
+                          variant="outline"
+                          onClick={onChatgptLogin}
+                          disabled={readOnly || chatgptLoginBusy}
+                        >
+                          {chatgptLoginBusy ? <Spinner className="size-3" /> : <LogInIcon className="size-3" />}
+                          Sign in with ChatGPT
+                        </Button>
+                      )}
+                </div>
+              )}
+            </div>
           </SettingsRow>
 
         </>

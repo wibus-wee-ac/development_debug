@@ -16,12 +16,12 @@
 - **external-issue-source-settings.tsx**: GitHub Issues 设置页，通过 Cradle-owned `/external-issue-sources` API 管理 workspace 仓库绑定、手动刷新、启停、每小时调度开关和删除；插件只注册 source reader，不贡献 Settings UI。
 - **external-work-import-settings.tsx**: Import 设置页，只扫描 Server 与 Electron 设备上的 Claude / Codex 会话文件，合并去重后提交到 Server 导入为 Cradle-owned chat sessions。
 - **jarvis-settings.tsx**: Jarvis 设置页，复用 composer toolbar 的 runtime/provider/model/thinking 级联选择器配置系统助手模型；runtime list comes from Chat Runtime catalog filtered to `jarvis` surfaces, and Settings Jarvis 首屏在 preferences、provider targets 与当前 provider target cached models 查询成功后记录 performance gate
-- **model-registry-settings.tsx**: 全局模型 registry mappings 设置页，管理 Cradle-owned model ID 到 models.dev/manual registry entry 的映射，供所有 provider target 与 custom model 统一 enrichment。
-- **model-registry-detail-panel.tsx**: 单个 registry mapping 的详情、alias 编辑、删除和 models.dev 重映射面板；context window 展示复用 renderer numeric display owner。
+- **model-registry-settings.tsx**: 全局模型 registry mappings 设置页，管理 Cradle-owned model ID 到 models.dev/manual registry entry 的映射，供所有 provider target 与 custom model 统一 enrichment；采用居中列表布局（`SettingsPage` + 列表卡片），每个 mapping 一行内联展示 registry ID、family、context window 与 cost，编辑复用 `ModelRegistryMappingDialog`，删除内联。
 - **settings-overlay-store.ts**: (moved to `~/store/settings-overlay.ts`) Shared overlay state — records which tab currently hosts the settings overlay plus the active section selection; also carries one-shot Chronicle memory/knowledge and Agent focus targets into Settings-owned panels; replaces layout-store ownership for settings UI state; emits Settings Agents, Settings Appearance, Settings Chronicle, Settings Desktop, Settings Jarvis, Settings Providers, and Settings Support render-requested performance marks when those sections are requested
 - **settings-overlay-store.test.ts**: (moved to `~/store/settings-overlay.test.ts`) Store-level regression coverage for Chronicle and Agent focus target write/clear behavior
 - **settings-content.tsx**: 根据当前 section 渲染对应设置页面；production 下收到 Chronicle/记录 section 会回退到 Appearance。
 - **settings-content-loader.ts**: Settings content 的共享 lazy loader 与 intent preload 入口，供 app shell 和 sidebar 在打开设置前预热
+- **settings-container.tsx**: Settings 布局原语。`SettingsPage` 是居中窄列页面壳（统一 22px 标题 + muted 描述），`SettingsGroup` 是 `bg-card` 分组卡片；`SettingsMasterDetail` 是供 Providers/Agents 这类编辑器过大、无法塞进窄列的 section 使用的全高双栏壳，复用 `SettingsHeader` 与 `SettingsPage` 对齐标题，并把 list/detail 包进同一张 card surface；使用它的 section 必须被 settings-content 标记为 fixed-height。
 - **settings-row.tsx**: Settings 页面复用的分组标题、分隔线与行布局组件；支持在 label 旁挂载轻量 accessory，例如 dev-only badge。
 - **settings-sidebar.tsx**: Settings 侧边栏导航与返回入口，使用面向用户的中文导航标签；记录/Chronicle 入口只在 dev runtime 下展示。
 - **settings-sidebar.test.tsx**: Settings 侧边栏返回按钮与导航回调的可访问性回归测试

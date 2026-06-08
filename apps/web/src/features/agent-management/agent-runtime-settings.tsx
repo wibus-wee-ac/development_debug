@@ -37,7 +37,6 @@ import {
 } from '~/components/ui/empty'
 import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
-import { Separator } from '~/components/ui/separator'
 import { toastManager } from '~/components/ui/toast'
 import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
 import type { AgentProfile } from '~/features/agent-runtime/types'
@@ -51,6 +50,7 @@ import { ExternalProviderRecordDetailPanel } from './external-provider-record-de
 import { ImportProviderDialog } from './import-provider-dialog'
 import { ProfileDetailPanel } from './profile-detail-panel'
 import { collectProviderListGroups } from './provider-list-groups'
+import { SettingsMasterDetail } from '../settings/settings-container'
 import type {
   DraftProvider,
   ExternalProviderRecordView,
@@ -550,48 +550,34 @@ export function AgentRuntimeSettings() {
     },
   })
 
-  return (
-    <div
-      data-testid="agent-runtime-settings"
-      data-settings-providers-ready={settingsProvidersReady ? 'true' : 'false'}
-      className="flex h-full min-w-0 flex-col overflow-hidden"
-    >
-      <header className="flex min-w-0 flex-wrap items-start justify-between gap-3 pb-4">
-        <div className="min-w-0 flex-1 space-y-1.5">
-          <h3 className="text-[18px] font-semibold leading-tight tracking-[-0.01em] text-foreground text-balance">
-            {t('runtime.header.title')}
-          </h3>
-          <p className="max-w-full break-words text-[13px] leading-relaxed text-muted-foreground text-pretty">
-            {t('runtime.header.description')}
-          </p>
-        </div>
-        <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
-          <Button
-            size="sm"
-            variant="outline"
-            onClick={() => refreshExternalSources.mutate({})}
-            disabled={refreshExternalSources.isPending}
-          >
-            <RefreshCwIcon
-              className={cn('size-3.5', refreshExternalSources.isPending && 'animate-spin')}
-            />
-            {t('runtime.action.refreshSources')}
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
-            <DownloadIcon />
-            {t('runtime.action.import')}
-          </Button>
-          <Button data-testid="add-provider-btn" size="sm" onClick={startDraft} disabled={!!draft}>
-            <PlusIcon />
-            {t('runtime.action.addManualProvider')}
-          </Button>
-        </div>
-      </header>
+  const headerActions = (
+    <div className="flex shrink-0 flex-wrap items-center justify-end gap-2">
+      <Button
+        size="sm"
+        variant="outline"
+        onClick={() => refreshExternalSources.mutate({})}
+        disabled={refreshExternalSources.isPending}
+      >
+        <RefreshCwIcon
+          className={cn('size-3.5', refreshExternalSources.isPending && 'animate-spin')}
+        />
+        {t('runtime.action.refreshSources')}
+      </Button>
+      <Button size="sm" variant="outline" onClick={() => setImportOpen(true)}>
+        <DownloadIcon />
+        {t('runtime.action.import')}
+      </Button>
+      <Button data-testid="add-provider-btn" size="sm" onClick={startDraft} disabled={!!draft}>
+        <PlusIcon />
+        {t('runtime.action.addManualProvider')}
+      </Button>
+    </div>
+  )
 
-      <Separator className="bg-foreground/6" />
-
+  const toolbar = (
+    <>
       {!isDraftSelected && selectedIds.size > 0 && (
-        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-b border-foreground/6 py-2">
+        <div className="flex min-w-0 flex-wrap items-center justify-between gap-3 rounded-lg border border-border bg-card px-3 py-2">
           <div className="flex min-w-0 items-center gap-2 text-[12px] text-muted-foreground">
             <button
               type="button"
@@ -644,26 +630,27 @@ export function AgentRuntimeSettings() {
           </div>
         </div>
       )}
+    </>
+  )
 
-      <div className="flex min-h-0 min-w-0 flex-1 overflow-hidden">
-        <aside
-          className="flex min-h-0 min-w-0 flex-col gap-3 overflow-hidden border-r border-foreground/6 py-4 pr-4"
-          ref={selectionShortcutScopeRef}
-          style={{ flex: '0 0 360px', maxWidth: '42%' }}
-        >
-          <div className="relative min-w-0">
-            <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
-            <Input
-              value={filter}
-              onChange={e => setFilter(e.target.value)}
-              placeholder={t('runtime.search.placeholder')}
-              className="h-8 pl-8 pr-2 text-[12.5px]"
-            />
-          </div>
+  const listPane = (
+    <div
+      ref={selectionShortcutScopeRef}
+      className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 p-3"
+    >
+      <div className="relative min-w-0">
+        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+        <Input
+          value={filter}
+          onChange={e => setFilter(e.target.value)}
+          placeholder={t('runtime.search.placeholder')}
+          className="h-8 pl-8 pr-2 text-[12.5px]"
+        />
+      </div>
 
-          <ScrollArea className="-mx-1 min-h-0 flex-1">
-            <div className="flex min-w-0 flex-col gap-0.5 px-1">
-              {draft && (
+      <ScrollArea className="-mx-1 min-h-0 flex-1">
+        <div className="flex min-w-0 flex-col gap-0.5 px-1">
+          {draft && (
                 <div
                   className={cn(
                     'group/sidebar-row relative flex w-full min-w-0 items-center gap-2.5 overflow-hidden rounded-lg px-2 py-1.5 text-left outline-none',
@@ -779,96 +766,110 @@ export function AgentRuntimeSettings() {
             </div>
           </ScrollArea>
 
-          {profiles.length > 0 && (
-            <div className="px-1 pt-1 text-[10.5px] tabular-nums text-muted-foreground/60">
-              {t('runtime.summary.providers', {
-                manualCount: profiles.length,
-              })}
-            </div>
-          )}
-        </aside>
+      {profiles.length > 0 && (
+        <div className="px-3 pb-3 pt-1 text-[10.5px] tabular-nums text-muted-foreground/60">
+          {t('runtime.summary.providers', {
+            manualCount: profiles.length,
+          })}
+        </div>
+      )}
+    </div>
+  )
 
-        <section className="flex min-w-0 flex-1 flex-col overflow-y-auto py-4 pl-6 pr-2">
-          {isDraftSelected && draft
+  const detailPane = (
+    <div className="flex min-h-0 min-w-0 flex-1 flex-col py-5 pl-6 pr-5">
+      {isDraftSelected && draft
 ? (
-            <div className="min-w-0 flex-1">
-              <DraftSetupPanel
-                draft={draft}
-                onSelectPreset={presetId =>
-                  setDraft(prev => (prev ? { ...prev, presetId } : prev))}
-                onComplete={handleDraftComplete}
-                onCancel={cancelDraft}
-              />
-            </div>
-          )
+        <div className="min-w-0 flex-1">
+          <DraftSetupPanel
+            draft={draft}
+            onSelectPreset={presetId =>
+              setDraft(prev => (prev ? { ...prev, presetId } : prev))}
+            onComplete={handleDraftComplete}
+            onCancel={cancelDraft}
+          />
+        </div>
+      )
 : selectedEntries.length > 1
 ? (
-            <div className="flex flex-1 items-center justify-center">
-              <Empty className="border-none">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <ServerIcon />
-                  </EmptyMedia>
-                  <EmptyTitle>
-                    {t('runtime.multiSelected.title', { selectedCount: selectedEntries.length })}
-                  </EmptyTitle>
-                  <EmptyDescription>{t('runtime.multiSelected.description')}</EmptyDescription>
-                </EmptyHeader>
-                <EmptyContent>
-                  <Button size="sm" variant="outline" onClick={clearSelection}>
-                    <XIcon />
-                    {t('runtime.selection.clearSelection')}
-                  </Button>
-                </EmptyContent>
-              </Empty>
-            </div>
-          )
+        <div className="flex flex-1 items-center justify-center">
+          <Empty className="border-none">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <ServerIcon />
+              </EmptyMedia>
+              <EmptyTitle>
+                {t('runtime.multiSelected.title', { selectedCount: selectedEntries.length })}
+              </EmptyTitle>
+              <EmptyDescription>{t('runtime.multiSelected.description')}</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button size="sm" variant="outline" onClick={clearSelection}>
+                <XIcon />
+                {t('runtime.selection.clearSelection')}
+              </Button>
+            </EmptyContent>
+          </Empty>
+        </div>
+      )
 : selectedEntry?.kind === 'manual'
 ? (
-            <div key={selectedEntry.profile.id} className="min-w-0 flex-1">
-              <ProfileDetailPanel
-                profile={selectedEntry.profile}
-                onRemove={() => void handleRemoveProfile(selectedEntry.profile.id)}
-                onToggle={enabled => void handleToggleProfile(selectedEntry.profile, enabled)}
-                onSaved={() => {
-                  void refetch()
-                }}
-              />
-            </div>
-          )
+        <div key={selectedEntry.profile.id} className="min-w-0 flex-1">
+          <ProfileDetailPanel
+            profile={selectedEntry.profile}
+            onRemove={() => void handleRemoveProfile(selectedEntry.profile.id)}
+            onToggle={enabled => void handleToggleProfile(selectedEntry.profile, enabled)}
+            onSaved={() => {
+              void refetch()
+            }}
+          />
+        </div>
+      )
 : selectedEntry?.kind === 'external'
 ? (
-            <div key={selectedEntry.record.id} className="min-w-0 flex-1">
-              <ExternalProviderRecordDetailPanel
-                record={selectedEntry.record}
-                source={sourceById.get(selectedEntry.record.sourceKey) ?? null}
-                onUpdated={handleExternalProviderUpdated}
-              />
-            </div>
-          )
+        <div key={selectedEntry.record.id} className="min-w-0 flex-1">
+          <ExternalProviderRecordDetailPanel
+            record={selectedEntry.record}
+            source={sourceById.get(selectedEntry.record.sourceKey) ?? null}
+            onUpdated={handleExternalProviderUpdated}
+          />
+        </div>
+      )
 : (
-            <div className="flex flex-1 items-center justify-center">
-              <Empty className="border-none">
-                <EmptyHeader>
-                  <EmptyMedia variant="icon">
-                    <ServerIcon />
-                  </EmptyMedia>
-                  <EmptyTitle>{t('runtime.noSelection.title')}</EmptyTitle>
-                  <EmptyDescription>{t('runtime.noSelection.description')}</EmptyDescription>
-                </EmptyHeader>
-                <EmptyContent>
-                  <Button size="sm" variant="outline" onClick={startDraft}>
-                    <PlusIcon />
-                    {t('runtime.noSelection.addProvider')}
-                  </Button>
-                </EmptyContent>
-              </Empty>
-            </div>
-          )}
-        </section>
-      </div>
-
-      <ImportProviderDialog open={importOpen} onOpenChange={setImportOpen} />
+        <div className="flex flex-1 items-center justify-center">
+          <Empty className="border-none">
+            <EmptyHeader>
+              <EmptyMedia variant="icon">
+                <ServerIcon />
+              </EmptyMedia>
+              <EmptyTitle>{t('runtime.noSelection.title')}</EmptyTitle>
+              <EmptyDescription>{t('runtime.noSelection.description')}</EmptyDescription>
+            </EmptyHeader>
+            <EmptyContent>
+              <Button size="sm" variant="outline" onClick={startDraft}>
+                <PlusIcon />
+                {t('runtime.noSelection.addProvider')}
+              </Button>
+            </EmptyContent>
+          </Empty>
+        </div>
+      )}
     </div>
+  )
+
+  return (
+    <SettingsMasterDetail
+      data-testid="agent-runtime-settings"
+      data-settings-providers-ready={settingsProvidersReady ? 'true' : 'false'}
+      title={t('runtime.header.title')}
+      description={t('runtime.header.description')}
+      action={headerActions}
+      toolbar={toolbar}
+      list={listPane}
+      detail={detailPane}
+      listWidth={360}
+    >
+      <ImportProviderDialog open={importOpen} onOpenChange={setImportOpen} />
+    </SettingsMasterDetail>
   )
 }
