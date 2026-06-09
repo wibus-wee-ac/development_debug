@@ -1273,6 +1273,7 @@ describe('claudeAgentProvider MCP integration', () => {
       { type: 'text-start', id: expect.any(String) },
       { type: 'text-delta', id: expect.any(String), delta: 'Final text.' },
       { type: 'text-end', id: expect.any(String) },
+      { type: 'finish', finishReason: 'stop' },
     ])
   })
 

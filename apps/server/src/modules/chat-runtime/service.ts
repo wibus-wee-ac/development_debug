@@ -4,6 +4,7 @@ import type { BackendRun, BackendSessionBinding, Message, Session } from '@cradl
 import {
   agents,
   backendRuns,
+  chatRuntimeEvents,
   chatSessionQueueItems,
   messages,
   sessions,
@@ -65,6 +66,7 @@ import {
 import {
   listPendingRuntimeUserInputStates,
   rejectPendingUserInputsForRun,
+  setRuntimeUserInputEventSink,
   setRuntimeUserInputPublisher
 } from './pending-user-input'
 import type { ProviderThreadSubscriber } from './provider-threads/live-streams'
@@ -81,6 +83,7 @@ import {
   getRunSnapshots,
   startRunSnapshot
 } from './run-snapshot'
+import { readEventDerivedRuntimeState } from './runtime-state'
 import type {
   FinalMessageProjectionRun,
   FinalMessageProjectionState
@@ -117,6 +120,7 @@ import {
 import type { RuntimeStepUsageInput } from './run/usage'
 import {
   createFinalMessageProjectionState,
+  finalizeFinalMessageProjection,
   flushFinalMessageProjection,
   flushProjectedToolInputs,
   projectFinalMessageChunk
@@ -139,15 +143,15 @@ import {
   summarizeSnapshotChunk
 } from './run/snapshot-events'
 import {
-  abortPersistedRun,
-  abortPersistedStreamingSession,
-  failOrphanedPersistedRun,
-  failOrphanedPersistedStreamingSession,
-  readTerminalRunProjectionStatus,
-  repairTerminalRunProjection,
-  repairTerminalRunProjections
-} from './run/recovery'
-import { finalizeBackendRun } from './run/lifecycle'
+  failLegacyOrphanedPersistedRun,
+  failLegacyOrphanedPersistedStreamingSession,
+  readLegacyTerminalRunProjectionStatus,
+  repairLegacyTerminalRunProjection,
+  repairLegacyTerminalRunProjections,
+} from './run/legacy-recovery'
+import { appendChatRuntimeEvents, readChatRuntimeEvents } from './event-store'
+import type { NewChatRuntimeEvent } from './events'
+import { projectChatRuntimeReadModels } from './projector'
 import type { ChunkSubscriber } from './stream/sse'
 import { openBufferedChunkStream } from './stream/sse'
 import type {
@@ -169,6 +173,8 @@ import type {
   RuntimeProviderTargetProfile,
   RuntimeSession,
   RuntimeUiSlotState,
+  RuntimeUserInputRequest,
+  RuntimeUserInputResolution,
   TokenUsage
 } from './runtime-provider-types'
 import { ProviderRuntimeError } from './runtime-provider-types'
@@ -197,7 +203,6 @@ import type { QueueDrainDeps } from './queue/drain'
 import {
   compareQueueRows,
   listPendingQueueRows,
-  normalizePendingQueuePositions,
   readPersistedThinkingEffort,
   serializeQueueContextParts,
   serializeQueueFiles,
@@ -244,7 +249,7 @@ const DEFAULT_RUN_DELTA_FLUSH_MS = 16
 const DEFAULT_RUN_DELTA_FLUSH_CHARS = 8_192
 const DEFAULT_SNAPSHOT_INTERVAL_MS = 10_000
 const CODEX_GOAL_CONTINUATION_PROMPT = '[internal] Continue the active Codex goal.'
-const CODEX_BASELINE_SKILL_NAMES = [] as const
+const CODEX_BASELINE_SKILL_NAMES = ['cradle-cli'] as const
 
 SessionService.onSessionArchived(releaseSideConversationsByParentSessionId)
 SessionService.onSessionCleanup(releaseSideConversationsByParentSessionId)
@@ -275,6 +280,14 @@ function publishRunChunk(runId: string, chunk: UIMessageChunk): void {
 }
 
 setRuntimeUserInputPublisher(publishRunChunk)
+setRuntimeUserInputEventSink({
+  requested: (input) => {
+    appendRuntimeUserInputRequestedEvent(input)
+  },
+  answered: (input) => {
+    appendRuntimeUserInputAnsweredEvent(input)
+  },
+})
 
 function readCodexBaselineSkillParts(existingSkillNames: Set<string>): ChatContextPart[] {
   if (CODEX_BASELINE_SKILL_NAMES.every((name) => existingSkillNames.has(name))) {
@@ -602,6 +615,18 @@ const queueDrainDeps: QueueDrainDeps = {
     const session = assertStoredSession(sessionId)
     return readSessionRuntimeSettings(session.configJson)
   },
+  onQueueItemClaimed: ({ sessionId, row }) => {
+    appendQueueItemClaimedEvent({ sessionId, row })
+    return readQueueItemRow({ sessionId, queueItemId: row.id })
+  },
+  onQueueItemReleased: ({ sessionId, row }) => {
+    appendQueueItemReleasedEvent({ sessionId, row })
+    return readQueueItemRow({ sessionId, queueItemId: row.id })
+  },
+  onQueueItemFailed: ({ sessionId, row }) => {
+    appendQueueItemFailedEvent({ sessionId, row })
+    return readQueueItemRow({ sessionId, queueItemId: row.id })
+  },
   createQueuedRun: async (input) => {
     const run = await createRun({
       sessionId: input.sessionId,
@@ -626,6 +651,12 @@ const codexGoalContinuationDeps: CodexGoalContinuationSchedulerDeps = {
   scheduleQueueDrain: (sessionId) => scheduleSessionQueueDrain(sessionId, queueDrainDeps),
   getBinding: (sessionId) => getBinding(sessionId),
   isProviderTargetAvailable: (providerTargetId) => isProviderTargetAvailable(providerTargetId),
+  onContinuationScheduled: (input) => {
+    appendCodexGoalContinuationScheduledEvent(input)
+  },
+  onContinuationStarted: (input) => {
+    appendCodexGoalContinuationStartedEvent(input)
+  },
   createContinuationRun: async (input) => {
     await createRun({
       sessionId: input.sessionId,
@@ -739,20 +770,6 @@ function attachBinding(input: {
     requestedModelId: input.requestedModelId,
     durable: true
   })
-}
-
-function linkRunToRuntimeBinding(input: {
-  runId: string
-  binding: BackendSessionBinding | undefined
-}): void {
-  if (!input.binding) {
-    return
-  }
-  db()
-    .update(backendRuns)
-    .set({ bindingId: input.binding.id })
-    .where(eq(backendRuns.id, input.runId))
-    .run()
 }
 
 async function resolveExistingRuntimeSessionForContext(input: {
@@ -1129,7 +1146,6 @@ function createDraftTurn(input: {
 } {
   const userMessageId = randomUUID()
   const assistantMessageId = randomUUID()
-  const now = currentUnixSeconds()
   const goalObjective =
     input.runtimeKind === 'codex' ? readCodexGoalCommandObjective(input.userText) : null
   const userText = goalObjective ?? input.userText
@@ -1142,44 +1158,6 @@ function createDraftTurn(input: {
       : createUserMessage(userMessageId, userText, input.files, input.contextParts),
     input.continuation ?? null
   )
-  const assistantMessage = createAssistantMessage(assistantMessageId)
-  const userContent = extractMessageText(userMessage)
-
-  db().transaction((tx) => {
-    tx.insert(messages)
-      .values({
-        id: userMessageId,
-        sessionId: input.sessionId,
-        parentMessageId: null,
-        parentToolCallId: null,
-        taskId: null,
-        depth: 0,
-        role: 'user',
-        status: 'complete',
-        content: userContent,
-        messageJson: JSON.stringify(userMessage),
-        createdAt: now,
-        updatedAt: now
-      })
-      .run()
-    tx.insert(messages)
-      .values({
-        id: assistantMessageId,
-        sessionId: input.sessionId,
-        parentMessageId: null,
-        parentToolCallId: null,
-        taskId: null,
-        depth: 0,
-        role: 'assistant',
-        status: 'streaming',
-        content: '',
-        messageJson: JSON.stringify(assistantMessage),
-        createdAt: now,
-        updatedAt: now
-      })
-      .run()
-    tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
-  })
 
   return { userMessageId, assistantMessageId, userMessage }
 }
@@ -1194,45 +1172,7 @@ function createDraftTurnFromUserMessage(input: {
   userMessage: UIMessage
 } {
   const assistantMessageId = randomUUID()
-  const now = currentUnixSeconds()
   const userMessage = annotateContinuationMessage(input.userMessage, input.continuation ?? null)
-  const assistantMessage = createAssistantMessage(assistantMessageId)
-
-  db().transaction((tx) => {
-    tx.insert(messages)
-      .values({
-        id: userMessage.id,
-        sessionId: input.sessionId,
-        parentMessageId: null,
-        parentToolCallId: null,
-        taskId: null,
-        depth: 0,
-        role: 'user',
-        status: 'complete',
-        content: extractMessageText(userMessage),
-        messageJson: JSON.stringify(userMessage),
-        createdAt: now,
-        updatedAt: now
-      })
-      .run()
-    tx.insert(messages)
-      .values({
-        id: assistantMessageId,
-        sessionId: input.sessionId,
-        parentMessageId: null,
-        parentToolCallId: null,
-        taskId: null,
-        depth: 0,
-        role: 'assistant',
-        status: 'streaming',
-        content: '',
-        messageJson: JSON.stringify(assistantMessage),
-        createdAt: now,
-        updatedAt: now
-      })
-      .run()
-    tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
-  })
 
   return { userMessageId: userMessage.id, assistantMessageId, userMessage }
 }
@@ -1243,60 +1183,27 @@ function createCodexGoalContinuationDraft(input: { sessionId: string }): {
   userMessage: UIMessage
 } {
   const assistantMessageId = randomUUID()
-  const now = currentUnixSeconds()
   const userMessage = annotateCodexGoalContinuationMessage(
     createUserMessage(randomUUID(), CODEX_GOAL_CONTINUATION_PROMPT)
   )
-  const assistantMessage = createAssistantMessage(assistantMessageId)
-
-  db().transaction((tx) => {
-    tx.insert(messages)
-      .values({
-        id: assistantMessageId,
-        sessionId: input.sessionId,
-        parentMessageId: null,
-        parentToolCallId: null,
-        taskId: null,
-        depth: 0,
-        role: 'assistant',
-        status: 'streaming',
-        content: '',
-        messageJson: JSON.stringify(assistantMessage),
-        createdAt: now,
-        updatedAt: now
-      })
-      .run()
-    tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
-  })
 
   return { userMessageId: '', assistantMessageId, userMessage }
 }
 
 function startAssistantContinuation(input: { sessionId: string; message: UIMessage }): void {
-  const now = currentUnixSeconds()
-  const updated = db().transaction((tx) => {
-    const result = tx
-      .update(messages)
-      .set({
-        status: 'streaming',
-        errorText: null,
-        content: extractMessageText(input.message),
-        messageJson: JSON.stringify(input.message),
-        updatedAt: now
-      })
-      .where(
-        and(
-          eq(messages.id, input.message.id),
-          eq(messages.sessionId, input.sessionId),
-          eq(messages.role, 'assistant')
-        )
+  const row = db()
+    .select({ id: messages.id })
+    .from(messages)
+    .where(
+      and(
+        eq(messages.id, input.message.id),
+        eq(messages.sessionId, input.sessionId),
+        eq(messages.role, 'assistant')
       )
-      .run()
-    tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
-    return result.changes
-  })
+    )
+    .get()
 
-  if (updated === 0) {
+  if (!row) {
     throw new AppError({
       code: 'chat_assistant_message_not_found',
       status: 404,
@@ -1309,55 +1216,616 @@ function startAssistantContinuation(input: { sessionId: string; message: UIMessa
   }
 }
 
-function insertCompletedUserMessage(input: {
-  sessionId: string
-  message: UIMessage
-  parentMessageId?: string | null
-}): void {
-  const now = currentUnixSeconds()
-  db().transaction((tx) => {
-    tx.insert(messages)
-      .values({
-        id: input.message.id,
-        sessionId: input.sessionId,
-        parentMessageId: input.parentMessageId ?? null,
-        parentToolCallId: null,
-        taskId: null,
-        depth: 0,
-        role: 'user',
-        status: 'complete',
-        content: extractMessageText(input.message),
-        messageJson: JSON.stringify(input.message),
-        createdAt: now,
-        updatedAt: now
-      })
-      .run()
-    tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
-  })
-}
-
 function startRun(input: {
   sessionId: string
   messageId: string
   origin: 'user' | 'issue-agent' | 'system'
 }): BackendRun {
   const binding = getBinding(input.sessionId)
+  return {
+    id: randomUUID(),
+    bindingId: binding?.id ?? null,
+    chatSessionId: input.sessionId,
+    messageId: input.messageId,
+    origin: input.origin,
+    status: 'streaming',
+    stopReason: null,
+    errorText: null,
+    startedAt: currentUnixSeconds(),
+    finishedAt: null,
+  }
+}
+
+function appendRunStartedEvents(input: {
+  sessionId: string
+  runId: string
+  userMessageId: string | null
+  assistantMessageId: string
+  userMessage: UIMessage
+  providerTargetId: string
+  runtimeKind: RuntimeKind
+  runtimeSession: RuntimeSession
+  requestedModelId: string | null
+  modelId: string | null
+  origin: 'user' | 'issue-agent' | 'system'
+  queueItemId: string | null
+  runtimeSettings: ChatRuntimeSettings
+  workspaceId: string | null
+  agentId: string | null
+}): void {
+  const queueRow = input.queueItemId
+    ? db()
+        .select()
+        .from(chatSessionQueueItems)
+        .where(eq(chatSessionQueueItems.id, input.queueItemId))
+        .get()
+    : undefined
+  const events = [
+    {
+      type: 'run.provider_context_recorded' as const,
+      actorKind: 'runtime' as const,
+      runId: input.runId,
+      payload: {
+        providerTargetId: input.providerTargetId,
+        runtimeKind: input.runtimeKind,
+        backendSessionId: input.runtimeSession.providerSessionId,
+        requestedModelId: input.requestedModelId,
+        backendStateSnapshot: readJsonRecord(input.runtimeSession.providerStateSnapshot),
+      },
+    },
+    ...(input.userMessageId
+      ? [{
+          type: 'user_message.appended' as const,
+          actorKind: 'user' as const,
+          runId: input.runId,
+          messageId: input.userMessageId,
+          queueItemId: input.queueItemId,
+          payload: {
+            text: extractMessageText(input.userMessage),
+            message: input.userMessage,
+          },
+        }]
+      : []),
+    {
+      type: 'assistant_message.created' as const,
+      actorKind: 'runtime' as const,
+      runId: input.runId,
+      messageId: input.assistantMessageId,
+      queueItemId: input.queueItemId,
+      payload: {
+        message: createAssistantMessage(input.assistantMessageId),
+      },
+    },
+    ...(input.queueItemId
+      ? [{
+          type: 'queue.item_claimed' as const,
+          actorKind: 'runtime' as const,
+          runId: input.runId,
+          queueItemId: input.queueItemId,
+          payload: queueRow ? readQueueEventPayload(queueRow) : {},
+        }]
+      : []),
+    {
+      type: 'run.started' as const,
+      actorKind: 'runtime' as const,
+      runId: input.runId,
+      messageId: input.assistantMessageId,
+      queueItemId: input.queueItemId,
+      payload: {
+        origin: input.origin,
+        runtimeKind: input.runtimeKind,
+        providerTargetId: input.providerTargetId,
+        providerSessionId: input.runtimeSession.providerSessionId,
+        modelId: input.modelId,
+        runtimeSettings: input.runtimeSettings,
+        workspaceId: input.workspaceId,
+        agentId: input.agentId,
+      },
+    },
+  ]
+
+  appendAndProjectChatRuntimeEvents({
+    sessionId: input.sessionId,
+    commandId: `run-start:${input.runId}`,
+    events,
+  })
+}
+
+function appendRunTerminalEvents(input: {
+  activeRun: ActiveRun
+  status: TerminalChatMessageStatus
+  errorText: string | null
+  terminalChunk: UIMessageChunk
+}): void {
+  const storedFinalMessage = compactStoredMessageSnapshot(normalizeMessageSnapshot(input.activeRun.finalMessage))
+  const terminalType = input.status === 'complete'
+    ? 'run.completed'
+    : input.status === 'aborted'
+      ? 'run.aborted'
+      : 'run.failed'
+  appendAndProjectChatRuntimeEvents({
+    sessionId: input.activeRun.sessionId,
+    commandId: `run-terminal:${input.activeRun.runId}`,
+    events: [
+      {
+        type: 'assistant_message.snapshot_recorded',
+        actorKind: 'runtime',
+        runId: input.activeRun.runId,
+        messageId: input.activeRun.messageId,
+        queueItemId: input.activeRun.queueItemId,
+        payload: {
+          status: input.status,
+          text: extractMessageText(storedFinalMessage),
+          snapshot: storedFinalMessage,
+          errorText: input.errorText,
+        },
+      },
+      {
+        type: terminalType,
+        actorKind: 'runtime',
+        runId: input.activeRun.runId,
+        messageId: input.activeRun.messageId,
+        queueItemId: input.activeRun.queueItemId,
+        payload: {
+          errorText: input.errorText,
+          stopReason: readStopReasonForTerminalStatus(input.status),
+          terminalChunk: input.terminalChunk,
+        },
+      },
+    ],
+  })
+}
+
+const ORPHANED_EVENT_RUN_ERROR_TEXT =
+  'Response interrupted because the Cradle server process exited while the run was streaming.'
+
+function appendRunInterruptedEvent(input: {
+  sessionId: string
+  runId: string
+  messageId: string | null
+  queueItemId: string | null
+  errorText: string
+}): void {
+  appendAndProjectChatRuntimeEvents({
+    sessionId: input.sessionId,
+    commandId: `run-interrupted:${input.runId}`,
+    events: [
+      ...(input.messageId
+        ? [{
+            type: 'assistant_message.snapshot_recorded' as const,
+            actorKind: 'runtime' as const,
+            runId: input.runId,
+            messageId: input.messageId,
+            queueItemId: input.queueItemId,
+            payload: {
+              status: 'failed',
+              errorText: input.errorText,
+            },
+          }]
+        : []),
+      {
+        type: 'run.interrupted',
+        actorKind: 'runtime',
+        runId: input.runId,
+        messageId: input.messageId,
+        queueItemId: input.queueItemId,
+        payload: {
+          errorText: input.errorText,
+          stopReason: 'response.interrupted',
+        },
+      },
+    ],
+  })
+}
+
+function interruptOrphanedEventRunIfIdle(sessionId: string): boolean {
+  let eventState = readEventDerivedRuntimeState(sessionId)
+  if (!eventState.hasEvents || !eventState.activeRunId) {
+    return false
+  }
+  if (activeRuns.has(eventState.activeRunId) || activeRunIdsBySession.has(sessionId)) {
+    return false
+  }
+  const events = readChatRuntimeEvents(sessionId)
+  const activeRunStartedEvent = events.findLast(
+    event => event.runId === eventState.activeRunId && event.type === 'run.started'
+  )
+  appendRunInterruptedEvent({
+    sessionId,
+    runId: eventState.activeRunId,
+    messageId: activeRunStartedEvent?.messageId ?? null,
+    queueItemId: activeRunStartedEvent?.queueItemId ?? null,
+    errorText: ORPHANED_EVENT_RUN_ERROR_TEXT,
+  })
+  return true
+}
+
+function assertSessionCanStartRun(sessionId: string): void {
+  interruptOrphanedEventRunIfIdle(sessionId)
+  const eventState = readEventDerivedRuntimeState(sessionId)
+
+  if (eventState.hasEvents) {
+    if (eventState.activeRunId) {
+      throwChatRunInProgress(sessionId)
+    }
+    releaseStaleActiveHandleForIdleEventState(sessionId, eventState.latestRunStatus)
+    if (pendingRunSessions.has(sessionId)) {
+      throwChatRunInProgress(sessionId)
+    }
+    return
+  }
+
+  releaseTerminalActiveHandleForSession(sessionId)
+  if (activeRunIdsBySession.has(sessionId) || pendingRunSessions.has(sessionId)) {
+    throwChatRunInProgress(sessionId)
+  }
+}
+
+function throwChatRunInProgress(sessionId: string): never {
+  throw new AppError({
+    code: 'chat_run_in_progress',
+    status: 409,
+    message: 'Chat session already has an active run',
+    details: { sessionId }
+  })
+}
+
+function releaseStaleActiveHandleForIdleEventState(
+  sessionId: string,
+  latestRunStatus: ReturnType<typeof readEventDerivedRuntimeState>['latestRunStatus'],
+): void {
+  const runId = activeRunIdsBySession.get(sessionId)
+  if (!runId) {
+    return
+  }
+  const activeRun = activeRuns.get(runId)
+  if (!activeRun) {
+    activeRunIdsBySession.delete(sessionId)
+    return
+  }
+  const terminalStatus = latestRunStatus ? readTerminalActiveHandleStatus(latestRunStatus) : null
+  if (terminalStatus) {
+    activeRun.terminalStatus ??= terminalStatus
+  }
+  releaseActiveRun(activeRun)
+}
+
+function appendQueueItemEnqueuedEvent(input: {
+  sessionId: string
+  row: typeof chatSessionQueueItems.$inferSelect
+  files: FileUIPart[]
+  contextParts: ChatContextPart[]
+}): void {
+  appendAndProjectChatRuntimeEvents({
+    sessionId: input.sessionId,
+    commandId: `queue-enqueue:${input.row.id}`,
+    events: [
+      {
+        type: 'queue.item_enqueued',
+        actorKind: 'user',
+        queueItemId: input.row.id,
+        payload: {
+          ...readQueueEventPayload(input.row),
+          files: input.files,
+          contextParts: input.contextParts,
+        },
+      },
+    ],
+  })
+}
+
+function appendQueueItemCancelledEvent(input: {
+  sessionId: string
+  row: typeof chatSessionQueueItems.$inferSelect
+  occurredAt?: number
+}): void {
+  appendAndProjectChatRuntimeEvents({
+    sessionId: input.sessionId,
+    commandId: `queue-cancel:${input.row.id}`,
+    events: [
+      {
+        type: 'queue.item_cancelled',
+        actorKind: 'user',
+        queueItemId: input.row.id,
+        occurredAt: input.occurredAt,
+        payload: {
+          ...readQueueEventPayload(input.row),
+          errorText: null,
+          updatedAt: input.occurredAt ?? input.row.updatedAt,
+        },
+      },
+    ],
+  })
+}
+
+function readQueueItemRow(input: {
+  sessionId: string
+  queueItemId: string
+}): typeof chatSessionQueueItems.$inferSelect | undefined {
   return db()
-    .insert(backendRuns)
-    .values({
-      id: randomUUID(),
-      bindingId: binding?.id ?? null,
-      chatSessionId: input.sessionId,
-      messageId: input.messageId,
-      origin: input.origin,
-      status: 'streaming',
-      stopReason: null,
-      errorText: null,
-      startedAt: currentUnixSeconds(),
-      finishedAt: null
-    })
-    .returning()
+    .select()
+    .from(chatSessionQueueItems)
+    .where(
+      and(
+        eq(chatSessionQueueItems.id, input.queueItemId),
+        eq(chatSessionQueueItems.sessionId, input.sessionId),
+        eq(chatSessionQueueItems.mode, 'queue')
+      )
+    )
     .get()
+}
+
+function appendQueueItemClaimedEvent(input: {
+  sessionId: string
+  row: typeof chatSessionQueueItems.$inferSelect
+}): void {
+  appendAndProjectChatRuntimeEvents({
+    sessionId: input.sessionId,
+    commandId: `queue-claim:${input.row.id}`,
+    events: [
+      {
+        type: 'queue.item_claimed',
+        actorKind: 'runtime',
+        queueItemId: input.row.id,
+        occurredAt: input.row.updatedAt,
+        payload: readQueueEventPayload(input.row),
+      },
+    ],
+  })
+}
+
+function appendQueueItemReleasedEvent(input: {
+  sessionId: string
+  row: typeof chatSessionQueueItems.$inferSelect
+}): void {
+  appendAndProjectChatRuntimeEvents({
+    sessionId: input.sessionId,
+    commandId: null,
+    events: [
+      {
+        type: 'queue.item_enqueued',
+        actorKind: 'runtime',
+        queueItemId: input.row.id,
+        occurredAt: input.row.updatedAt,
+        payload: readQueueEventPayload(input.row),
+      },
+    ],
+  })
+}
+
+function appendQueueItemFailedEvent(input: {
+  sessionId: string
+  row: typeof chatSessionQueueItems.$inferSelect
+}): void {
+  appendAndProjectChatRuntimeEvents({
+    sessionId: input.sessionId,
+    commandId: `queue-fail:${input.row.id}:${input.row.updatedAt}`,
+    events: [
+      {
+        type: 'queue.item_failed',
+        actorKind: 'runtime',
+        queueItemId: input.row.id,
+        occurredAt: input.row.updatedAt,
+        payload: readQueueEventPayload(input.row),
+      },
+    ],
+  })
+}
+
+function appendQueueItemsReorderedEvent(input: {
+  sessionId: string
+  queueItemIds: string[]
+  occurredAt: number
+}): void {
+  appendAndProjectChatRuntimeEvents({
+    sessionId: input.sessionId,
+    commandId: null,
+    events: [
+      {
+        type: 'queue.item_reordered',
+        actorKind: 'user',
+        occurredAt: input.occurredAt,
+        payload: {
+          updatedAt: input.occurredAt,
+          positions: input.queueItemIds.map((queueItemId, index) => ({
+            queueItemId,
+            position: index + 1,
+          })),
+        },
+      },
+    ],
+  })
+}
+
+function appendSteerMessageEvent(input: {
+  sessionId: string
+  runId: string
+  message: UIMessage
+  parentMessageId: string
+}): void {
+  appendAndProjectChatRuntimeEvents({
+    sessionId: input.sessionId,
+    commandId: `steer:${input.message.id}`,
+    events: [
+      {
+        type: 'user_message.appended',
+        actorKind: 'user',
+        runId: input.runId,
+        messageId: input.message.id,
+        payload: {
+          text: extractMessageText(input.message),
+          message: input.message,
+          parentMessageId: input.parentMessageId,
+          continuationMode: 'steer',
+        },
+      },
+    ],
+  })
+}
+
+function appendRuntimeUserInputRequestedEvent(
+  input: RuntimeUserInputRequest & { createdAt: number }
+): void {
+  appendAndProjectChatRuntimeEvents({
+    sessionId: input.sessionId,
+    commandId: `user-input-request:${input.providerRequestId}`,
+    events: [
+      {
+        type: 'tool_call.user_input_requested',
+        actorKind: 'runtime',
+        runId: input.runId,
+        occurredAt: input.createdAt,
+        payload: {
+          requestId: input.providerRequestId,
+          providerKind: input.providerKind,
+          runtimeKind: input.runtimeKind,
+          providerMethod: input.providerMethod,
+          toolCallId: input.toolCallId,
+          apiName: 'tool.request_user_input',
+          questions: input.questions,
+        },
+      },
+    ],
+  })
+}
+
+function appendRuntimeUserInputAnsweredEvent(input: {
+  request: RuntimeUserInputRequest
+  resolution: RuntimeUserInputResolution
+  acceptedAt: number
+}): void {
+  appendAndProjectChatRuntimeEvents({
+    sessionId: input.request.sessionId,
+    commandId: `user-input-answer:${input.resolution.requestId}`,
+    events: [
+      {
+        type: 'tool_call.user_input_answered',
+        actorKind: 'user',
+        runId: input.request.runId,
+        occurredAt: input.acceptedAt,
+        payload: {
+          requestId: input.resolution.requestId,
+          providerKind: input.request.providerKind,
+          runtimeKind: input.request.runtimeKind,
+          providerMethod: input.request.providerMethod,
+          toolCallId: input.request.toolCallId,
+          apiName: 'tool.request_user_input',
+          answers: input.resolution.answers,
+        },
+      },
+    ],
+  })
+}
+
+function appendCodexGoalContinuationScheduledEvent(input: {
+  sessionId: string
+  providerTargetId?: string
+  modelId?: string
+  delayMs: number
+}): void {
+  appendAndProjectChatRuntimeEvents({
+    sessionId: input.sessionId,
+    commandId: null,
+    events: [
+      {
+        type: 'codex.goal_continuation_scheduled',
+        actorKind: 'system',
+        payload: {
+          providerTargetId: input.providerTargetId ?? null,
+          modelId: input.modelId ?? null,
+          delayMs: input.delayMs,
+        },
+      },
+    ],
+  })
+}
+
+function appendCodexGoalContinuationStartedEvent(input: {
+  sessionId: string
+  providerTargetId?: string
+  modelId?: string
+}): void {
+  appendAndProjectChatRuntimeEvents({
+    sessionId: input.sessionId,
+    commandId: null,
+    events: [
+      {
+        type: 'codex.goal_continuation_started',
+        actorKind: 'system',
+        payload: {
+          providerTargetId: input.providerTargetId ?? null,
+          modelId: input.modelId ?? null,
+        },
+      },
+    ],
+  })
+}
+
+function appendAndProjectChatRuntimeEvents(input: {
+  sessionId: string
+  commandId?: string | null
+  events: NewChatRuntimeEvent[]
+}): void {
+  const existingEvents = readChatRuntimeEvents(input.sessionId)
+  appendChatRuntimeEvents({
+    streamId: input.sessionId,
+    expectedSeq: existingEvents.at(-1)?.seq ?? 0,
+    commandId: input.commandId,
+    events: input.events,
+  })
+  projectChatRuntimeReadModels({
+    streamId: input.sessionId,
+    events: readChatRuntimeEvents(input.sessionId),
+  })
+}
+
+function readQueueEventPayload(row: typeof chatSessionQueueItems.$inferSelect): Record<string, unknown> {
+  return {
+    text: row.text,
+    files: parseJsonArray(row.filesJson),
+    contextParts: parseJsonArray(row.contextPartsJson),
+    providerTargetId: row.providerTargetId,
+    modelId: row.modelId,
+    thinkingEffort: row.thinkingEffort,
+    permissionMode: row.permissionMode,
+    runtimeAccessMode: row.runtimeAccessMode,
+    runtimeInteractionMode: row.runtimeInteractionMode,
+    position: row.position,
+    sourceRunId: row.sourceRunId,
+    errorText: row.errorText,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+}
+
+function parseJsonArray(raw: string): unknown[] {
+  try {
+    const parsed: unknown = JSON.parse(raw)
+    return Array.isArray(parsed) ? parsed : []
+  }
+  catch {
+    return []
+  }
+}
+
+function readStopReasonForTerminalStatus(status: TerminalChatMessageStatus): string {
+  return status === 'complete'
+    ? 'response.completed'
+    : status === 'aborted'
+      ? 'response.cancelled'
+      : 'response.failed'
+}
+
+function readJsonRecord(raw: string | null | undefined): Record<string, unknown> {
+  try {
+    const parsed: unknown = JSON.parse(raw ?? '{}')
+    return parsed && typeof parsed === 'object' && !Array.isArray(parsed)
+      ? parsed as Record<string, unknown>
+      : {}
+  }
+  catch {
+    return {}
+  }
 }
 
 export function getRun(runId: string): BackendRun | undefined {
@@ -1538,9 +2006,12 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
     })
   }
 
-  releaseTerminalPersistedActiveRunForSession(sessionId)
-  if (!activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId)) {
-    failOrphanedPersistedStreamingSession(sessionId)
+  releaseTerminalActiveHandleForSession(sessionId)
+  let eventState = readEventDerivedRuntimeState(sessionId)
+  if (eventState.hasEvents && !activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId)) {
+    if (interruptOrphanedEventRunIfIdle(sessionId)) {
+      eventState = readEventDerivedRuntimeState(sessionId)
+    }
   }
 
   const binding = session.providerTargetId
@@ -1552,6 +2023,11 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
     : undefined
   const activeRunId = activeRunIdsBySession.get(sessionId)
   const activeRun = activeRunId ? activeRuns.get(activeRunId) : undefined
+  const eventVisibleActiveRun = eventState.hasEvents
+    ? eventState.activeRunId && activeRun?.runId === eventState.activeRunId
+      ? activeRun
+      : undefined
+    : activeRun
   const pendingState = pendingRunSessions.get(sessionId)
   const latestRun = db()
     .select()
@@ -1559,51 +2035,37 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
     .where(eq(backendRuns.chatSessionId, sessionId))
     .orderBy(desc(backendRuns.startedAt), desc(sql`backend_runs.rowid`))
     .get()
-  const queueRows = db()
-    .select({
-      status: chatSessionQueueItems.status
-    })
-    .from(chatSessionQueueItems)
-    .where(
-      and(eq(chatSessionQueueItems.sessionId, sessionId), eq(chatSessionQueueItems.mode, 'queue'))
-    )
-    .all()
-  const queue = queueRows.reduce(
-    (counts, row) => {
-      if (row.status === 'pending') {
-        return { ...counts, pending: counts.pending + 1 }
-      }
-      if (row.status === 'running') {
-        return { ...counts, running: counts.running + 1 }
-      }
-      return counts
-    },
-    { pending: 0, running: 0 }
-  )
+  const queue = eventState.hasEvents ? eventState.queue : readLegacyQueueCounts(sessionId)
 
   const runtimeKind =
-    activeRun?.runtimeSession.runtimeKind ??
+    eventVisibleActiveRun?.runtimeSession.runtimeKind ??
     (binding?.runtimeKind as RuntimeKind | undefined) ??
     session.runtimeKind
   const providerTargetId =
-    activeRun?.providerTargetId ?? binding?.providerTargetId ?? session.providerTargetId
+    eventVisibleActiveRun?.providerTargetId ?? binding?.providerTargetId ?? session.providerTargetId
   const providerSessionId =
-    activeRun?.runtimeSession.providerSessionId ?? binding?.backendSessionId ?? null
-  const modelId = activeRun?.modelId ?? binding?.requestedModelId ?? null
+    eventVisibleActiveRun?.runtimeSession.providerSessionId ?? binding?.backendSessionId ?? null
+  const modelId = eventVisibleActiveRun?.modelId ?? binding?.requestedModelId ?? null
   const runtimeSettings =
-    activeRun?.runtimeSettings ?? readSessionRuntimeSettings(session.configJson)
-  const providerTargetAvailable = activeRun ? true : isProviderTargetAvailable(providerTargetId)
+    eventVisibleActiveRun?.runtimeSettings ?? readSessionRuntimeSettings(session.configJson)
+  const providerTargetAvailable = eventVisibleActiveRun ? true : isProviderTargetAvailable(providerTargetId)
   const hasActiveGoal =
     binding?.runtimeKind === 'codex' &&
     hasActiveCodexGoal(binding.backendStateSnapshot) &&
     providerTargetAvailable
-  const status: RuntimeSessionStatusKind = activeRun
-    ? activeRun.cancelRequested
-      ? 'cancelling'
-      : 'streaming'
-    : pendingState
-      ? 'pending'
-      : 'idle'
+  const status: RuntimeSessionStatusKind = pendingState
+    ? 'pending'
+    : eventState.hasEvents
+      ? eventState.status === 'streaming'
+        ? eventVisibleActiveRun?.cancelRequested
+          ? 'cancelling'
+          : 'streaming'
+        : 'idle'
+      : eventVisibleActiveRun
+        ? eventVisibleActiveRun.cancelRequested
+          ? 'cancelling'
+          : 'streaming'
+        : 'idle'
   if (status === 'idle' && hasActiveGoal && binding && queue.pending === 0 && queue.running === 0) {
     scheduleCodexGoalContinuation({
       sessionId,
@@ -1622,8 +2084,8 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
     runtimeSettings,
     pendingQueueItemId: pendingState?.queueItemId ?? null,
     hasActiveGoal,
-    activeRun: activeRun
-      ? toRuntimeSessionRunDto(activeRun, getRun(activeRun.runId), { runtimeSettings })
+    activeRun: eventVisibleActiveRun
+      ? toRuntimeSessionRunDto(eventVisibleActiveRun, getRun(eventVisibleActiveRun.runId), { runtimeSettings })
       : null,
     latestRun: latestRun
       ? toRuntimeSessionRunDto(null, latestRun, {
@@ -1634,6 +2096,30 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
       : null,
     queue
   }
+}
+
+function readLegacyQueueCounts(sessionId: string): { pending: number, running: number } {
+  const queueRows = db()
+    .select({
+      status: chatSessionQueueItems.status
+    })
+    .from(chatSessionQueueItems)
+    .where(
+      and(eq(chatSessionQueueItems.sessionId, sessionId), eq(chatSessionQueueItems.mode, 'queue'))
+    )
+    .all()
+  return queueRows.reduce(
+    (counts, row) => {
+      if (row.status === 'pending') {
+        return { ...counts, pending: counts.pending + 1 }
+      }
+      if (row.status === 'running') {
+        return { ...counts, running: counts.running + 1 }
+      }
+      return counts
+    },
+    { pending: 0, running: 0 }
+  )
 }
 
 function toRuntimeSessionRunDto(
@@ -1683,23 +2169,8 @@ function persistMessageSnapshot(input: {
   messageStatus: ChatMessageStatus
   errorText: string | null
 }): { messageJsonBytes: number } {
-  const now = currentUnixSeconds()
   const message = compactStoredMessageSnapshot(normalizeMessageSnapshot(input.message))
   const messageJson = JSON.stringify(message)
-  db().transaction((tx) => {
-    tx.update(messages)
-      .set({
-        content: extractMessageText(message),
-        messageJson,
-        status: input.messageStatus,
-        errorText: input.errorText,
-        updatedAt: now
-      })
-      .where(and(eq(messages.id, input.messageId), eq(messages.sessionId, input.sessionId)))
-      .run()
-
-    tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
-  })
   return { messageJsonBytes: Buffer.byteLength(messageJson) }
 }
 
@@ -2004,8 +2475,20 @@ function getSourceRunId(sessionId: string): string | null {
 export function getMessageGroups(sessionId: string): ChatMessageSnapshotRow[] {
   assertStoredSession(sessionId)
 
-  if (!activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId)) {
-    failOrphanedPersistedStreamingSession(sessionId)
+  const eventState = readEventDerivedRuntimeState(sessionId)
+  if (
+    eventState.hasEvents
+    && !activeRunIdsBySession.has(sessionId)
+    && !pendingRunSessions.has(sessionId)
+  ) {
+    interruptOrphanedEventRunIfIdle(sessionId)
+  }
+  else if (
+    !eventState.hasEvents
+    && !activeRunIdsBySession.has(sessionId)
+    && !pendingRunSessions.has(sessionId)
+  ) {
+    failLegacyOrphanedPersistedStreamingSession(sessionId)
   }
 
   const rows = db()
@@ -2956,15 +3439,7 @@ export async function createRun(input: {
   queueItemId?: string
   internalContinuation?: 'codexGoal'
 }) {
-  failOrphanedPersistedStreamingSessionIfIdle(input.sessionId)
-  if (activeRunIdsBySession.has(input.sessionId) || pendingRunSessions.has(input.sessionId)) {
-    throw new AppError({
-      code: 'chat_run_in_progress',
-      status: 409,
-      message: 'Chat session already has an active run',
-      details: { sessionId: input.sessionId }
-    })
-  }
+  assertSessionCanStartRun(input.sessionId)
   if (input.internalContinuation !== 'codexGoal') {
     cancelPendingCodexGoalContinuation(input.sessionId)
   }
@@ -3083,20 +3558,23 @@ export async function createRun(input: {
 
     if (pendingState.cancelled) {
       if (input.queueItemId) {
-        db()
-          .update(chatSessionQueueItems)
-          .set({
-            status: 'cancelled',
-            errorText: null,
-            updatedAt: currentUnixSeconds()
+        const queueItem = readQueueItemRow({
+          sessionId: input.sessionId,
+          queueItemId: input.queueItemId,
+        })
+        if (queueItem) {
+          const now = currentUnixSeconds()
+          appendQueueItemCancelledEvent({
+            sessionId: input.sessionId,
+            row: {
+              ...queueItem,
+              status: 'cancelled',
+              errorText: null,
+              updatedAt: now,
+            },
+            occurredAt: now,
           })
-          .where(
-            and(
-              eq(chatSessionQueueItems.id, input.queueItemId),
-              eq(chatSessionQueueItems.sessionId, input.sessionId)
-            )
-          )
-          .run()
+        }
       }
       try {
         await runtime.cancelTurn({ runtimeSession, profile: context.profile })
@@ -3163,6 +3641,23 @@ export async function createRun(input: {
       messageId: draft.assistantMessageId,
       origin: input.internalContinuation ? 'system' : 'user'
     })
+    appendRunStartedEvents({
+      sessionId: input.sessionId,
+      runId: run.id,
+      userMessageId: draft.userMessageId || null,
+      assistantMessageId: draft.assistantMessageId,
+      userMessage: draft.userMessage,
+      providerTargetId: context.providerTarget.id,
+      runtimeKind: runtimeSession.runtimeKind,
+      runtimeSession,
+      requestedModelId: runtimeResolution.requestedModelId,
+      modelId: requestedModelId ?? runtimeResolution.requestedModelId ?? null,
+      origin: input.internalContinuation ? 'system' : 'user',
+      queueItemId: input.queueItemId ?? null,
+      runtimeSettings,
+      workspaceId: context.session.workspaceId,
+      agentId: context.session.agentId
+    })
     const activeRun: ActiveRun = {
       runId: run.id,
       sessionId: input.sessionId,
@@ -3211,23 +3706,6 @@ export async function createRun(input: {
           runtimeSettings: activeRun.runtimeSettings
         }
       })
-    }
-    if (input.queueItemId) {
-      db()
-        .update(chatSessionQueueItems)
-        .set({
-          status: 'running',
-          startedRunId: run.id,
-          errorText: null,
-          updatedAt: currentUnixSeconds()
-        })
-        .where(
-          and(
-            eq(chatSessionQueueItems.id, input.queueItemId),
-            eq(chatSessionQueueItems.sessionId, input.sessionId)
-          )
-        )
-        .run()
     }
     pendingRunSessions.delete(input.sessionId)
 
@@ -3476,7 +3954,7 @@ async function readSessionTranscript(sessionId: string): Promise<UIMessage[]> {
 
 export function openSessionRunStream(sessionId: string): ReadableStream<Uint8Array> {
   assertStoredSession(sessionId)
-  releaseTerminalPersistedActiveRunForSession(sessionId)
+  releaseTerminalActiveHandleForSession(sessionId)
 
   const runId = activeRunIdsBySession.get(sessionId)
   if (!runId) {
@@ -3506,7 +3984,6 @@ export async function abortRun(runId: string): Promise<void> {
         details: { runId }
       })
     }
-    abortPersistedRun(persistedRun)
     return
   }
 
@@ -3523,34 +4000,34 @@ export async function abortRun(runId: string): Promise<void> {
  * POST /chat/sessions/:sessionId/cancel
  */
 export async function cancelSession(sessionId: string): Promise<void> {
-  if (releaseTerminalPersistedActiveRunForSession(sessionId)) {
-    return
-  }
+  releaseTerminalActiveHandleForSession(sessionId)
   const runId = activeRunIdsBySession.get(sessionId)
   if (!runId) {
     const pendingState = pendingRunSessions.get(sessionId)
     if (pendingState) {
       pendingState.cancelled = true
       if (pendingState.queueItemId) {
-        db()
-          .update(chatSessionQueueItems)
-          .set({
-            status: 'cancelled',
-            errorText: null,
-            updatedAt: currentUnixSeconds()
+        const queueItem = readQueueItemRow({
+          sessionId,
+          queueItemId: pendingState.queueItemId,
+        })
+        if (queueItem) {
+          const now = currentUnixSeconds()
+          appendQueueItemCancelledEvent({
+            sessionId,
+            row: {
+              ...queueItem,
+              status: 'cancelled',
+              errorText: null,
+              updatedAt: now,
+            },
+            occurredAt: now,
           })
-          .where(
-            and(
-              eq(chatSessionQueueItems.id, pendingState.queueItemId),
-              eq(chatSessionQueueItems.sessionId, sessionId)
-            )
-          )
-          .run()
-        normalizePendingQueuePositions(sessionId)
+        }
       }
       return
     }
-    abortPersistedStreamingSession(sessionId)
+    interruptOrphanedEventRunIfIdle(sessionId)
     return
   }
   await abortRun(runId)
@@ -3722,7 +4199,7 @@ export function listSessionQueueItems(sessionId: string): ChatSessionQueueItemDt
 export async function enqueueSessionQueueItem(
   input: EnqueueSessionQueueItemInput
 ): Promise<ChatSessionQueueItemDto> {
-  failOrphanedPersistedStreamingSessionIfIdle(input.sessionId)
+  interruptOrphanedEventRunIfIdle(input.sessionId)
   const context = getSessionRunContext(input.sessionId, {
     providerTargetId: input.providerTargetId
   })
@@ -3757,34 +4234,41 @@ export async function enqueueSessionQueueItem(
     baseRuntimeSettings,
     normalizeRuntimeSettingsPatch(input.runtimeSettings)
   )
-  const row = db()
-    .insert(chatSessionQueueItems)
-    .values({
-      id: randomUUID(),
-      sessionId: input.sessionId,
-      mode: 'queue',
-      status: 'pending',
-      text,
-      filesJson: serializeQueueFiles(files),
-      contextPartsJson: serializeQueueContextParts(contextParts),
-      providerTargetId: input.providerTargetId?.trim() || null,
-      modelId: input.modelId?.trim() || null,
-      thinkingEffort: readPersistedThinkingEffort(input.thinkingEffort),
-      permissionMode: null,
-      runtimeAccessMode: runtimeSettings.accessMode,
-      runtimeInteractionMode: runtimeSettings.interactionMode,
-      position,
-      sourceRunId: getSourceRunId(input.sessionId),
-      startedRunId: null,
-      errorText: null,
-      createdAt: now,
-      updatedAt: now
-    })
-    .returning()
-    .get()
+  const row: typeof chatSessionQueueItems.$inferSelect = {
+    id: randomUUID(),
+    sessionId: input.sessionId,
+    mode: 'queue',
+    status: 'pending',
+    text,
+    filesJson: serializeQueueFiles(files),
+    contextPartsJson: serializeQueueContextParts(contextParts),
+    providerTargetId: input.providerTargetId?.trim() || null,
+    modelId: input.modelId?.trim() || null,
+    thinkingEffort: readPersistedThinkingEffort(input.thinkingEffort),
+    permissionMode: null,
+    runtimeAccessMode: runtimeSettings.accessMode,
+    runtimeInteractionMode: runtimeSettings.interactionMode,
+    position,
+    sourceRunId: getSourceRunId(input.sessionId),
+    startedRunId: null,
+    errorText: null,
+    createdAt: now,
+    updatedAt: now
+  }
 
+  appendQueueItemEnqueuedEvent({
+    sessionId: input.sessionId,
+    row,
+    files,
+    contextParts,
+  })
   scheduleSessionQueueDrain(input.sessionId, queueDrainDeps)
-  return toQueueItemDto(row, runtimeSettings)
+  const projected = db()
+    .select()
+    .from(chatSessionQueueItems)
+    .where(eq(chatSessionQueueItems.id, row.id))
+    .get()
+  return toQueueItemDto(projected ?? row, runtimeSettings)
 }
 
 export async function submitSessionSteerTurn(
@@ -3802,7 +4286,7 @@ export async function submitSessionSteerTurn(
     })
   }
 
-  failOrphanedPersistedStreamingSessionIfIdle(input.sessionId)
+  interruptOrphanedEventRunIfIdle(input.sessionId)
   const runId = activeRunIdsBySession.get(input.sessionId)
   if (!runId) {
     throw new AppError({
@@ -3882,10 +4366,11 @@ export async function submitSessionSteerTurn(
   }
 
   try {
-    insertCompletedUserMessage({
+    appendSteerMessageEvent({
       sessionId: input.sessionId,
+      runId,
       message: steerMessage,
-      parentMessageId: sourceMessageId
+      parentMessageId: sourceMessageId,
     })
   } catch (error) {
     chatLogger.warn('runtime live steer was applied but history persistence failed', {
@@ -4013,40 +4498,22 @@ export function cancelSessionQueueItem(
   }
 
   const now = currentUnixSeconds()
-  const updated = db()
-    .update(chatSessionQueueItems)
-    .set({ status: 'cancelled', updatedAt: now })
-    .where(
-      and(
-        eq(chatSessionQueueItems.id, queueItemId),
-        eq(chatSessionQueueItems.sessionId, sessionId),
-        eq(chatSessionQueueItems.mode, 'queue'),
-        eq(chatSessionQueueItems.status, 'pending')
-      )
-    )
-    .returning()
-    .get()
-  if (!updated) {
-    const current = db()
-      .select()
-      .from(chatSessionQueueItems)
-      .where(
-        and(
-          eq(chatSessionQueueItems.id, queueItemId),
-          eq(chatSessionQueueItems.sessionId, sessionId),
-          eq(chatSessionQueueItems.mode, 'queue')
-        )
-      )
-      .get()
-    throw new AppError({
-      code: 'chat_queue_item_not_pending',
-      status: 409,
-      message: 'Only pending chat queue items can be cancelled',
-      details: { sessionId, queueItemId, status: current?.status ?? 'missing' }
-    })
+  const updated: typeof chatSessionQueueItems.$inferSelect = {
+    ...row,
+    status: 'cancelled',
+    updatedAt: now,
   }
-  normalizePendingQueuePositions(sessionId)
-  return toQueueItemDto(updated)
+  appendQueueItemCancelledEvent({
+    sessionId,
+    row: updated,
+    occurredAt: now,
+  })
+  const projected = db()
+    .select()
+    .from(chatSessionQueueItems)
+    .where(eq(chatSessionQueueItems.id, queueItemId))
+    .get()
+  return toQueueItemDto(projected ?? updated)
 }
 
 export function reorderSessionQueueItems(
@@ -4072,20 +4539,10 @@ export function reorderSessionQueueItems(
   }
 
   const now = currentUnixSeconds()
-  db().transaction((tx) => {
-    queueItemIds.forEach((queueItemId, index) => {
-      tx.update(chatSessionQueueItems)
-        .set({ position: index + 1, updatedAt: now })
-        .where(
-          and(
-            eq(chatSessionQueueItems.id, queueItemId),
-            eq(chatSessionQueueItems.sessionId, sessionId),
-            eq(chatSessionQueueItems.mode, 'queue'),
-            eq(chatSessionQueueItems.status, 'pending')
-          )
-        )
-        .run()
-    })
+  appendQueueItemsReorderedEvent({
+    sessionId,
+    queueItemIds,
+    occurredAt: now,
   })
 
   const session = assertStoredSession(sessionId)
@@ -4254,6 +4711,62 @@ async function executeRun(
 
   try {
     if (!activeRun.cancelRequested) {
+      try {
+        const usage = activeRun.runtime?.totalUsage ?? activeRun.runtime?.lastUsage
+        actualModelId = activeRun.runtime?.lastModelId ?? activeRun.modelId
+        if (usage) {
+          insertRunUsage({
+            sessionId: activeRun.sessionId,
+            messageId: activeRun.messageId,
+            providerTargetId: activeRun.providerTargetId,
+            modelId: actualModelId,
+            usage
+          })
+          recordActiveRunSnapshotEvent(activeRun, {
+            phase: 'usage',
+            modelId: actualModelId,
+            usage,
+            estimatedCostUsd: estimateRunUsageCost(actualModelId, usage),
+            payload: {
+              source: activeRun.runtime?.totalUsage ? 'runtime.totalUsage' : 'runtime.lastUsage'
+            }
+          })
+        }
+
+        // Write per-step usage if the runtime supports it
+        const runtimeWithSteps = activeRun.runtime as {
+          lastStepUsages?: RuntimeStepUsageInput[]
+        }
+        const steps = runtimeWithSteps.lastStepUsages ?? []
+        if (steps.length > 0) {
+          const fallbackModelId = actualModelId ?? 'gpt-4o'
+          const recordedSteps = insertRuntimeStepUsages({
+            runId: activeRun.runId,
+            sessionId: activeRun.sessionId,
+            fallbackModelId,
+            steps
+          })
+          for (const step of recordedSteps) {
+            recordActiveRunSnapshotEvent(activeRun, {
+              phase: 'step_usage',
+              modelId: step.modelId,
+              usage: step.usage,
+              estimatedCostUsd: step.estimatedCostUsd,
+              payload: {
+                stepNumber: step.stepNumber,
+                stepType: step.stepType
+              }
+            })
+          }
+        }
+      } catch (error) {
+        chatLogger.error('failed to persist run usage', {
+          error,
+          sessionId: activeRun.sessionId,
+          runId: activeRun.runId
+        })
+      }
+
       await publishTerminalChunk(activeRun, finalChunk, profile)
 
       const finalFailureText = finalChunk.type === 'error' ? finalChunk.errorText : null
@@ -4286,54 +4799,6 @@ async function executeRun(
           }
         })
       }
-
-      const usage = activeRun.runtime?.totalUsage ?? activeRun.runtime?.lastUsage
-      actualModelId = activeRun.runtime?.lastModelId ?? activeRun.modelId
-      if (usage) {
-        insertRunUsage({
-          sessionId: activeRun.sessionId,
-          messageId: activeRun.messageId,
-          providerTargetId: activeRun.providerTargetId,
-          modelId: actualModelId,
-          usage
-        })
-        recordActiveRunSnapshotEvent(activeRun, {
-          phase: 'usage',
-          modelId: actualModelId,
-          usage,
-          estimatedCostUsd: estimateRunUsageCost(actualModelId, usage),
-          payload: {
-            source: activeRun.runtime?.totalUsage ? 'runtime.totalUsage' : 'runtime.lastUsage'
-          }
-        })
-      }
-
-      // Write per-step usage if the runtime supports it
-      const runtimeWithSteps = activeRun.runtime as {
-        lastStepUsages?: RuntimeStepUsageInput[]
-      }
-      const steps = runtimeWithSteps.lastStepUsages ?? []
-      if (steps.length > 0) {
-        const fallbackModelId = actualModelId ?? 'gpt-4o'
-        const recordedSteps = insertRuntimeStepUsages({
-          runId: activeRun.runId,
-          sessionId: activeRun.sessionId,
-          fallbackModelId,
-          steps
-        })
-        for (const step of recordedSteps) {
-          recordActiveRunSnapshotEvent(activeRun, {
-            phase: 'step_usage',
-            modelId: step.modelId,
-            usage: step.usage,
-            estimatedCostUsd: step.estimatedCostUsd,
-            payload: {
-              stepNumber: step.stepNumber,
-              stepType: step.stepType
-            }
-          })
-        }
-      }
     }
   } catch (error) {
     chatLogger.error('failed to persist run finalization (session may have been deleted)', {
@@ -4342,14 +4807,13 @@ async function executeRun(
   } finally {
     // Persist updated providerSessionId/state obtained during the run
     try {
-      const binding = attachBinding({
+      attachBinding({
         sessionId: activeRun.sessionId,
         providerTargetId: activeRun.providerTargetId,
         runtimeKind: activeRun.runtimeSession.runtimeKind,
         runtimeSession: activeRun.runtimeSession,
         requestedModelId: actualModelId
       })
-      linkRunToRuntimeBinding({ runId: activeRun.runId, binding })
     } catch {
       // session may have been deleted during the run
     }
@@ -4463,6 +4927,43 @@ export function flushAllActiveRunSnapshots(): void {
 }
 
 export function recoverPersistedRunProjections(): number {
+  const recovered = recoverOrphanedEventRuns() + recoverLegacyRunProjections()
+  if (recovered > 0) {
+    chatLogger.warn('recovered persisted run projections', { recovered })
+  }
+
+  return recovered
+}
+
+function recoverOrphanedEventRuns(): number {
+  const streamIds = db()
+    .select({ streamId: chatRuntimeEvents.streamId })
+    .from(chatRuntimeEvents)
+    .groupBy(chatRuntimeEvents.streamId)
+    .all()
+    .map(row => row.streamId)
+
+  let recovered = 0
+  for (const sessionId of streamIds) {
+    if (activeRunIdsBySession.has(sessionId) || pendingRunSessions.has(sessionId)) {
+      continue
+    }
+    if (interruptOrphanedEventRunIfIdle(sessionId)) {
+      recovered += 1
+    }
+  }
+  return recovered
+}
+
+function recoverLegacyRunProjections(): number {
+  const eventStreamIds = new Set(
+    db()
+      .select({ streamId: chatRuntimeEvents.streamId })
+      .from(chatRuntimeEvents)
+      .groupBy(chatRuntimeEvents.streamId)
+      .all()
+      .map(row => row.streamId)
+  )
   const streamingRuns = db()
     .select()
     .from(backendRuns)
@@ -4472,21 +4973,34 @@ export function recoverPersistedRunProjections(): number {
   let recovered = 0
   for (const run of streamingRuns) {
     if (
+      eventStreamIds.has(run.chatSessionId) ||
       activeRuns.has(run.id) ||
       activeRunIdsBySession.has(run.chatSessionId) ||
       pendingRunSessions.has(run.chatSessionId)
     ) {
       continue
     }
-    failOrphanedPersistedRun(run)
+    failLegacyOrphanedPersistedRun(run)
     recovered += 1
   }
-  recovered += repairTerminalRunProjections()
 
-  if (recovered > 0) {
-    chatLogger.warn('recovered persisted run projections', { recovered })
+  const terminalRuns = db()
+    .select({ chatSessionId: backendRuns.chatSessionId })
+    .from(backendRuns)
+    .where(or(
+      eq(backendRuns.status, 'complete'),
+      eq(backendRuns.status, 'aborted'),
+      eq(backendRuns.status, 'failed'),
+    ))
+    .all()
+  const legacyTerminalSessionIds = new Set(
+    terminalRuns
+      .map(run => run.chatSessionId)
+      .filter(sessionId => !eventStreamIds.has(sessionId))
+  )
+  for (const sessionId of legacyTerminalSessionIds) {
+    recovered += repairLegacyTerminalRunProjections({ sessionId })
   }
-
   return recovered
 }
 
@@ -4747,20 +5261,19 @@ async function finalizeActiveRun(
   if (profile) {
     profile.finalizeStartedAtMs = performance.now()
   }
-  flushFinalMessageProjection(activeRun)
-    flushProjectedToolInputs(activeRun, parsePartialToolInputText)
+  finalizeFinalMessageProjection(activeRun)
+  flushProjectedToolInputs(activeRun, parsePartialToolInputText)
 
   const snapshotResult = persistTerminalMessageSnapshot(activeRun, status, errorText)
   if (profile) {
     profile.finalMessageJsonBytes = snapshotResult?.messageJsonBytes ?? null
   }
 
-  finalizeBackendRun({
-    runId: activeRun.runId,
-    sessionId: activeRun.sessionId,
-    queueItemId: activeRun.queueItemId,
+  appendRunTerminalEvents({
+    activeRun,
     status,
-    errorText
+    errorText,
+    terminalChunk
   })
   if (profile) {
     profile.finalizeFinishedAtMs = performance.now()
@@ -4856,14 +5369,13 @@ async function requestRuntimeCancel(activeRun: ActiveRun): Promise<void> {
     })
   } finally {
     try {
-      const binding = attachBinding({
+      attachBinding({
         sessionId: activeRun.sessionId,
         providerTargetId: activeRun.providerTargetId,
         runtimeKind: activeRun.runtimeSession.runtimeKind,
         runtimeSession: activeRun.runtimeSession,
         requestedModelId: activeRun.modelId
       })
-      linkRunToRuntimeBinding({ runId: activeRun.runId, binding })
     } catch (error) {
       chatLogger.warn('failed to persist runtime session after cancellation', {
         error,
@@ -4874,7 +5386,7 @@ async function requestRuntimeCancel(activeRun: ActiveRun): Promise<void> {
   }
 }
 
-function releaseTerminalPersistedActiveRunForSession(sessionId: string): boolean {
+function releaseTerminalActiveHandleForSession(sessionId: string): boolean {
   const runId = activeRunIdsBySession.get(sessionId)
   if (!runId) {
     return false
@@ -4884,27 +5396,45 @@ function releaseTerminalPersistedActiveRunForSession(sessionId: string): boolean
   if (!run) {
     return false
   }
-  const status = readTerminalRunProjectionStatus(run.status)
+  const status = readTerminalActiveHandleStatus(run.status)
   if (!status) {
     return false
   }
 
   const activeRun = activeRuns.get(runId)
   if (activeRun) {
+    const eventState = readEventDerivedRuntimeState(sessionId)
+    if (eventState.hasEvents && eventState.activeRunId === run.id) {
+      appendRunTerminalEvents({
+        activeRun,
+        status,
+        errorText: run.errorText,
+        terminalChunk: createTerminalChunkFromPersistedRun(run, status),
+      })
+    }
     activeRun.terminalStatus ??= status
     releaseActiveRun(activeRun)
   } else {
     activeRunIdsBySession.delete(sessionId)
   }
-  repairTerminalRunProjection(run)
   return true
 }
 
-function failOrphanedPersistedStreamingSessionIfIdle(sessionId: string): void {
-  releaseTerminalPersistedActiveRunForSession(sessionId)
-  if (!activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId)) {
-    failOrphanedPersistedStreamingSession(sessionId)
+function createTerminalChunkFromPersistedRun(
+  run: BackendRun,
+  status: TerminalChatMessageStatus,
+): UIMessageChunk {
+  if (status === 'complete') {
+    return { type: 'finish', finishReason: 'stop' }
   }
+  if (status === 'aborted') {
+    return { type: 'abort' }
+  }
+  return { type: 'error', errorText: run.errorText ?? 'Chat run failed' }
+}
+
+function readTerminalActiveHandleStatus(status: BackendRun['status']): TerminalChatMessageStatus | null {
+  return status === 'complete' || status === 'aborted' || status === 'failed' ? status : null
 }
 
 function releaseActiveRun(activeRun: ActiveRun): void {

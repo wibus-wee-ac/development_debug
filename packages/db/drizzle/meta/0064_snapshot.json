@@ -2,7 +2,7 @@
   "version": "6",
   "dialect": "sqlite",
   "id": "e836ceb9-f366-4411-8bdb-561e48f37fa7",
-  "prevId": "b7eb4005-084e-407d-b9f7-d8210a021d32",
+  "prevId": "42ca1f95-4f8c-45f6-abfb-25984b03d455",
   "tables": {
     "acp_agents": {
       "name": "acp_agents",

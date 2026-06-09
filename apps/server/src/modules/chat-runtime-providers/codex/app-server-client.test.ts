@@ -8,8 +8,8 @@ import {
   buildCradleCodexAppServerEnv,
   CodexAppServerClient,
   readCradleCodexClientVersion,
-  resolveCodexAppServerPath,
   resolveCodexAppServerHome,
+  resolveCodexAppServerPath,
 } from './app-server-client'
 
 const spawnMock = vi.hoisted(() => vi.fn())
@@ -290,5 +290,37 @@ describe('codexAppServerClient', () => {
       method: 'error',
       params: { message: 'Codex app-server exited with code 1: fatal startup error' },
     })
+  })
+
+  it('closes the client instead of throwing when a server-request response hits a broken pipe', async () => {
+    const stdout = new PassThrough()
+    const child = new EventEmitter() as EventEmitter & {
+      stdin: Writable
+      stdout: PassThrough
+      stderr: PassThrough
+      kill: ReturnType<typeof vi.fn>
+    }
+    child.stdin = new Writable({
+      write: (_chunk, _encoding, callback) => callback(new Error('write EPIPE')),
+    })
+    child.stdout = stdout
+    child.stderr = new PassThrough()
+    child.kill = vi.fn()
+    spawnMock.mockReturnValueOnce(child)
+
+    const client = new CodexAppServerClient({
+      codexPath: 'codex-test',
+      serverRequestHandler: () => ({ ok: true }),
+      exposeServerRequestsAsNotifications: false,
+    })
+
+    const notification = client.nextNotification()
+    stdout.write(`${JSON.stringify({ id: 1, method: 'host/request' })}\n`)
+
+    await expect(notification).resolves.toEqual({
+      method: 'error',
+      params: { message: 'write EPIPE' },
+    })
+    await expect(client.request('config/read')).rejects.toThrow('Codex app-server is closed')
   })
 })

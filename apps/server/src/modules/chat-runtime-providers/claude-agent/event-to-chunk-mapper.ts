@@ -508,12 +508,18 @@ function ensureTextBlockStarted(state: ClaudeAgentChunkMapperState, blockIndex: 
 }
 
 function finishOpenTextBlocks(state: ClaudeAgentChunkMapperState): UIMessageChunk[] {
-  if (state.activeTextBlockByIndex.size === 0) {
+  if (state.activeTextBlockByIndex.size === 0 && !state.assistantStarted) {
     return []
   }
 
   const chunks: UIMessageChunk[] = []
   const seenTextItemIds = new Set<string>()
+  if (state.activeTextBlockByIndex.size === 0 && state.assistantStarted) {
+    seenTextItemIds.add(state.textItemId)
+    chunks.push({ type: 'text-end', id: state.textItemId })
+    state.assistantStarted = false
+    return chunks
+  }
   for (const textItemId of state.activeTextBlockByIndex.values()) {
     if (seenTextItemIds.has(textItemId)) {
       continue
@@ -532,7 +538,7 @@ function isTerminalClaudeStopReason(stopReason: string): boolean {
   return stopReason !== 'tool_use'
 }
 
-function mapResult(msg: SDKResultMessage, _state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
+function mapResult(msg: SDKResultMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
   const usage = msg.usage
     ? {
         promptTokens: msg.usage.input_tokens ?? 0,
@@ -541,7 +547,15 @@ function mapResult(msg: SDKResultMessage, _state: ClaudeAgentChunkMapperState): 
       }
     : null
 
-  return { chunks: [], sessionId: msg.session_id, usage, capturedPlans: [] }
+  return {
+    chunks: [
+      ...finishOpenTextBlocks(state),
+      { type: 'finish', finishReason: 'stop' },
+    ],
+    sessionId: msg.session_id,
+    usage,
+    capturedPlans: [],
+  }
 }
 
 function emitAssistantTextSegment(

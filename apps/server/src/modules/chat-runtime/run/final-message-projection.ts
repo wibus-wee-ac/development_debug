@@ -173,7 +173,7 @@ export function projectFinalMessageChunk(
         output: chunk.output,
         providerExecuted: chunk.providerExecuted,
         providerMetadata: chunk.providerMetadata,
-        preliminary: chunk.preliminary
+        preliminary: chunk.preliminary === true
       })
       break
     case 'tool-output-error':
@@ -181,11 +181,12 @@ export function projectFinalMessageChunk(
         state: 'output-error',
         errorText: chunk.errorText,
         providerExecuted: chunk.providerExecuted,
-        providerMetadata: chunk.providerMetadata
+        providerMetadata: chunk.providerMetadata,
+        preliminary: false
       })
       break
     case 'tool-output-denied':
-      updateProjectedToolOutput(message, chunk.toolCallId, { state: 'output-denied' })
+      updateProjectedToolOutput(message, chunk.toolCallId, { state: 'output-denied', preliminary: false })
       break
     case 'start-step':
       message.parts.push({ type: 'step-start' })
@@ -230,6 +231,18 @@ export function flushFinalMessageProjection(activeRun: FinalMessageProjectionRun
   for (const activePart of activeRun.finalProjection.activeReasoningParts.values()) {
     flushProjectedTextPart(activePart)
   }
+}
+
+export function finalizeFinalMessageProjection(activeRun: FinalMessageProjectionRun): void {
+  flushFinalMessageProjection(activeRun)
+  for (const activePart of activeRun.finalProjection.activeTextParts.values()) {
+    activePart.part.state = 'done'
+  }
+  activeRun.finalProjection.activeTextParts.clear()
+  for (const activePart of activeRun.finalProjection.activeReasoningParts.values()) {
+    activePart.part.state = 'done'
+  }
+  activeRun.finalProjection.activeReasoningParts.clear()
 }
 
 export function flushProjectedToolInputs(
@@ -396,7 +409,12 @@ function assignProjectedToolPart(
     target.providerExecuted = values.providerExecuted
   }
   if (values.preliminary !== undefined) {
-    target.preliminary = values.preliminary
+    if (values.preliminary) {
+      target.preliminary = true
+    }
+    else {
+      delete target.preliminary
+    }
   }
   if (values.title !== undefined) {
     target.title = values.title

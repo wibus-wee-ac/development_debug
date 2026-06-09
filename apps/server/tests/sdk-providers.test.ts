@@ -505,7 +505,17 @@ describe('sdk-backed providers in unified chat runtime', () => {
       expect(toolIdx).toBeLessThan(textIdx)
 
       expect(assistant?.message.parts).toEqual(expect.arrayContaining([
-        expect.objectContaining({ type: 'tool-bash', toolCallId: 'toolu_abc123', state: 'output-available', output: 'hello\n' }),
+        expect.objectContaining({
+          type: 'tool-bash',
+          toolCallId: 'toolu_abc123',
+          state: 'output-available',
+          output: expect.objectContaining({
+            type: 'cradle.builtin-tool-call.result.v1',
+            identifier: 'claude-code',
+            apiName: 'bash',
+            result: 'hello\n',
+          }),
+        }),
         expect.objectContaining({ type: 'text', text: 'Done running bash', state: 'done' }),
       ]))
     }

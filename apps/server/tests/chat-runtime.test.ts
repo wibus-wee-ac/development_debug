@@ -10,6 +10,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 import { getRuntimeRegistry, registerRuntime } from '../src/modules/chat-runtime/chat-runtime-provider-registry'
+import { appendChatRuntimeEvents, readChatRuntimeEvents } from '../src/modules/chat-runtime/event-store'
 import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata, ExecuteShellCommandInput, ExecuteShellCommandResult, ForkRuntimeSessionInput, GenerateSessionTitleInput, ProviderNativeAppServerInvokeInput, ProviderNativeAppServerInvokeResponse, ProviderNativeAppServerStreamInput, ProviderThreadListInput, ProviderThreadListResult, QuickQuestionInput, ResumeChatSessionInput, RuntimePresentationCapabilities, RuntimeSession, StartChatSessionInput, SteerTurnInput, StreamTurnInput, UpdateRuntimeSettingsInput } from '../src/modules/chat-runtime/runtime-provider-types'
 import { ProviderErrors, ProviderRuntimeError } from '../src/modules/chat-runtime/runtime-provider-types'
 import { getActiveRunReplayBufferSummary, reportRuntimeSessionTitle } from '../src/modules/chat-runtime/service'
@@ -4229,6 +4230,94 @@ describe('chat runtime capability', () => {
         expect(runs.some(row => row.status === 'complete')).toBe(true)
         return runs
       }, 'fresh turn completion after stale active run release')
+    }
+    finally {
+      runtime.releaseBlockedStreams()
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('uses terminal event state instead of stale memory handles when creating a run', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexSideRuntime()
+    runtime.blockStreams = true
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+    let firstResponsePromise: Promise<Response> | null = null
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-terminal-event-gate',
+        name: 'Workspace Terminal Event Gate',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-terminal-event-gate', {
+        providerTargetId: 'provider-target-terminal-event-gate',
+        sessionId: 'session-terminal-event-gate',
+        runtimeKind: 'codex',
+      })
+
+      firstResponsePromise = app.handle(new Request('http://localhost/chat/sessions/session-terminal-event-gate/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Start a blocked turn.' }),
+      })).catch(error => new Response(String(error), { status: 599 }))
+
+      await vi.waitFor(() => {
+        expect(runtime.streamInputs).toHaveLength(1)
+      })
+
+      const run = await waitForBackendRunStatus('session-terminal-event-gate', 'streaming')
+      const currentSeq = readChatRuntimeEvents('session-terminal-event-gate').at(-1)?.seq ?? 0
+      appendChatRuntimeEvents({
+        streamId: 'session-terminal-event-gate',
+        expectedSeq: currentSeq,
+        commandId: 'test-terminal-event-before-next-create',
+        events: [{
+          type: 'run.failed',
+          runId: run.id,
+          messageId: run.messageId,
+          payload: { errorText: 'event log marked the run terminal' },
+        }],
+      })
+
+      runtime.blockStreams = false
+      const nextResponse = await app.handle(new Request('http://localhost/chat/sessions/session-terminal-event-gate/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Start a fresh turn.' }),
+      }))
+      expect(nextResponse.status).toBe(200)
+
+      await waitForCondition(() => {
+        expect(runtime.streamInputs).toHaveLength(2)
+        const runs = db()
+          .select()
+          .from(backendRuns)
+          .where(eq(backendRuns.chatSessionId, 'session-terminal-event-gate'))
+          .all()
+        expect(runs.some(row => row.id !== run.id && row.status === 'complete')).toBe(true)
+        return runs
+      }, 'fresh turn creation after terminal event state')
+
+      runtime.releaseBlockedStreams()
+      await firstResponsePromise
     }
     finally {
       runtime.releaseBlockedStreams()

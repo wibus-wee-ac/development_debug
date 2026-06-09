@@ -72,6 +72,13 @@ type ContextUsageRuntimeInput = Pick<GetContextUsageInput, 'runtimeSession'>
 
 const COMPACT_SLOT_CONTEXT_USAGE_TTL_MS = 15_000
 
+function closeClaudeQuery(activeQuery: Query): void {
+  const close = (activeQuery as { close?: unknown }).close
+  if (typeof close === 'function') {
+    close.call(activeQuery)
+  }
+}
+
 export function createClaudeAgentProvider(ctx: ProviderContext): ChatRuntime {
   return new ClaudeAgentProvider(ctx)
 }
@@ -161,7 +168,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
       return projectClaudeAgentPresentation(slashCommands)
     }
     finally {
-      activeQuery.close()
+      closeClaudeQuery(activeQuery)
     }
   }
 
@@ -238,7 +245,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     }
     finally {
       abortController.abort()
-      activeQuery.close()
+      closeClaudeQuery(activeQuery)
     }
   }
 
@@ -455,7 +462,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     }
     finally {
       inputStream.close()
-      activeQuery.close()
+      closeClaudeQuery(activeQuery)
       endGeneration()
       this.releaseQuery(sessionId, activeEntry)
     }
@@ -484,7 +491,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
       return
     }
     entry.abortController.abort()
-    entry.query.close()
+    closeClaudeQuery(entry.query)
     entry.inputStream.close()
     this.releaseQuery(sessionId, entry)
   }

@@ -3,6 +3,7 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  agentCredentials,
   agents,
   backendCapabilitySnapshots,
   backendSessionBindings,
@@ -164,19 +165,95 @@ describe('profiles capability', () => {
       expect(removeSecret.status).toBe(200)
       expect(await removeSecret.json()).toEqual({ ok: true })
     }
- finally {
+    finally {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR
       }
- else {
+      else {
         process.env.CRADLE_DATA_DIR = previousDataDir
       }
       if (previousSecret === undefined) {
         delete process.env.CRADLE_CREDENTIAL_SECRET
       }
- else {
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
+  it('keeps listing readable secret metadata when another credential cannot decrypt', async () => {
+    const dataDir = makeTempDir('cradle-secret-list-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'test-secret-list'
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const saveSecret = await app.handle(
+        new Request('http://localhost/secrets', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            kind: 'chatgpt-auth',
+            label: 'ChatGPT Account',
+            secret: JSON.stringify({
+              kind: 'chatgpt-auth',
+              chatgptAccountId: 'account-readable',
+              chatgptPlanType: 'plus',
+              updatedAt: 123,
+            }),
+          }),
+        }),
+      )
+      expect(saveSecret.status).toBe(200)
+      const secret = await saveSecret.json()
+
+      db().insert(agentCredentials).values({
+        id: 'broken-credential',
+        kind: 'openai-compatible',
+        label: 'Broken Credential',
+        encryptedSecret: 'not-valid-ciphertext',
+        createdAt: 1,
+        updatedAt: 1,
+      }).run()
+
+      const listSecrets = await app.handle(new Request('http://localhost/secrets'))
+      expect(listSecrets.status).toBe(200)
+      expect(await listSecrets.json()).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: 'broken-credential',
+          maskedSecret: 'Unreadable credential',
+          chatgpt: null,
+        }),
+        expect.objectContaining({
+          id: secret.id,
+          maskedSecret: 'ChatGPT accoun...able',
+          chatgpt: {
+            chatgptAccountId: 'account-readable',
+            chatgptPlanType: 'plus',
+            updatedAt: 123,
+          },
+        }),
+      ]))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
       }
     }

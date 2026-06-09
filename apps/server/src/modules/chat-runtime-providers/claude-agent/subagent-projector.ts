@@ -275,7 +275,7 @@ function projectSubagentChunk(
         output: chunk.output,
         providerExecuted: chunk.providerExecuted,
         providerMetadata: chunk.providerMetadata,
-        preliminary: chunk.preliminary,
+        preliminary: chunk.preliminary === true,
         dynamic: chunk.dynamic,
       })
       break
@@ -285,11 +285,12 @@ function projectSubagentChunk(
         errorText: chunk.errorText,
         providerExecuted: chunk.providerExecuted,
         providerMetadata: chunk.providerMetadata,
+        preliminary: false,
         dynamic: chunk.dynamic,
       })
       break
     case 'tool-output-denied':
-      updateSubagentToolOutput(message, chunk.toolCallId, { state: 'output-denied' })
+      updateSubagentToolOutput(message, chunk.toolCallId, { state: 'output-denied', preliminary: false })
       break
     case 'start-step':
       message.parts.push({ type: 'step-start' })
@@ -473,7 +474,12 @@ function assignToolPart(
     target.providerExecuted = values.providerExecuted
   }
   if (values.preliminary !== undefined) {
-    target.preliminary = values.preliminary
+    if (values.preliminary) {
+      target.preliminary = true
+    }
+    else {
+      delete target.preliminary
+    }
   }
   if (values.title !== undefined) {
     target.title = values.title

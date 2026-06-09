@@ -8,6 +8,8 @@ out
 e2e/artifacts
 .github/copilot-instructions.md
 *.tsbuildinfo
+__pycache__/
+*.py[cod]
 data
 .env
 .env.local

@@ -1,10 +1,8 @@
 import { chatSessionQueueItems } from '@cradle/db'
 import type { FileUIPart } from 'ai'
-import { and, eq } from 'drizzle-orm'
 
 import { AppError } from '../../../errors/app-error'
 import { currentUnixSeconds } from '../../../helpers/time'
-import { db } from '../../../infra'
 import type { ChatContextPart } from '../context-parts'
 import type { ChatRuntimeSettings } from '../runtime-provider-types'
 import type { SerializedChatError } from '../run/errors'
@@ -12,12 +10,10 @@ import type { PersistedThinkingEffort } from './session-queue'
 import {
   compareQueueRows,
   listPendingQueueRows,
-  normalizePendingQueuePositions,
   parseQueueContextParts,
   parseQueueFiles,
   readPersistedThinkingEffort,
   readQueueItemRuntimeSettings,
-  recoverOrphanedRunningQueueItems
 } from './session-queue'
 
 const drainingSessionIds = new Set<string>()
@@ -26,6 +22,9 @@ const requestedDrainSessionIds = new Set<string>()
 export interface QueueDrainDeps {
   hasActiveOrPendingRun(sessionId: string): boolean
   readSessionRuntimeSettings(sessionId: string): ChatRuntimeSettings
+  onQueueItemClaimed(input: { sessionId: string, row: typeof chatSessionQueueItems.$inferSelect }): typeof chatSessionQueueItems.$inferSelect | undefined
+  onQueueItemReleased(input: { sessionId: string, row: typeof chatSessionQueueItems.$inferSelect }): typeof chatSessionQueueItems.$inferSelect | undefined
+  onQueueItemFailed(input: { sessionId: string, row: typeof chatSessionQueueItems.$inferSelect }): typeof chatSessionQueueItems.$inferSelect | undefined
   createQueuedRun(input: {
     sessionId: string
     text: string
@@ -64,17 +63,17 @@ async function drainSessionQueue(sessionId: string, deps: QueueDrainDeps): Promi
   drainingSessionIds.add(sessionId)
   requestedDrainSessionIds.delete(sessionId)
   try {
-    recoverOrphanedRunningQueueItems(sessionId)
     while (!deps.hasActiveOrPendingRun(sessionId)) {
       const next = listPendingQueueRows(sessionId).sort(compareQueueRows)[0]
       if (!next) {
         return
       }
 
-      const claimed = claimQueueItem(sessionId, next.id)
+      const claimed = claimQueueItem(next)
       if (!claimed) {
         continue
       }
+      deps.onQueueItemClaimed({ sessionId, row: claimed })
 
       try {
         const runtimeSettings = readQueueItemRuntimeSettings(
@@ -92,22 +91,21 @@ async function drainSessionQueue(sessionId: string, deps: QueueDrainDeps): Promi
           runtimeSettings,
           queueItemId: claimed.id
         })
-        markQueueItemStarted(sessionId, claimed.id, run.runId)
-        normalizePendingQueuePositions(sessionId)
         return
       } catch (error) {
         if (error instanceof AppError && error.code === 'chat_run_cancelled') {
-          normalizePendingQueuePositions(sessionId)
           return
         }
 
         if (error instanceof AppError && error.code === 'chat_run_in_progress') {
-          releaseClaimedQueueItem(sessionId, claimed.id)
+          deps.onQueueItemReleased({ sessionId, row: releaseClaimedQueueItem(claimed) })
           return
         }
 
-        failClaimedQueueItem(sessionId, claimed.id, deps.serializeError(error).text)
-        normalizePendingQueuePositions(sessionId)
+        deps.onQueueItemFailed({
+          sessionId,
+          row: failClaimedQueueItem(claimed, deps.serializeError(error).text),
+        })
       }
     }
   } finally {
@@ -121,75 +119,29 @@ async function drainSessionQueue(sessionId: string, deps: QueueDrainDeps): Promi
   }
 }
 
-function claimQueueItem(sessionId: string, queueItemId: string) {
-  return db()
-    .update(chatSessionQueueItems)
-    .set({ status: 'running', updatedAt: currentUnixSeconds() })
-    .where(
-      and(
-        eq(chatSessionQueueItems.id, queueItemId),
-        eq(chatSessionQueueItems.sessionId, sessionId),
-        eq(chatSessionQueueItems.mode, 'queue'),
-        eq(chatSessionQueueItems.status, 'pending')
-      )
-    )
-    .returning()
-    .get()
+function claimQueueItem(row: typeof chatSessionQueueItems.$inferSelect) {
+  return {
+    ...row,
+    status: 'running' as const,
+    updatedAt: currentUnixSeconds(),
+  }
 }
 
-function markQueueItemStarted(sessionId: string, queueItemId: string, runId: string): void {
-  db()
-    .update(chatSessionQueueItems)
-    .set({
-      startedRunId: runId,
-      updatedAt: currentUnixSeconds()
-    })
-    .where(
-      and(
-        eq(chatSessionQueueItems.id, queueItemId),
-        eq(chatSessionQueueItems.sessionId, sessionId),
-        eq(chatSessionQueueItems.mode, 'queue'),
-        eq(chatSessionQueueItems.status, 'running')
-      )
-    )
-    .run()
+function releaseClaimedQueueItem(row: typeof chatSessionQueueItems.$inferSelect) {
+  return {
+    ...row,
+    status: 'pending' as const,
+    startedRunId: null,
+    errorText: null,
+    updatedAt: currentUnixSeconds(),
+  }
 }
 
-function releaseClaimedQueueItem(sessionId: string, queueItemId: string): void {
-  db()
-    .update(chatSessionQueueItems)
-    .set({
-      status: 'pending',
-      startedRunId: null,
-      errorText: null,
-      updatedAt: currentUnixSeconds()
-    })
-    .where(
-      and(
-        eq(chatSessionQueueItems.id, queueItemId),
-        eq(chatSessionQueueItems.sessionId, sessionId),
-        eq(chatSessionQueueItems.mode, 'queue'),
-        eq(chatSessionQueueItems.status, 'running')
-      )
-    )
-    .run()
-}
-
-function failClaimedQueueItem(sessionId: string, queueItemId: string, errorText: string): void {
-  db()
-    .update(chatSessionQueueItems)
-    .set({
-      status: 'failed',
-      errorText,
-      updatedAt: currentUnixSeconds()
-    })
-    .where(
-      and(
-        eq(chatSessionQueueItems.id, queueItemId),
-        eq(chatSessionQueueItems.sessionId, sessionId),
-        eq(chatSessionQueueItems.mode, 'queue'),
-        eq(chatSessionQueueItems.status, 'running')
-      )
-    )
-    .run()
+function failClaimedQueueItem(row: typeof chatSessionQueueItems.$inferSelect, errorText: string) {
+  return {
+    ...row,
+    status: 'failed' as const,
+    errorText,
+    updatedAt: currentUnixSeconds(),
+  }
 }

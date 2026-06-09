@@ -70,7 +70,7 @@ import {
   useChatgptCredentialLoginActions,
   useChatgptCredentialLoginStatus,
 } from './use-chatgpt-credential-login'
-import { type CredentialMetadata, useCredentialMetadata } from './use-credential-metadata'
+import { type CredentialMetadata, isChatgptCredentialMetadata, useCredentialMetadata } from './use-credential-metadata'
 
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
 type ProfileTextField = 'name' | 'apiKey' | 'baseUrl' | 'api'
@@ -201,11 +201,12 @@ function buildProviderRequestBody(profile: AgentProfile) {
 function buildProfileConfig(
   values: ProfileDetailFormValues,
   currentConfig: Record<string, unknown>,
+  options: { useChatgptAuth?: boolean } = {},
 ): Record<string, unknown> {
   const { enabledModels: _, ...rest } = currentConfig
   return {
     ...rest,
-    baseUrl: values.baseUrl,
+    baseUrl: options.useChatgptAuth ? '' : values.baseUrl,
     model: values.model || undefined,
     api: values.api || undefined,
   }
@@ -284,6 +285,9 @@ export function ProfileDetailPanel({
       return
     }
     if (login.state === 'completed' && login.credentialRef) {
+      const config = ProfileConfigJsonSchema.parse(profile.configJson)
+      config.baseUrl = ''
+      form.setValue('baseUrl', '', { shouldDirty: false })
       setChatgptLoginId(null)
       setActiveChatgptLogin(null)
       void putProfilesById({
@@ -292,7 +296,7 @@ export function ProfileDetailPanel({
           name: profile.name,
           providerKind: profile.providerKind,
           enabled: profile.enabled,
-          config: ProfileConfigJsonSchema.parse(profile.configJson),
+          config,
           credentialRef: login.credentialRef,
         },
       })
@@ -311,7 +315,7 @@ export function ProfileDetailPanel({
       setActiveChatgptLogin(null)
       dispatch({ type: 'save/set', state: 'error' })
     }
-  }, [chatgptLoginStatus.data, onSaved, profile, queryClient])
+  }, [chatgptLoginStatus.data, form, onSaved, profile, queryClient])
 
   const handleChatgptLogin = async () => {
     try {
@@ -482,6 +486,7 @@ export function ProfileDetailPanel({
         })
         credentialRef = SecretCreateResponseSchema.parse(meta).id
       }
+      const useChatgptAuth = !currentValues.apiKey && isChatgptCredentialMetadata(credentialMetadata.data)
 
       await putProfilesById({
         path: { id: profile.id },
@@ -490,7 +495,7 @@ export function ProfileDetailPanel({
           providerKind: profile.providerKind,
           enabled: profile.enabled,
           config: supportsModels
-            ? buildProfileConfig(currentValues, ProfileConfigJsonSchema.parse(profile.configJson))
+            ? buildProfileConfig(currentValues, ProfileConfigJsonSchema.parse(profile.configJson), { useChatgptAuth })
             : ProfileConfigJsonSchema.parse(profile.configJson),
           credentialRef,
         },
@@ -737,7 +742,7 @@ function ProfileGeneralSettings({
   onCancelChatgptLogin: () => void
 }) {
   const isUniversal = profile.providerKind === 'universal'
-  const isChatgptCredential = credentialMetadata?.kind === 'chatgpt-auth' || !!credentialMetadata?.chatgpt
+  const isChatgptCredential = isChatgptCredentialMetadata(credentialMetadata)
 
   return (
     <>
@@ -792,73 +797,123 @@ function ProfileGeneralSettings({
           )}
 
           <SettingsDivider />
-          <SettingsRow
-            label="Credential"
-            description={
-              isChatgptCredential
-                ? 'ChatGPT account auth for Codex.'
-                : profile.credentialRef
-                  ? 'A credential is already stored. Leave empty to keep it.'
-                  : 'Stored locally and encrypted.'
-            }
-          >
-            <div className="flex w-56 flex-col gap-2">
-              {isChatgptCredential && credentialMetadata && (
-                <ChatgptCredentialSummary credential={credentialMetadata} />
-              )}
-              <Input
-                data-testid="provider-edit-apikey"
-                type="password"
-                value={values.apiKey}
-                onChange={e => onTextFieldChange('apiKey', e.target.value)}
-                disabled={readOnly}
-                placeholder={
-                  isChatgptCredential
-                    ? 'Paste API key to replace ChatGPT auth'
-                    : profile.credentialRef
-                      ? 'Configured · type to replace'
-                      : 'sk-...'
-                }
-                className="h-9 text-[12.5px] font-mono"
-              />
-              {profile.providerKind === 'openai-compatible' && (
-                <div className="flex flex-wrap items-center gap-2">
-                  {chatgptLoginPending
-                    ? (
-                        <Button
-                          type="button"
-                          size="xs"
-                          variant="outline"
-                          onClick={onCancelChatgptLogin}
-                          disabled={readOnly}
-                        >
-                          <XIcon className="size-3" />
-                          Cancel ChatGPT login
-                        </Button>
-                      )
-                    : (
-                        <Button
-                          type="button"
-                          size="xs"
-                          variant="outline"
-                          onClick={onChatgptLogin}
-                          disabled={readOnly || chatgptLoginBusy}
-                        >
-                          {chatgptLoginBusy ? <Spinner className="size-3" /> : <LogInIcon className="size-3" />}
-                          Sign in with ChatGPT
-                        </Button>
-                  )}
-                </div>
-              )}
-              {activeChatgptLogin && (
-                <ChatgptDeviceCodeNotice login={activeChatgptLogin} />
-              )}
-            </div>
-          </SettingsRow>
+          <ProfileCredentialSettings
+            profile={profile}
+            credentialMetadata={credentialMetadata}
+            values={values}
+            onTextFieldChange={onTextFieldChange}
+            readOnly={readOnly}
+            chatgptLoginPending={chatgptLoginPending}
+            chatgptLoginBusy={chatgptLoginBusy}
+            activeChatgptLogin={activeChatgptLogin}
+            onChatgptLogin={onChatgptLogin}
+            onCancelChatgptLogin={onCancelChatgptLogin}
+          />
 
         </>
       )}
     </>
+  )
+}
+
+function ProfileCredentialSettings({
+  profile,
+  credentialMetadata,
+  values,
+  onTextFieldChange,
+  readOnly,
+  chatgptLoginPending,
+  chatgptLoginBusy,
+  activeChatgptLogin,
+  onChatgptLogin,
+  onCancelChatgptLogin,
+}: {
+  profile: AgentProfile
+  credentialMetadata: CredentialMetadata | null
+  values: Pick<ProfileDetailFormValues, ProfileTextField>
+  onTextFieldChange: (field: ProfileTextField, value: string) => void
+  readOnly: boolean
+  chatgptLoginPending: boolean
+  chatgptLoginBusy: boolean
+  activeChatgptLogin: ChatgptCredentialLoginStart | null
+  onChatgptLogin: () => void
+  onCancelChatgptLogin: () => void
+}) {
+  const isChatgptCredential = isChatgptCredentialMetadata(credentialMetadata)
+  const description = isChatgptCredential
+    ? 'ChatGPT account auth for Codex.'
+    : profile.credentialRef
+      ? 'A credential is already stored. Leave empty to keep it.'
+      : 'Stored locally and encrypted.'
+
+  return (
+    <section className="py-3">
+      <div className="flex min-w-0 items-center gap-2">
+        <span className="text-[13px] font-medium text-foreground">Credential</span>
+        {isChatgptCredential && (
+          <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-medium">
+            ChatGPT
+          </Badge>
+        )}
+      </div>
+      <p className="mt-0.5 text-[12px] text-muted-foreground">{description}</p>
+
+      <div
+        className={cn(
+          'mt-2.5 flex w-full flex-col gap-2',
+          {
+            'max-w-[28rem]': !isChatgptCredential,
+          },
+        )}
+      >
+        {isChatgptCredential && credentialMetadata && (
+          <ChatgptCredentialSummary credential={credentialMetadata} />
+        )}
+        {!isChatgptCredential && (
+          <Input
+            data-testid="provider-edit-apikey"
+            type="password"
+            value={values.apiKey}
+            onChange={e => onTextFieldChange('apiKey', e.target.value)}
+            disabled={readOnly}
+            placeholder={profile.credentialRef ? 'Configured · type to replace' : 'sk-...'}
+            className="h-9 text-[12.5px] font-mono"
+          />
+        )}
+        {profile.providerKind === 'openai-compatible' && (
+          <div className="flex flex-wrap items-center gap-2">
+            {chatgptLoginPending
+              ? (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="outline"
+                    onClick={onCancelChatgptLogin}
+                    disabled={readOnly}
+                  >
+                    <XIcon className="size-3" />
+                    Cancel ChatGPT login
+                  </Button>
+                )
+              : (
+                  <Button
+                    type="button"
+                    size="xs"
+                    variant="outline"
+                    onClick={onChatgptLogin}
+                    disabled={readOnly || chatgptLoginBusy}
+                  >
+                    {chatgptLoginBusy ? <Spinner className="size-3" /> : <LogInIcon className="size-3" />}
+                    {isChatgptCredential ? 'Re-login with ChatGPT' : 'Sign in with ChatGPT'}
+                  </Button>
+                )}
+          </div>
+        )}
+        {activeChatgptLogin && (
+          <ChatgptDeviceCodeNotice login={activeChatgptLogin} />
+        )}
+      </div>
+    </section>
   )
 }
 

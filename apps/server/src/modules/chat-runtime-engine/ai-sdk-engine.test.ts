@@ -1,7 +1,8 @@
 import type { UIMessage } from 'ai'
+import { MockLanguageModelV3, simulateReadableStream } from 'ai/test'
 import { describe, expect, it } from 'vitest'
 
-import { buildModelMessages } from './ai-sdk-engine'
+import { buildModelMessages, executeAiSdkTurn, type TokenUsage } from './ai-sdk-engine'
 
 describe('buildModelMessages', () => {
   it('preserves user file parts when building AI SDK model messages', async () => {
@@ -67,5 +68,58 @@ describe('buildModelMessages', () => {
         ],
       },
     ])
+  })
+})
+
+describe('executeAiSdkTurn', () => {
+  it('emits usage before yielding the terminal finish chunk', async () => {
+    const model = new MockLanguageModelV3({
+      doStream: {
+        stream: simulateReadableStream({
+          chunks: [
+            { type: 'stream-start', warnings: [] },
+            { type: 'text-start', id: '0' },
+            { type: 'text-delta', id: '0', delta: 'hello' },
+            { type: 'text-end', id: '0' },
+            {
+              type: 'finish',
+              finishReason: { unified: 'stop', raw: 'stop' },
+              usage: {
+                inputTokens: {
+                  total: 10,
+                  noCache: 10,
+                  cacheRead: undefined,
+                  cacheWrite: undefined,
+                },
+                outputTokens: {
+                  total: 3,
+                  text: 3,
+                  reasoning: undefined,
+                },
+              },
+            },
+          ],
+          initialDelayInMs: null,
+          chunkDelayInMs: null,
+        }),
+      },
+    })
+    let usage: TokenUsage | null = null
+
+    for await (const chunk of executeAiSdkTurn({
+      model,
+      messages: [{ role: 'user', content: 'hello' }],
+      onUsage: nextUsage => { usage = nextUsage },
+    })) {
+      if (chunk.type === 'finish') {
+        break
+      }
+    }
+
+    expect(usage).toEqual({
+      promptTokens: 10,
+      completionTokens: 3,
+      totalTokens: 13,
+    })
   })
 })

@@ -57,7 +57,7 @@ describe('mapClaudeAgentMessageToChunks', () => {
     })
   })
 
-  it('extracts usage from result message', async () => {
+  it('extracts usage and finishes from result message', async () => {
     const state = createClaudeAgentChunkMapperState('text-1')
     const message = {
       type: 'result',
@@ -75,6 +75,9 @@ describe('mapClaudeAgentMessageToChunks', () => {
       completionTokens: 100,
       totalTokens: 400,
     })
+    expect(result.chunks).toEqual([
+      { type: 'finish', finishReason: 'stop' },
+    ])
   })
 
   it('captures Claude ExitPlanMode as a completed plan and implementation approval once', async () => {

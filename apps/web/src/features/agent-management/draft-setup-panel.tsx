@@ -172,6 +172,7 @@ function PresetSetupForm({
     }
     if (login.state === 'completed' && login.credentialRef) {
       setChatgptCredentialRef(login.credentialRef)
+      form.setValue('values.baseUrl', '', { shouldDirty: true })
       setChatgptLoginId(null)
       setActiveChatgptLogin(null)
       setStatus({ ok: true, text: 'ChatGPT credential connected' })
@@ -180,7 +181,7 @@ function PresetSetupForm({
       setActiveChatgptLogin(null)
       setStatus({ ok: false, text: login.error ?? 'ChatGPT login failed' })
     }
-  }, [chatgptLoginStatus.data])
+  }, [chatgptLoginStatus.data, form])
 
   const handleChatgptLogin = async () => {
     try {
@@ -224,6 +225,7 @@ function PresetSetupForm({
     try {
       let credentialRef: string | null = chatgptCredentialRef
       const apiKey = currentValues.values.apiKey
+      const useChatgptAuth = !!chatgptCredentialRef && !apiKey
       if (apiKey) {
         const { data: meta } = await postSecrets({
           body: { kind: preset.providerKind, label: currentValues.name, secret: apiKey },
@@ -232,8 +234,11 @@ function PresetSetupForm({
       }
 
       const config: Record<string, unknown> = { ...preset.defaults }
-      if (currentValues.values.baseUrl) {
+      if (currentValues.values.baseUrl && !useChatgptAuth) {
         config.baseUrl = currentValues.values.baseUrl
+      }
+      if (useChatgptAuth) {
+        config.baseUrl = ''
       }
       if (currentValues.values.model) {
         config.model = currentValues.values.model

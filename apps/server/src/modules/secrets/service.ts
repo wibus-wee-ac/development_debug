@@ -215,15 +215,28 @@ export function removeSecret(id: string): void {
 export function listSecrets(): SecretMetadata[] {
   ensureConfigured()
   return db().select().from(agentCredentials).orderBy(agentCredentials.label).all().map((secret) => {
-    const plainText = decrypt(secret.encryptedSecret)
-    return {
-      id: secret.id,
-      kind: secret.kind,
-      label: secret.label,
-      maskedSecret: maskSecret(plainText),
-      chatgpt: readChatgptCredentialSummary(plainText),
-      createdAt: secret.createdAt,
-      updatedAt: secret.updatedAt,
+    try {
+      const plainText = decrypt(secret.encryptedSecret)
+      return {
+        id: secret.id,
+        kind: secret.kind,
+        label: secret.label,
+        maskedSecret: maskSecret(plainText),
+        chatgpt: readChatgptCredentialSummary(plainText),
+        createdAt: secret.createdAt,
+        updatedAt: secret.updatedAt,
+      }
+    }
+    catch {
+      return {
+        id: secret.id,
+        kind: secret.kind,
+        label: secret.label,
+        maskedSecret: 'Unreadable credential',
+        chatgpt: null,
+        createdAt: secret.createdAt,
+        updatedAt: secret.updatedAt,
+      }
     }
   })
 }

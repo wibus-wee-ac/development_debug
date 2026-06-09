@@ -11,7 +11,7 @@ Provider Runtime is the owner for runtime request routing:
 - `side-conversation-registry.ts` owns live-only side conversation handles. These records are process memory state and intentionally do not become resumable provider bindings.
 - `host-manager.ts` owns provider-neutral host lease accounting and live resource lifetime. It tracks host identity, ref count, pinned lease count, TTL refresh, release, idle reaping, and resource disposal. Provider adapters still own native protocol semantics, but host resources such as app-server clients are acquired and released through this manager.
 
-Chat Runtime owns Cradle messages, queueing, run lifecycle, transcript persistence, and session rows. Provider adapters own native protocols such as Codex app-server, Claude Agent SDK, ACP, and OpenAI-compatible calls. Provider Runtime sits between them and decides which provider runtime handle should be used for a scoped request.
+Chat Runtime owns Cradle messages, queueing, run lifecycle, transcript persistence, and session rows. It may read durable provider bindings to link run rows or resolve session-scoped provider capabilities, but it must not insert, update, or delete `backend_session_bindings`. Provider adapters own native protocols such as Codex app-server, Claude Agent SDK, ACP, and OpenAI-compatible calls. Provider Runtime sits between them and decides which provider runtime handle should be used for a scoped request.
 
 ## Durable And Ephemeral Split
 

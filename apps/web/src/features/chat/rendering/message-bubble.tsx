@@ -416,7 +416,8 @@ function isToolPartActiveInState(
 
 function renderSubagentItem(
   item: ChatRenderItem,
-  isStreaming: boolean,
+  isActiveStreamingItem: boolean,
+  isMessageStreaming: boolean,
   streamdownSettings: {
     animationPreset: string
     animateMode: 'char' | 'word'
@@ -430,7 +431,7 @@ function renderSubagentItem(
         <Streamdown
           key={item.key}
           content={item.text}
-          streaming={isStreaming}
+          streaming={isActiveStreamingItem}
           animationPreset={
             streamdownSettings.animationPreset as 'minimal' | 'balanced' | 'dramatic'
           }
@@ -445,7 +446,13 @@ function renderSubagentItem(
         />
       )
     case 'reasoning':
-      return <ReasoningBlock key={item.key} text={item.text} state={item.state} />
+      return (
+        <ReasoningBlock
+          key={item.key}
+          text={item.text}
+          state={isActiveStreamingItem && item.state === 'streaming' ? 'streaming' : 'done'}
+        />
+      )
     case 'tool-call': {
       return (
         <ToolCallBlockFromPart
@@ -453,6 +460,7 @@ function renderSubagentItem(
           messageId={item.messageId}
           part={item.part}
           animated={false}
+          isMessageStreaming={isMessageStreaming}
         />
       )
     }
@@ -505,9 +513,17 @@ function SubagentMessageContent({
     animateMode,
     showCursor
   }
+  const activeStreamingItemKey = isStreaming ? readActiveStreamingItemKey(groupedParts) : null
+  const streamingTailItemKey = isStreaming ? readStreamingTailItemKey(groupedParts) : null
 
   return groupedParts.map((groupedItem) =>
-    renderSubagentItem(groupedItem, isStreaming, streamdownSettings, sessionId)
+    renderSubagentItem(
+      groupedItem,
+      groupedItem.key === activeStreamingItemKey,
+      isStreaming && groupedItem.key === streamingTailItemKey,
+      streamdownSettings,
+      sessionId
+    )
   )
 }
 
@@ -872,6 +888,22 @@ function readActiveStreamingSegmentKey(segments: ChatRenderSegment[]): string | 
   return tail.key
 }
 
+function readActiveStreamingItemKey(items: ChatRenderItem[]): string | null {
+  const tail = items.at(-1)
+  if (!tail || (tail.kind !== 'text' && tail.kind !== 'reasoning')) {
+    return null
+  }
+  return tail.key
+}
+
+function readStreamingTailItemKey(items: ChatRenderItem[]): string | null {
+  return items.at(-1)?.key ?? null
+}
+
+function readStreamingTailSegmentKey(segments: ChatRenderSegment[]): string | null {
+  return segments.at(-1)?.key ?? null
+}
+
 function readToolApproval(
   part: RenderableToolPart
 ): { id: string; approved?: boolean; reason?: string } | undefined {
@@ -897,7 +929,8 @@ function ToolCallBlockFromPart({
   onToolApprovalResponse,
   children,
   animated,
-  sessionId
+  sessionId,
+  isMessageStreaming = false
 }: {
   messageId: string
   part: RenderableToolPart
@@ -905,6 +938,7 @@ function ToolCallBlockFromPart({
   children?: React.ReactNode
   animated?: boolean
   sessionId?: string | null
+  isMessageStreaming?: boolean
 }) {
   const workspaceDiffTarget = useSessionLayoutStore(
     useShallow((state) => {
@@ -944,7 +978,7 @@ function ToolCallBlockFromPart({
       {subagentMessage ? (
         <SubagentMessageContent
           message={subagentMessage}
-          isStreaming={readToolPreliminary(part)}
+          isStreaming={isMessageStreaming && readToolPreliminary(part)}
           animationPreset={STREAMDOWN_RENDER_OPTIONS.animationPreset}
           animateMode={STREAMDOWN_RENDER_OPTIONS.animateMode}
           showCursor={STREAMDOWN_RENDER_OPTIONS.showCursor}
@@ -960,12 +994,14 @@ function ToolCallBlockByPartIndex({
   sessionId,
   messageId,
   partIndex,
-  onToolApprovalResponse
+  onToolApprovalResponse,
+  isMessageStreaming
 }: {
   sessionId: string
   messageId: string
   partIndex: number
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
+  isMessageStreaming: boolean
 }) {
   const part = useChatStore(
     (state) => readRenderableToolPartFromState(state, sessionId, messageId, partIndex),
@@ -980,6 +1016,7 @@ function ToolCallBlockByPartIndex({
       part={part}
       sessionId={sessionId}
       onToolApprovalResponse={onToolApprovalResponse}
+      isMessageStreaming={isMessageStreaming}
     />
   )
 }
@@ -1271,6 +1308,7 @@ const MessageSegmentView = ({
   sessionId,
   isUser,
   isActiveStreamingSegment,
+  isMessageStreaming,
   onToolApprovalResponse,
   onImageClick
 }: {
@@ -1278,6 +1316,7 @@ const MessageSegmentView = ({
   sessionId: string
   isUser: boolean
   isActiveStreamingSegment: boolean
+  isMessageStreaming: boolean
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
   onImageClick?: () => void
 }) => {
@@ -1316,6 +1355,7 @@ const MessageSegmentView = ({
           messageId={segment.messageId}
           partIndex={segment.partIndex}
           onToolApprovalResponse={onToolApprovalResponse}
+          isMessageStreaming={isMessageStreaming}
         />
       )
     case 'file-attachment':
@@ -1366,6 +1406,7 @@ const MessageBubbleSegmentsView = ({
   const isAssistant = frame.role === 'assistant'
   const isFirstAppearance = trackSeenMessageId(frame.id)
   const activeStreamingSegmentKey = isStreaming ? readActiveStreamingSegmentKey(segments) : null
+  const streamingTailSegmentKey = isStreaming ? readStreamingTailSegmentKey(segments) : null
   const executionPhaseSplit = isStreaming ? null : splitSegmentExecutionPhase(segments)
 
   const [lightboxOpen, setLightboxOpen] = useState(false)
@@ -1422,6 +1463,7 @@ const MessageBubbleSegmentsView = ({
         sessionId={sessionId}
         isUser={isUser}
         isActiveStreamingSegment={segment.key === activeStreamingSegmentKey}
+        isMessageStreaming={isStreaming && segment.key === streamingTailSegmentKey}
         onToolApprovalResponse={onToolApprovalResponse}
         onImageClick={
           segment.kind === 'file-attachment' ? () => handleImageClick(index) : undefined
@@ -1656,6 +1698,8 @@ function MessageBubbleView({
     messageId: message.id,
     describeToolKind: (part) => describeToolCall(part).kind
   })
+  const activeStreamingItemKey = isStreaming ? readActiveStreamingItemKey(groupedItems) : null
+  const streamingTailItemKey = isStreaming ? readStreamingTailItemKey(groupedItems) : null
 
   const executionPhaseSplit = isStreaming ? null : splitExecutionPhase(groupedItems)
   const hasActiveProgress = hasActiveNonTextProgress(groupedItems)
@@ -1703,7 +1747,7 @@ function MessageBubbleView({
           <Streamdown
             key={item.key}
             content={item.text}
-            streaming={isStreaming}
+            streaming={item.key === activeStreamingItemKey}
             animationPreset={STREAMDOWN_RENDER_OPTIONS.animationPreset}
             animateMode={STREAMDOWN_RENDER_OPTIONS.animateMode}
             showCursor={STREAMDOWN_RENDER_OPTIONS.showCursor}
@@ -1717,7 +1761,17 @@ function MessageBubbleView({
         )
 
       case 'reasoning':
-        return <ReasoningBlock key={item.key} text={item.text} state={item.state} />
+        return (
+          <ReasoningBlock
+            key={item.key}
+            text={item.text}
+            state={
+              item.key === activeStreamingItemKey && item.state === 'streaming'
+                ? 'streaming'
+                : 'done'
+            }
+          />
+        )
 
       case 'tool-group':
         return (
@@ -1731,6 +1785,7 @@ function MessageBubbleView({
             messageId={message.id}
             part={item.part}
             onToolApprovalResponse={onToolApprovalResponse}
+            isMessageStreaming={isStreaming && item.key === streamingTailItemKey}
           />
         )
 

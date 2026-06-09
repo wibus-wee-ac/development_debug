@@ -100,6 +100,7 @@ export class CodexAppServerClient {
     this.child.stderr.on('data', (chunk: Buffer) => {
       this.stderrText += chunk.toString('utf8')
     })
+    this.child.stdin.on('error', error => this.terminate(error))
     this.child.once('error', error => this.terminate(error))
     this.child.once('exit', (code, signal) => this.terminate(this.createExitError(code, signal)))
     this.child.once('close', (code, signal) => this.terminate(this.createExitError(code, signal)))
@@ -140,10 +141,7 @@ export class CodexAppServerClient {
     const payload = params === undefined ? { id, method } : { id, method, params }
     return new Promise((resolve, reject) => {
       this.pendingRequests.set(id, { resolve, reject })
-      this.child.stdin.write(`${JSON.stringify(payload)}\n`, (error) => {
-        if (!error) {
-          return
-        }
+      this.writeMessage(payload).catch((error) => {
         this.pendingRequests.delete(id)
         reject(error)
       })
@@ -241,16 +239,17 @@ export class CodexAppServerClient {
 
   private async handleServerRequest(message: CodexAppServerServerRequest): Promise<void> {
     if (!this.serverRequestHandler) {
-      this.child.stdin.write(`${JSON.stringify({
+      await this.writeServerResponse({
         id: message.id,
         error: {
           code: -32601,
           message: `Cradle does not handle Codex app-server request: ${message.method}`,
         },
-      })}\n`)
+      })
       return
     }
 
+    let response: CodexAppServerMessage
     try {
       if (this.exposeServerRequestsAsNotifications && isPendingInteractiveServerRequest(message.method)) {
         this.pushNotification({
@@ -263,6 +262,7 @@ export class CodexAppServerClient {
         })
       }
       const result = await this.serverRequestHandler(message)
+      response = { id: message.id, result }
       if (this.exposeServerRequestsAsNotifications) {
         this.pushNotification({
           method: 'serverRequest/handled',
@@ -274,17 +274,18 @@ export class CodexAppServerClient {
           },
         })
       }
-      this.child.stdin.write(`${JSON.stringify({ id: message.id, result })}\n`)
     }
     catch (error) {
-      this.child.stdin.write(`${JSON.stringify({
+      response = {
         id: message.id,
         error: {
           code: -32000,
           message: error instanceof Error ? error.message : String(error),
         },
-      })}\n`)
+      }
     }
+
+    await this.writeServerResponse(response)
   }
 
   private pushNotification(message: CodexAppServerMessage): void {
@@ -304,6 +305,33 @@ export class CodexAppServerClient {
     while (this.notificationWaiters.length > 0) {
       this.notificationWaiters.shift()?.({ method: 'error', params: { message: error.message } })
     }
+  }
+
+  private writeServerResponse(payload: CodexAppServerMessage): Promise<void> {
+    return this.writeMessage(payload).catch(() => undefined)
+  }
+
+  private writeMessage(payload: CodexAppServerMessage): Promise<void> {
+    if (this.closed) {
+      return Promise.reject(new Error('Codex app-server is closed'))
+    }
+    return new Promise((resolve, reject) => {
+      try {
+        this.child.stdin.write(`${JSON.stringify(payload)}\n`, (error) => {
+          if (!error) {
+            resolve()
+            return
+          }
+          this.terminate(error)
+          reject(error)
+        })
+      }
+      catch (error) {
+        const writeError = error instanceof Error ? error : new Error(String(error))
+        this.terminate(writeError)
+        reject(writeError)
+      }
+    })
   }
 }
 

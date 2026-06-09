@@ -632,6 +632,8 @@ export function useChatSession(chatSessionId: string | null) {
       ? 1000
       : false,
   })
+  const runtimeStatusQuery = useRuntimeSessionStatus(chatSessionId)
+  const runtimeStatus = runtimeStatusQuery.data
   const runtimeKind = useSessionLayoutStore(
     useShallow(state => chatSessionId ? state.sessions[chatSessionId]?.runtimeKind ?? null : null),
   )
@@ -653,8 +655,20 @@ export function useChatSession(chatSessionId: string | null) {
     const codexGoalObjective = files.length === 0 && contextParts.length === 0
       ? readCodexGoalCommandObjective(text)
       : null
-    const activeStatus = useChatStore.getState().sessionMetaMap.get(chatSessionId)?.passiveStatus ?? visibleStatus
-    const isBusy = activeStatus === 'streaming' || visibleStatus === 'streaming'
+    const canonicalRuntimeStatus = await queryClient.fetchQuery({
+      queryKey: runtimeSessionStatusQueryKey(chatSessionId),
+      queryFn: () => getRuntimeSessionStatus(chatSessionId),
+      staleTime: 0,
+    }).catch(() => runtimeStatus ?? null)
+    const isBusy = Boolean(
+      canonicalRuntimeStatus
+      && (
+        canonicalRuntimeStatus.status === 'streaming'
+        || canonicalRuntimeStatus.status === 'pending'
+        || canonicalRuntimeStatus.status === 'cancelling'
+        || canonicalRuntimeStatus.activeRun
+      ),
+    )
 
     if (sideChatMessage !== null) {
       const controller = new AbortController()
@@ -889,13 +903,13 @@ export function useChatSession(chatSessionId: string | null) {
 
     if (isBusy) {
       if (codexGoalObjective) {
-        const runtimeStatus = await queryClient.fetchQuery({
+        const latestRuntimeStatus = canonicalRuntimeStatus ?? await queryClient.fetchQuery({
           queryKey: runtimeSessionStatusQueryKey(chatSessionId),
           queryFn: () => getRuntimeSessionStatus(chatSessionId),
           staleTime: 0,
         })
-        if (runtimeStatus.runtimeKind === 'codex') {
-          const threadId = runtimeStatus.providerSessionId
+        if (latestRuntimeStatus && latestRuntimeStatus.runtimeKind === 'codex') {
+          const threadId = latestRuntimeStatus.providerSessionId
           if (!threadId) {
             throw new Error('Cannot update Codex goal before the provider thread is available.')
           }
@@ -1004,7 +1018,7 @@ export function useChatSession(chatSessionId: string | null) {
     }
 
     await startNewResponse()
-  }, [chatSessionId, queryClient, refreshQueue, refreshSessionLists, runtimeKind, scheduleSnapshotRefresh, sessionBindingQueryKey, visibleStatus])
+  }, [chatSessionId, queryClient, refreshQueue, refreshSessionLists, runtimeKind, runtimeStatus, scheduleSnapshotRefresh, sessionBindingQueryKey])
 
   const respondToToolApproval = useCallback(async (response: ToolApprovalResponseInput) => {
     if (!chatSessionId) {
@@ -1198,6 +1212,17 @@ export function useChatSession(chatSessionId: string | null) {
 
   const messageCount = messageIds.length
   const isReady = messageCount > 0 || isHydrated || chatSessionId === null
+  const serverBusy = Boolean(
+    runtimeStatus
+    && (
+      runtimeStatus.status === 'streaming'
+      || runtimeStatus.status === 'pending'
+      || runtimeStatus.status === 'cancelling'
+      || runtimeStatus.activeRun
+    ),
+  )
+  const serverStreaming = Boolean(runtimeStatus && (runtimeStatus.status === 'streaming' || runtimeStatus.activeRun))
+  const resolvedStreaming = serverStreaming || (!runtimeStatus && isStreaming)
 
   useEffect(() => {
     if (latestError) {
@@ -1209,9 +1234,9 @@ export function useChatSession(chatSessionId: string | null) {
     messageIds,
     messageCount,
     status: visibleStatus,
-    isStreaming,
-    isBusy: isStreaming,
-    canStop: isStreaming,
+    isStreaming: resolvedStreaming,
+    isBusy: serverBusy || (!runtimeStatus && isStreaming),
+    canStop: serverStreaming || (!runtimeStatus && isStreaming),
     error: latestError?.message,
     sendMessage,
     respondToToolApproval,

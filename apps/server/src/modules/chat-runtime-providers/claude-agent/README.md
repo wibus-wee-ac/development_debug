@@ -28,6 +28,7 @@ Claude SDK `ExitPlanMode` remains available in SDK plan mode as the provider-own
 - `async-input-stream.ts`: Claude Agent SDK async user-message input stream built on shared provider queue infrastructure.
 - `state-projector.ts`: Projects Claude Agent provider snapshot state such as pending resumed-session model switches and captured plan UI slot state.
 - `event-to-chunk-mapper.ts`: Maps Claude Agent SDK messages into AI SDK `UIMessageChunk` events.
+- `replay-projector.ts`: Experimental diagnostic/future migration helper that projects Chat Runtime event history into Claude Agent replay text. Live Claude Agent turns currently use SDK resume plus bounded Cradle input/history projection in `provider.ts`, not this helper.
 - `subagent-projector.ts`: Projects forwarded subagent chunk streams into nested Cradle subagent output tool payloads.
 - `event-to-chunk-mapper.test.ts`: Mapper-level regression tests.
 - `tools/`: Claude Code tool identity, todo state projection, and tool envelope mapping.

@@ -23,6 +23,7 @@
     "start": "node dist/main.js",
     "generate:codex-app-server-protocol": "node scripts/generate-codex-app-server-protocol.mjs && node scripts/generate-codex-app-server-capabilities.mjs",
     "generate:codex-app-server-capabilities": "node scripts/generate-codex-app-server-capabilities.mjs",
+    "tab-working-set:collect": "python3 scripts/tab_working_set_collector.py",
     "leak:harness": "tsx scripts/leak-harness.ts",
     "typecheck": "tsc --noEmit",
     "test": "vitest run",

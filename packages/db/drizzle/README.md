@@ -43,4 +43,6 @@ SQL 文件负责重放数据库结构，`meta/` 负责 journal 与 snapshot，�
 - **0063_agent_thinking_effort_concrete.sql**: Agent identity migration，把旧 `thinking_effort='auto'` 归一到 `high`，并将 `agents.thinking_effort` 默认值改为具体 effort
 - **0064_backend_run_nullable_binding.sql**: Provider Runtime migration，让 `backend_runs.binding_id` 可空并在删除 durable binding 时置空，支持 live-only side conversation run 不写 durable provider binding
 - **0065_agent_thinking_effort_chat_contract.sql**: Agent identity migration，把旧 provider-native effort 值归一到 chat-run 的 `low`/`medium`/`high`/`xhigh` 契约
+- **0067_chat_runtime_events.sql**: Chat Runtime event-log migration，新增 `chat_runtime_events` append-only canonical history 表，按 chat session stream + seq 记录 Cradle-owned lifecycle/message/tool/queue/provider events，供 run/message/queue/session status read model projector 重建状态
+- **0068_chat_runtime_provider_context_event.sql**: Chat Runtime event-log data migration，把早期 provider binding resolution 事件名归一为 run provider context recorded 语义，保持事件流 ownership 与 Provider Runtime binding ownership 分离
 - **meta/**: Drizzle journal 与 schema snapshot，用于 tooling 和 migration 顺序管理；该目录必须保持 JSON-only，否则 `drizzle-kit generate` 会解析失败

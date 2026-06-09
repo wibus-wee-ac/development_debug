@@ -470,6 +470,20 @@
       "when": 1780790404000,
       "tag": "0066_external_issue_sources",
       "breakpoints": true
+    },
+    {
+      "idx": 67,
+      "version": "6",
+      "when": 1780943580000,
+      "tag": "0067_chat_runtime_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 68,
+      "version": "6",
+      "when": 1781019935479,
+      "tag": "0068_chat_runtime_provider_context_event",
+      "breakpoints": true
     }
   ]
 }

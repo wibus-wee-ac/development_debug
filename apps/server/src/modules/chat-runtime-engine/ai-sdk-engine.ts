@@ -1,7 +1,7 @@
 // AI SDK Engine — unified agent execution using Vercel AI SDK streamText
 // Yields UIMessageChunk directly — no intermediate timeline abstraction
 
-import type { LanguageModel, ModelMessage, ToolSet, UIMessage, UIMessageChunk } from 'ai'
+import type { LanguageModel, LanguageModelUsage, ModelMessage, ToolSet, UIMessage, UIMessageChunk } from 'ai'
 import { convertToModelMessages, stepCountIs, streamText } from 'ai'
 
 import { aiTelemetryEnabled } from '../../telemetry/config'
@@ -233,23 +233,48 @@ async function nextOrAbort<T>(iterator: AsyncIterator<T>, signal: AbortSignal | 
   })
 }
 
-async function emitUsage(result: ReturnType<typeof streamText>, onUsage?: (usage: TokenUsage) => void): Promise<void> {
-  if (!onUsage) {
-    return
+function toTokenUsage(usage: LanguageModelUsage): TokenUsage {
+  return {
+    promptTokens: usage.inputTokens ?? 0,
+    completionTokens: usage.outputTokens ?? 0,
+    totalTokens: usage.totalTokens ?? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
   }
+}
 
-  try {
-    const usage = await result.usage
-    if (usage) {
-      onUsage({
-        promptTokens: usage.inputTokens ?? 0,
-        completionTokens: usage.outputTokens ?? 0,
-        totalTokens: usage.totalTokens ?? (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),
-      })
+function createUsageEmitter(onUsage?: (usage: TokenUsage) => void): {
+  emitLanguageModelUsage: (usage: LanguageModelUsage | null | undefined) => void
+  emitResultUsage: (result: ReturnType<typeof streamText>) => Promise<void>
+} {
+  let emitted = false
+
+  const emitLanguageModelUsage = (usage: LanguageModelUsage | null | undefined): void => {
+    if (!onUsage || emitted || !usage) {
+      return
+    }
+
+    emitted = true
+    try {
+      onUsage(toTokenUsage(usage))
+    }
+    catch {
+      // Usage extraction failure is non-fatal
     }
   }
-  catch {
-    // Usage extraction failure is non-fatal
+
+  return {
+    emitLanguageModelUsage,
+    emitResultUsage: async (result) => {
+      if (!onUsage || emitted) {
+        return
+      }
+
+      try {
+        emitLanguageModelUsage(await result.usage)
+      }
+      catch {
+        // Usage extraction failure is non-fatal
+      }
+    },
   }
 }
 
@@ -263,11 +288,18 @@ export async function* executeAiSdkTurn(input: AiSdkEngineInput): AsyncGenerator
   const { onUsage } = input
   const { result, effectiveAbortSignal } = createAiSdkStreamResult(input)
   const originalMessages = input.originalMessages ?? (input.initialMessage ? [input.initialMessage] : undefined)
+  const usageEmitter = createUsageEmitter(onUsage)
 
   // Use toUIMessageStream() to get native UIMessageChunk events
   const uiStream = result.toUIMessageStream({
     generateMessageId: input.initialMessage ? () => input.initialMessage!.id : undefined,
     originalMessages,
+    messageMetadata: ({ part }) => {
+      if (part.type === 'finish') {
+        usageEmitter.emitLanguageModelUsage(part.totalUsage)
+      }
+      return undefined
+    },
   })
   const iterator = uiStream[Symbol.asyncIterator]()
 
@@ -280,7 +312,7 @@ export async function* executeAiSdkTurn(input: AiSdkEngineInput): AsyncGenerator
     yield value
   }
 
-  await emitUsage(result, onUsage)
+  await usageEmitter.emitResultUsage(result)
 }
 
 export async function buildModelMessages(

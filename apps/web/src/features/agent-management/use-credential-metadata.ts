@@ -19,6 +19,10 @@ const CredentialMetadataListSchema = z.array(CredentialMetadataSchema)
 
 export type CredentialMetadata = z.infer<typeof CredentialMetadataSchema>
 
+export function isChatgptCredentialMetadata(credential: CredentialMetadata | null | undefined): boolean {
+  return credential?.kind === 'chatgpt-auth' || !!credential?.chatgpt
+}
+
 export function useCredentialMetadata(credentialRef: string | null | undefined) {
   return useQuery({
     queryKey: ['secrets', 'metadata', credentialRef ?? 'none'],
