@@ -1,4 +1,3 @@
-import { Link } from '@cradle/tabs-next'
 import {
   LayoutDashboardIcon,
   MoreHorizontalIcon,
@@ -15,7 +14,8 @@ import { useTranslation } from 'react-i18next'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
-import { useCradleNavigation, useIsActiveTab } from '~/tabs/use-cradle-navigation'
+import { openKanbanBoard } from '~/navigation/navigation-commands'
+import { useSurfaceStore } from '~/navigation/surface-store'
 
 import { useAllBoards, useCreateBoard, useDeleteBoard, useUpdateBoard } from './use-kanban'
 
@@ -180,7 +180,12 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, o
 
 function BoardItem({ board }: { board: { id: string, name: string } }) {
   const { t } = useTranslation('kanban')
-  const isActive = useIsActiveTab('kanban-board', { boardId: board.id })
+  const isActive = useSurfaceStore((state) => {
+    const surface = state.surfaces.find(item => item.id === state.activeSurfaceId)
+    return surface?.kind === 'kanban'
+      && surface.route.to === '/kanban/$boardId'
+      && surface.route.params.boardId === board.id
+  })
   const deleteBoard = useDeleteBoard()
   const updateBoard = useUpdateBoard()
   const [isRenaming, setIsRenaming] = useState(false)
@@ -242,15 +247,15 @@ function BoardItem({ board }: { board: { id: string, name: string } }) {
         </div>
       )
 : (
-        <Link
-          to="kanban-board"
-          params={{ boardId: board.id }}
+        <button
+          type="button"
+          onClick={() => openKanbanBoard({ boardId: board.id })}
           onDoubleClick={handleRenameStart}
           className="flex-1 flex items-center gap-2 px-2.5 py-1.5 text-xs text-sidebar-foreground/80"
         >
           <LayoutDashboardIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
           <span className="truncate">{board.name}</span>
-        </Link>
+        </button>
       )}
 
       <Menu>
@@ -287,7 +292,6 @@ function BoardItem({ board }: { board: { id: string, name: string } }) {
 export function KanbanSidebar({ collapsed = false }: { collapsed?: boolean }) {
   const { t } = useTranslation('kanban')
   const boards = useAllBoards()
-  const { openTab } = useCradleNavigation()
   const [isCreating, setIsCreating] = useState(false)
   const ready = boards.isSuccess
 
@@ -324,7 +328,7 @@ export function KanbanSidebar({ collapsed = false }: { collapsed?: boolean }) {
         open={isCreating}
         onOpenChange={setIsCreating}
         onCreated={(board) => {
-          openTab('kanban-board', { boardId: board.id })
+          openKanbanBoard({ boardId: board.id })
         }}
       />
     </div>

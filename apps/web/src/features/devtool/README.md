@@ -2,7 +2,7 @@
 
 # Features/Devtool
 
-Developer tooling feature with runtime diagnostics for observability, health, memory, tabs-next state, and plugin runtime state.
+Developer tooling feature with runtime diagnostics for observability, health, memory, route surface state, and plugin runtime state.
 Rendered at the `/devtool` route in a separate Electron window or at `#/devtool` in the web app.
 The root page owns the devtool tab model and window-level `Cmd/Ctrl + 1..5` tab switching listener.
 User-facing diagnostic labels and status text are owned by the `devtool` i18n namespace.
@@ -15,7 +15,7 @@ User-facing diagnostic labels and status text are owned by the `devtool` i18n na
 - **observability/**: Canonical observability event/incident inspection and local export controls
 - **plugins/**: Plugin discovery, layer state, declared/runtime contribution graph, client panel registration, and command execution diagnostics
 - **resources/**: AppHeader resources popover with renderer, server, CLI TUI, bottom-panel process memory breakdown, and partial endpoint failure feedback
-- **tabs/**: Tabs-next runtime state, render policy, mounted IDs, and metrics
+- **surfaces/**: Router and app surface diagnostics for active route, opened surfaces, ordering, and owner identity
 
 ## Files
 

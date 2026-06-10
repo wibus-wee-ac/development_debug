@@ -9,7 +9,6 @@ import {
   PuzzleIcon,
   SettingsIcon,
   TerminalIcon,
-  UserCircleIcon,
 } from 'lucide-react'
 import type { ComponentType } from 'react'
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
@@ -37,11 +36,12 @@ import { cn } from '~/lib/cn'
 import { rankFuzzyItems } from '~/lib/fuzzy-rank'
 import type { WebCommandRegistration } from '~/lib/plugin-store'
 import { usePluginStore } from '~/lib/plugin-store'
+import { openChatSession, openKanbanBoard, openNewChat, openSettingsSection, openUsage } from '~/navigation/navigation-commands'
+import { chatSessionIdForSurface, workspaceIdForSurface } from '~/navigation/surface-identity'
+import { useSurfaceStore } from '~/navigation/surface-store'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
-import { useCradleTabStore } from '~/tabs/registry'
-import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import { selectFileSearchResult } from './global-search-actions'
 
@@ -166,19 +166,19 @@ function useActiveFileSearchWorkspaceId(enabled: boolean): {
   workspaceId: string | null
 } {
   const { slots } = useLayoutSlotsCtx()
-  const activeTab = useCradleTabStore(useShallow((s) => {
+  const activeSurface = useSurfaceStore(useShallow((s) => {
     if (!enabled) {
       return null
     }
-    const tab = s.tabs.find(item => item.id === s.activeTabId)
-    return tab
+    const surface = s.surfaces.find(item => item.id === s.activeSurfaceId)
+    return surface
       ? {
-        type: tab.type,
-        params: tab.params,
+        kind: surface.kind,
+        route: surface.route,
       }
       : null
   }))
-  const chatSessionId = enabled && activeTab?.type === 'chat' ? activeTab.params.sessionId : null
+  const chatSessionId = enabled ? chatSessionIdForSurface(activeSurface) : null
 
   const { data: chatSession } = useQuery({
     ...getSessionsByIdOptions({ path: { id: chatSessionId ?? '' } }),
@@ -191,17 +191,17 @@ function useActiveFileSearchWorkspaceId(enabled: boolean): {
     return { availability: 'unsupported-tab', workspaceId: null }
   }
 
-  const canSearchFiles = activeTab?.type === 'new-chat'
-    || activeTab?.type === 'chat'
-    || activeTab?.type === 'workspace-detail'
+  const canSearchFiles = activeSurface?.kind === 'new-chat'
+    || activeSurface?.kind === 'chat'
+    || activeSurface?.kind === 'workspace'
 
   if (!canSearchFiles) {
     return { availability: 'unsupported-tab', workspaceId: null }
   }
 
-  const workspaceId = activeTab?.type === 'workspace-detail'
-    ? activeTab.params.workspaceId ?? null
-    : activeTab?.type === 'chat'
+  const workspaceId = activeSurface?.kind === 'workspace'
+    ? workspaceIdForSurface(activeSurface)
+    : activeSurface?.kind === 'chat'
       ? chatSession?.workspaceId ?? null
       : slots.asideWorkspaceId ?? null
 
@@ -229,8 +229,7 @@ const GlobalSearchFileListSchema = z
 
 function useCommands(close: () => void): CommandAction[] {
   const { t } = useTranslation('search')
-  const { openTab } = useCradleNavigation()
-  const openSettings = useSettingsOverlayStore(s => s.openSettings)
+  const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
   const toggleSidebar = useLayoutStore(s => s.toggleSidebar)
   const pluginCommands = usePluginStore(s => s.commands)
 
@@ -244,7 +243,7 @@ function useCommands(close: () => void): CommandAction[] {
           source: 'app',
           handler: () => {
             close()
-            openTab('new-chat', {})
+            openNewChat()
           },
         },
         {
@@ -256,10 +255,8 @@ function useCommands(close: () => void): CommandAction[] {
           source: 'app',
           handler: () => {
             close()
-            const activeTabId = useCradleTabStore.getState().activeTabId
-            if (activeTabId) {
-              openSettings(activeTabId)
-            }
+            setSettingsSection('appearance')
+            openSettingsSection('appearance')
           },
         },
         {
@@ -275,17 +272,6 @@ function useCommands(close: () => void): CommandAction[] {
           },
         },
         {
-          id: 'open-profile',
-          label: t('command.openProfile.label'),
-          keywords: t('command.openProfile.keywords'),
-          icon: UserCircleIcon,
-          source: 'app',
-          handler: () => {
-            close()
-            openTab('profile', {})
-          },
-        },
-        {
           id: 'open-usage',
           label: t('command.openUsage.label'),
           keywords: t('command.openUsage.keywords'),
@@ -293,7 +279,7 @@ function useCommands(close: () => void): CommandAction[] {
           source: 'app',
           handler: () => {
             close()
-            openTab('usage', {})
+            openUsage()
           },
         },
       ]
@@ -653,17 +639,15 @@ const GlobalSearchDialogContent = ({ open, initialQuery = '>', onOpenChange }: G
       })
     }
 
-  const { openTab } = useCradleNavigation()
-
   const handleSelectThread = (sessionId: string) => {
       close()
-      openTab('chat', { sessionId })
+      openChatSession(sessionId)
     }
 
   const handleSelectIssue = (issueId: string) => {
       close()
       if (boardId) {
-        openTab('kanban-board', { boardId, issue: issueId })
+        openKanbanBoard({ boardId, issueId })
       }
     }
 

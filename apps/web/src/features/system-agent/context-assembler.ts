@@ -18,8 +18,8 @@ export interface ContextAssemblyDecision {
 export interface ContextAssemblyTrace {
   envelopeId: string
   capturedAt: number
-  activeTabId: string | null
-  activeTabType: string | null
+  activeSurfaceId: string | null
+  activeSurfaceType: string | null
   itemCount: number
   tokenBudget: number
   includedTokenEstimate: number
@@ -108,8 +108,8 @@ export function assembleContextForPrompt(
     trace: {
       envelopeId: envelope.id,
       capturedAt: envelope.capturedAt,
-      activeTabId: envelope.activeTabId,
-      activeTabType: envelope.activeTabType,
+      activeSurfaceId: envelope.activeSurfaceId,
+      activeSurfaceType: envelope.activeSurfaceType,
       itemCount: envelope.items.length,
       tokenBudget,
       includedTokenEstimate,

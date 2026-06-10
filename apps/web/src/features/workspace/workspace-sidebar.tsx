@@ -1,5 +1,3 @@
-import type { ScreenCoordinates } from '@cradle/tabs-next'
-import { getEventScreenCoordinates, isPointerOutsideWindow, Link } from '@cradle/tabs-next'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import {
@@ -103,18 +101,25 @@ import { SettingsRow } from '~/features/settings/settings-row'
 import { useAppPreferences } from '~/features/settings/use-app-preferences'
 import type { Workspace } from '~/features/workspace/types'
 import { cn } from '~/lib/cn'
-import { isElectron, isTearoffWindow, nativeIpc } from '~/lib/electron'
+import { isElectron, nativeIpc } from '~/lib/electron'
+import {
+  closeSurfaceById,
+  openAutomation,
+  openChatSession,
+  openNewChat,
+  openSettingsSection,
+  openUsage,
+  openWorkspaceDetail,
+} from '~/navigation/navigation-commands'
+import type { ScreenCoordinates } from '~/navigation/screen-coordinates'
+import { getEventScreenCoordinates, isPointerOutsideWindow } from '~/navigation/screen-coordinates'
+import { chatSurfaceId } from '~/navigation/surface-identity'
+import { useSurfaceStore } from '~/navigation/surface-store'
+import { openTearoffSessionWindow } from '~/navigation/tearoff-sessions'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 import { useTitleRegenerationStore } from '~/store/title-regeneration'
-import { useCradleTabStore } from '~/tabs/registry'
-import {
-  detachTearoffSessionTab,
-  releaseTearoffSession,
-  reserveTearoffSession
-} from '~/tabs/tearoff-tabs'
-import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import type { WorkspaceSession } from './use-session'
 import { sessionsQueryKey, updateSessionReadState, useAllSessions } from './use-session'
@@ -395,7 +400,6 @@ function SessionActionsMenu({
   onStartRename: (sessionId: string) => void
 }) {
   const { t } = useTranslation('workspace')
-  const { openNewTab } = useCradleNavigation()
   const queryClient = useQueryClient()
   const open = state.open && state.anchor !== null && session !== null
   const sessionTitle = session?.title ?? t('session.fallbackTitle')
@@ -434,31 +438,18 @@ function SessionActionsMenu({
     }
 
     recordSessionLayout()
-    openNewTab('chat', { sessionId: session.id })
-  }, [openNewTab, recordSessionLayout, session])
+    openChatSession(session.id)
+  }, [recordSessionLayout, session])
 
   const handleOpenInNewWindow = useCallback(() => {
-    if (!session || !isElectron || !nativeIpc) {
+    if (!session) {
       return
     }
 
     onPrepareSessionOpen(session)
     const screenX = window.screenX + Math.round(window.outerWidth / 2)
     const screenY = window.screenY + Math.round(window.outerHeight / 2)
-    if (!reserveTearoffSession(session.id)) {
-      return
-    }
-
-    void nativeIpc.window
-      .tearOffSession(session.id, screenX, screenY)
-      .then(() => {
-        if (!isTearoffWindow) {
-          detachTearoffSessionTab(useCradleTabStore, session.id)
-        }
-      })
-      .catch(() => {
-        releaseTearoffSession(session.id)
-      })
+    void openTearoffSessionWindow(session.id, { screenX, screenY, detachSurface: true })
   }, [onPrepareSessionOpen, session])
 
   const handleStartRename = useCallback(() => {
@@ -540,12 +531,7 @@ function SessionActionsMenu({
 
     await postSessionsByIdArchive({ path: { id: session.id }, body: { archived: true } })
 
-    const { tabs, closeTab } = useCradleTabStore.getState()
-    for (const tab of tabs) {
-      if (tab.type === 'chat' && tab.params.sessionId === session.id) {
-        closeTab(tab.id)
-      }
-    }
+    closeSurfaceById(chatSurfaceId(session.id))
 
     if (isElectron) {
       void nativeIpc?.window.closeSession(session.id).catch(() => {})
@@ -561,10 +547,10 @@ function SessionActionsMenu({
 
     return [
       {
-        key: 'open-new-tab',
-        label: t('session.action.openInNewTab'),
+        key: 'open-surface',
+        label: t('session.action.openInSurface'),
         icon: <PlusIcon />,
-        testId: `session-menu-open-new-tab-${session.id}`,
+        testId: `session-menu-open-surface-${session.id}`,
         invoke: handleOpenInNewTab
       },
       ...(isElectron
@@ -1101,37 +1087,24 @@ const SessionItem = memo(
       PROVIDER_ICONS[RUNTIME_ICON_KEYS[session.runtimeKind]] ?? PROVIDER_ICONS.custom!
 
     const handleOpenInNewWindow = useCallback(() => {
-      if (!isElectron || !nativeIpc) {
+      if (!isElectron) {
         return
       }
 
       prepareSessionOpen()
       const screenX = window.screenX + Math.round(window.outerWidth / 2)
       const screenY = window.screenY + Math.round(window.outerHeight / 2)
-      if (!reserveTearoffSession(session.id)) {
-        return
-      }
-
-      void nativeIpc.window
-        .tearOffSession(session.id, screenX, screenY)
-        .then(() => {
-          if (!isTearoffWindow) {
-            detachTearoffSessionTab(useCradleTabStore, session.id)
-          }
-        })
-        .catch(() => {
-          releaseTearoffSession(session.id)
-        })
+      void openTearoffSessionWindow(session.id, { screenX, screenY, detachSurface: true })
     }, [prepareSessionOpen, session.id])
 
-    function handleSessionDoubleClick(e: React.MouseEvent<HTMLAnchorElement>) {
+    function handleSessionDoubleClick(e: React.MouseEvent<HTMLButtonElement>) {
       e.preventDefault()
       e.stopPropagation()
       handleOpenInNewWindow()
     }
 
     const checkSessionTearOff = useCallback(() => {
-      if (dragWasTornOffRef.current || !isElectron || !nativeIpc) {
+      if (dragWasTornOffRef.current || !isElectron) {
         return false
       }
 
@@ -1143,21 +1116,15 @@ const SessionItem = memo(
       dragWasTornOffRef.current = true
       dragCleanupRef.current?.()
       dragCleanupRef.current = null
-      if (!reserveTearoffSession(session.id)) {
-        return true
-      }
-
-      void nativeIpc.window
-        .tearOffSession(session.id, pointer.screenX, pointer.screenY)
-        .then(() => {
-          if (!isTearoffWindow) {
-            detachTearoffSessionTab(useCradleTabStore, session.id)
-          }
-        })
-        .catch(() => {
-          releaseTearoffSession(session.id)
+      void openTearoffSessionWindow(session.id, {
+        screenX: pointer.screenX,
+        screenY: pointer.screenY,
+        detachSurface: true,
+      }).then((opened) => {
+        if (!opened) {
           dragWasTornOffRef.current = false
-        })
+        }
+      })
 
       return true
     }, [session.id])
@@ -1269,10 +1236,12 @@ const SessionItem = memo(
           />
         ) : (
           <>
-            <Link
-              to="chat"
-              params={{ sessionId: session.id }}
-              onClick={prepareSessionOpen}
+            <button
+              type="button"
+              onClick={() => {
+                prepareSessionOpen()
+                openChatSession(session.id)
+              }}
               onDoubleClick={isElectron ? handleSessionDoubleClick : undefined}
               onFocus={prefetchSession}
               onPointerDown={prepareSessionOpen}
@@ -1330,7 +1299,7 @@ const SessionItem = memo(
                   {formatRelativeTime(session.listActivityAt, t)}
                 </span>
               )}
-            </Link>
+            </button>
             <button
               type="button"
               className="relative z-10 mr-0.5 flex size-6 shrink-0 items-center justify-center rounded-md text-muted-foreground/50 opacity-0 hover:bg-accent/80 hover:text-foreground focus-visible:opacity-100 focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring group-hover:opacity-100"
@@ -1457,10 +1426,12 @@ function WorkspaceGroupDisclosure({
         )}
       </button>
 
-      <Link
-        to="workspace-detail"
-        params={{ workspaceId: workspace.id }}
-        onClick={onRecordWorkspaceLayout}
+      <button
+        type="button"
+        onClick={() => {
+          onRecordWorkspaceLayout()
+          openWorkspaceDetail(workspace.id)
+        }}
         onPointerDown={onRecordWorkspaceLayout}
         data-testid={`workspace-open-${workspace.id}`}
         className="flex min-w-0 flex-1 items-center gap-1.5 text-left"
@@ -1475,7 +1446,7 @@ function WorkspaceGroupDisclosure({
         <span className="truncate text-xs font-medium text-sidebar-foreground/80">
           {workspace.name}
         </span>
-      </Link>
+      </button>
 
       <Menu>
         <MenuTrigger
@@ -1683,7 +1654,6 @@ const WorkspaceGroup = memo(
   }) => {
     const { t } = useTranslation('workspace')
     const queryClient = useQueryClient()
-    const { openTab } = useCradleNavigation()
     const [renameOpen, setRenameOpen] = useState(false)
     const [retainedSessionIds, setRetainedSessionIds] = useState<Set<string>>(() => new Set())
     const acknowledgedSessionIdsRef = useRef<Set<string> | null>(null)
@@ -1709,15 +1679,15 @@ const WorkspaceGroup = memo(
     const activeMenuSession = sessionMenuState.sessionId
       ? (sessionsById.get(sessionMenuState.sessionId) ?? null)
       : null
-    const activeSessionId = useCradleTabStore(
+    const activeSessionId = useSurfaceStore(
       useCallback(
         (state) => {
-          const activeTab = state.tabs.find((tab) => tab.id === state.activeTabId)
-          if (activeTab?.type !== 'chat') {
+          const activeSurface = state.surfaces.find((surface) => surface.id === state.activeSurfaceId)
+          if (activeSurface?.kind !== 'chat' || activeSurface.route.to !== '/chat/$sessionId') {
             return null
           }
 
-          const sessionId = activeTab.params.sessionId
+          const sessionId = activeSurface.route.params.sessionId
           return sessionId && workspaceSessionIdSet.has(sessionId) ? sessionId : null
         },
         [workspaceSessionIdSet]
@@ -1915,8 +1885,8 @@ const WorkspaceGroup = memo(
     }, [onTogglePin, workspace.id, workspacePinned])
     const handleOpenWorkspace = useCallback(() => {
       recordWorkspaceLayout()
-      openTab('workspace-detail', { workspaceId: workspace.id })
-    }, [openTab, recordWorkspaceLayout, workspace.id])
+      openWorkspaceDetail(workspace.id)
+    }, [recordWorkspaceLayout, workspace.id])
     const handleOpenDefault = useCallback(async () => {
       if (!isElectron || !nativeIpc) {
         return
@@ -2185,8 +2155,6 @@ interface NavItemProps {
   shortcut?: string
   collapsed?: boolean
   onClick?: () => void
-  to?: string
-  params?: Record<string, string>
   dataTestId?: string
 }
 
@@ -2196,8 +2164,6 @@ function TopNavItem({
   shortcut,
   collapsed,
   onClick,
-  to,
-  params,
   dataTestId
 }: NavItemProps) {
   const className =
@@ -2240,20 +2206,6 @@ function TopNavItem({
       )}
     </>
   )
-
-  if (to) {
-    return (
-      <Link
-        to={to}
-        params={params}
-        onClick={onClick}
-        className={className}
-        data-testid={dataTestId}
-      >
-        {content}
-      </Link>
-    )
-  }
 
   return (
     <button type="button" onClick={onClick} data-testid={dataTestId} className={className}>
@@ -2731,13 +2683,11 @@ export const WorkspaceSidebar = memo(({ collapsed = false }: { collapsed?: boole
     }
     return grouped
   }, [sessions])
-  const openSettings = useSettingsOverlayStore((s) => s.openSettings)
+  const setSettingsSection = useSettingsOverlayStore((s) => s.setSettingsSection)
   const handleOpenSettings = useCallback(() => {
-    const activeTabId = useCradleTabStore.getState().activeTabId
-    if (activeTabId) {
-      openSettings(activeTabId)
-    }
-  }, [openSettings])
+    setSettingsSection('appearance')
+    openSettingsSection('appearance')
+  }, [setSettingsSection])
 
   const handleDelete = useCallback(
     (id: string) => {
@@ -2784,7 +2734,7 @@ export const WorkspaceSidebar = memo(({ collapsed = false }: { collapsed?: boole
             icon={<MessageSquarePlusIcon className="size-3.5" />}
             label={t('nav.newChat')}
             collapsed={collapsed}
-            to="new-chat"
+            onClick={openNewChat}
             dataTestId="nav-new-chat"
           />
           <TopNavItem
@@ -2799,14 +2749,14 @@ export const WorkspaceSidebar = memo(({ collapsed = false }: { collapsed?: boole
             icon={<CalendarClockIcon className="size-3.5" />}
             label={t('nav.automation')}
             collapsed={collapsed}
-            to="automation"
+            onClick={openAutomation}
             dataTestId="nav-automation"
           />
           <TopNavItem
             icon={<BarChart3Icon className="size-3.5" />}
             label={t('nav.usage')}
             collapsed={collapsed}
-            to="usage"
+            onClick={openUsage}
             dataTestId="nav-usage"
           />
           <TopNavItem

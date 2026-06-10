@@ -54,7 +54,7 @@ export default {
   'session.action.copySessionId': 'Copy session ID',
   'session.action.markRead': 'Mark as Read',
   'session.action.markUnread': 'Mark as Unread',
-  'session.action.openInNewTab': 'Open in New Tab',
+  'session.action.openInSurface': 'Open Chat Surface',
   'session.action.openInNewWindow': 'Open in New Window',
   'session.action.pin': 'Pin',
   'session.action.regenerateTitle': 'Regenerate title',

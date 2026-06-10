@@ -1,6 +1,6 @@
-import { installPersistedStoreSync } from '@cradle/tabs-next'
 import { z } from 'zod'
 import { create } from 'zustand'
+import type { StoreApi, UseBoundStore } from 'zustand'
 import { persist } from 'zustand/middleware'
 
 const JARVIS_UI_SYNC_CHANNEL_NAME = 'cradle:jarvis-ui:persist-sync'
@@ -45,6 +45,50 @@ interface PersistedJarvisUiSlice {
   panelHeight: number
   sessions: JarvisSession[]
   activeSessionId: string | null
+}
+
+interface PersistedStoreSyncOptions<TState, TPersistedState> {
+  store: UseBoundStore<StoreApi<TState>>
+  persistKey: string
+  channelName: string
+  selectPersistedState: (state: TState) => TPersistedState
+  applyPersistedState: (persistedState: TPersistedState) => void
+}
+
+function installPersistedStoreSync<TState, TPersistedState>({
+  store,
+  channelName,
+  selectPersistedState,
+  applyPersistedState,
+}: PersistedStoreSyncOptions<TState, TPersistedState>): () => void {
+  if (typeof BroadcastChannel === 'undefined') {
+    return () => {}
+  }
+
+  const channel = new BroadcastChannel(channelName)
+  let applyingRemoteState = false
+
+  const unsubscribe = store.subscribe((state) => {
+    if (applyingRemoteState) {
+      return
+    }
+    channel.postMessage(selectPersistedState(state))
+  })
+
+  channel.addEventListener('message', (event: MessageEvent<TPersistedState>) => {
+    applyingRemoteState = true
+    try {
+      applyPersistedState(event.data)
+    }
+    finally {
+      applyingRemoteState = false
+    }
+  })
+
+  return () => {
+    unsubscribe()
+    channel.close()
+  }
 }
 
 const JarvisSessionSchema = z.object({

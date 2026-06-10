@@ -1,4 +1,3 @@
-import { useTabFrameActive } from '@cradle/tabs-next'
 import { useQueryClient } from '@tanstack/react-query'
 import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
@@ -21,6 +20,7 @@ import { Textarea } from '~/components/ui/textarea'
 import { toastManager } from '~/components/ui/toast'
 import type { ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
 import { getServerUrl } from '~/lib/electron'
+import { useSurfaceActive } from '~/navigation/surface-activity-context'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
@@ -598,7 +598,7 @@ export function ChatView({
   const [goalActionBusy, setGoalActionBusy] = useState(false)
   const [reviewModeOpen, setReviewModeOpen] = useState(false)
   const [usageSlotSessionId, setUsageSlotSessionId] = useState<string | null>(null)
-  const tabFrameActive = useTabFrameActive()
+  const surfaceActive = useSurfaceActive()
   const runtimeSettings = useRuntimeSettings(sessionId)
   const composerRuntime = useChatComposerRuntime({
     sessionId,
@@ -613,7 +613,7 @@ export function ChatView({
   })
   const scrollRuntime = useChatScrollRuntime({ sessionId, messageIds, status })
   const appshotRuntime = useComposerAppshotCapture({
-    active: tabFrameActive,
+    active: surfaceActive,
     supportsAttachments: composerRuntime.supportsAttachments,
   })
   const quickQuestion = useQuickQuestion({

@@ -113,11 +113,11 @@ export function createKanbanContextProvider(): ContextProvider {
   return {
     owner: 'kanban',
     readContext(input) {
-      if (input.activeTabType !== 'kanban-board') {
+      if (input.activeSurfaceType !== 'kanban-board') {
         return []
       }
 
-      const boardId = input.activeTabParams.boardId
+      const boardId = input.activeSurfaceParams.boardId
       if (!boardId) {
         return []
       }

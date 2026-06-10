@@ -9,5 +9,5 @@ User-facing dashboard chrome, relative-time labels, quick action labels, and aut
 
 ## Files
 
-- **home-dashboard-loader.ts**: Home dashboard tab 的共享 lazy loader 与 route preload 入口。
+- **home-dashboard-loader.ts**: Home dashboard route 的共享 lazy loader 与 route preload 入口。
 - **home-dashboard.tsx**: Dashboard component — search bar, API-ordered recent sessions across all workspaces with latest-user-message timestamps, projects list, fresh-install empty states, localized quick action routing to new chat, and the Home projection/entry point for the automation registry.

@@ -2,10 +2,9 @@ import { beforeEach, describe, expect, it } from 'vitest'
 
 import { useSettingsOverlayStore } from './settings-overlay'
 
-describe('settings overlay store', () => {
+describe('settings focus store', () => {
   beforeEach(() => {
     useSettingsOverlayStore.setState({
-      settingsTabId: null,
       settingsSection: 'appearance',
       chronicleFocusTarget: null,
       agentFocusTarget: null,

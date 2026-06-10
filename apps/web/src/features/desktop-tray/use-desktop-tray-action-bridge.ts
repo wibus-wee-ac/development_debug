@@ -1,17 +1,22 @@
 import { useCallback, useEffect } from 'react'
 
 import { usePluginStore } from '~/lib/plugin-store'
+import {
+  openAutomation,
+  openAwaits,
+  openChatSession,
+  openHome,
+  openNewChat,
+  openPluginPanel,
+  openSettingsSection,
+  openUsage,
+} from '~/navigation/navigation-commands'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
-import { useCradleTabStore } from '~/tabs/registry'
 
 import type { TrayActionRequest } from './types'
 
 interface DesktopTrayActionBridgeOptions {
   onOpenGlobalSearch: () => void
-}
-
-function openHome(): void {
-  useCradleTabStore.getState().openTab('home', {})
 }
 
 function openChatFromPayload(payload: unknown): boolean {
@@ -22,21 +27,14 @@ function openChatFromPayload(payload: unknown): boolean {
   if (typeof sessionId !== 'string' || sessionId.length === 0) {
     return false
   }
-  useCradleTabStore.getState().openTab('chat', { sessionId })
+  openChatSession(sessionId)
   return true
 }
 
-function openSettingsSection(section: string): void {
-  const tabStore = useCradleTabStore.getState()
-  const activeTabId = tabStore.activeTabId && tabStore.tabs.some(tab => tab.id === tabStore.activeTabId)
-    ? tabStore.activeTabId
-    : (() => {
-        return tabStore.openTab('home', {}, { pinned: true })
-      })()
+function openSettingsRouteSection(section: string): void {
   const settingsStore = useSettingsOverlayStore.getState()
-  tabStore.setActiveTab(activeTabId)
   settingsStore.setSettingsSection(section)
-  settingsStore.openSettings(activeTabId)
+  openSettingsSection(section)
 }
 
 function openFirstPluginPanel(): boolean {
@@ -44,7 +42,7 @@ function openFirstPluginPanel(): boolean {
   if (!firstPanel) {
     return false
   }
-  useCradleTabStore.getState().openTab('plugin-panel', {
+  openPluginPanel({
     routeSegment: firstPanel.routeSegment,
     localId: firstPanel.localId,
   })
@@ -60,39 +58,39 @@ export function useDesktopTrayActionBridge({ onOpenGlobalSearch }: DesktopTrayAc
         openChatFromPayload(request.payload)
         return
       case 'new-chat':
-        useCradleTabStore.getState().openTab('new-chat', {})
+        openNewChat()
         return
       case 'global-search':
         onOpenGlobalSearch()
         return
       case 'open-awaits':
-        useCradleTabStore.getState().openTab('awaits', {})
+        openAwaits()
         return
       case 'open-automation':
-        useCradleTabStore.getState().openTab('automation', {})
+        openAutomation()
         return
       case 'open-workspaces':
         openHome()
         return
       case 'open-agents':
-        openSettingsSection('agents')
+        openSettingsRouteSection('agents')
         return
       case 'open-providers':
-        openSettingsSection('providers')
+        openSettingsRouteSection('providers')
         return
       case 'open-chronicle':
-        openSettingsSection('chronicle')
+        openSettingsRouteSection('chronicle')
         return
       case 'open-usage':
-        useCradleTabStore.getState().openTab('usage', {})
+        openUsage()
         return
       case 'open-plugins':
         if (!openFirstPluginPanel()) {
-          openSettingsSection('skills')
+          openSettingsRouteSection('skills')
         }
         return
       case 'open-desktop-settings':
-        openSettingsSection('desktop')
+        openSettingsRouteSection('desktop')
         return
 
       case 'open-app':

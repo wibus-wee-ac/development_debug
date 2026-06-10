@@ -15,19 +15,19 @@ function contextValue(value: string): string {
     .trim()
 }
 
-function getOtherTabLabels(ctx: SystemAgentContext): string[] {
+function getOtherSurfaceLabels(ctx: SystemAgentContext): string[] {
   let activeSkipped = false
-  return ctx.openTabs.flatMap((tab) => {
+  return ctx.openSurfaces.flatMap((surface) => {
     if (
-      ctx.activeTab
+      ctx.activeSurface
       && !activeSkipped
-      && tab.type === ctx.activeTab.type
-      && tab.label === ctx.activeTab.label
+      && surface.type === ctx.activeSurface.type
+      && surface.label === ctx.activeSurface.label
     ) {
       activeSkipped = true
       return []
     }
-    return [contextValue(tab.label || tab.type)]
+    return [contextValue(surface.label || surface.type)]
   })
 }
 
@@ -43,12 +43,12 @@ function getOtherTabLabels(ctx: SystemAgentContext): string[] {
 export function formatContextForAgent(ctx: SystemAgentContext): string {
   const lines: string[] = []
 
-  // Active tab
-  if (ctx.activeTab) {
-    const tabDesc = contextValue(ctx.activeTab.label || ctx.activeTab.type)
-    lines.push(`viewing: ${tabDesc} (${contextValue(ctx.activeTab.type)})`)
-    if (Object.keys(ctx.activeTab.params).length > 0) {
-      const params = Object.entries(ctx.activeTab.params)
+  // Active surface
+  if (ctx.activeSurface) {
+    const surfaceDesc = contextValue(ctx.activeSurface.label || ctx.activeSurface.type)
+    lines.push(`viewing: ${surfaceDesc} (${contextValue(ctx.activeSurface.type)})`)
+    if (Object.keys(ctx.activeSurface.params).length > 0) {
+      const params = Object.entries(ctx.activeSurface.params)
         .filter(([, v]) => v !== undefined)
         .map(([k, v]) => `${contextValue(k)}=${contextValue(v!)}`)
         .join(', ')
@@ -58,14 +58,14 @@ export function formatContextForAgent(ctx: SystemAgentContext): string {
     }
   }
   else {
-    lines.push('viewing: nothing (no active tab)')
+    lines.push('viewing: nothing (no active surface)')
   }
 
-  // Open tabs summary
-  if (ctx.openTabs.length > 1) {
-    const others = getOtherTabLabels(ctx)
+  // Open surfaces summary
+  if (ctx.openSurfaces.length > 1) {
+    const others = getOtherSurfaceLabels(ctx)
     if (others.length > 0) {
-      lines.push(`other tabs: ${others.join(', ')}`)
+      lines.push(`other surfaces: ${others.join(', ')}`)
     }
   }
 
@@ -83,7 +83,7 @@ export function formatContextForAgent(ctx: SystemAgentContext): string {
 
   // Layout awareness (only notable states)
   const layout: string[] = []
-  if (ctx.layout.settingsTabId) {
+  if (ctx.layout.settingsOpen) {
     layout.push(`in settings (${contextValue(ctx.layout.settingsSection)})`)
   }
   if (ctx.layout.asideOpen) {

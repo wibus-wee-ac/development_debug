@@ -226,7 +226,7 @@ export function KanbanView({
     }
     if (filter.isDelegated === true) {
       result = result.filter(
-        i => !isExternalKanbanIssue(i) && (!!i.delegateAgentId || !!i.delegateAgentProfileId),
+        i => !isExternalKanbanIssue(i) && (!!i.delegateAgentId || !!i.delegateProviderTargetId),
       )
     }
 

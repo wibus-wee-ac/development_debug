@@ -52,7 +52,7 @@
   "session.action.copySessionId": "复制会话 ID",
   "session.action.markRead": "标为已读",
   "session.action.markUnread": "标为未读",
-  "session.action.openInNewTab": "在新标签页中打开",
+  "session.action.openInSurface": "打开聊天 Surface",
   "session.action.openInNewWindow": "在新窗口中打开",
   "session.action.pin": "置顶",
   "session.action.regenerateTitle": "重新生成标题",

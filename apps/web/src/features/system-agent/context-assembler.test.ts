@@ -19,9 +19,10 @@ function envelope(items: ContextItem[]): ContextEnvelope {
   return {
     id: 'ctx-1',
     capturedAt: NOW,
-    activeTabId: 'tab-1',
-    activeTabType: 'chat',
-    activeTabParams: { sessionId: 'session-1' },
+    activeSurfaceId: 'chat:session-1',
+    activeSurfaceType: 'chat',
+    activeSurfaceParams: { sessionId: 'session-1' },
+    activeSurfaceSearch: {},
     items,
   }
 }

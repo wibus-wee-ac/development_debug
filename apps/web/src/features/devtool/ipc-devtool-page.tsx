@@ -9,9 +9,9 @@ import { ObservabilityEventDetail } from './observability/observability-event-de
 import { ObservabilityEventsTable } from './observability/observability-events-table'
 import { useObservabilityDevtoolStore } from './observability/use-observability-events'
 import { PluginsPanel } from './plugins/plugins-panel'
-import { TabsPanel } from './tabs/tabs-panel'
+import { SurfacesPanel } from './surfaces/surfaces-panel'
 
-type DevtoolTab = 'observability' | 'health' | 'memory' | 'tabs' | 'plugins'
+type DevtoolTab = 'observability' | 'health' | 'memory' | 'surfaces' | 'plugins'
 
 const DEVTOOL_TABS: { id: DevtoolTab, label: string, description: string }[] = [
   {
@@ -21,7 +21,7 @@ const DEVTOOL_TABS: { id: DevtoolTab, label: string, description: string }[] = [
   },
   { id: 'health', label: 'Server Health', description: 'Server heartbeat and process memory' },
   { id: 'memory', label: 'Memory', description: 'Renderer heap and web vitals trend' },
-  { id: 'tabs', label: 'Tabs', description: 'Tabs-next runtime state and metrics' },
+  { id: 'surfaces', label: 'Surfaces', description: 'Router surface state and route ownership' },
   { id: 'plugins', label: 'Plugins', description: 'Plugin runtime graph and registrations' },
 ]
 
@@ -135,9 +135,9 @@ export function DevtoolPage() {
         </div>
       )}
 
-      {tab === 'tabs' && (
+      {tab === 'surfaces' && (
         <div className="flex-1 overflow-hidden">
-          <TabsPanel />
+          <SurfacesPanel />
         </div>
       )}
 

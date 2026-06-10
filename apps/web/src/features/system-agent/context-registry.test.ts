@@ -5,14 +5,14 @@ import { useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 import { useNewChatStore } from '~/store/new-chat'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
-import { useCradleTabStore } from '~/tabs/registry'
+import { useSurfaceStore } from '~/navigation/surface-store'
 
 import { readSystemAgentContextItems } from './system-context-provider'
 
 describe('jarvis context registry', () => {
-  it('collects provider items into a typed envelope with active tab metadata', () => {
+  it('collects provider items into a typed envelope with active surface metadata', () => {
     const registry = createContextRegistry({
-      readActiveTab: () => ({ id: 'tab-1', type: 'chat', params: { sessionId: 'session-1' } }),
+      readActiveSurface: () => ({ id: 'chat:session-1', type: 'chat', params: { sessionId: 'session-1' }, search: {} }),
       readNow: () => 1779781200000,
       createEnvelopeId: now => `ctx-test-${now}`,
     })
@@ -20,7 +20,7 @@ describe('jarvis context registry', () => {
     registry.registerProvider({
       owner: 'chat',
       readContext: input => [{
-        id: `chat:attention:${input.activeTabId}`,
+        id: `chat:attention:${input.activeSurfaceId}`,
         kind: 'attention',
         owner: 'chat',
         title: 'Chat attention',
@@ -36,11 +36,12 @@ describe('jarvis context registry', () => {
     expect(registry.collectEnvelope()).toEqual({
       id: 'ctx-test-1779781200000',
       capturedAt: 1779781200000,
-      activeTabId: 'tab-1',
-      activeTabType: 'chat',
-      activeTabParams: { sessionId: 'session-1' },
+      activeSurfaceId: 'chat:session-1',
+      activeSurfaceType: 'chat',
+      activeSurfaceParams: { sessionId: 'session-1' },
+      activeSurfaceSearch: {},
       items: [{
-        id: 'chat:attention:tab-1',
+        id: 'chat:attention:chat:session-1',
         kind: 'attention',
         owner: 'chat',
         title: 'Chat attention',
@@ -56,7 +57,7 @@ describe('jarvis context registry', () => {
 
   it('rejects duplicate provider owners to preserve ownership boundaries', () => {
     const registry = createContextRegistry({
-      readActiveTab: () => ({ id: null, type: null }),
+      readActiveSurface: () => ({ id: null, type: null }),
     })
     const provider = {
       owner: 'chat',
@@ -71,11 +72,18 @@ describe('jarvis context registry', () => {
 
 describe('system-agent Jarvis context provider', () => {
   it('represents current shell stores as typed context items', () => {
-    useCradleTabStore.setState({
-      activeTabId: 'tab-chat',
-      tabs: [
-        { id: 'tab-home', type: 'home', label: 'Home', params: {}, pinned: false },
-        { id: 'tab-chat', type: 'chat', label: 'Architecture discussion', params: { sessionId: 'session-1' }, pinned: false },
+    useSurfaceStore.setState({
+      activeSurfaceId: 'chat:session-1',
+      surfaces: [
+        { id: 'home', kind: 'home', title: 'Home', route: { to: '/' }, order: 0, closable: false },
+        {
+          id: 'chat:session-1',
+          kind: 'chat',
+          title: 'Architecture discussion',
+          route: { to: '/chat/$sessionId', params: { sessionId: 'session-1' } },
+          order: 1,
+          closable: true,
+        },
       ],
     })
     useChatStore.getState().setMessages('session-1', [
@@ -83,14 +91,14 @@ describe('system-agent Jarvis context provider', () => {
       { id: 'm2', role: 'assistant', parts: [{ type: 'text', text: 'The current model is too shallow.' }] },
     ])
     useLayoutStore.setState({ sidebarCollapsed: true, asideOpen: true, asideActiveTab: 'browser', bottomPanelOpen: false })
-    useSettingsOverlayStore.setState({ settingsTabId: null, settingsSection: 'general' })
+    useSettingsOverlayStore.setState({ settingsSection: 'general' })
     useNewChatStore.setState({ lastAgentProfileId: 'profile-1' })
 
     const items = readSystemAgentContextItems(1779781200000)
 
     expect(items.map(item => [item.kind, item.title, item.owner])).toEqual([
       ['view', 'Active view', 'system-agent'],
-      ['view', 'Open tabs', 'system-agent'],
+      ['view', 'Open surfaces', 'system-agent'],
       ['history', 'Active chat summary', 'system-agent'],
       ['layout', 'Layout', 'system-agent'],
       ['entity', 'Active Jarvis profile', 'system-agent'],

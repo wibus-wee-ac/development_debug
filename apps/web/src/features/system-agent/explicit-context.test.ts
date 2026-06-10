@@ -35,7 +35,7 @@ describe('explicit Jarvis context', () => {
     })
 
     const registry = createContextRegistry({
-      readActiveTab: () => ({ id: 'tab-1', type: 'chat', params: { sessionId: 'session-1' } }),
+      readActiveSurface: () => ({ id: 'chat:session-1', type: 'chat', params: { sessionId: 'session-1' }, search: {} }),
       readNow: () => 1779783600000,
       createEnvelopeId: now => `ctx-${now}`,
     })

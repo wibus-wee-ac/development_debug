@@ -1,32 +1,21 @@
-import { Link } from '@cradle/tabs-next'
 import { PuzzleIcon } from 'lucide-react'
 
 import { cn } from '~/lib/cn'
 import { usePluginStore } from '~/lib/plugin-store'
-import { useCradleTabStore } from '~/tabs/registry'
-
-type PluginPanelTab = {
-  type: 'plugin-panel'
-  params?: {
-    routeSegment?: string
-    localId?: string
-  }
-}
+import { openPluginPanel } from '~/navigation/navigation-commands'
+import { useSurfaceStore } from '~/navigation/surface-store'
 
 export function PluginsSidebar({ collapsed }: { collapsed?: boolean }) {
   const panels = usePluginStore(s => s.panels)
-  const activeTab = useCradleTabStore((s) => {
-    const tab = s.tabs.find(t => t.id === s.activeTabId)
-    return tab
-  })
+  const activeSurface = useSurfaceStore((s) => s.surfaces.find(surface => surface.id === s.activeSurfaceId))
   const ready = panels.length > 0
 
   if (!ready) {
     return null
   }
 
-  const activePluginPanelKey = activeTab?.type === 'plugin-panel'
-    ? `${(activeTab as PluginPanelTab).params?.routeSegment ?? ''}/${(activeTab as PluginPanelTab).params?.localId ?? ''}`
+  const activePluginPanelKey = activeSurface?.kind === 'plugin' && activeSurface.route.to === '/plugins/$routeSegment/$localId'
+    ? `${activeSurface.route.params.routeSegment}/${activeSurface.route.params.localId}`
     : undefined
 
   return (
@@ -44,10 +33,10 @@ export function PluginsSidebar({ collapsed }: { collapsed?: boolean }) {
         Extensions
       </div>
       {panels.map(panel => (
-        <Link
+        <button
+          type="button"
           key={panel.id}
-          to="plugin-panel"
-          params={{ routeSegment: panel.routeSegment, localId: panel.localId }}
+          onClick={() => openPluginPanel({ routeSegment: panel.routeSegment, localId: panel.localId })}
           data-testid={`plugin-panel-link-${panel.localId}`}
           className={cn(
             'flex h-7 items-center gap-2 overflow-hidden rounded-md px-2 py-1.5 text-sm',
@@ -65,7 +54,7 @@ export function PluginsSidebar({ collapsed }: { collapsed?: boolean }) {
           >
             {panel.title}
           </span>
-        </Link>
+        </button>
       ))}
     </div>
   )

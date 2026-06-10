@@ -1,11 +1,12 @@
-import { useCradleTabStore } from '~/tabs/registry'
+import { useSurfaceStore } from '~/navigation/surface-store'
 
 import type { ContextEnvelope, ContextItem } from './context-items'
 
 export interface ContextProviderInput {
-  activeTabId: string | null
-  activeTabType: string | null
-  activeTabParams: Record<string, string | undefined>
+  activeSurfaceId: string | null
+  activeSurfaceType: string | null
+  activeSurfaceParams: Record<string, string | undefined>
+  activeSurfaceSearch: Record<string, string | undefined>
   now: number
 }
 
@@ -20,7 +21,12 @@ export interface ContextRegistry {
 }
 
 export interface ContextRegistryOptions {
-  readActiveTab?: () => { id: string | null, type: string | null, params?: Record<string, string | undefined> }
+  readActiveSurface?: () => {
+    id: string | null
+    type: string | null
+    params?: Record<string, string | undefined>
+    search?: Record<string, string | undefined>
+  }
   createEnvelopeId?: (now: number) => string
   readNow?: () => number
 }
@@ -32,22 +38,41 @@ function defaultEnvelopeId(now: number): string {
   return `ctx-${now}-${random}`
 }
 
-function readCradleActiveTab(): { id: string | null, type: string | null, params: Record<string, string | undefined> } {
-  const tabState = useCradleTabStore.getState()
-  const activeTab = tabState.activeTabId
-    ? tabState.tabs.find(tab => tab.id === tabState.activeTabId) ?? null
+function surfaceKindToContextType(kind: string): string {
+  if (kind === 'workspace') {
+    return 'workspace-detail'
+  }
+  if (kind === 'kanban') {
+    return 'kanban-board'
+  }
+  if (kind === 'plugin') {
+    return 'plugin-panel'
+  }
+  return kind
+}
+
+function readCradleActiveSurface(): {
+  id: string | null
+  type: string | null
+  params: Record<string, string | undefined>
+  search: Record<string, string | undefined>
+} {
+  const surfaceState = useSurfaceStore.getState()
+  const activeSurface = surfaceState.activeSurfaceId
+    ? surfaceState.surfaces.find(surface => surface.id === surfaceState.activeSurfaceId) ?? null
     : null
 
   return {
-    id: activeTab?.id ?? null,
-    type: activeTab?.type ?? null,
-    params: activeTab?.params ?? {},
+    id: activeSurface?.id ?? null,
+    type: activeSurface ? surfaceKindToContextType(activeSurface.kind) : null,
+    params: activeSurface?.route.params ?? {},
+    search: activeSurface?.route.search ?? {},
   }
 }
 
 export function createContextRegistry(options: ContextRegistryOptions = {}): ContextRegistry {
   const providers = new Map<string, ContextProvider>()
-  const readActiveTab = options.readActiveTab ?? readCradleActiveTab
+  const readActiveSurface = options.readActiveSurface ?? readCradleActiveSurface
   const readNow = options.readNow ?? Date.now
   const createEnvelopeId = options.createEnvelopeId ?? defaultEnvelopeId
 
@@ -65,11 +90,12 @@ export function createContextRegistry(options: ContextRegistryOptions = {}): Con
 
     collectEnvelope() {
       const now = readNow()
-      const activeTab = readActiveTab()
+      const activeSurface = readActiveSurface()
       const input: ContextProviderInput = {
-        activeTabId: activeTab.id,
-        activeTabType: activeTab.type,
-        activeTabParams: activeTab.params ?? {},
+        activeSurfaceId: activeSurface.id,
+        activeSurfaceType: activeSurface.type,
+        activeSurfaceParams: activeSurface.params ?? {},
+        activeSurfaceSearch: activeSurface.search ?? {},
         now,
       }
       const items = [...providers.values()].flatMap(provider => provider.readContext(input))
@@ -77,9 +103,10 @@ export function createContextRegistry(options: ContextRegistryOptions = {}): Con
       return {
         id: createEnvelopeId(now),
         capturedAt: now,
-        activeTabId: activeTab.id,
-        activeTabType: activeTab.type,
-        activeTabParams: activeTab.params ?? {},
+        activeSurfaceId: activeSurface.id,
+        activeSurfaceType: activeSurface.type,
+        activeSurfaceParams: activeSurface.params ?? {},
+        activeSurfaceSearch: activeSurface.search ?? {},
         items,
       }
     },

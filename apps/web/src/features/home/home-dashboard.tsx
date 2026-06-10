@@ -1,4 +1,3 @@
-import { Link } from '@cradle/tabs-next'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import {
@@ -26,6 +25,7 @@ import type { WorkspaceSession } from '~/features/workspace/use-session'
 import { useAllSessions } from '~/features/workspace/use-session'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
+import { openChatSession, openWorkspaceDetail } from '~/navigation/navigation-commands'
 import type { Workspace } from '~/features/workspace/types'
 
 // ── Mock data for backend-unsupported features ────────────────────────────────
@@ -229,11 +229,9 @@ interface ActivityCardProps {
   title: string
   meta: string
   onClick?: () => void
-  to?: string
-  params?: Record<string, string>
 }
 
-function ActivityCard({ kind, title, meta, onClick, to, params }: ActivityCardProps) {
+function ActivityCard({ kind, title, meta, onClick }: ActivityCardProps) {
   const theme = CARD_THEMES[kind]
   const className = 'flex flex-col w-32 shrink-0 rounded-lg border border-border/50 overflow-hidden text-left transition-colors hover:border-border not-disabled:inset-shadow-[0_1px_--theme(--color-white/10%)]'
 
@@ -248,14 +246,6 @@ function ActivityCard({ kind, title, meta, onClick, to, params }: ActivityCardPr
       </div>
     </>
   )
-
-  if (to) {
-    return (
-      <Link to={to} params={params} className={className}>
-        {content}
-      </Link>
-    )
-  }
 
   return (
     <button
@@ -295,9 +285,9 @@ function PendingRunRow({ run, t }: { run: PendingRun, t: TFunction<'home'> }) {
 
 function RecentSessionRow({ session, workspaceName, t }: { session: WorkspaceSession, workspaceName: string, t: TFunction<'home'> }) {
   return (
-    <Link
-      to="chat"
-      params={{ sessionId: session.id }}
+    <button
+      type="button"
+      onClick={() => openChatSession(session.id)}
       className="group flex items-center gap-3 rounded-md px-2 py-1.5 text-xs transition-colors hover:bg-accent/50 w-full text-left"
       data-testid="home-recent-session"
     >
@@ -309,7 +299,7 @@ function RecentSessionRow({ session, workspaceName, t }: { session: WorkspaceSes
       <span className="shrink-0 w-7 text-right text-[11px] text-muted-foreground tabular-nums">
         {formatRelativeTime(session.listActivityAt, t)}
       </span>
-    </Link>
+    </button>
   )
 }
 
@@ -489,8 +479,7 @@ export function HomeDashboard() {
                   kind="workspace"
                   title={item.ws.name}
                   meta={homeT('activity.workspace')}
-                  to="workspace-detail"
-                  params={{ workspaceId: item.ws.id }}
+                  onClick={() => openWorkspaceDetail(item.ws.id)}
                 />
               )
             }
@@ -501,8 +490,7 @@ export function HomeDashboard() {
                   kind="session"
                   title={item.session.title ?? item.session.id}
                   meta={item.workspaceName}
-                  to="chat"
-                  params={{ sessionId: item.session.id }}
+                  onClick={() => openChatSession(item.session.id)}
                 />
               )
             }

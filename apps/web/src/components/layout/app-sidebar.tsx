@@ -8,9 +8,10 @@ import { ResizeHandle } from '~/components/layout/resize-handle'
 import { SettingsSidebar } from '~/features/settings/settings-sidebar'
 import { WorkspaceSidebar } from '~/features/workspace'
 import { useShortcut } from '~/hooks/use-shortcut'
+import { closeSurfaceById, openSettingsSection } from '~/navigation/navigation-commands'
+import { useSurfaceStore } from '~/navigation/surface-store'
 import { useLayoutStore } from '~/store/layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
-import { useCradleTabStore } from '~/tabs/registry'
 
 const DRILL_TRANSITION = {
   type: 'spring',
@@ -85,24 +86,30 @@ const AppSidebarContent = memo(({
 AppSidebarContent.displayName = 'AppSidebarContent'
 
 function useAppSidebarContentController() {
-  const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const settingsSection = useSettingsOverlayStore(s => s.settingsSection)
-  const openSettings = useSettingsOverlayStore(s => s.openSettings)
-  const closeSettings = useSettingsOverlayStore(s => s.closeSettings)
   const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
-  const isSettings = useCradleTabStore(s => settingsTabId !== null && s.activeTabId === settingsTabId)
+  const isSettings = useSurfaceStore(s => {
+    const activeSurface = s.surfaces.find(surface => surface.id === s.activeSurfaceId)
+    return activeSurface?.kind === 'settings'
+  })
+
+  const closeSettings = useCallback(() => {
+    closeSurfaceById('settings')
+  }, [])
 
   const handleToggleSettings = useCallback(() => {
     if (isSettings) {
       closeSettings()
     }
     else {
-      const id = useCradleTabStore.getState().activeTabId
-      if (id) {
-        openSettings(id)
-      }
+      openSettingsSection(settingsSection)
     }
-  }, [closeSettings, isSettings, openSettings])
+  }, [closeSettings, isSettings, settingsSection])
+
+  const handleSetSettingsSection = useCallback((section: string) => {
+    setSettingsSection(section)
+    openSettingsSection(section, { replace: isSettings })
+  }, [isSettings, setSettingsSection])
 
   useShortcut('toggle-settings', { meta: true, key: ',' }, handleToggleSettings)
   useShortcut('exit-settings', { meta: true, key: 'Escape' }, closeSettings, isSettings)
@@ -110,7 +117,7 @@ function useAppSidebarContentController() {
   return {
     closeSettings,
     isSettings,
-    setSettingsSection,
+    setSettingsSection: handleSetSettingsSection,
     settingsSection,
   }
 }

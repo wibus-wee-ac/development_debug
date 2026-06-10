@@ -55,9 +55,10 @@ export interface ContextItem {
 export interface ContextEnvelope {
   id: string
   capturedAt: number
-  activeTabId: string | null
-  activeTabType: string | null
-  activeTabParams: Record<string, string | undefined>
+  activeSurfaceId: string | null
+  activeSurfaceType: string | null
+  activeSurfaceParams: Record<string, string | undefined>
+  activeSurfaceSearch: Record<string, string | undefined>
   items: ContextItem[]
 }
 

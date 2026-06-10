@@ -13,9 +13,8 @@ export function useLayoutSlotsCtx() {
 /**
  * Register layout slots (asideSessionId, asideWorkspaceId, panel, hasAside, hasPanel,
  * hasBrowserPanel, title, workspace, gitBranch)
- * for a tab content component. Retained tab frames keep registration effects
- * mounted while inactive, so slot lifetime is pruned by the active slot scope
- * instead of this hook's cleanup.
+ * for a route content component. Hidden route surfaces unmount by default, so
+ * slot lifetime is pruned by the active surface scope.
  *
  * Prefer passing a stable `slots` reference (e.g. produced by useMemo) so the
  * effect only re-fires when slot content actually changes.

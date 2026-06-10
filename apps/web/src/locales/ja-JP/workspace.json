@@ -52,7 +52,7 @@
   "session.action.copySessionId": "セッション ID をコピー",
   "session.action.markRead": "既読にする",
   "session.action.markUnread": "未読にする",
-  "session.action.openInNewTab": "新しいタブで開く",
+  "session.action.openInSurface": "チャット Surface を開く",
   "session.action.openInNewWindow": "新しいウィンドウで開く",
   "session.action.pin": "ピン留め",
   "session.action.regenerateTitle": "タイトルを再生成",

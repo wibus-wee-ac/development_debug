@@ -5,19 +5,19 @@ import { formatContextEnvelopeForAgent, formatContextForAgent } from './format-c
 describe('jarvis context formatting', () => {
   it('keeps the legacy snapshot formatter available during migration', () => {
     expect(formatContextForAgent({
-      activeTab: {
+      activeSurface: {
         type: 'chat',
         label: 'Architecture discussion',
         params: { sessionId: 'session-1' },
       },
-      openTabs: [{ type: 'chat', label: 'Architecture discussion' }],
+      openSurfaces: [{ type: 'chat', label: 'Architecture discussion' }],
       chatContext: null,
       layout: {
         sidebarCollapsed: false,
         asideOpen: false,
         asideActiveTab: 'browser',
         bottomPanelOpen: false,
-        settingsTabId: null,
+        settingsOpen: false,
         settingsSection: 'general',
       },
       activeProfileId: null,
@@ -34,9 +34,10 @@ describe('jarvis context formatting', () => {
     const text = formatContextEnvelopeForAgent({
       id: 'ctx-1',
       capturedAt: 1779781200000,
-      activeTabId: 'tab-1',
-      activeTabType: 'chat',
-      activeTabParams: { sessionId: 'session-1' },
+      activeSurfaceId: 'chat:session-1',
+      activeSurfaceType: 'chat',
+      activeSurfaceParams: { sessionId: 'session-1' },
+      activeSurfaceSearch: {},
       items: [
         {
           id: 'layout-1',

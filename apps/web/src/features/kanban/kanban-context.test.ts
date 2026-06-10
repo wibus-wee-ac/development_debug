@@ -27,7 +27,7 @@ describe('kanban attention context', () => {
       updatedAt: 1779782400000,
     })
     const registry = createContextRegistry({
-      readActiveTab: () => ({ id: 'tab-1', type: 'kanban-board', params: { boardId: 'board-1' } }),
+      readActiveSurface: () => ({ id: 'kanban:board-1', type: 'kanban-board', params: { boardId: 'board-1' }, search: {} }),
       readNow: () => 1779782400000,
       createEnvelopeId: now => `ctx-${now}`,
     })

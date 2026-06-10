@@ -7,7 +7,7 @@ import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 import { useNewChatStore } from '~/store/new-chat'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
-import { useCradleTabStore } from '~/tabs/registry'
+import { useSurfaceStore } from '~/navigation/surface-store'
 
 const OWNER = 'system-agent'
 const MAX_RECENT_MESSAGES = 5
@@ -42,31 +42,44 @@ function getMessageContentPreview(message: { parts?: Array<{ type: string } & Re
   return text.slice(0, CONTENT_PREVIEW_LENGTH)
 }
 
+function surfaceKindToContextType(kind: string): string {
+  if (kind === 'workspace') {
+    return 'workspace-detail'
+  }
+  if (kind === 'kanban') {
+    return 'kanban-board'
+  }
+  if (kind === 'plugin') {
+    return 'plugin-panel'
+  }
+  return kind
+}
+
 export function readSystemAgentContextItems(now: number): ContextItem[] {
-  const tabState = useCradleTabStore.getState()
+  const surfaceState = useSurfaceStore.getState()
   const chatState = useChatStore.getState()
   const layoutState = useLayoutStore.getState()
   const settingsState = useSettingsOverlayStore.getState()
   const newChatState = useNewChatStore.getState()
   const unreadSessionIds = readUnreadSessionIdsSnapshot()
-  const activeTab = tabState.activeTabId
-    ? tabState.tabs.find(tab => tab.id === tabState.activeTabId) ?? null
+  const activeSurface = surfaceState.activeSurfaceId
+    ? surfaceState.surfaces.find(surface => surface.id === surfaceState.activeSurfaceId) ?? null
     : null
   const items: ContextItem[] = []
 
-  if (activeTab) {
-    const tabLabel = activeTab.label || activeTab.type
-    const params = Object.entries(activeTab.params)
+  if (activeSurface) {
+    const surfaceType = surfaceKindToContextType(activeSurface.kind)
+    const params = Object.entries(activeSurface.route.params ?? {})
       .filter(([, value]) => value !== undefined)
       .map(([key, value]) => `${key}=${value}`)
       .join(', ')
 
     items.push(createItem({
-      id: `system-agent:view:${activeTab.id}`,
+      id: `system-agent:view:${activeSurface.id}`,
       kind: 'view',
       owner: OWNER,
       title: 'Active view',
-      summary: `User is viewing ${tabLabel} (${activeTab.type}).`,
+      summary: `User is viewing ${activeSurface.title} (${surfaceType}).`,
       content: params ? `params: ${params}` : undefined,
       priority: 80,
       freshness: 'live',
@@ -80,7 +93,7 @@ export function readSystemAgentContextItems(now: number): ContextItem[] {
       kind: 'view',
       owner: OWNER,
       title: 'Active view',
-      summary: 'User has no active tab.',
+      summary: 'User has no active surface.',
       priority: 40,
       freshness: 'live',
       sensitivity: 'public',
@@ -88,13 +101,13 @@ export function readSystemAgentContextItems(now: number): ContextItem[] {
     }))
   }
 
-  if (tabState.tabs.length > 0) {
+  if (surfaceState.surfaces.length > 0) {
     items.push(createItem({
-      id: 'system-agent:view:open-tabs',
+      id: 'system-agent:view:open-surfaces',
       kind: 'view',
       owner: OWNER,
-      title: 'Open tabs',
-      summary: `Open tabs: ${tabState.tabs.map(tab => tab.label || tab.type).join(', ')}.`,
+      title: 'Open surfaces',
+      summary: `Open surfaces: ${surfaceState.surfaces.map(surface => surface.title || surface.kind).join(', ')}.`,
       priority: 35,
       freshness: 'live',
       sensitivity: 'workspace',
@@ -102,8 +115,8 @@ export function readSystemAgentContextItems(now: number): ContextItem[] {
     }))
   }
 
-  if (activeTab?.type === 'chat' && activeTab.params.sessionId) {
-    const sessionId = activeTab.params.sessionId
+  if (activeSurface?.kind === 'chat' && activeSurface.route.to === '/chat/$sessionId') {
+    const sessionId = activeSurface.route.params.sessionId
     const messages = chatSelectors.messages(sessionId)(chatState)
     const status = chatSelectors.visibleStatus(sessionId)(chatState)
     const lastMessage = messages
@@ -136,7 +149,7 @@ export function readSystemAgentContextItems(now: number): ContextItem[] {
   }
 
   const layoutParts: string[] = []
-  if (settingsState.settingsTabId) {
+  if (activeSurface?.kind === 'settings') {
     layoutParts.push(`settings section: ${settingsState.settingsSection}`)
   }
   if (layoutState.asideOpen) {

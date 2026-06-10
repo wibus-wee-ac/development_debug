@@ -1,8 +1,6 @@
-import type { TabBarCustomization, TabInstance } from '@cradle/tabs-next'
-import { TabBar } from '@cradle/tabs-next'
-import { GlobeIcon, MessageCircleMoreIcon, PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon, PlusIcon, SettingsIcon, XIcon } from 'lucide-react'
+import { GlobeIcon, PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { useCallback, useMemo } from 'react'
+import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
@@ -10,10 +8,9 @@ import { ResourcesPopover } from '~/features/devtool/resources/resources-popover
 import { useUnreadSessionIds } from '~/features/workspace/use-session'
 import { cn } from '~/lib/cn'
 import { isTearoffWindow, platform } from '~/lib/electron'
+import { SurfaceBar } from '~/navigation/surface-bar'
+import { useSurfaceStore } from '~/navigation/surface-store'
 import { useLayoutStore } from '~/store/layout'
-import { useSettingsOverlayStore } from '~/store/settings-overlay'
-import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
-import { detachTearoffSessionTab, releaseTearoffSession, reserveTearoffSession } from '~/tabs/tearoff-tabs'
 
 interface AppHeaderProps {
   hasAside?: boolean
@@ -57,10 +54,11 @@ export function AppHeader({
   const sidebarCollapsed = useLayoutStore(s => s.sidebarCollapsed)
   const toggleSidebar = useLayoutStore(s => s.toggleSidebar)
   const toggleBrowserPanel = useLayoutStore(s => s.toggleBrowserPanel)
-  const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const unreadSessionIds = useUnreadSessionIds()
-  // Settings is open on a specific tab; we're "in settings" view when that tab is active
-  const isSettingsActive = useCradleTabStore(s => settingsTabId !== null && s.activeTabId === settingsTabId)
+  const isSettingsActive = useSurfaceStore(s => {
+    const activeSurface = s.surfaces.find(surface => surface.id === s.activeSurfaceId)
+    return activeSurface?.kind === 'settings'
+  })
   const isDrillIn = isSettingsActive
   const sidebarToggleLabel = sidebarInSheet
     ? sidebarSheetOpen
@@ -93,76 +91,6 @@ export function AppHeader({
 
     toggleAside()
   }, [asideInSheet, onToggleAsideSheet, toggleAside])
-
-  const handleTabActivated = useCallback(() => {
-    // No-op: settings is now per-tab, tab switching is handled by isSettingsVisible in app.tsx
-  }, [])
-
-  const handleNewTab = useCallback(() => {
-    useCradleTabStore.getState().openTab('new-chat')
-  }, [])
-
-  const handleTabTearOff = useCallback((tab: TabInstance, screenX: number, screenY: number) => {
-    // In Electron, tear off the tab into a new window
-    if (window.cradle?.env?.isElectron && tab.type === 'chat') {
-      const sessionId = (tab.params as { sessionId?: string })?.sessionId
-      if (sessionId && reserveTearoffSession(sessionId)) {
-        void window.cradle.ipc.invoke('window.tearOffSession', sessionId, screenX, screenY)
-          .then(() => {
-            if (!isTearoffWindow) {
-              detachTearoffSessionTab(useCradleTabStore, sessionId)
-            }
-          })
-          .catch(() => {
-            releaseTearoffSession(sessionId)
-        })
-      }
-    }
-  }, [])
-
-  // Overlay the settings tab pill with Settings icon+label regardless of which tab is active
-  const tabPresentation = useMemo(() => {
-    if (!settingsTabId) {
-      return undefined
-    }
-    return {
-      [settingsTabId]: {
-        icon: <SettingsIcon className="size-3 shrink-0" />,
-        label: t('header.tab.settings'),
-      },
-    }
-  }, [settingsTabId, t])
-
-  const tabBarCustomization = useMemo<TabBarCustomization>(() => ({
-    closeIcon: <XIcon className="size-3" />,
-    newTabIcon: <PlusIcon className="size-3" />,
-    tabIcon: (tab: TabInstance) => {
-      const route = cradleRegistry[tab.type as keyof typeof cradleRegistry]
-      if (!route?.icon) {
-        return null
-      }
-      const Icon = route.icon as React.ComponentType<{ className?: string }>
-      return <Icon className="size-3 shrink-0" />
-    },
-    tabBadge: (tab: TabInstance) => {
-      if (tab.type !== 'chat') {
-        return null
-      }
-      const sessionId = (tab.params as { sessionId?: string }).sessionId
-      if (!sessionId || !unreadSessionIds.has(sessionId)) {
-        return null
-      }
-      return (
-        <span
-          aria-hidden="true"
-          className="relative inline-flex size-4 items-center justify-center text-primary"
-        >
-          <MessageCircleMoreIcon className="size-3.5" />
-          <span className="absolute right-0 top-0 size-1.5 rounded-full bg-primary ring-2 ring-background" />
-        </span>
-      )
-    },
-  }), [unreadSessionIds])
 
   return (
     <div
@@ -203,16 +131,14 @@ export function AppHeader({
         </m.div>
       )}
 
-      {/* Tab bar */}
+      {/* Surface bar */}
       <div className="flex-1 min-w-0 ml-0.5 mr-1 h-full" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
-        <TabBar
-          className="h-full"
-          onNewTab={sessionScoped ? undefined : handleNewTab}
-          onTabActivated={handleTabActivated}
-          onTabTearOff={sessionScoped ? undefined : handleTabTearOff}
-          customization={tabBarCustomization}
-          tabPresentation={tabPresentation}
-        />
+        {!sessionScoped && (
+          <SurfaceBar
+            className="h-full"
+            unreadSessionIds={unreadSessionIds}
+          />
+        )}
       </div>
 
       {/* Right: panel toggles */}

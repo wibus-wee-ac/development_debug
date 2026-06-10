@@ -16,7 +16,7 @@ import { prefetchChatSession } from '~/features/chat/session/chat-session-prefet
 import { readDesktopAwaits } from '~/features/desktop-tray/api'
 import type { DesktopAwaitItem } from '~/features/desktop-tray/types'
 import { cn } from '~/lib/cn'
-import { useCradleTabStore } from '~/tabs/registry'
+import { openChatSession } from '~/navigation/navigation-commands'
 
 function formatRelativeTime(unixSeconds: number, t: TFunction<'awaits'>): string {
   const diff = Math.max(0, Math.floor(Date.now() / 1000) - unixSeconds)
@@ -42,7 +42,7 @@ function AwaitRow({ item }: { item: DesktopAwaitItem }) {
 
   const openChat = () => {
     preloadChatSession()
-    useCradleTabStore.getState().openTab('chat', { sessionId: item.sessionId })
+    openChatSession(item.sessionId)
   }
 
   return (

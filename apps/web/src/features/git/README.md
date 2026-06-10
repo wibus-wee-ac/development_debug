@@ -5,7 +5,7 @@
 Git integration feature: branch status, working-tree changes, commit graph, branch switching, and fetch.
 The `GitPanel` renders in the right aside "Git" tab; `ChangesPanel` renders in the right aside "Changes" tab; `GitBranchControl` renders in the AppHeader breadcrumb.
 All git operations go through `GitService` (main process IPC), which uses `simple-git` under the hood.
-The first real UI-driven E2E coverage enters this feature from `new-chat` → chat tab, then drives the header branch control and right-aside Git panel without seeding app-owned state directly.
+The first real UI-driven E2E coverage enters this feature from `new-chat` → chat route surface, then drives the header branch control and right-aside Git panel without seeding app-owned state directly.
 
 ## Files
 

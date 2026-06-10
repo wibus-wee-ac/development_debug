@@ -30,12 +30,12 @@ import { useGlobalEventListeners } from '~/hooks/use-global-event-listeners'
 import { useShortcut } from '~/hooks/use-shortcut'
 import { cn } from '~/lib/cn'
 import { isElectron } from '~/lib/electron'
+import { chatSessionIdForSurface } from '~/navigation/surface-identity'
+import { useSurfaceStore } from '~/navigation/surface-store'
 import type { BrowserTabSource } from '~/store/browser-panel'
 import { DEFAULT_BROWSER_PANEL_OWNER_ID, useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 import { useSessionLayoutStore } from '~/store/session-layout'
-import { useSettingsOverlayStore } from '~/store/settings-overlay'
-import { useCradleTabStore } from '~/tabs/registry'
 
 const ASIDE = { min: 200, max: 560 }
 const PANEL = { min: 80, max: 480 }
@@ -198,7 +198,7 @@ interface AppLayoutProps {
   hasPanel?: boolean
   /** Bottom panel content */
   panel?: ReactNode
-  /** Limit tab chrome actions to the current session window. */
+  /** Limit route surface chrome actions to the current session window. */
   sessionScoped?: boolean
   /** Show the main-window footer surface. */
   showFooter?: boolean
@@ -278,24 +278,34 @@ function AppLayoutContent({
   useGlobalEventListeners()
   const { registerCenterColumn } = useLayoutGeometry()
 
-  // Per-tab layout slots registered by tab content components
+  // Route surface layout slots registered by route content components.
   const { slots } = useLayoutSlotsCtx()
-  const activeTab = useCradleTabStore(
+  const activeSurface = useSurfaceStore(
     useShallow((s) => {
-      const tab = s.tabs.find(t => t.id === s.activeTabId)
-      return tab
-        ? {
-            id: tab.id,
-            type: tab.type,
-            label: tab.label,
-            params: tab.params,
-          }
-        : undefined
+      const surface = s.surfaces.find(item => item.id === s.activeSurfaceId)
+      if (!surface) {
+        return undefined
+      }
+      return {
+        id: surface.id,
+        kind: surface.kind,
+        title: surface.title,
+        route: surface.route,
+      }
     }),
   )
-  const activeSessionId = activeTab?.type === 'chat' ? (activeTab.params.sessionId ?? null) : null
+  const activeTab = activeSurface
+    ? {
+        type: activeSurface.kind === 'workspace'
+          ? 'workspace-detail'
+          : activeSurface.kind,
+        label: activeSurface.title,
+        params: activeSurface.route.params ?? {},
+      }
+    : undefined
+  const activeSessionId = chatSessionIdForSurface(activeSurface)
   const activeSessionTitle = activeTab?.type === 'chat' ? activeTab.label : null
-  const activeBrowserPanelOwnerId = activeTab?.id ?? null
+  const activeBrowserPanelOwnerId = activeSurface?.id ?? null
   const activeSessionLayout = useSessionLayoutStore(state =>
     activeSessionId ? state.sessions[activeSessionId] : undefined)
   const layoutContract = deriveActiveLayoutContract({
@@ -321,7 +331,6 @@ function AppLayoutContent({
       ? activeSessionLayout.workspacePath
       : null)
   const resolvedAsideWorkspaceName = resolvedWorkspaceLayout?.workspaceName ?? null
-  const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
   const jarvisExpanded = useJarvisUiStore(s => s.expanded)
 
   const bottomPanelHeight = useLayoutStore(state => state.bottomPanelHeight)
@@ -338,7 +347,7 @@ function AppLayoutContent({
   const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
   const setBrowserPanelRatio = useLayoutStore(state => state.setBrowserPanelRatio)
   const setActiveBrowserPanelOwner = useLayoutStore(state => state.setActiveBrowserPanelOwner)
-  const isSettings = settingsTabId !== null && settingsTabId === activeTab?.id
+  const isSettings = activeSurface?.kind === 'settings'
   const canUseRightAside
     = !isSettings && !!resolvedHasAside && (!!resolvedAsideSessionId || !!resolvedAsideWorkspaceId)
   const viewportWidth = useViewportWidth()
@@ -654,6 +663,7 @@ function AppLayoutContent({
                     ownerId={activeBrowserPanelOwnerId}
                     activeSessionId={activeSessionId}
                     activeSessionTitle={activeSessionTitle}
+                    terminalCwd={resolvedAsideWorkspacePath}
                     nativeBoundsPaused={browserPanelNativeBoundsPaused}
                     onCloseLastTab={handleCloseLastBrowserPanelTab}
                   />

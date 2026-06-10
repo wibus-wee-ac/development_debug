@@ -1,4 +1,3 @@
-import { useTabFrameActive } from '@cradle/tabs-next'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { FileUIPart } from 'ai'
 import {
@@ -27,10 +26,10 @@ import { startOptimisticChatResponse } from '~/features/chat/session/optimistic-
 import { sessionsQueryKey, updateSessionInSessionLists } from '~/features/workspace/use-session'
 import { WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
+import { openChatSession } from '~/navigation/navigation-commands'
+import { useSurfaceActive } from '~/navigation/surface-activity-context'
+import { openTearoffSessionWindow } from '~/navigation/tearoff-sessions'
 import { useSessionLayoutStore } from '~/store/session-layout'
-import { useCradleTabStore } from '~/tabs/registry'
-import { openTearoffSessionWindow } from '~/tabs/tearoff-tabs'
-import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import { useWorkspaceFile } from './use-workspace-file'
 
@@ -423,7 +422,6 @@ function FloatingToc({
 function useWorkspaceDetailOwner(workspaceId: string) {
   const { t } = useTranslation('workspace')
   const queryClient = useQueryClient()
-  const { openTab } = useCradleNavigation()
   const scrollRef = useRef<HTMLDivElement>(null)
   const [activeSlug, setActiveSlug] = useState<string | null>(null)
   const [activeTab, setActiveTab] = useState<'overview' | 'workflow-rules' | 'skills'>('overview')
@@ -496,12 +494,12 @@ function useWorkspaceDetailOwner(workspaceId: string) {
 
   const openCreatedWorkspaceSession = async (sessionId: string, target: 'tab' | 'window') => {
     if (target === 'window') {
-      const openedWindow = await openTearoffSessionWindow(useCradleTabStore, sessionId)
+      const openedWindow = await openTearoffSessionWindow(sessionId)
       if (openedWindow) {
         return
       }
     }
-    openTab('chat', { sessionId })
+    openChatSession(sessionId)
   }
 
   const handleDraftComposerSendToTarget = async (
@@ -846,7 +844,7 @@ function WorkspacePaneLoading({ label, testId }: { label: string, testId: string
 
 export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   const owner = useWorkspaceDetailOwner(workspaceId)
-  const isActive = useTabFrameActive()
+  const isActive = useSurfaceActive()
 
   if (!owner.workspace) {
     return (

@@ -140,7 +140,7 @@ function issue(id: string, number: number, title: string): KanbanIssue {
     createdById: '__self__',
     sourceChatSessionId: null,
     delegateAgentId: null,
-    delegateAgentProfileId: null,
+    delegateProviderTargetId: null,
     contextRefs: '[]',
     order: 0,
     createdAt: now,

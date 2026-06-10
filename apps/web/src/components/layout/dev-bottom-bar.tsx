@@ -1,4 +1,4 @@
-import { buildHash } from '@cradle/tabs-next'
+import { useRouterState } from '@tanstack/react-router'
 import { MonitorIcon, RefreshCwIcon } from 'lucide-react'
 import { useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -6,7 +6,6 @@ import { useTranslation } from 'react-i18next'
 import { Switch } from '~/components/ui/switch'
 import { isElectron } from '~/lib/electron'
 import { getReactDiagnosticsApi } from '~/lib/react-diagnostics'
-import { cradleRegistry, useCradleTabStore } from '~/tabs/registry'
 
 export function DevBottomBar() {
   const { t } = useTranslation('chrome')
@@ -16,9 +15,11 @@ export function DevBottomBar() {
     reactDiagnostics.readEnabled,
     reactDiagnostics.readEnabled,
   )
-  const activeRouteHash = useCradleTabStore((state) => {
-    const activeTab = state.tabs.find(tab => tab.id === state.activeTabId)
-    return activeTab ? buildHash(cradleRegistry, activeTab.type, activeTab.params) : '/'
+  const activeRouteHash = useRouterState({
+    select: (state) => {
+      const location = state.location as { href?: string, pathname: string }
+      return location.href ?? location.pathname
+    },
   })
 
   return (

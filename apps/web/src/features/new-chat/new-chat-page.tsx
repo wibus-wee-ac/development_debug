@@ -1,4 +1,3 @@
-import { useTabFrameActive } from '@cradle/tabs-next'
 import { useQueryClient } from '@tanstack/react-query'
 import type { FileUIPart } from 'ai'
 import type { TFunction } from 'i18next'
@@ -25,11 +24,11 @@ import { sessionsQueryKey, updateSessionInSessionLists, useWorkspaceSessions } f
 import { useAddWorkspace, useWorkspaces, WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
+import { openChatSession } from '~/navigation/navigation-commands'
+import { useSurfaceActive } from '~/navigation/surface-activity-context'
+import { openTearoffSessionWindow } from '~/navigation/tearoff-sessions'
 import { useNewChatStore } from '~/store/new-chat'
 import { useSessionLayoutStore } from '~/store/session-layout'
-import { useCradleTabStore } from '~/tabs/registry'
-import { openTearoffSessionWindow } from '~/tabs/tearoff-tabs'
-import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 /* ─── Constants ───────────────────────────────────────────────────────── */
 
@@ -70,7 +69,6 @@ function timeAgo(timestamp: number, now: number, t: NewChatTranslation): string 
 function useNewChatPageOwner(active: boolean) {
   const { t } = useTranslation('new-chat')
   const { workspaces, loading: workspacesLoading } = useWorkspaces()
-  const { openTab } = useCradleNavigation()
   const { addFromPicker, adding: addingWorkspace } = useAddWorkspace()
   const queryClient = useQueryClient()
 
@@ -118,13 +116,13 @@ function useNewChatPageOwner(active: boolean) {
 
   const openCreatedChatSession = useCallback(async (sessionId: string, target: 'tab' | 'window') => {
     if (target === 'window') {
-      const openedWindow = await openTearoffSessionWindow(useCradleTabStore, sessionId)
+      const openedWindow = await openTearoffSessionWindow(sessionId)
       if (openedWindow) {
         return
       }
     }
-    void openTab('chat', { sessionId })
-  }, [openTab])
+    openChatSession(sessionId)
+  }, [])
 
   const handleSendToTarget = useCallback(async (
     text: string,
@@ -256,8 +254,8 @@ function useNewChatPageOwner(active: boolean) {
   }, [])
 
   const handleResumeSession = useCallback((sessionId: string) => {
-    void openTab('chat', { sessionId })
-  }, [openTab])
+    openChatSession(sessionId)
+  }, [])
 
   return {
     draft,
@@ -471,7 +469,7 @@ function NewChatLayoutSlots({
 }
 
 export function NewChatPage() {
-  const isActive = useTabFrameActive()
+  const isActive = useSurfaceActive()
   const owner = useNewChatPageOwner(isActive)
   const hasWorkspace = !!owner.selectedWorkspace?.path
   const isPlanMode = useNewChatStore(s => s.lastRuntimeSettings.interactionMode === 'plan')

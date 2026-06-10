@@ -107,11 +107,11 @@ export function createChatContextProvider(): ContextProvider {
   return {
     owner: 'chat',
     readContext(input) {
-      if (input.activeTabType !== 'chat') {
+      if (input.activeSurfaceType !== 'chat') {
         return []
       }
 
-      const sessionId = input.activeTabParams.sessionId
+      const sessionId = input.activeSurfaceParams.sessionId
       if (!sessionId) {
         return []
       }

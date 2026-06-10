@@ -23,7 +23,7 @@ export function AppFooter({ className }: { className?: string }) {
   useShortcut('toggle-jarvis', { meta: true, key: 'j' }, () => setJarvisOpen(prev => !prev))
   const handleHistorySessionSelected = () => setJarvisOpen(true)
 
-  // "Ask Jarvis" is the active tab when no session is selected
+  // "Ask Jarvis" is the active Jarvis entry when no session is selected.
   const isNewSessionActive = !activeSessionId
 
   return (

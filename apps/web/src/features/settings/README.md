@@ -3,7 +3,7 @@
 # Features/Settings
 
 应用设置模块负责渲染全局配置页面。
-设置页由 app shell 作为当前 active tab 的临时 overlay 展示；侧边栏只处理 section 导航，具体设置能力由各 feature 页面承载。
+设置页由 TanStack Router 的 `/settings/$section` route 展示；侧边栏只处理 section 导航，具体设置能力由各 feature 页面承载。
 新增设置分类时，应同步维护导航映射与本目录的文件清单。
 
 ## Files
@@ -17,7 +17,7 @@
 - **external-work-import-settings.tsx**: Import 设置页，只扫描 Server 与 Electron 设备上的 Claude / Codex 会话文件，合并去重后提交到 Server 导入为 Cradle-owned chat sessions。
 - **jarvis-settings.tsx**: Jarvis 设置页，复用 composer toolbar 的 runtime/provider/model/thinking 级联选择器配置系统助手模型；runtime list comes from Chat Runtime catalog filtered to `jarvis` surfaces, and Settings Jarvis 首屏在 preferences、provider targets 与当前 provider target cached models 查询成功后记录 performance gate
 - **model-registry-settings.tsx**: 全局模型 registry mappings 设置页，管理 Cradle-owned model ID 到 models.dev/manual registry entry 的映射，供所有 provider target 与 custom model 统一 enrichment；采用居中列表布局（`SettingsPage` + 列表卡片），每个 mapping 一行内联展示 registry ID、family、context window 与 cost，编辑复用 `ModelRegistryMappingDialog`，删除内联。
-- **settings-overlay-store.ts**: (moved to `~/store/settings-overlay.ts`) Shared overlay state — records which tab currently hosts the settings overlay plus the active section selection; also carries one-shot Chronicle memory/knowledge and Agent focus targets into Settings-owned panels; replaces layout-store ownership for settings UI state; emits Settings Agents, Settings Appearance, Settings Chronicle, Settings Desktop, Settings Jarvis, Settings Providers, and Settings Support render-requested performance marks when those sections are requested
+- **settings-overlay-store.ts**: (moved to `~/store/settings-overlay.ts`) Shared Settings focus state — records active section selection and one-shot Chronicle memory/knowledge and Agent focus targets for Settings-owned panels; Settings visibility is owned by the `/settings/$section` route; emits Settings Agents, Settings Appearance, Settings Chronicle, Settings Desktop, Settings Jarvis, Settings Providers, and Settings Support render-requested performance marks when those sections are requested
 - **settings-overlay-store.test.ts**: (moved to `~/store/settings-overlay.test.ts`) Store-level regression coverage for Chronicle and Agent focus target write/clear behavior
 - **settings-content.tsx**: 根据当前 section 渲染对应设置页面；production 下收到 Chronicle/记录 section 会回退到 Appearance。
 - **settings-content-loader.ts**: Settings content 的共享 lazy loader 与 intent preload 入口，供 app shell 和 sidebar 在打开设置前预热

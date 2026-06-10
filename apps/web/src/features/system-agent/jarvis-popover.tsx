@@ -22,8 +22,8 @@ import { CENTER_COLUMN_EXPANDED_SCALE, CENTER_COLUMN_EXPANDED_Y } from '~/compon
 import { Button } from '~/components/ui/button'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { cn } from '~/lib/cn'
+import { useSurfaceStore } from '~/navigation/surface-store'
 import { chatSelectors, useChatStore } from '~/store/chat'
-import { useCradleTabStore } from '~/tabs/registry'
 
 import { MessageBubble } from '../chat/rendering/message-bubble'
 import { useChatSession } from '../chat/session/use-chat-session'
@@ -119,14 +119,14 @@ export function JarvisPopover({
   const addSession = useJarvisUiStore(s => s.addSession)
   const includeContext = useJarvisUiStore(s => s.includeContext)
   const setIncludeContext = useJarvisUiStore(s => s.setIncludeContext)
-  const activeAmbientContext = useCradleTabStore(useShallow((state) => {
-    const activeTab = state.activeTabId
-      ? state.tabs.find(tab => tab.id === state.activeTabId) ?? null
+  const activeAmbientContext = useSurfaceStore(useShallow((state) => {
+    const activeSurface = state.activeSurfaceId
+      ? state.surfaces.find(surface => surface.id === state.activeSurfaceId) ?? null
       : null
 
     return {
-      label: activeTab ? activeTab.label || activeTab.type : null,
-      type: activeTab?.type ?? null,
+      label: activeSurface ? activeSurface.title || activeSurface.kind : null,
+      type: activeSurface?.kind ?? null,
     }
   }))
 

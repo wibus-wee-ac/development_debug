@@ -123,6 +123,24 @@ export interface BrowserContextUsageReportTab {
   favicon: null
 }
 
+export interface BrowserPanelLauncherTab {
+  kind: 'launcher'
+  id: string
+  title: string
+  loading: false
+  favicon: null
+}
+
+export interface BrowserTuiTab {
+  kind: 'tui'
+  id: string
+  ptyId: string
+  cwd: string
+  title: string
+  loading: false
+  favicon: null
+}
+
 export interface BrowserPlanDocumentTab {
   kind: 'plan-document'
   id: string
@@ -152,6 +170,8 @@ export type BrowserPanelTab
     | BrowserSubagentTab
     | BrowserSideConversationTab
     | BrowserContextUsageReportTab
+    | BrowserPanelLauncherTab
+    | BrowserTuiTab
     | BrowserPlanDocumentTab
     | BrowserPlanRefineTab
 
@@ -427,6 +447,13 @@ interface BrowserPanelState {
     sessionTitle?: string | null
     ownerId?: string | null
   }) => string
+  openLauncherTab: (ownerId?: string | null) => string
+  openTuiTab: (input: {
+    cwd: string
+    title?: string
+    ownerId?: string | null
+  }) => string
+  updateTuiTabTitle: (id: string, title: string, ownerId?: string | null) => void
   openPlanDocumentTab: (input: {
     sessionId?: string | null
     toolCallId: string
@@ -665,6 +692,29 @@ function createLocalBrowserTab(url = 'about:blank', source?: BrowserTabSource): 
     favicon: null,
     lastCommittedUrl: null,
     lastError: null,
+  }
+}
+
+function createLauncherTab(): BrowserPanelLauncherTab {
+  return {
+    kind: 'launcher',
+    id: `browser-panel-launcher-${++localTabCounter}`,
+    title: 'New Tab',
+    loading: false,
+    favicon: null,
+  }
+}
+
+function createTuiTab(ownerId: string, input: { cwd: string, title?: string }): BrowserTuiTab {
+  const index = ++localTabCounter
+  return {
+    kind: 'tui',
+    id: `browser-tui-${index}`,
+    ptyId: `browser-panel:${ownerId}:${index}`,
+    cwd: input.cwd,
+    title: input.title ?? 'Terminal',
+    loading: false,
+    favicon: null,
   }
 }
 
@@ -1031,6 +1081,53 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
           })
         })
         return tab.id
+      },
+
+      openLauncherTab: (ownerIdInput) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        const tab = createLauncherTab()
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            tabs: [...ownerState.tabs, tab],
+            activeTabId: tab.id,
+          })
+        })
+        return tab.id
+      },
+
+      openTuiTab: ({ cwd, title, ownerId: ownerIdInput }) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        const tab = createTuiTab(ownerId, { cwd, title })
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            tabs: [...ownerState.tabs, tab],
+            activeTabId: tab.id,
+          })
+        })
+        return tab.id
+      },
+
+      updateTuiTabTitle: (id, title, ownerIdInput) => {
+        const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
+        const trimmed = title.trim()
+        if (!trimmed) {
+          return
+        }
+
+        set((state) => {
+          const ownerState = getOwnerState(state, ownerId)
+          return applyOwnerState(state, ownerId, {
+            ...ownerState,
+            tabs: ownerState.tabs.map(tab =>
+              tab.id === id && tab.kind === 'tui' && tab.title !== trimmed
+                ? { ...tab, title: trimmed }
+                : tab),
+          })
+        })
       },
 
       openPlanDocumentTab: ({ sessionId, toolCallId, title, text, ownerId: ownerIdInput }) => {

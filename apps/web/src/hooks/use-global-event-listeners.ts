@@ -9,6 +9,8 @@ import { runtimeSettingsQueryKey } from '~/features/chat/commands/runtime-settin
 import { runtimeSessionStatusQueryKey } from '~/features/chat/runtime/use-runtime-session-status'
 import { onAnyChatRunEvent, onChatRunSettled } from '~/features/chat/transport/sse-chat-transport'
 import { isSessionsQueryKey, updateSessionReadState } from '~/features/workspace/use-session'
+import { activateAdjacentSurface, closeActiveSurface, openNewChat } from '~/navigation/navigation-commands'
+import { useSurfaceStore } from '~/navigation/surface-store'
 import {
   BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL,
   handleBrowserPanelTabShortcut,
@@ -16,25 +18,22 @@ import {
 } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 import { useSessionActivityStore } from '~/store/session-activity'
-import { useSettingsOverlayStore } from '~/store/settings-overlay'
-import { useCradleTabStore } from '~/tabs/registry'
 
 function deriveVisibleChatSessionId(args: {
-  activeTabId: string | null
-  settingsTabId: string | null
-  tabs: Array<{ id: string, type: string, params?: Record<string, unknown> }>
+  activeSurfaceId: string | null
+  surfaces: Array<{ id: string, kind: string, route: { params?: Record<string, unknown> } }>
 }) {
-  const { activeTabId, settingsTabId, tabs } = args
-  if (!activeTabId || settingsTabId === activeTabId) {
+  const { activeSurfaceId, surfaces } = args
+  if (!activeSurfaceId) {
     return null
   }
 
-  const activeTab = tabs.find(tab => tab.id === activeTabId)
-  if (activeTab?.type !== 'chat') {
+  const activeSurface = surfaces.find(surface => surface.id === activeSurfaceId)
+  if (activeSurface?.kind !== 'chat') {
     return null
   }
 
-  const sessionId = activeTab.params?.sessionId
+  const sessionId = activeSurface.route.params?.sessionId
   return typeof sessionId === 'string' ? sessionId : null
 }
 
@@ -56,11 +55,9 @@ export function useGlobalEventListeners() {
   const queryClient = useQueryClient()
   const toggleBottomPanel = useLayoutStore(s => s.toggleBottomPanel)
   const toggleAside = useLayoutStore(s => s.toggleAside)
-  const settingsTabId = useSettingsOverlayStore(s => s.settingsTabId)
-  const visibleSessionId = useCradleTabStore(s => deriveVisibleChatSessionId({
-    activeTabId: s.activeTabId,
-    settingsTabId,
-    tabs: s.tabs,
+  const visibleSessionId = useSurfaceStore(s => deriveVisibleChatSessionId({
+    activeSurfaceId: s.activeSurfaceId,
+    surfaces: s.surfaces,
   }))
 
   // Panel + tab keyboard shortcuts
@@ -92,36 +89,24 @@ export function useGlobalEventListeners() {
         return
       }
 
-      const store = useCradleTabStore.getState()
-
-      // Cmd+W → close active tab
+      // Cmd+W -> close active surface
       if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key === 'w') {
         e.preventDefault()
-        if (store.activeTabId) {
-          store.closeTab(store.activeTabId)
-        }
+        closeActiveSurface()
         return
       }
 
-      // Cmd+T → new tab
+      // Cmd+T -> new chat surface
       if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key === 't') {
         e.preventDefault()
-        store.openTab('new-chat')
+        openNewChat()
         return
       }
 
-      // Ctrl+Tab / Ctrl+Shift+Tab → cycle tabs
+      // Ctrl+Tab / Ctrl+Shift+Tab -> cycle surfaces
       if (e.ctrlKey && !e.metaKey && !e.altKey && e.key === 'Tab') {
         e.preventDefault()
-        const { tabs, activeTabId } = store
-        if (tabs.length <= 1) {
-          return
-        }
-        const currentIndex = tabs.findIndex(t => t.id === activeTabId)
-        const nextIndex = e.shiftKey
-          ? (currentIndex - 1 + tabs.length) % tabs.length
-          : (currentIndex + 1) % tabs.length
-        store.setActiveTab(tabs[nextIndex].id)
+        activateAdjacentSurface(e.shiftKey ? -1 : 1)
       }
     }
     window.addEventListener('keydown', handleKeyDown, { capture: true })

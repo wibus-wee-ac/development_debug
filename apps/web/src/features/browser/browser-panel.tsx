@@ -22,18 +22,37 @@ import {
   RefreshCwIcon,
   SendIcon,
   ServerIcon,
+  SquareTerminalIcon,
   Trash2Icon,
   XIcon,
 } from 'lucide-react'
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
-import { useCallback, useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
+import {
+  lazy,
+  Suspense,
+  useCallback,
+  useEffect,
+  useEffectEvent,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react'
 
+import { deleteTerminalSessionsShellByPtyId } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
+import {
+  Empty,
+  EmptyContent,
+  EmptyHeader,
+  EmptyMedia,
+  EmptyTitle,
+} from '~/components/ui/empty'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import {
   submitChatComposerFileIngress,
   submitChatPromptIngress,
 } from '~/features/chat/prompt-ingress'
+import type { TerminalMetadata } from '~/features/tui/terminal-metadata'
 import { WorkspaceFileEditor } from '~/features/workspace/workspace-file-editor'
 import { WorkspaceFilePreview } from '~/features/workspace/workspace-file-preview'
 import { cn } from '~/lib/cn'
@@ -45,6 +64,7 @@ import type {
   BrowserAnnotationRecord,
   BrowserPanelTab,
   BrowserTabState,
+  BrowserTuiTab,
   BrowserWebTab,
 } from '~/store/browser-panel'
 import {
@@ -54,6 +74,7 @@ import {
   selectOwnerBrowserState,
   useBrowserPanelStore,
 } from '~/store/browser-panel'
+import { useLayoutStore } from '~/store/layout'
 
 import { releaseSideConversation } from '../chat/commands/chat-response-command'
 import type { BrowserAnnotationAdjustmentApplyDetail } from './browser-annotation-adjustment-panel'
@@ -89,6 +110,7 @@ interface BrowserPanelProps {
   ownerId?: string | null
   activeSessionId?: string | null
   activeSessionTitle?: string | null
+  terminalCwd?: string | null
   nativeBoundsPaused?: boolean
   onCloseLastTab?: (ownerId: string) => void
 }
@@ -167,6 +189,13 @@ const EMPTY_BROWSER_ANNOTATION_LAYOUT_HINTS_BY_TAB_ID: Record<
   string,
   BrowserAnnotationLayoutHint[] | undefined
 > = {}
+
+function loadBrowserTuiShellView() {
+  return import('~/features/tui/shell-view').then(module => ({ default: module.ShellView }))
+}
+
+const BrowserTuiShellView = lazy(loadBrowserTuiShellView)
+
 interface BrowserAnnotationRuntimeSession {
   tabId: string
   editingAnnotationId: string | null
@@ -313,6 +342,10 @@ function isBrowserPanelTab(tab: BrowserPanelTab): tab is BrowserWebTab {
   return tab.kind === 'browser'
 }
 
+function isBrowserTuiTab(tab: BrowserPanelTab): tab is BrowserTuiTab {
+  return tab.kind === 'tui'
+}
+
 function isPlanRefineEditorDirtyEvent(event: Event): event is CustomEvent<PlanRefineEditorDirtyDetail> {
   return (
     event instanceof CustomEvent
@@ -432,6 +465,58 @@ const BrowserNewTabSurface = ({
         )}
       </div>
     </div>
+  )
+}
+
+interface BrowserPanelCreateSurfaceProps {
+  canCreateTui: boolean
+  browserPending: boolean
+  onCreateBrowser: () => void
+  onCreateTui: () => void
+}
+
+function BrowserPanelCreateSurface({
+  canCreateTui,
+  browserPending,
+  onCreateBrowser,
+  onCreateTui,
+}: BrowserPanelCreateSurfaceProps) {
+  return (
+    <Empty className="absolute inset-0 rounded-none border-0 bg-background">
+      <EmptyHeader>
+        <EmptyMedia variant="icon">
+          <PanelTopIcon className="size-4" aria-hidden="true" />
+        </EmptyMedia>
+        <EmptyTitle>New Tab</EmptyTitle>
+      </EmptyHeader>
+      <EmptyContent className="grid max-w-xs grid-cols-2 gap-2">
+        <Button
+          type="button"
+          variant="outline"
+          className="h-20 flex-col gap-2 whitespace-normal px-3 py-3 text-xs"
+          onClick={onCreateBrowser}
+          disabled={browserPending}
+          aria-label="Create browser tab"
+        >
+          {browserPending
+            ? <LoaderCircleIcon className="size-4 animate-spin" />
+            : <GlobeIcon className="size-4" />}
+          <span>Browser</span>
+        </Button>
+        <Button
+          type="button"
+          variant="outline"
+          className="h-20 flex-col gap-2 whitespace-normal px-3 py-3 text-xs"
+          onClick={onCreateTui}
+          disabled={!canCreateTui}
+          aria-label="Create terminal tab"
+          title={canCreateTui ? 'Terminal' : 'Open a workspace to create a terminal.'}
+        >
+          <SquareTerminalIcon className="size-4" />
+          <span>Terminal</span>
+        </Button>
+      </EmptyContent>
+    </Empty>
   )
 }
 
@@ -1134,6 +1219,7 @@ export function BrowserPanel({
   ownerId = null,
   activeSessionId = null,
   activeSessionTitle = null,
+  terminalCwd = null,
   onCloseLastTab,
 }: BrowserPanelProps) {
   const resolvedOwnerId = ownerId ?? DEFAULT_BROWSER_PANEL_OWNER_ID
@@ -1153,6 +1239,9 @@ export function BrowserPanel({
   const setActiveTab = useBrowserPanelStore(state => state.setActiveTab)
   const closePanelTab = useBrowserPanelStore(state => state.closeTab)
   const openWorkspaceFileTab = useBrowserPanelStore(state => state.openWorkspaceFileTab)
+  const openLauncherTab = useBrowserPanelStore(state => state.openLauncherTab)
+  const openTuiTab = useBrowserPanelStore(state => state.openTuiTab)
+  const updateTuiTabTitle = useBrowserPanelStore(state => state.updateTuiTabTitle)
   const openContextUsageReportTab = useBrowserPanelStore(
     state => state.openContextUsageReportTab,
   )
@@ -1165,6 +1254,7 @@ export function BrowserPanel({
   const setAnnotationAdjustmentSession = useBrowserPanelStore(
     state => state.setAnnotationAdjustmentSession,
   )
+  const openAsideTab = useLayoutStore(state => state.openAsideTab)
   const setAnnotationTrayCollapsed = useBrowserPanelStore(
     state => state.setAnnotationTrayCollapsed,
   )
@@ -1188,6 +1278,7 @@ export function BrowserPanel({
   const lastNativeBoundsSignatureRef = useRef<string | null>(null)
   const localServerDiscoveryRequestRef = useRef(0)
   const newTabRequestInFlightRef = useRef(false)
+  const tuiPtyIdsByOwnerRef = useRef<Record<string, Set<string> | undefined>>({})
 
   const [addressValue, setAddressValue] = useState('')
   const [isEditingAddress, setIsEditingAddress] = useState(false)
@@ -1219,6 +1310,7 @@ export function BrowserPanel({
   const activeBrowserTabId = activeBrowserTab?.id ?? null
   const activeBrowserTabUrl = activeBrowserTab?.lastCommittedUrl ?? activeBrowserTab?.url ?? null
   const activeBrowserTabIsBlank = isBrowserBlankTab(activeBrowserTab)
+  const canCreateTuiTab = Boolean(terminalCwd)
   const activeBrowserAnnotations = ownerAnnotations.filter(annotation => annotation.tabId === activeBrowserTabId)
   const activeBrowserAnnotationLayoutHints = activeBrowserTabId
     ? (
@@ -1291,6 +1383,21 @@ export function BrowserPanel({
       localServerDiscoveryRequestRef.current += 1
     }
   }, [])
+
+  useEffect(() => {
+    const previousPtyIds = tuiPtyIdsByOwnerRef.current[resolvedOwnerId] ?? new Set<string>()
+    const nextPtyIds = new Set(tabs.filter(isBrowserTuiTab).map(tab => tab.ptyId))
+
+    for (const ptyId of previousPtyIds) {
+      if (!nextPtyIds.has(ptyId)) {
+        void deleteTerminalSessionsShellByPtyId({
+          path: { ptyId },
+        }).catch(() => {})
+      }
+    }
+
+    tuiPtyIdsByOwnerRef.current[resolvedOwnerId] = nextPtyIds
+  }, [resolvedOwnerId, tabs])
 
   useEffect(() => {
     if (!activeBrowserTabIsBlank) {
@@ -1699,35 +1806,7 @@ export function BrowserPanel({
   }, [activeSessionId, resolvedOwnerId])
 
   const handleNewTab = () => {
-    const bridge = readBrowserBridge()
-    if (newTabRequestInFlightRef.current) {
-      return
-    }
-    if (!bridge) {
-      createBrowserTab('about:blank', {
-        sessionId: activeSessionId,
-        sessionTitle: activeSessionTitle,
-      }, resolvedOwnerId)
-      return
-    }
-    newTabRequestInFlightRef.current = true
-    setNewTabRequestPending(true)
-    void runBrowserAction(async () => {
-      const nextState = browserState?.open
-        ? await bridge.newTab({
-          threadId: resolvedOwnerId,
-          url: 'about:blank',
-          activate: true,
-        })
-        : await bridge.open({ threadId: resolvedOwnerId, initialUrl: 'about:blank' })
-      upsertOwnerState(nextState)
-      if (nextState.activeTabId) {
-        setActiveTab(nextState.activeTabId, resolvedOwnerId)
-      }
-    }).finally(() => {
-      newTabRequestInFlightRef.current = false
-      setNewTabRequestPending(false)
-    })
+    openLauncherTab(resolvedOwnerId)
   }
 
   const closeLocalPanelTab = useCallback((tabId: string) => {
@@ -1780,6 +1859,70 @@ export function BrowserPanel({
     runBrowserAction,
     upsertOwnerState,
   ])
+
+  const handleCreateBrowserTab = (sourceTabId?: string) => {
+    const bridge = readBrowserBridge()
+    if (newTabRequestInFlightRef.current) {
+      return
+    }
+    if (!bridge) {
+      createBrowserTab('about:blank', {
+        sessionId: activeSessionId,
+        sessionTitle: activeSessionTitle,
+      }, resolvedOwnerId)
+      if (sourceTabId) {
+        closeLocalPanelTab(sourceTabId)
+      }
+      return
+    }
+    newTabRequestInFlightRef.current = true
+    setNewTabRequestPending(true)
+    void runBrowserAction(async () => {
+      const nextState = browserState?.open
+        ? await bridge.newTab({
+          threadId: resolvedOwnerId,
+          url: 'about:blank',
+          activate: true,
+        })
+        : await bridge.open({ threadId: resolvedOwnerId, initialUrl: 'about:blank' })
+      upsertOwnerState(nextState)
+      if (nextState.activeTabId) {
+        setActiveTab(nextState.activeTabId, resolvedOwnerId)
+      }
+      if (sourceTabId) {
+        closeLocalPanelTab(sourceTabId)
+      }
+    }).finally(() => {
+      newTabRequestInFlightRef.current = false
+      setNewTabRequestPending(false)
+    })
+  }
+
+  const handleCreateTuiTab = (sourceTabId?: string) => {
+    if (!terminalCwd) {
+      setLocalError('Open a workspace to create a terminal tab.')
+      return
+    }
+
+    void loadBrowserTuiShellView()
+    openTuiTab({
+      cwd: terminalCwd,
+      ownerId: resolvedOwnerId,
+    })
+    if (sourceTabId) {
+      closeLocalPanelTab(sourceTabId)
+    }
+  }
+
+  const handleTuiMetadata = (tabId: string, metadata: TerminalMetadata) => {
+    if (metadata.title) {
+      updateTuiTabTitle(tabId, metadata.title, resolvedOwnerId)
+    }
+  }
+
+  const handleTuiExited = (tabId: string) => {
+    closeLocalPanelTab(tabId)
+  }
 
   const handleCloseTab = (tabId: string) => {
       const tab = tabs.find(item => item.id === tabId)
@@ -2195,6 +2338,7 @@ export function BrowserPanel({
         selectedElement: annotation.anchor.element,
         designChanges: annotation.designChange ?? {},
       })
+      openAsideTab('adjustment')
     }
     else {
       setAnnotationAdjustmentSession(null)
@@ -2209,6 +2353,7 @@ export function BrowserPanel({
     activeBrowserTabId,
     resolvedOwnerId,
     runBrowserAction,
+    openAsideTab,
     setAnnotationAdjustmentSession,
   ])
 
@@ -2241,10 +2386,11 @@ export function BrowserPanel({
           setAnnotationAdjustmentSession({
             ownerId: resolvedOwnerId,
             tabId: event.tabId,
-            annotationId: annotationSession?.editingAnnotationId ?? null,
+            annotationId: event.runtimeAnnotationId ?? annotationSession?.editingAnnotationId ?? null,
             selectedElement: event.selectedElement,
             designChanges: event.designChange ?? {},
           })
+          openAsideTab('adjustment')
         }
         else {
           setAnnotationAdjustmentSession(null)
@@ -2318,6 +2464,7 @@ export function BrowserPanel({
     handleEditSavedAnnotation,
     handleToggleAnnotation,
     handleRuntimeAnnotationCommit,
+    openAsideTab,
     resolvedOwnerId,
     saveAnnotation,
     setAnnotationAdjustmentSession,
@@ -2510,6 +2657,12 @@ export function BrowserPanel({
                 {tab.kind === 'context-usage-report' && (
                   <GaugeIcon className="size-3 shrink-0 text-muted-foreground/60" />
                 )}
+                {tab.kind === 'launcher' && (
+                  <PlusIcon className="size-3 shrink-0 text-muted-foreground/60" />
+                )}
+                {tab.kind === 'tui' && (
+                  <SquareTerminalIcon className="size-3 shrink-0 text-muted-foreground/60" />
+                )}
                 {tab.kind === 'plan-document' && (
                   <PanelTopIcon className="size-3 shrink-0 text-muted-foreground/60" />
                 )}
@@ -2585,12 +2738,10 @@ export function BrowserPanel({
             type="button"
             className="flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground/70 transition-colors hover:bg-foreground/5 hover:text-foreground disabled:opacity-40"
             onClick={handleNewTab}
-            disabled={newTabRequestPending}
-            aria-label="New browser tab"
+            aria-label="New panel tab"
+            title="New panel tab"
           >
-            {newTabRequestPending
-              ? <LoaderCircleIcon className="size-3.5 animate-spin" />
-              : <PlusIcon className="size-3.5" />}
+            <PlusIcon className="size-3.5" />
           </button>
         </div>
         <button
@@ -2865,6 +3016,36 @@ export function BrowserPanel({
           />
         )}
 
+        {activePanelTab?.kind === 'launcher' && (
+          <BrowserPanelCreateSurface
+            canCreateTui={canCreateTuiTab}
+            browserPending={newTabRequestPending}
+            onCreateBrowser={() => handleCreateBrowserTab(activePanelTab.id)}
+            onCreateTui={() => handleCreateTuiTab(activePanelTab.id)}
+          />
+        )}
+
+        {activePanelTab?.kind === 'tui' && (
+          <div className="absolute inset-0 bg-background">
+            <Suspense
+              fallback={(
+                <div className="flex h-full items-center justify-center text-xs text-muted-foreground">
+                  Preparing terminal
+                </div>
+              )}
+            >
+              <BrowserTuiShellView
+                ptyId={activePanelTab.ptyId}
+                cwd={activePanelTab.cwd}
+                visible={activePanelTab.id === activePanelTabId}
+                stopOnUnmount={false}
+                onMetadata={metadata => handleTuiMetadata(activePanelTab.id, metadata)}
+                onExited={() => handleTuiExited(activePanelTab.id)}
+              />
+            </Suspense>
+          </div>
+        )}
+
         {activePanelTab?.kind === 'plan-document' && (
           <PlanDocumentViewer
             title={activePanelTab.title}
@@ -2881,17 +3062,12 @@ export function BrowserPanel({
         )}
 
         {!activePanelTab && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center gap-3 text-muted-foreground/70">
-            <GlobeIcon className="size-9 opacity-40" />
-            <button
-              type="button"
-              onClick={handleNewTab}
-              disabled={newTabRequestPending}
-              className="rounded-md bg-foreground/5 px-3 py-1.5 text-xs font-medium text-foreground transition-colors hover:bg-foreground/10 disabled:opacity-40"
-            >
-              New Tab
-            </button>
-          </div>
+          <BrowserPanelCreateSurface
+            canCreateTui={canCreateTuiTab}
+            browserPending={newTabRequestPending}
+            onCreateBrowser={() => handleCreateBrowserTab()}
+            onCreateTui={() => handleCreateTuiTab()}
+          />
         )}
       </div>
     </div>

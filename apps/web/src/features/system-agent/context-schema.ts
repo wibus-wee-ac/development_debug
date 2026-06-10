@@ -7,17 +7,17 @@
  */
 
 export interface SystemAgentContext {
-  /** Current active tab info */
-  activeTab: {
+  /** Current active route surface info */
+  activeSurface: {
     type: string
     params: Record<string, string | undefined>
     label: string
   } | null
 
-  /** All open tabs (just type + label for awareness) */
-  openTabs: Array<{ type: string, label: string }>
+  /** All open route surfaces (just type + label for awareness) */
+  openSurfaces: Array<{ type: string, label: string }>
 
-  /** If user is in a chat tab, the session context */
+  /** If user is in a chat surface, the session context */
   chatContext: {
     sessionId: string
     status: 'idle' | 'streaming' | 'error'
@@ -32,7 +32,7 @@ export interface SystemAgentContext {
     asideOpen: boolean
     asideActiveTab: string
     bottomPanelOpen: boolean
-    settingsTabId: string | null
+    settingsOpen: boolean
     settingsSection: string
   }
 

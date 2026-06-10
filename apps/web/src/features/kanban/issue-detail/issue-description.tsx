@@ -13,11 +13,10 @@ import type { KanbanBoard, KanbanIssue } from '~/features/kanban/types'
 import { useWorkspaceSessions } from '~/features/workspace/use-session'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
+import { openChatSession, openKanbanBoard, openSettingsSection, openWorkspaceDetail } from '~/navigation/navigation-commands'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
-import { useCradleTabStore } from '~/tabs/registry'
-import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
 
 import { formatIssueId } from '../shared/format-issue-id'
 import { useAllBoards, useIssues, useMilestones, useStatuses } from '../use-kanban'
@@ -57,7 +56,7 @@ const IssueSearchListSchema = z
         createdById: z.string(),
         sourceChatSessionId: z.string().nullable(),
         delegateAgentId: z.string().nullable(),
-        delegateAgentProfileId: z.string().nullable(),
+        delegateProviderTargetId: z.string().nullable(),
         contextRefs: z.string(),
         order: z.number(),
         createdAt: z.number(),
@@ -169,7 +168,6 @@ function getFirstBoardForWorkspace(
 }
 
 export function IssueDescription({ issue, onUpdate, readOnly = false }: IssueDescriptionProps) {
-  const { openTab } = useCradleNavigation()
   const openWorkspaceFileTab = useBrowserPanelStore(state => state.openWorkspaceFileTab)
   const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
   const { workspaces } = useWorkspaces()
@@ -181,7 +179,6 @@ export function IssueDescription({ issue, onUpdate, readOnly = false }: IssueDes
   const { data: boards = [] } = useAllBoards()
   const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
   const setAgentFocusTarget = useSettingsOverlayStore(s => s.setAgentFocusTarget)
-  const openSettings = useSettingsOverlayStore(s => s.openSettings)
 
   const sessionMessageCounts = useQueries({
     queries: sessions.slice(0, 20).map(session => ({
@@ -357,17 +354,19 @@ export function IssueDescription({ issue, onUpdate, readOnly = false }: IssueDes
   const handleMentionOpen = (attrs: SmartMentionAttrs) => {
     if (attrs.kind === 'issue') {
       const board = getFirstBoardForWorkspace(boards, attrs.workspaceId ?? issue.workspaceId)
-      openTab('kanban-board', board ? { boardId: board.id, issue: attrs.id } : {})
+      if (board) {
+        openKanbanBoard({ boardId: board.id, issueId: attrs.id })
+      }
       return
     }
 
     if (attrs.kind === 'session') {
-      openTab('chat', { sessionId: attrs.id })
+      openChatSession(attrs.id)
       return
     }
 
     if (attrs.kind === 'workspace') {
-      openTab('workspace-detail', { workspaceId: attrs.id })
+      openWorkspaceDetail(attrs.id)
       return
     }
 
@@ -382,20 +381,17 @@ export function IssueDescription({ issue, onUpdate, readOnly = false }: IssueDes
     }
 
     if (attrs.kind === 'agent') {
-      const tabStore = useCradleTabStore.getState()
-      const activeTabId
-        = tabStore.activeTabId && tabStore.tabs.some(tab => tab.id === tabStore.activeTabId)
-          ? tabStore.activeTabId
-          : tabStore.openTab('home', {}, { pinned: true })
       setSettingsSection('agents')
       setAgentFocusTarget({ id: attrs.id })
-      openSettings(activeTabId)
+      openSettingsSection('agents')
       return
     }
 
     if (attrs.kind === 'milestone') {
       const board = getFirstBoardForWorkspace(boards, attrs.workspaceId ?? issue.workspaceId)
-      openTab('kanban-board', board ? { boardId: board.id, milestoneId: attrs.id } : {})
+      if (board) {
+        openKanbanBoard({ boardId: board.id, milestoneId: attrs.id })
+      }
     }
   }
 

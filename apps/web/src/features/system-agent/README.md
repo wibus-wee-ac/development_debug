@@ -27,6 +27,6 @@ Jarvis stores the selected runtime id in preferences and creates hidden Chat Run
 - **jarvis-popover-loader.ts**: Jarvis popover 的共享 lazy loader 与 intent preload 入口，供 footer hover、focus、click 和 shortcut 复用
 - **jarvis-ui-store.ts**: Feature-owned Jarvis UI state for expand/collapse behavior, persisted include-context preference, persisted and de-duplicated Jarvis footer tab sessions, active Jarvis session selection, close-tab semantics that do not delete persisted sessions, and cross-window synchronization of the persisted Jarvis tab slice
 - **jarvis-ui-store.test.ts**: Unit coverage for Jarvis footer tab cross-window synchronization, per-window expanded state, and persisted include-context preference
-- **system-context-provider.ts**: System Agent-owned ambient UI context provider that publishes active tab, layout, chat summary, unread activity, and active profile state into the shared Jarvis context registry
+- **system-context-provider.ts**: System Agent-owned ambient UI context provider that publishes active route surface, layout, chat summary, unread activity, and active profile state into the shared Jarvis context registry
 - **use-context-snapshot.ts**: Reads current renderer state (tabs, layout, recent state) and builds the Jarvis context snapshot
 - **use-jarvis-preferences.ts**: Authoritative TanStack Query/query-key/mutation boundary for Jarvis runtime/profile/model/thinking preferences, shared by Settings and the Jarvis popover; exposes query success so Settings Jarvis first-render performance gates wait for real preferences readiness

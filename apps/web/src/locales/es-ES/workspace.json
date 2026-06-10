@@ -53,7 +53,7 @@
   "session.action.copySessionId": "Copiar ID de sesión",
   "session.action.markRead": "Marcar como leído",
   "session.action.markUnread": "Marcar como no leído",
-  "session.action.openInNewTab": "Abrir en nueva pestaña",
+  "session.action.openInSurface": "Abrir superficie de chat",
   "session.action.openInNewWindow": "Abrir en nueva ventana",
   "session.action.pin": "Fijar",
   "session.action.regenerateTitle": "Regenerar título",

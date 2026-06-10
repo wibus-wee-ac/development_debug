@@ -14,9 +14,9 @@ import type { SkillInventoryEntry } from '~/features/skills/types'
 import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { cn } from '~/lib/cn'
 import { getServerUrl, isElectron, platform } from '~/lib/electron'
+import { openSettingsSection as openSettingsRouteSection } from '~/navigation/navigation-commands'
 import { useNewChatStore } from '~/store/new-chat'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
-import { useCradleTabStore } from '~/tabs/registry'
 
 import type { ChatRuntimeSettings } from '../commands/chat-response-command'
 import { DEFAULT_CHAT_RUNTIME_SETTINGS } from '../commands/runtime-settings-command'
@@ -108,7 +108,6 @@ export function DraftChatComposer({
   const setRuntimeSettings = useNewChatStore(s => s.setLastRuntimeSettings)
   const [sending, setSending] = useState(false)
   const [reviewModeOpen, setReviewModeOpen] = useState(false)
-  const openSettings = useSettingsOverlayStore(s => s.openSettings)
   const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
 
   const placeholderHints = PLACEHOLDER_HINT_KEYS.map(key => t(key))
@@ -203,15 +202,8 @@ export function DraftChatComposer({
   }
 
   const openSettingsSection = (section: string) => {
-    const tabStore = useCradleTabStore.getState()
-    const activeTabId = tabStore.activeTabId && tabStore.tabs.some(tab => tab.id === tabStore.activeTabId)
-      ? tabStore.activeTabId
-      : tabStore.tabs[0]?.id
-    if (!activeTabId) {
-      return
-    }
     setSettingsSection(section)
-    openSettings(activeTabId)
+    openSettingsRouteSection(section)
   }
 
   const updateRuntimeSettings = (patch: Partial<ChatRuntimeSettings>) => {

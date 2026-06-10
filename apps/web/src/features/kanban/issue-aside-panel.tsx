@@ -8,7 +8,7 @@ import { Skeleton } from '~/components/ui/skeleton'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
 import type { KanbanIssue, KanbanStatus } from '~/features/kanban/types'
-import { useCradleNavigation } from '~/tabs/use-cradle-navigation'
+import { openKanbanBoard } from '~/navigation/navigation-commands'
 
 import { formatIssueId } from './shared/format-issue-id'
 import { priorityOptions } from './shared/issue-metadata'
@@ -55,7 +55,6 @@ function statusForIssue(statuses: KanbanStatus[], issue: KanbanIssue): KanbanSta
 export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps) {
   const [pickerOpen, setPickerOpen] = useState(false)
   const [query, setQuery] = useState('')
-  const { openTab } = useCradleNavigation()
   const { workspaces, ready: workspacesReady } = useWorkspaces()
 
   const linkedIssue = useLinkedIssue(sessionId)
@@ -97,7 +96,7 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
     if (!selectedIssue || !boardId) {
       return
     }
-    openTab('kanban-board', { boardId, issue: selectedIssue.id })
+    openKanbanBoard({ boardId, issueId: selectedIssue.id })
   }
 
   const linkCandidate = (issueId: string) => {

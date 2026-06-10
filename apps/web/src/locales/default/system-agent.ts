@@ -10,7 +10,7 @@ export default {
   'empty.noProfile.title': 'No profile configured',
   'empty.noProfile.description': 'Go to Settings → Jarvis and select a provider profile and model.',
   'empty.ready.title': 'What can I help with?',
-  'empty.ready.description': 'I have full awareness of your workspace, active tabs, chat sessions, and current layout.',
+  'empty.ready.description': 'I have full awareness of your workspace, active surfaces, chat sessions, and current layout.',
   'error.createSessionFailed': 'Failed to create session',
   'error.noTextSelection': 'Select text first to attach it.',
   'error.sessionCreationFailed': 'Session creation failed',
