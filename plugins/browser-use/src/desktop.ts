@@ -45,7 +45,6 @@ let socketPath = ''
 interface WebviewEntry {
   webview: DesktopWebview
   attached: boolean
-  rendererTabId?: string
 }
 
 interface CdpValueResult<T> {
@@ -67,8 +66,7 @@ interface CdpAxTreeResult {
 }
 
 const webviewRegistry = new Map<string, WebviewEntry>()
-const pendingWebviewResolvers: Array<(tabId: string) => void> = []
-let tabCounter = 0
+const pendingWebviewResolvers = new Map<string, Array<(tabId: string) => void>>()
 
 let desktopContext: DesktopPluginContext | null = null
 
@@ -94,10 +92,10 @@ function withTimeout<T>(work: Promise<T>, timeoutMs: number, label: string): Pro
 }
 
 async function activateRendererTab(entry: WebviewEntry): Promise<void> {
-  if (!desktopContext || !entry.rendererTabId) {
+  if (!desktopContext) {
     return
   }
-  const activated = await desktopContext.browserTabs.activate(entry.rendererTabId)
+  const activated = await desktopContext.browserTabs.activate(entry.webview.tabId)
   if (activated) {
     await new Promise(resolve => setTimeout(resolve, 50))
   }
@@ -119,9 +117,14 @@ async function getActiveWebview(): Promise<WebviewEntry | undefined> {
   if (desktopContext) {
     const rendererTabId = await desktopContext.browserTabs.getActive()
     if (rendererTabId) {
-      const activeEntry = [...webviewRegistry.values()].find(entry => entry.rendererTabId === rendererTabId && !entry.webview.isDestroyed())
+      const activeEntry = webviewRegistry.get(rendererTabId)
       if (activeEntry) {
-        return activeEntry
+        if (activeEntry.webview.isDestroyed()) {
+          webviewRegistry.delete(rendererTabId)
+        }
+        else {
+          return activeEntry
+        }
       }
     }
   }
@@ -146,7 +149,7 @@ async function getWebview(tabId?: string): Promise<WebviewEntry | undefined> {
 }
 
 function registerWebview(webview: DesktopWebview): string {
-  const id = `tab-${++tabCounter}`
+  const id = webview.tabId
   let attached = false
   try {
     webview.cdp.attach('1.3')
@@ -168,9 +171,47 @@ function registerWebview(webview: DesktopWebview): string {
     webviewRegistry.delete(id)
   })
 
-  pendingWebviewResolvers.shift()?.(id)
+  const resolvers = pendingWebviewResolvers.get(id)
+  if (resolvers) {
+    pendingWebviewResolvers.delete(id)
+    for (const resolve of resolvers) {
+      resolve(id)
+    }
+  }
 
   return id
+}
+
+function waitForRegisteredWebview(rendererTabId: string): Promise<string> {
+  if (webviewRegistry.has(rendererTabId)) {
+    return Promise.resolve(rendererTabId)
+  }
+
+  return new Promise<string>((resolve, reject) => {
+    let timeout: ReturnType<typeof setTimeout> | null = null
+    const wrappedResolve = (tabId: string) => {
+      if (timeout) {
+        clearTimeout(timeout)
+      }
+      resolve(tabId)
+    }
+    timeout = setTimeout(() => {
+      const resolvers = pendingWebviewResolvers.get(rendererTabId)
+      if (resolvers) {
+        const nextResolvers = resolvers.filter(candidate => candidate !== wrappedResolve)
+        if (nextResolvers.length > 0) {
+          pendingWebviewResolvers.set(rendererTabId, nextResolvers)
+        }
+        else {
+          pendingWebviewResolvers.delete(rendererTabId)
+        }
+      }
+      reject(new Error(`Timed out waiting for renderer browser tab ${rendererTabId}`))
+    }, 5000)
+
+    const resolvers = pendingWebviewResolvers.get(rendererTabId) ?? []
+    pendingWebviewResolvers.set(rendererTabId, [...resolvers, wrappedResolve])
+  })
 }
 
 async function requestRendererBrowserTab(url?: string): Promise<string> {
@@ -178,39 +219,12 @@ async function requestRendererBrowserTab(url?: string): Promise<string> {
     throw new Error('Desktop plugin context is not available')
   }
 
-  const before = new Set(webviewRegistry.keys())
-  const created = new Promise<string>((resolve, reject) => {
-    const timeout = setTimeout(() => {
-      const index = pendingWebviewResolvers.indexOf(resolve)
-      if (index >= 0) {
-        pendingWebviewResolvers.splice(index, 1)
-      }
-      reject(new Error('Timed out waiting for renderer browser tab'))
-    }, 5000)
-
-    pendingWebviewResolvers.push((tabId) => {
-      clearTimeout(timeout)
-      resolve(tabId)
-    })
-  })
-
   const rendererTabId = await desktopContext.browserTabs.request(url)
+  if (!rendererTabId) {
+    throw new Error('Renderer did not create a browser tab')
+  }
 
-  for (const tabId of webviewRegistry.keys()) {
-    if (!before.has(tabId)) {
-      const entry = webviewRegistry.get(tabId)
-      if (entry) {
-        entry.rendererTabId = rendererTabId
-      }
-      return tabId
-    }
-  }
-  const tabId = await created
-  const entry = webviewRegistry.get(tabId)
-  if (entry) {
-    entry.rendererTabId = rendererTabId
-  }
-  return tabId
+  return waitForRegisteredWebview(rendererTabId)
 }
 
 async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
@@ -240,7 +254,6 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
         if (!entry) {
           return { id: cmd.id, ok: false, error: 'No webview available' }
         }
-        await activateRendererTab(entry)
         const png = await withTimeout(entry.webview.capturePng(), 3000, 'Screenshot capture')
         const data: ScreenshotResult = { base64: Buffer.from(png).toString('base64'), mimeType: 'image/png' }
         return { id: cmd.id, ok: true, data }
@@ -469,7 +482,7 @@ async function handleCommand(cmd: BrowserCommand): Promise<BrowserResponse> {
         if (!desktopContext) {
           return { id: cmd.id, ok: false, error: 'Desktop plugin context is not available' }
         }
-        const hidden = await desktopContext.browserTabs.goOffScreen(entry.rendererTabId)
+        const hidden = await desktopContext.browserTabs.goOffScreen(entry.webview.tabId)
         if (!hidden) {
           return { id: cmd.id, ok: false, error: 'Browser tab could not be moved off screen' }
         }
@@ -552,7 +565,7 @@ export function activate(ctx: DesktopPluginContext): void {
 
 export function deactivate(): void {
   desktopContext = null
-  pendingWebviewResolvers.splice(0)
+  pendingWebviewResolvers.clear()
   // Detach all debuggers
   for (const [, entry] of webviewRegistry) {
     if (entry.attached && !entry.webview.isDestroyed()) {
