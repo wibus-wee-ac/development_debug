@@ -1,8 +1,8 @@
 import { describe, expect, it } from 'vitest'
 
 import { loadConfig } from '../src/config'
-import { buildSlackSessionCreateBody, enabledAgentTargets } from '../src/cradle/service'
-import type { GetAgentsResponse } from '../src/generated/cradle-api'
+import { buildSlackSessionCreateBody, enabledAgentTargets, enabledProviderRuntimeTargets } from '../src/cradle/service'
+import type { GetAgentsResponse, GetChatRuntimesResponse, GetProviderTargetsResponse } from '../src/generated/cradle-api'
 
 const baseEnv = {
   SLACK_BOT_TOKEN: 'xoxb-test',
@@ -87,5 +87,98 @@ describe('Cradle session defaults', () => {
     }] satisfies GetAgentsResponse
 
     expect(enabledAgentTargets(agents).map(target => target.id)).toEqual(['agent_codex'])
+  })
+
+  it('expands provider targets into compatible chat runtimes', () => {
+    const providerTargets = [{
+      id: 'openai_target',
+      kind: 'manual',
+      providerKind: 'openai-compatible',
+      displayName: 'OpenAI',
+      enabled: true,
+      iconSlug: null,
+      connectionConfigJson: '{}',
+      credentialRef: null,
+      enabledModelsJson: '[]',
+      customModelsJson: '[]',
+      sourceKey: null,
+      externalRecordId: null,
+      sourceFingerprint: null,
+      createdAt: 1,
+      updatedAt: 1,
+    }, {
+      id: 'anthropic_target',
+      kind: 'manual',
+      providerKind: 'anthropic',
+      displayName: 'Anthropic',
+      enabled: true,
+      iconSlug: null,
+      connectionConfigJson: '{}',
+      credentialRef: null,
+      enabledModelsJson: '[]',
+      customModelsJson: '[]',
+      sourceKey: null,
+      externalRecordId: null,
+      sourceFingerprint: null,
+      createdAt: 1,
+      updatedAt: 1,
+    }, {
+      id: 'disabled_target',
+      kind: 'manual',
+      providerKind: 'universal',
+      displayName: 'Disabled',
+      enabled: false,
+      iconSlug: null,
+      connectionConfigJson: '{}',
+      credentialRef: null,
+      enabledModelsJson: '[]',
+      customModelsJson: '[]',
+      sourceKey: null,
+      externalRecordId: null,
+      sourceFingerprint: null,
+      createdAt: 1,
+      updatedAt: 1,
+    }] satisfies GetProviderTargetsResponse
+    const runtimes = {
+      items: [{
+        runtimeKind: 'standard',
+        label: 'Standard',
+        providerKinds: ['openai-compatible', 'universal'],
+        surfaces: ['chat'],
+        source: 'builtin',
+        pluginOwner: null,
+      }, {
+        runtimeKind: 'codex',
+        label: 'Codex',
+        providerKinds: ['openai-compatible', 'universal'],
+        surfaces: ['chat'],
+        source: 'builtin',
+        pluginOwner: null,
+      }, {
+        runtimeKind: 'claude-agent',
+        label: 'Claude Agent',
+        providerKinds: ['anthropic', 'universal'],
+        surfaces: ['chat'],
+        source: 'builtin',
+        pluginOwner: null,
+      }, {
+        runtimeKind: 'jar-core',
+        label: 'HiJarvis',
+        providerKinds: ['openai-compatible', 'anthropic', 'universal'],
+        surfaces: ['jarvis'],
+        source: 'builtin',
+        pluginOwner: null,
+      }],
+    } satisfies GetChatRuntimesResponse
+
+    expect(enabledProviderRuntimeTargets(providerTargets, runtimes).map(target => ({
+      id: target.id,
+      runtimeKind: target.runtimeKind,
+      label: target.runtimeLabel,
+    }))).toEqual([
+      { id: 'openai_target', runtimeKind: 'standard', label: 'Standard' },
+      { id: 'openai_target', runtimeKind: 'codex', label: 'Codex' },
+      { id: 'anthropic_target', runtimeKind: 'claude-agent', label: 'Claude Agent' },
+    ])
   })
 })

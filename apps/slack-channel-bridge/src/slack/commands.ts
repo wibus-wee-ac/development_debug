@@ -433,7 +433,10 @@ export async function handleCradleSessionTargetSelectAction(
     return
   }
   const sessionTargets = await deps.cradle.listSessionTargets()
-  const target = sessionTargets.find(candidate => candidate.kind === parsed.kind && candidate.id === parsed.id)
+  const target = sessionTargets.find(candidate =>
+    candidate.kind === parsed.kind
+    && candidate.id === parsed.id
+    && (candidate.kind === 'agent' || (candidate.runtimeKind ?? 'standard') === parsed.runtimeKind))
   if (!target) {
     await respond({ text: 'Selected Cradle runtime is no longer available.', response_type: 'ephemeral' })
     return
@@ -443,7 +446,7 @@ export async function handleCradleSessionTargetSelectAction(
     channelId,
     sessionAgentId: target.kind === 'agent' ? target.id : null,
     sessionProviderTargetId: target.kind === 'provider-target' ? target.id : null,
-    sessionRuntimeKind: target.kind === 'provider-target' ? target.runtimeKind : null,
+    sessionRuntimeKind: target.kind === 'provider-target' ? target.runtimeKind ?? 'standard' : null,
     sessionModelId: null,
   })
   await respondWithStatus({

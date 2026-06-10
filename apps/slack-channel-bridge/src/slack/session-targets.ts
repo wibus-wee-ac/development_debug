@@ -19,22 +19,40 @@ function truncatePlainText(text: string, maxLength: number): string {
   return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text
 }
 
-export function sessionTargetValue(target: Pick<SessionTargetSummary, 'kind' | 'id'>): string {
+export function sessionTargetValue(target: Pick<SessionTargetSummary, 'kind' | 'id' | 'runtimeKind'>): string {
+  if (target.kind === 'provider-target') {
+    const runtimeKind = target.runtimeKind ?? 'standard'
+    return `${target.kind}:${runtimeKind}:${target.id}`
+  }
   return `${target.kind}:${target.id}`
 }
 
-export function parseSessionTargetValue(value: string): { kind: SessionTargetSummary['kind'], id: string } | null {
-  const separatorIndex = value.indexOf(':')
-  if (separatorIndex <= 0) {
+export function parseSessionTargetValue(value: string): {
+  kind: SessionTargetSummary['kind']
+  id: string
+  runtimeKind: string | null
+} | null {
+  if (value.startsWith('agent:')) {
+    const id = value.slice('agent:'.length)
+    return id ? { kind: 'agent', id, runtimeKind: null } : null
+  }
+
+  if (!value.startsWith('provider-target:')) {
     return null
   }
-  const kind = value.slice(0, separatorIndex)
-  if (kind !== 'agent' && kind !== 'provider-target') {
+
+  const remainder = value.slice('provider-target:'.length)
+  const separatorIndex = remainder.indexOf(':')
+  const runtimeKind = separatorIndex > 0 ? remainder.slice(0, separatorIndex) : ''
+  const id = remainder.slice(separatorIndex + 1)
+  if (!runtimeKind || !id) {
     return null
   }
+
   return {
-    kind,
-    id: value.slice(separatorIndex + 1),
+    kind: 'provider-target',
+    id,
+    runtimeKind,
   }
 }
 
@@ -57,15 +75,29 @@ export function selectedTargetForBinding(
     return targets.find(target => target.kind === 'agent' && target.id === binding.sessionAgentId) ?? null
   }
   if (binding.sessionProviderTargetId) {
-    return targets.find(target => target.kind === 'provider-target' && target.id === binding.sessionProviderTargetId) ?? null
+    const runtimeKind = binding.sessionRuntimeKind ?? 'standard'
+    return targets.find(target =>
+      target.kind === 'provider-target'
+      && target.id === binding.sessionProviderTargetId
+      && (target.runtimeKind ?? 'standard') === runtimeKind) ?? null
   }
   return null
+}
+
+function runtimeLabelForTarget(target: SessionTargetSummary): string {
+  if (target.runtimeLabel) {
+    return target.runtimeLabel
+  }
+  if (target.runtimeKind === 'standard' || !target.runtimeKind) {
+    return 'Standard'
+  }
+  return target.runtimeKind
 }
 
 export function sessionTargetLabel(target: SessionTargetSummary): string {
   return target.kind === 'agent'
     ? `Agent: ${target.label}`
-    : `Provider: ${target.label}`
+    : `${runtimeLabelForTarget(target)}: ${target.label}`
 }
 
 function sessionTargetDescription(target: SessionTargetSummary): string {
@@ -217,7 +249,7 @@ export function describeSessionTarget(binding: WorkspaceBinding | null, targets:
     return `Agent: \`${escapeSlackText(binding.sessionAgentId)}\``
   }
   if (binding?.sessionProviderTargetId) {
-    return `Provider: \`${escapeSlackText(binding.sessionProviderTargetId)}\``
+    return `${escapeSlackText(binding.sessionRuntimeKind ?? 'standard')}: \`${escapeSlackText(binding.sessionProviderTargetId)}\``
   }
   return 'Not selected'
 }

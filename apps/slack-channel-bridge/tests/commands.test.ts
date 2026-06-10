@@ -191,6 +191,73 @@ describe('handleCradleCommand', () => {
     }
   })
 
+  it('stores the selected provider-backed runtime for the channel', async () => {
+    const fixture = createTestStore()
+    const responses: Array<{ text: string, blocks?: SlackBlockMessage['blocks'], response_type?: 'ephemeral' | 'in_channel', replace_original?: boolean }> = []
+    const respond: SlackResponder = async message => {
+      responses.push(message)
+    }
+    const cradle = {
+      verifyWorkspace: vi.fn(async () => true),
+      listSessionTargets: vi.fn(async () => [{
+        kind: 'provider-target' as const,
+        id: 'provider_1',
+        label: 'OpenAI',
+        description: 'openai-compatible',
+        runtimeKind: 'codex',
+        runtimeLabel: 'Codex',
+        providerTargetId: 'provider_1',
+        modelId: null,
+      }, {
+        kind: 'provider-target' as const,
+        id: 'provider_1',
+        label: 'OpenAI',
+        description: 'openai-compatible',
+        runtimeKind: 'standard',
+        runtimeLabel: 'Standard',
+        providerTargetId: 'provider_1',
+        modelId: null,
+      }]),
+      listProviderTargetModels: vi.fn(async () => [{
+        id: 'gpt-5',
+        label: 'GPT-5',
+      }]),
+      getSessionSummary: vi.fn(async () => null),
+    }
+
+    try {
+      await fixture.store.setWorkspaceBinding({
+        teamId: 'T1',
+        channelId: 'C1',
+        cradleWorkspaceId: 'workspace_1',
+        boundBySlackUserId: 'U1',
+      })
+      await handleCradleSessionTargetSelectAction({
+        team: { id: 'T1' },
+        channel: { id: 'C1' },
+        user: { id: 'U1' },
+        actions: [{
+          action_id: CRADLE_SESSION_TARGET_SELECT_ACTION,
+          selected_option: { value: 'provider-target:codex:provider_1' },
+        }],
+      }, respond, { store: fixture.store, cradle })
+
+      expect(await fixture.store.getWorkspaceBinding('T1', 'C1')).toMatchObject({
+        sessionAgentId: null,
+        sessionProviderTargetId: 'provider_1',
+        sessionRuntimeKind: 'codex',
+        sessionModelId: null,
+      })
+      expect(responses.at(-1)?.text).toContain('Codex: OpenAI')
+      expect(responses.at(-1)).toMatchObject({
+        response_type: 'ephemeral',
+        replace_original: true,
+      })
+    } finally {
+      fixture.cleanup()
+    }
+  })
+
   it('stores the selected model for the channel runtime', async () => {
     const fixture = createTestStore()
     const responses: Array<{ text: string, blocks?: SlackBlockMessage['blocks'], response_type?: 'ephemeral' | 'in_channel', replace_original?: boolean }> = []

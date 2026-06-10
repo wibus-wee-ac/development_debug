@@ -1,4 +1,5 @@
 import {
+  getChatRuntimes,
   getAgents,
   getProviderTargets,
   getProvidersTargetsByProviderTargetIdModelsCache,
@@ -11,6 +12,7 @@ import {
   type GetSessionsByIdMessagesResponse,
   type GetWorkspacesResponse,
   type GetAgentsResponse,
+  type GetChatRuntimesResponse,
   type GetProviderTargetsResponse,
   type GetProvidersTargetsByProviderTargetIdModelsCacheResponse,
 } from '../generated/cradle-api'
@@ -29,6 +31,7 @@ export interface SessionTargetSummary {
   label: string
   description: string | null
   runtimeKind: string | null
+  runtimeLabel?: string | null
   providerTargetId: string | null
   modelId: string | null
 }
@@ -96,23 +99,45 @@ export function enabledAgentTargets(agents: GetAgentsResponse): SessionTargetSum
       label: agent.name,
       description: agent.description,
       runtimeKind: agent.runtimeKind,
+      runtimeLabel: null,
       providerTargetId: agent.providerTargetId,
       modelId: agent.modelId,
     }))
 }
 
-function enabledProviderTargets(targets: GetProviderTargetsResponse): SessionTargetSummary[] {
+type RuntimeCatalogItem = GetChatRuntimesResponse['items'][number]
+
+function supportsChatSurface(runtime: RuntimeCatalogItem): boolean {
+  return runtime.surfaces?.includes('chat') ?? true
+}
+
+function runtimeSupportsProviderKind(runtime: RuntimeCatalogItem, providerKind: string): boolean {
+  return runtime.providerKinds.includes(providerKind)
+}
+
+export function enabledProviderRuntimeTargets(
+  targets: GetProviderTargetsResponse,
+  runtimes: GetChatRuntimesResponse,
+): SessionTargetSummary[] {
+  const chatRuntimes = runtimes.items.filter(runtime =>
+    runtime.runtimeKind !== 'cli-tui'
+    && supportsChatSurface(runtime)
+    && runtime.providerKinds.length > 0)
+
   return targets
     .filter(target => target.enabled)
-    .map(target => ({
-      kind: 'provider-target',
-      id: target.id,
-      label: target.displayName,
-      description: target.providerKind,
-      runtimeKind: 'standard',
-      providerTargetId: target.id,
-      modelId: null,
-    }))
+    .flatMap(target => chatRuntimes
+      .filter(runtime => runtimeSupportsProviderKind(runtime, target.providerKind))
+      .map(runtime => ({
+        kind: 'provider-target',
+        id: target.id,
+        label: target.displayName,
+        description: target.providerKind,
+        runtimeKind: runtime.runtimeKind,
+        runtimeLabel: runtime.label,
+        providerTargetId: target.id,
+        modelId: null,
+      } satisfies SessionTargetSummary)))
 }
 
 function throwApiError(operation: string, error: unknown): never {
@@ -141,9 +166,10 @@ export class CradleService {
   }
 
   async listSessionTargets(): Promise<SessionTargetSummary[]> {
-    const [agentsResult, providerTargetsResult] = await Promise.all([
+    const [agentsResult, providerTargetsResult, runtimesResult] = await Promise.all([
       getAgents(),
       getProviderTargets(),
+      getChatRuntimes(),
     ])
     if ('error' in agentsResult && agentsResult.error) {
       throwApiError('listAgents', agentsResult.error)
@@ -151,9 +177,15 @@ export class CradleService {
     if ('error' in providerTargetsResult && providerTargetsResult.error) {
       throwApiError('listProviderTargets', providerTargetsResult.error)
     }
+    if ('error' in runtimesResult && runtimesResult.error) {
+      throwApiError('listChatRuntimes', runtimesResult.error)
+    }
     return [
       ...enabledAgentTargets((agentsResult.data ?? []) as GetAgentsResponse),
-      ...enabledProviderTargets((providerTargetsResult.data ?? []) as GetProviderTargetsResponse),
+      ...enabledProviderRuntimeTargets(
+        (providerTargetsResult.data ?? []) as GetProviderTargetsResponse,
+        (runtimesResult.data ?? { items: [] }) as GetChatRuntimesResponse,
+      ),
     ]
   }
 

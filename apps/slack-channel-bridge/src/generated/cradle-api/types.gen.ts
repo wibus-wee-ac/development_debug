@@ -1449,6 +1449,76 @@ export type PutProviderTargetsByProviderTargetIdResponses = {
 
 export type PutProviderTargetsByProviderTargetIdResponse = PutProviderTargetsByProviderTargetIdResponses[keyof PutProviderTargetsByProviderTargetIdResponses];
 
+export type PostProviderTargetsCredentialsChatgptLoginData = {
+    body: {
+        label?: string | null;
+    };
+    path?: never;
+    query?: never;
+    url: '/provider-targets/credentials/chatgpt/login';
+};
+
+export type PostProviderTargetsCredentialsChatgptLoginResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        loginId: string;
+        verificationUrl: string;
+        userCode: string;
+        expiresAt: number;
+    };
+};
+
+export type PostProviderTargetsCredentialsChatgptLoginResponse = PostProviderTargetsCredentialsChatgptLoginResponses[keyof PostProviderTargetsCredentialsChatgptLoginResponses];
+
+export type GetProviderTargetsCredentialsChatgptLoginByLoginIdData = {
+    body?: never;
+    path: {
+        loginId: string;
+    };
+    query?: never;
+    url: '/provider-targets/credentials/chatgpt/login/{loginId}';
+};
+
+export type GetProviderTargetsCredentialsChatgptLoginByLoginIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        loginId: string;
+        state: 'pending' | 'completed' | 'failed' | 'cancelled';
+        startedAt: number;
+        completedAt: number | null;
+        credentialRef: string | null;
+        email: string | null;
+        planType: string | null;
+        error: string | null;
+    };
+};
+
+export type GetProviderTargetsCredentialsChatgptLoginByLoginIdResponse = GetProviderTargetsCredentialsChatgptLoginByLoginIdResponses[keyof GetProviderTargetsCredentialsChatgptLoginByLoginIdResponses];
+
+export type PostProviderTargetsCredentialsChatgptLoginByLoginIdCancelData = {
+    body?: never;
+    path: {
+        loginId: string;
+    };
+    query?: never;
+    url: '/provider-targets/credentials/chatgpt/login/{loginId}/cancel';
+};
+
+export type PostProviderTargetsCredentialsChatgptLoginByLoginIdCancelResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type PostProviderTargetsCredentialsChatgptLoginByLoginIdCancelResponse = PostProviderTargetsCredentialsChatgptLoginByLoginIdCancelResponses[keyof PostProviderTargetsCredentialsChatgptLoginByLoginIdCancelResponses];
+
 export type GetProviderTargetsByProviderTargetIdModelSettingsData = {
     body?: never;
     path: {
@@ -1549,6 +1619,368 @@ export type PatchProviderTargetsByProviderTargetIdCustomModelsResponses = {
 };
 
 export type PatchProviderTargetsByProviderTargetIdCustomModelsResponse = PatchProviderTargetsByProviderTargetIdCustomModelsResponses[keyof PatchProviderTargetsByProviderTargetIdCustomModelsResponses];
+
+export type GetExternalIssueSourcesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/external-issue-sources';
+};
+
+export type GetExternalIssueSourcesResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        pluginName: string;
+        sourceId: string;
+        label: string;
+        description: string | null;
+        enabled: boolean;
+        registrationStatus: 'registered' | 'unregistered';
+        capabilities: {
+            [key: string]: unknown;
+        };
+        inventory: {
+            [key: string]: unknown;
+        };
+        warnings: Array<{
+            code: string;
+            message: string;
+            severity: 'info' | 'warning' | 'error';
+        }>;
+        lastSyncStatus: 'never' | 'ok' | 'warning' | 'error' | 'rate-limited' | 'not-modified';
+        lastSyncMessage: string | null;
+        lastSyncError: string | null;
+        lastSyncAt: number | null;
+        registeredAt: number;
+    }>;
+};
+
+export type GetExternalIssueSourcesResponse = GetExternalIssueSourcesResponses[keyof GetExternalIssueSourcesResponses];
+
+export type GetExternalIssueSourcesBindingsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        workspaceId?: string;
+        sourceKey?: string;
+    };
+    url: '/external-issue-sources/bindings';
+};
+
+export type GetExternalIssueSourcesBindingsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        workspaceId: string;
+        sourceKey: string;
+        repositoryOwner: string;
+        repositoryName: string;
+        enabled: boolean;
+        scheduleEnabled: boolean;
+        refreshIntervalSeconds: number;
+        lastRefreshStatus: 'never' | 'ok' | 'warning' | 'error' | 'rate-limited' | 'not-modified';
+        lastRefreshMessage: string | null;
+        lastRefreshError: string | null;
+        lastRefreshAt: number | null;
+        nextRefreshAfter: number | null;
+        createdAt: number;
+        updatedAt: number;
+    }>;
+};
+
+export type GetExternalIssueSourcesBindingsResponse = GetExternalIssueSourcesBindingsResponses[keyof GetExternalIssueSourcesBindingsResponses];
+
+export type PostExternalIssueSourcesBySourceKeyBindingsData = {
+    body: {
+        workspaceId: string;
+        repositoryOwner: string;
+        repositoryName: string;
+        scheduleEnabled?: boolean;
+        refreshIntervalSeconds?: number;
+        refreshNow?: boolean;
+    };
+    path: {
+        sourceKey: string;
+    };
+    query?: never;
+    url: '/external-issue-sources/{sourceKey}/bindings';
+};
+
+export type PostExternalIssueSourcesBySourceKeyBindingsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceKey: string;
+        repositoryOwner: string;
+        repositoryName: string;
+        enabled: boolean;
+        scheduleEnabled: boolean;
+        refreshIntervalSeconds: number;
+        lastRefreshStatus: 'never' | 'ok' | 'warning' | 'error' | 'rate-limited' | 'not-modified';
+        lastRefreshMessage: string | null;
+        lastRefreshError: string | null;
+        lastRefreshAt: number | null;
+        nextRefreshAfter: number | null;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PostExternalIssueSourcesBySourceKeyBindingsResponse = PostExternalIssueSourcesBySourceKeyBindingsResponses[keyof PostExternalIssueSourcesBySourceKeyBindingsResponses];
+
+export type DeleteExternalIssueSourcesBindingsByBindingIdData = {
+    body?: never;
+    path: {
+        bindingId: string;
+    };
+    query?: never;
+    url: '/external-issue-sources/bindings/{bindingId}';
+};
+
+export type DeleteExternalIssueSourcesBindingsByBindingIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type DeleteExternalIssueSourcesBindingsByBindingIdResponse = DeleteExternalIssueSourcesBindingsByBindingIdResponses[keyof DeleteExternalIssueSourcesBindingsByBindingIdResponses];
+
+export type PatchExternalIssueSourcesBindingsByBindingIdData = {
+    body: {
+        enabled?: boolean;
+        scheduleEnabled?: boolean;
+        refreshIntervalSeconds?: number;
+    };
+    path: {
+        bindingId: string;
+    };
+    query?: never;
+    url: '/external-issue-sources/bindings/{bindingId}';
+};
+
+export type PatchExternalIssueSourcesBindingsByBindingIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceKey: string;
+        repositoryOwner: string;
+        repositoryName: string;
+        enabled: boolean;
+        scheduleEnabled: boolean;
+        refreshIntervalSeconds: number;
+        lastRefreshStatus: 'never' | 'ok' | 'warning' | 'error' | 'rate-limited' | 'not-modified';
+        lastRefreshMessage: string | null;
+        lastRefreshError: string | null;
+        lastRefreshAt: number | null;
+        nextRefreshAfter: number | null;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PatchExternalIssueSourcesBindingsByBindingIdResponse = PatchExternalIssueSourcesBindingsByBindingIdResponses[keyof PatchExternalIssueSourcesBindingsByBindingIdResponses];
+
+export type PostExternalIssueSourcesBindingsByBindingIdRefreshData = {
+    body: {
+        force?: boolean;
+    };
+    path: {
+        bindingId: string;
+    };
+    query?: never;
+    url: '/external-issue-sources/bindings/{bindingId}/refresh';
+};
+
+export type PostExternalIssueSourcesBindingsByBindingIdRefreshResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        sourceKey: string;
+        bindingId: string;
+        workspaceId: string;
+        repositoryOwner: string;
+        repositoryName: string;
+        status: 'never' | 'ok' | 'warning' | 'error' | 'rate-limited' | 'not-modified';
+        recordsSeen: number;
+        recordsProjected: number;
+        recordsMissing: number;
+        notModified: boolean;
+        rateLimitRemaining: number | null;
+        rateLimitResetAt: number | null;
+        message?: string;
+    };
+};
+
+export type PostExternalIssueSourcesBindingsByBindingIdRefreshResponse = PostExternalIssueSourcesBindingsByBindingIdRefreshResponses[keyof PostExternalIssueSourcesBindingsByBindingIdRefreshResponses];
+
+export type PostExternalIssueSourcesBySourceKeyRefreshData = {
+    body: {
+        workspaceId: string;
+        force?: boolean;
+    };
+    path: {
+        sourceKey: string;
+    };
+    query?: never;
+    url: '/external-issue-sources/{sourceKey}/refresh';
+};
+
+export type PostExternalIssueSourcesBySourceKeyRefreshResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        sourceKey: string;
+        bindingId: string;
+        workspaceId: string;
+        repositoryOwner: string;
+        repositoryName: string;
+        status: 'never' | 'ok' | 'warning' | 'error' | 'rate-limited' | 'not-modified';
+        recordsSeen: number;
+        recordsProjected: number;
+        recordsMissing: number;
+        notModified: boolean;
+        rateLimitRemaining: number | null;
+        rateLimitResetAt: number | null;
+        message?: string;
+    }>;
+};
+
+export type PostExternalIssueSourcesBySourceKeyRefreshResponse = PostExternalIssueSourcesBySourceKeyRefreshResponses[keyof PostExternalIssueSourcesBySourceKeyRefreshResponses];
+
+export type GetExternalIssueSourcesItemsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        workspaceId?: string;
+        sourceKey?: string;
+        syncStatus?: 'active' | 'missing' | 'error';
+    };
+    url: '/external-issue-sources/items';
+};
+
+export type GetExternalIssueSourcesItemsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        bindingId: string;
+        workspaceId: string;
+        statusId: string | null;
+        sourceKey: string;
+        externalId: string;
+        externalKey: string;
+        externalUrl: string | null;
+        repositoryOwner: string;
+        repositoryName: string;
+        number: number;
+        title: string;
+        body: string | null;
+        sourceState: 'open' | 'closed';
+        labels: Array<string>;
+        assignees: Array<string>;
+        milestone: string | null;
+        sourceCreatedAt: string | null;
+        sourceUpdatedAt: string | null;
+        sourceClosedAt: string | null;
+        syncStatus: 'active' | 'missing' | 'error';
+        fingerprint: string;
+        metadata: {
+            [key: string]: unknown;
+        };
+        warnings: Array<{
+            code: string;
+            message: string;
+            severity: 'info' | 'warning' | 'error';
+        }>;
+        lastSeenAt: number;
+        createdAt: number;
+        updatedAt: number;
+    }>;
+};
+
+export type GetExternalIssueSourcesItemsResponse = GetExternalIssueSourcesItemsResponses[keyof GetExternalIssueSourcesItemsResponses];
+
+export type PatchExternalIssueSourcesItemsByIdData = {
+    body: {
+        [key: string]: unknown;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/external-issue-sources/items/{id}';
+};
+
+export type PatchExternalIssueSourcesItemsByIdStatusData = {
+    body: {
+        statusId: string;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/external-issue-sources/items/{id}/status';
+};
+
+export type PatchExternalIssueSourcesItemsByIdStatusResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        bindingId: string;
+        workspaceId: string;
+        statusId: string | null;
+        sourceKey: string;
+        externalId: string;
+        externalKey: string;
+        externalUrl: string | null;
+        repositoryOwner: string;
+        repositoryName: string;
+        number: number;
+        title: string;
+        body: string | null;
+        sourceState: 'open' | 'closed';
+        labels: Array<string>;
+        assignees: Array<string>;
+        milestone: string | null;
+        sourceCreatedAt: string | null;
+        sourceUpdatedAt: string | null;
+        sourceClosedAt: string | null;
+        syncStatus: 'active' | 'missing' | 'error';
+        fingerprint: string;
+        metadata: {
+            [key: string]: unknown;
+        };
+        warnings: Array<{
+            code: string;
+            message: string;
+            severity: 'info' | 'warning' | 'error';
+        }>;
+        lastSeenAt: number;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PatchExternalIssueSourcesItemsByIdStatusResponse = PatchExternalIssueSourcesItemsByIdStatusResponses[keyof PatchExternalIssueSourcesItemsByIdStatusResponses];
 
 export type GetExternalProviderSourcesData = {
     body?: never;
@@ -1943,6 +2375,11 @@ export type GetSecretsResponses = {
         kind: string;
         label: string;
         maskedSecret: string;
+        chatgpt?: {
+            chatgptAccountId: string;
+            chatgptPlanType: string | null;
+            updatedAt: number;
+        } | null;
         createdAt: number;
         updatedAt: number;
     }>;
@@ -1970,6 +2407,11 @@ export type PostSecretsResponses = {
         kind: string;
         label: string;
         maskedSecret: string;
+        chatgpt?: {
+            chatgptAccountId: string;
+            chatgptPlanType: string | null;
+            updatedAt: number;
+        } | null;
         createdAt: number;
         updatedAt: number;
     };
@@ -2066,7 +2508,6 @@ export type DeleteModelRegistryMappingsByModelIdResponse = DeleteModelRegistryMa
 
 export type PutModelRegistryMappingsByModelIdData = {
     body: {
-        modelId: string;
         registryModelId?: string;
         matchType?: 'manual' | 'alias';
         model?: {
@@ -4638,7 +5079,7 @@ export type GetIssuesSearchResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -4684,7 +5125,7 @@ export type GetIssuesResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -4739,7 +5180,7 @@ export type PostIssuesResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -4800,7 +5241,7 @@ export type GetIssuesByIdResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -4857,7 +5298,7 @@ export type PatchIssuesByIdResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -4931,7 +5372,7 @@ export type PatchIssuesByIdStatusByStatusNameResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -5221,7 +5662,7 @@ export type PostIssuesByIdContextRefsResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -5263,7 +5704,7 @@ export type DeleteIssuesByIdContextRefsByIndexResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -7191,7 +7632,7 @@ export type GetChatDraftRuntimeCapabilitiesResponses = {
             description: string;
             argumentHint: string;
             aliases?: Array<string>;
-            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'quick-question' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
+            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'quick-question' | 'user-input' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
             commandText?: string;
             surfaces: Array<'slashCommand' | 'toolbarPicker' | 'composerState' | 'messageInline' | 'runtimePanel' | 'streamEvidence' | 'recordOnly'>;
         }>;
@@ -7229,7 +7670,7 @@ export type GetChatSessionsBySessionIdCapabilitiesResponses = {
             description: string;
             argumentHint: string;
             aliases?: Array<string>;
-            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'quick-question' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
+            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'quick-question' | 'user-input' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
             commandText?: string;
             surfaces: Array<'slashCommand' | 'toolbarPicker' | 'composerState' | 'messageInline' | 'runtimePanel' | 'streamEvidence' | 'recordOnly'>;
         }>;
@@ -7338,6 +7779,28 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
             pendingCount: number;
             inProgressCount: number;
             completedCount: number;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string | null;
+            runId: string;
+            requestId: string;
+            providerMethod: string;
+            toolCallId: string;
+            questionCount: number;
+            questions: Array<{
+                id: string;
+                header: string;
+                question: string;
+                isOther: boolean;
+                isSecret: boolean;
+                options: Array<{
+                    label: string;
+                    description: string;
+                }> | null;
+            }>;
+            createdAt: number;
             updatedAt: number;
         } | {
             kind: string;
@@ -7476,6 +7939,16 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
                 status: string;
                 startedAt: number | null;
                 completedAt: number | null;
+            }>;
+            agents: Array<{
+                threadId: string;
+                status: string | null;
+                message: string | null;
+                name: string | null;
+                preview: string | null;
+                modelProvider: string | null;
+                agentNickname: string | null;
+                agentRole: string | null;
             }>;
             collaborationModeCount: number;
             collaborationModes: Array<{
@@ -11037,6 +11510,9 @@ export type PostObservabilityRuntimeSamplesData = {
         windows: Array<{
             [key: string]: unknown;
         }>;
+        diagnostics?: {
+            [key: string]: unknown;
+        };
     };
     path?: never;
     query?: never;
@@ -11265,7 +11741,50 @@ export type GetObservabilityRuntimeSnapshotResponses = {
                 windows: Array<{
                     [key: string]: unknown;
                 }>;
+                diagnostics?: {
+                    [key: string]: unknown;
+                };
             }>;
+        };
+        drilldowns: {
+            renderer: {
+                rendererWindows: Array<{
+                    [key: string]: unknown;
+                }>;
+                topChatSessions: Array<{
+                    [key: string]: unknown;
+                }>;
+                activeStreamingMessages: Array<{
+                    [key: string]: unknown;
+                }>;
+            };
+            browserPanel: {
+                panel: {
+                    [key: string]: unknown;
+                } | null;
+                limits: {
+                    [key: string]: unknown;
+                } | null;
+                activeThreads: Array<{
+                    [key: string]: unknown;
+                }>;
+                liveTabs: Array<{
+                    [key: string]: unknown;
+                }>;
+                runtimes: Array<{
+                    [key: string]: unknown;
+                }>;
+            };
+            replay: {
+                topRuns: Array<{
+                    [key: string]: unknown;
+                }>;
+            };
+            providerRuntime: {
+                topHosts: Array<{
+                    [key: string]: unknown;
+                }>;
+            };
         };
         observability: {
             queueDepth: number;
