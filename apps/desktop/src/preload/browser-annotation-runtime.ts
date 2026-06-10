@@ -1221,9 +1221,10 @@ class BrowserAnnotationRuntime {
       }
       #cradle-browser-comment-root [data-cradle-browser-comment-prompt-row] {
         display: flex;
+        flex-wrap: wrap;
         min-width: 0;
         align-items: baseline;
-        gap: 6px;
+        gap: 4px 6px;
         color: rgba(255, 255, 255, 0.94);
         font: 400 12px/1.35 ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
         letter-spacing: 0;
@@ -1645,21 +1646,10 @@ class BrowserAnnotationRuntime {
     this.dragStart = null
 
     if (rect.width > 8 && rect.height > 8) {
-      const selectedElements = this.elementsInsideRect(rect)
-      if (selectedElements.length > 0) {
-        const selected = this.selectElements(selectedElements)
-        if (selected) {
-          this.hideRegion()
-          this.openEditor(this.rectForAnchor(selected.anchor), this.anchorLabel())
-          this.emitSelection(selected.element)
-        }
-      }
-      else {
-        this.selectRegion(rect)
-        this.showRegion(rect)
-        this.openEditor(rect, this.anchorLabel())
-        this.emitSelection(null)
-      }
+      this.selectRegion(rect)
+      this.showRegion(rect)
+      this.openEditor(rect, this.anchorLabel())
+      this.emitSelection(null)
       if (dragStart.altKey) {
         this.submit('submit')
       }
@@ -4557,37 +4547,6 @@ class BrowserAnnotationRuntime {
     }
   }
 
-  private elementsInsideRect(rect: { x: number, y: number, width: number, height: number }): Element[] {
-    const candidates = Array.from(document.querySelectorAll('body *'))
-      .filter(element => !element.closest('#cradle-browser-comment-root, script, style, meta, link, noscript'))
-      .filter((element) => {
-        const candidateRect = element.getBoundingClientRect()
-        if (candidateRect.width <= 0 || candidateRect.height <= 0) {
-          return false
-        }
-        const intersectionWidth = Math.max(0, Math.min(rect.x + rect.width, candidateRect.right) - Math.max(rect.x, candidateRect.left))
-        const intersectionHeight = Math.max(0, Math.min(rect.y + rect.height, candidateRect.bottom) - Math.max(rect.y, candidateRect.top))
-        if (intersectionWidth <= 0 || intersectionHeight <= 0) {
-          return false
-        }
-        const intersectionArea = intersectionWidth * intersectionHeight
-        const candidateArea = candidateRect.width * candidateRect.height
-        return intersectionArea >= Math.min(candidateArea * 0.45, 2400)
-      })
-      .filter(element => this.readElement(element, 0) !== null)
-
-    const withoutAncestorDuplicates = candidates.filter(candidate =>
-      !candidates.some(other => other !== candidate && candidate.contains(other)))
-    const meaningful = withoutAncestorDuplicates.filter(element =>
-      this.isInteractiveElement(element)
-      || ['IMG', 'SVG', 'CANVAS', 'VIDEO', 'BUTTON', 'INPUT', 'SELECT', 'TEXTAREA'].includes(element.tagName)
-      || Boolean(element.getAttribute('role'))
-      || Boolean(element.getAttribute('aria-label'))
-      || Boolean(element.textContent?.trim()))
-
-    return meaningful.slice(0, 24)
-  }
-
   private boundsForElements(elements: Element[]): { x: number, y: number, width: number, height: number } {
     const rects = elements.map(element => element.getBoundingClientRect())
     const left = Math.min(...rects.map(rect => rect.left))
@@ -4806,8 +4765,16 @@ class BrowserAnnotationRuntime {
       || element.label
       || element.attributes?.id
       || element.role
-      || element.selector
-    return `${name || 'Element'} <${element.tagName.toLowerCase()}>`
+      || this.shortSelectorLabel(element.selector)
+    const trimmed = (name || 'Element').replace(/\s+/g, ' ').trim()
+    const concise = trimmed.length > 48 ? `${trimmed.slice(0, 47)}…` : trimmed
+    return `${concise} <${element.tagName.toLowerCase()}>`
+  }
+
+  /** The visible token is a human handle, not a machine path — keep only the leaf segment. */
+  private shortSelectorLabel(selector: string): string {
+    const segment = selector.split('>').pop()?.trim() ?? selector
+    return segment.replace(/:nth-of-type\(\d+\)/g, '')
   }
 
   private reactComponentsFor(element: Element): string | null {
