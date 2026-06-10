@@ -1,1 +1,0 @@
-ALTER TABLE `agent_profiles` ADD `icon_slug` text;

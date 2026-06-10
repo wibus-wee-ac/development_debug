@@ -18,14 +18,6 @@ export const runtimeAuditLog = sqliteTable('runtime_audit_log', {
 
 export type RuntimeAuditEntry = typeof runtimeAuditLog.$inferSelect
 
-export const providerModelCache = sqliteTable('provider_model_cache', {
-  providerTargetId: text('provider_target_id').primaryKey().references(() => providerTargets.id, { onDelete: 'cascade' }),
-  modelsJson: text('models_json').notNull().default('[]'),
-  fetchedAt: int('fetched_at').notNull().default(sql`(unixepoch())`),
-})
-
-export type ProviderModelCacheRow = typeof providerModelCache.$inferSelect
-
 export const providerTargetModelCache = sqliteTable('provider_target_model_cache', {
   providerTargetId: text('provider_target_id').primaryKey().references(() => providerTargets.id, { onDelete: 'cascade' }),
   modelsJson: text('models_json').notNull().default('[]'),

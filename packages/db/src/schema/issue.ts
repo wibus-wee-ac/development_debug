@@ -1,9 +1,11 @@
-import { index, int, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
+import { index, int, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 import { agents } from './identity'
+import { providerTargets } from './provider-target'
 import { createdAt, textPk, timestamps, workspaces } from './shared'
 
-export const issueStatuses = sqliteTable('kanban_statuses', {
+export const issueStatuses = sqliteTable('issue_statuses', {
   id: textPk(),
   workspaceId: text('workspace_id')
     .notNull()
@@ -14,10 +16,11 @@ export const issueStatuses = sqliteTable('kanban_statuses', {
   order: int('order').notNull().default(0),
   ...createdAt(),
 }, table => ({
-  byWorkspace: index('kanban_statuses_workspace_id_idx').on(table.workspaceId),
+  byWorkspace: index('issue_statuses_workspace_id_idx').on(table.workspaceId),
+  byWorkspaceName: uniqueIndex('issue_statuses_workspace_name_unique').on(table.workspaceId, table.name),
 }))
 
-export const issueMilestones = sqliteTable('kanban_milestones', {
+export const issueMilestones = sqliteTable('issue_milestones', {
   id: textPk(),
   workspaceId: text('workspace_id')
     .notNull()
@@ -28,18 +31,19 @@ export const issueMilestones = sqliteTable('kanban_milestones', {
   status: text('status', { enum: ['open', 'closed'] }).notNull().default('open'),
   ...timestamps(),
 }, table => ({
-  byWorkspace: index('kanban_milestones_workspace_id_idx').on(table.workspaceId),
+  byWorkspace: index('issue_milestones_workspace_id_idx').on(table.workspaceId),
 }))
 
-export const issues = sqliteTable('kanban_issues', {
+export const issues = sqliteTable('issues', {
   id: textPk(),
   workspaceId: text('workspace_id')
     .notNull()
     .references(() => workspaces.id, { onDelete: 'cascade' }),
-  number: int('number').notNull().default(0),
+  number: int('number').notNull(),
   statusId: text('status_id').references(() => issueStatuses.id, { onDelete: 'set null' }),
   milestoneId: text('milestone_id').references(() => issueMilestones.id, { onDelete: 'set null' }),
-  parentIssueId: text('parent_issue_id'),
+  parentIssueId: text('parent_issue_id')
+    .references((): AnySQLiteColumn => issues.id, { onDelete: 'set null' }),
   title: text('title').notNull(),
   description: text('description'),
   priority: text('priority', {
@@ -53,20 +57,22 @@ export const issues = sqliteTable('kanban_issues', {
   createdById: text('created_by_id').notNull().default('__self__'),
   sourceChatSessionId: text('source_chat_session_id'),
   delegateAgentId: text('delegate_agent_id').references(() => agents.id, { onDelete: 'set null' }),
-  delegateAgentProfileId: text('delegate_agent_profile_id'),
+  delegateProviderTargetId: text('delegate_provider_target_id')
+    .references(() => providerTargets.id, { onDelete: 'set null' }),
   contextRefs: text('context_refs').notNull().default('[]'),
   order: int('order').notNull().default(0),
   ...timestamps(),
 }, table => ({
-  byWorkspace: index('kanban_issues_workspace_id_idx').on(table.workspaceId),
-  byStatus: index('kanban_issues_status_id_idx').on(table.statusId),
-  byMilestone: index('kanban_issues_milestone_id_idx').on(table.milestoneId),
-  byParent: index('kanban_issues_parent_issue_id_idx').on(table.parentIssueId),
-  byDelegateAgent: index('kanban_issues_delegate_agent_id_idx').on(table.delegateAgentId),
-  byDelegateAgentProfile: index('kanban_issues_delegate_agent_profile_id_idx').on(table.delegateAgentProfileId),
+  byWorkspace: index('issues_workspace_id_idx').on(table.workspaceId),
+  byWorkspaceNumber: uniqueIndex('issues_workspace_number_unique').on(table.workspaceId, table.number),
+  byStatus: index('issues_status_id_idx').on(table.statusId),
+  byMilestone: index('issues_milestone_id_idx').on(table.milestoneId),
+  byParent: index('issues_parent_issue_id_idx').on(table.parentIssueId),
+  byDelegateAgent: index('issues_delegate_agent_id_idx').on(table.delegateAgentId),
+  byDelegateProviderTarget: index('issues_delegate_provider_target_id_idx').on(table.delegateProviderTargetId),
 }))
 
-export const issueComments = sqliteTable('kanban_issue_comments', {
+export const issueComments = sqliteTable('issue_comments', {
   id: textPk(),
   issueId: text('issue_id')
     .notNull()
@@ -80,10 +86,10 @@ export const issueComments = sqliteTable('kanban_issue_comments', {
   agentActivityId: text('agent_activity_id'),
   ...createdAt(),
 }, table => ({
-  byIssue: index('kanban_issue_comments_issue_id_idx').on(table.issueId),
+  byIssue: index('issue_comments_issue_id_idx').on(table.issueId),
 }))
 
-export const issueRelations = sqliteTable('kanban_issue_relations', {
+export const issueRelations = sqliteTable('issue_relations', {
   id: textPk(),
   sourceIssueId: text('source_issue_id')
     .notNull()
@@ -94,11 +100,13 @@ export const issueRelations = sqliteTable('kanban_issue_relations', {
   type: text('type', { enum: ['blocks', 'duplicates', 'relates_to'] }).notNull(),
   ...createdAt(),
 }, table => ({
-  bySource: index('kanban_issue_relations_source_issue_id_idx').on(table.sourceIssueId),
-  byTarget: index('kanban_issue_relations_target_issue_id_idx').on(table.targetIssueId),
+  bySource: index('issue_relations_source_issue_id_idx').on(table.sourceIssueId),
+  byTarget: index('issue_relations_target_issue_id_idx').on(table.targetIssueId),
+  byPairType: uniqueIndex('issue_relations_pair_type_unique')
+    .on(table.sourceIssueId, table.targetIssueId, table.type),
 }))
 
-export const issueFieldChanges = sqliteTable('kanban_issue_field_changes', {
+export const issueFieldChanges = sqliteTable('issue_field_changes', {
   id: textPk(),
   issueId: text('issue_id')
     .notNull()
@@ -111,7 +119,7 @@ export const issueFieldChanges = sqliteTable('kanban_issue_field_changes', {
   sourceChatSessionId: text('source_chat_session_id'),
   ...createdAt(),
 }, table => ({
-  byIssue: index('kanban_issue_field_changes_issue_id_idx').on(table.issueId),
+  byIssue: index('issue_field_changes_issue_id_idx').on(table.issueId),
 }))
 
 export type IssueStatus = typeof issueStatuses.$inferSelect
@@ -120,19 +128,3 @@ export type Issue = typeof issues.$inferSelect
 export type IssueComment = typeof issueComments.$inferSelect
 export type IssueRelation = typeof issueRelations.$inferSelect
 export type IssueFieldChange = typeof issueFieldChanges.$inferSelect
-
-export {
-  issueComments as kanbanIssueComments,
-  issueFieldChanges as kanbanIssueFieldChanges,
-  issueRelations as kanbanIssueRelations,
-  issues as kanbanIssues,
-  issueMilestones as kanbanMilestones,
-  issueStatuses as kanbanStatuses,
-}
-
-export type KanbanStatus = IssueStatus
-export type KanbanMilestone = IssueMilestone
-export type KanbanIssue = Issue
-export type KanbanIssueComment = IssueComment
-export type KanbanIssueRelation = IssueRelation
-export type KanbanIssueFieldChange = IssueFieldChange

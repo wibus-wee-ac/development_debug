@@ -3,20 +3,6 @@ import { int, sqliteTable, text } from 'drizzle-orm/sqlite-core'
 import { providerTargets } from './provider-target'
 import { textPk, timestamps } from './shared'
 
-export const agentProfiles = sqliteTable('agent_profiles', {
-  id: textPk(),
-  name: text('name').notNull(),
-  providerKind: text('provider_kind', {
-    enum: ['openai-compatible', 'anthropic', 'universal'],
-  }).notNull(),
-  enabled: int('enabled', { mode: 'boolean' }).notNull().default(true),
-  configJson: text('config_json').notNull().default('{}'),
-  credentialRef: text('credential_ref'),
-  customModels: text('custom_models').notNull().default('[]'),
-  iconSlug: text('icon_slug'),
-  ...timestamps(),
-})
-
 export const agentCredentials = sqliteTable('agent_credentials', {
   id: textPk(),
   kind: text('kind').notNull(),
@@ -44,8 +30,6 @@ export const agents = sqliteTable('agents', {
   ...timestamps(),
 })
 
-export type AgentProfile = typeof agentProfiles.$inferSelect
-export type NewAgentProfile = typeof agentProfiles.$inferInsert
 export type AgentCredential = typeof agentCredentials.$inferSelect
 export type NewAgentCredential = typeof agentCredentials.$inferInsert
 export type Agent = typeof agents.$inferSelect

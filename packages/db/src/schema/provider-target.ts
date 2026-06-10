@@ -1,4 +1,5 @@
-import { index, int, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
+import { sql } from 'drizzle-orm'
+import { check, index, int, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 import { textPk, timestamps } from './shared'
 
@@ -32,6 +33,22 @@ export const providerTargets = sqliteTable('provider_targets', {
   byEnabled: index('provider_targets_enabled_idx').on(table.enabled),
   bySourceRecord: uniqueIndex('provider_targets_source_record_unique')
     .on(table.sourceKey, table.externalRecordId),
+  kindSourceShape: check(
+    'provider_targets_kind_source_shape_check',
+    sql`
+      (
+        ${table.kind} = 'manual'
+        AND ${table.sourceKey} IS NULL
+        AND ${table.externalRecordId} IS NULL
+      )
+      OR
+      (
+        ${table.kind} = 'external'
+        AND ${table.sourceKey} IS NOT NULL
+        AND ${table.externalRecordId} IS NOT NULL
+      )
+    `,
+  ),
 }))
 
 export type ProviderTarget = typeof providerTargets.$inferSelect

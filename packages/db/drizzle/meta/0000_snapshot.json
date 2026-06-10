@@ -1,8 +1,8 @@
 {
   "version": "6",
   "dialect": "sqlite",
-  "id": "e836ceb9-f366-4411-8bdb-561e48f37fa7",
-  "prevId": "42ca1f95-4f8c-45f6-abfb-25984b03d455",
+  "id": "0cddffa1-9a6e-4cfd-aac3-4538fd8ce689",
+  "prevId": "00000000-0000-0000-0000-000000000000",
   "tables": {
     "acp_agents": {
       "name": "acp_agents",
@@ -146,6 +146,239 @@
       },
       "indexes": {},
       "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "agent_activities": {
+      "name": "agent_activities",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "agent_session_id": {
+          "name": "agent_session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "content": {
+          "name": "content",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "signal": {
+          "name": "signal",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "signal_metadata": {
+          "name": "signal_metadata",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "agent_activities_agent_session_id_idx": {
+          "name": "agent_activities_agent_session_id_idx",
+          "columns": [
+            "agent_session_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "agent_activities_agent_session_id_agent_sessions_id_fk": {
+          "name": "agent_activities_agent_session_id_agent_sessions_id_fk",
+          "tableFrom": "agent_activities",
+          "tableTo": "agent_sessions",
+          "columnsFrom": [
+            "agent_session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "agent_sessions": {
+      "name": "agent_sessions",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "issue_id": {
+          "name": "issue_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "provider_target_id": {
+          "name": "provider_target_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "agent_id": {
+          "name": "agent_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "chat_session_id": {
+          "name": "chat_session_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "status": {
+          "name": "status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'created'"
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "agent_sessions_issue_id_idx": {
+          "name": "agent_sessions_issue_id_idx",
+          "columns": [
+            "issue_id"
+          ],
+          "isUnique": false
+        },
+        "agent_sessions_provider_target_id_idx": {
+          "name": "agent_sessions_provider_target_id_idx",
+          "columns": [
+            "provider_target_id"
+          ],
+          "isUnique": false
+        },
+        "agent_sessions_agent_id_idx": {
+          "name": "agent_sessions_agent_id_idx",
+          "columns": [
+            "agent_id"
+          ],
+          "isUnique": false
+        },
+        "agent_sessions_chat_session_id_idx": {
+          "name": "agent_sessions_chat_session_id_idx",
+          "columns": [
+            "chat_session_id"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "agent_sessions_issue_id_issues_id_fk": {
+          "name": "agent_sessions_issue_id_issues_id_fk",
+          "tableFrom": "agent_sessions",
+          "tableTo": "issues",
+          "columnsFrom": [
+            "issue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "agent_sessions_provider_target_id_provider_targets_id_fk": {
+          "name": "agent_sessions_provider_target_id_provider_targets_id_fk",
+          "tableFrom": "agent_sessions",
+          "tableTo": "provider_targets",
+          "columnsFrom": [
+            "provider_target_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "restrict",
+          "onUpdate": "no action"
+        },
+        "agent_sessions_agent_id_agents_id_fk": {
+          "name": "agent_sessions_agent_id_agents_id_fk",
+          "tableFrom": "agent_sessions",
+          "tableTo": "agents",
+          "columnsFrom": [
+            "agent_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "agent_sessions_chat_session_id_sessions_id_fk": {
+          "name": "agent_sessions_chat_session_id_sessions_id_fk",
+          "tableFrom": "agent_sessions",
+          "tableTo": "sessions",
+          "columnsFrom": [
+            "chat_session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "checkConstraints": {}
@@ -1523,6 +1756,166 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
+    "chat_runtime_events": {
+      "name": "chat_runtime_events",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "stream_id": {
+          "name": "stream_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "type": {
+          "name": "type",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "command_id": {
+          "name": "command_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actor_kind": {
+          "name": "actor_kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "actor_id": {
+          "name": "actor_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "run_id": {
+          "name": "run_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "message_id": {
+          "name": "message_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "queue_item_id": {
+          "name": "queue_item_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "occurred_at": {
+          "name": "occurred_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "payload_json": {
+          "name": "payload_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        }
+      },
+      "indexes": {
+        "chat_runtime_events_stream_seq_unique": {
+          "name": "chat_runtime_events_stream_seq_unique",
+          "columns": [
+            "stream_id",
+            "seq"
+          ],
+          "isUnique": true
+        },
+        "chat_runtime_events_stream_id_idx": {
+          "name": "chat_runtime_events_stream_id_idx",
+          "columns": [
+            "stream_id"
+          ],
+          "isUnique": false
+        },
+        "chat_runtime_events_run_id_idx": {
+          "name": "chat_runtime_events_run_id_idx",
+          "columns": [
+            "run_id"
+          ],
+          "isUnique": false
+        },
+        "chat_runtime_events_message_id_idx": {
+          "name": "chat_runtime_events_message_id_idx",
+          "columns": [
+            "message_id"
+          ],
+          "isUnique": false
+        },
+        "chat_runtime_events_queue_item_id_idx": {
+          "name": "chat_runtime_events_queue_item_id_idx",
+          "columns": [
+            "queue_item_id"
+          ],
+          "isUnique": false
+        },
+        "chat_runtime_events_type_idx": {
+          "name": "chat_runtime_events_type_idx",
+          "columns": [
+            "type"
+          ],
+          "isUnique": false
+        },
+        "chat_runtime_events_occurred_at_idx": {
+          "name": "chat_runtime_events_occurred_at_idx",
+          "columns": [
+            "occurred_at"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "chat_runtime_events_stream_id_sessions_id_fk": {
+          "name": "chat_runtime_events_stream_id_sessions_id_fk",
+          "tableFrom": "chat_runtime_events",
+          "tableTo": "sessions",
+          "columnsFrom": [
+            "stream_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
     "chat_session_queue_items": {
       "name": "chat_session_queue_items",
       "columns": {
@@ -1606,6 +1999,20 @@
           "notNull": false,
           "autoincrement": false
         },
+        "runtime_access_mode": {
+          "name": "runtime_access_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "runtime_interaction_mode": {
+          "name": "runtime_interaction_mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
         "position": {
           "name": "position",
           "type": "integer",
@@ -1649,20 +2056,6 @@
           "notNull": true,
           "autoincrement": false,
           "default": "(unixepoch())"
-        },
-        "runtime_access_mode": {
-          "name": "runtime_access_mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "runtime_interaction_mode": {
-          "name": "runtime_interaction_mode",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
         }
       },
       "indexes": {
@@ -2091,10 +2484,10 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
-        "sessions_linked_issue_id_kanban_issues_id_fk": {
-          "name": "sessions_linked_issue_id_kanban_issues_id_fk",
+        "sessions_linked_issue_id_issues_id_fk": {
+          "name": "sessions_linked_issue_id_issues_id_fk",
           "tableFrom": "sessions",
-          "tableTo": "kanban_issues",
+          "tableTo": "issues",
           "columnsFrom": [
             "linked_issue_id"
           ],
@@ -6859,128 +7252,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "external_provider_runtime_targets": {
-      "name": "external_provider_runtime_targets",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "source_key": {
-          "name": "source_key",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "external_record_id": {
-          "name": "external_record_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "provider_kind": {
-          "name": "provider_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "display_name": {
-          "name": "display_name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": true
-        },
-        "config_json": {
-          "name": "config_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'{}'"
-        },
-        "credential_ref": {
-          "name": "credential_ref",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "custom_models_json": {
-          "name": "custom_models_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'[]'"
-        },
-        "icon_slug": {
-          "name": "icon_slug",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "last_resolved_fingerprint": {
-          "name": "last_resolved_fingerprint",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch())"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch())"
-        }
-      },
-      "indexes": {
-        "external_provider_runtime_targets_source_record_unique": {
-          "name": "external_provider_runtime_targets_source_record_unique",
-          "columns": [
-            "source_key",
-            "external_record_id"
-          ],
-          "isUnique": true
-        },
-        "external_provider_runtime_targets_enabled_idx": {
-          "name": "external_provider_runtime_targets_enabled_idx",
-          "columns": [
-            "enabled"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "external_provider_sources": {
       "name": "external_provider_sources",
       "columns": {
@@ -7105,6 +7376,749 @@
             "source_id"
           ],
           "isUnique": true
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "external_issue_items": {
+      "name": "external_issue_items",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "binding_id": {
+          "name": "binding_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "status_id": {
+          "name": "status_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_key": {
+          "name": "source_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "external_id": {
+          "name": "external_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "external_key": {
+          "name": "external_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "external_url": {
+          "name": "external_url",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "repository_owner": {
+          "name": "repository_owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "repository_name": {
+          "name": "repository_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "number": {
+          "name": "number",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "body": {
+          "name": "body",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_state": {
+          "name": "source_state",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "labels_json": {
+          "name": "labels_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "assignees_json": {
+          "name": "assignees_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "milestone": {
+          "name": "milestone",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_created_at": {
+          "name": "source_created_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_updated_at": {
+          "name": "source_updated_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "source_closed_at": {
+          "name": "source_closed_at",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "sync_status": {
+          "name": "sync_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'active'"
+        },
+        "fingerprint": {
+          "name": "fingerprint",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "metadata_json": {
+          "name": "metadata_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "warnings_json": {
+          "name": "warnings_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "last_seen_at": {
+          "name": "last_seen_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "external_issue_items_workspace_source_external_unique": {
+          "name": "external_issue_items_workspace_source_external_unique",
+          "columns": [
+            "workspace_id",
+            "source_key",
+            "external_id"
+          ],
+          "isUnique": true
+        },
+        "external_issue_items_workspace_source_key_unique": {
+          "name": "external_issue_items_workspace_source_key_unique",
+          "columns": [
+            "workspace_id",
+            "source_key",
+            "external_key"
+          ],
+          "isUnique": true
+        },
+        "external_issue_items_binding_idx": {
+          "name": "external_issue_items_binding_idx",
+          "columns": [
+            "binding_id"
+          ],
+          "isUnique": false
+        },
+        "external_issue_items_workspace_idx": {
+          "name": "external_issue_items_workspace_idx",
+          "columns": [
+            "workspace_id"
+          ],
+          "isUnique": false
+        },
+        "external_issue_items_status_idx": {
+          "name": "external_issue_items_status_idx",
+          "columns": [
+            "status_id"
+          ],
+          "isUnique": false
+        },
+        "external_issue_items_sync_status_idx": {
+          "name": "external_issue_items_sync_status_idx",
+          "columns": [
+            "sync_status"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "external_issue_items_binding_id_external_issue_source_bindings_id_fk": {
+          "name": "external_issue_items_binding_id_external_issue_source_bindings_id_fk",
+          "tableFrom": "external_issue_items",
+          "tableTo": "external_issue_source_bindings",
+          "columnsFrom": [
+            "binding_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "external_issue_items_workspace_id_workspaces_id_fk": {
+          "name": "external_issue_items_workspace_id_workspaces_id_fk",
+          "tableFrom": "external_issue_items",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        },
+        "external_issue_items_status_id_issue_statuses_id_fk": {
+          "name": "external_issue_items_status_id_issue_statuses_id_fk",
+          "tableFrom": "external_issue_items",
+          "tableTo": "issue_statuses",
+          "columnsFrom": [
+            "status_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "external_issue_repository_cursors": {
+      "name": "external_issue_repository_cursors",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_key": {
+          "name": "source_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "repository_owner": {
+          "name": "repository_owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "repository_name": {
+          "name": "repository_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "etag": {
+          "name": "etag",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "cursor_json": {
+          "name": "cursor_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "last_fetch_status": {
+          "name": "last_fetch_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'never'"
+        },
+        "last_fetch_message": {
+          "name": "last_fetch_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_fetch_error": {
+          "name": "last_fetch_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_fetched_at": {
+          "name": "last_fetched_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "next_fetch_after": {
+          "name": "next_fetch_after",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rate_limit_reset_at": {
+          "name": "rate_limit_reset_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "rate_limit_remaining": {
+          "name": "rate_limit_remaining",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "external_issue_repository_cursors_source_repo_unique": {
+          "name": "external_issue_repository_cursors_source_repo_unique",
+          "columns": [
+            "source_key",
+            "repository_owner",
+            "repository_name"
+          ],
+          "isUnique": true
+        },
+        "external_issue_repository_cursors_next_fetch_idx": {
+          "name": "external_issue_repository_cursors_next_fetch_idx",
+          "columns": [
+            "next_fetch_after"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "external_issue_source_bindings": {
+      "name": "external_issue_source_bindings",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "workspace_id": {
+          "name": "workspace_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_key": {
+          "name": "source_key",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "repository_owner": {
+          "name": "repository_owner",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "repository_name": {
+          "name": "repository_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "schedule_enabled": {
+          "name": "schedule_enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": false
+        },
+        "refresh_interval_seconds": {
+          "name": "refresh_interval_seconds",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": 3600
+        },
+        "last_refresh_status": {
+          "name": "last_refresh_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'never'"
+        },
+        "last_refresh_message": {
+          "name": "last_refresh_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_refresh_error": {
+          "name": "last_refresh_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_refresh_at": {
+          "name": "last_refresh_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "next_refresh_after": {
+          "name": "next_refresh_after",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "external_issue_bindings_workspace_source_repo_unique": {
+          "name": "external_issue_bindings_workspace_source_repo_unique",
+          "columns": [
+            "workspace_id",
+            "source_key",
+            "repository_owner",
+            "repository_name"
+          ],
+          "isUnique": true
+        },
+        "external_issue_bindings_workspace_idx": {
+          "name": "external_issue_bindings_workspace_idx",
+          "columns": [
+            "workspace_id"
+          ],
+          "isUnique": false
+        },
+        "external_issue_bindings_source_idx": {
+          "name": "external_issue_bindings_source_idx",
+          "columns": [
+            "source_key"
+          ],
+          "isUnique": false
+        },
+        "external_issue_bindings_schedule_idx": {
+          "name": "external_issue_bindings_schedule_idx",
+          "columns": [
+            "schedule_enabled",
+            "next_refresh_after"
+          ],
+          "isUnique": false
+        }
+      },
+      "foreignKeys": {
+        "external_issue_source_bindings_workspace_id_workspaces_id_fk": {
+          "name": "external_issue_source_bindings_workspace_id_workspaces_id_fk",
+          "tableFrom": "external_issue_source_bindings",
+          "tableTo": "workspaces",
+          "columnsFrom": [
+            "workspace_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "checkConstraints": {}
+    },
+    "external_issue_sources": {
+      "name": "external_issue_sources",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "plugin_name": {
+          "name": "plugin_name",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "source_id": {
+          "name": "source_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "label": {
+          "name": "label",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false
+        },
+        "description": {
+          "name": "description",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "enabled": {
+          "name": "enabled",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": true
+        },
+        "registration_status": {
+          "name": "registration_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'registered'"
+        },
+        "capabilities_json": {
+          "name": "capabilities_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "inventory_json": {
+          "name": "inventory_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'{}'"
+        },
+        "warnings_json": {
+          "name": "warnings_json",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'[]'"
+        },
+        "last_sync_status": {
+          "name": "last_sync_status",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "'never'"
+        },
+        "last_sync_message": {
+          "name": "last_sync_message",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_sync_error": {
+          "name": "last_sync_error",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "last_sync_at": {
+          "name": "last_sync_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": false,
+          "autoincrement": false
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        },
+        "updated_at": {
+          "name": "updated_at",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "autoincrement": false,
+          "default": "(unixepoch())"
+        }
+      },
+      "indexes": {
+        "external_issue_sources_plugin_source_unique": {
+          "name": "external_issue_sources_plugin_source_unique",
+          "columns": [
+            "plugin_name",
+            "source_id"
+          ],
+          "isUnique": true
+        },
+        "external_issue_sources_registration_status_idx": {
+          "name": "external_issue_sources_registration_status_idx",
+          "columns": [
+            "registration_status"
+          ],
+          "isUnique": false
         }
       },
       "foreignKeys": {},
@@ -7376,91 +8390,6 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "agent_profiles": {
-      "name": "agent_profiles",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "name": {
-          "name": "name",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "provider_kind": {
-          "name": "provider_kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "enabled": {
-          "name": "enabled",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": true
-        },
-        "config_json": {
-          "name": "config_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'{}'"
-        },
-        "credential_ref": {
-          "name": "credential_ref",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "custom_models": {
-          "name": "custom_models",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'[]'"
-        },
-        "icon_slug": {
-          "name": "icon_slug",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch())"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch())"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {},
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
     "agents": {
       "name": "agents",
       "columns": {
@@ -7590,8 +8519,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "kanban_issue_comments": {
-      "name": "kanban_issue_comments",
+    "issue_comments": {
+      "name": "issue_comments",
       "columns": {
         "id": {
           "name": "id",
@@ -7653,8 +8582,8 @@
         }
       },
       "indexes": {
-        "kanban_issue_comments_issue_id_idx": {
-          "name": "kanban_issue_comments_issue_id_idx",
+        "issue_comments_issue_id_idx": {
+          "name": "issue_comments_issue_id_idx",
           "columns": [
             "issue_id"
           ],
@@ -7662,10 +8591,10 @@
         }
       },
       "foreignKeys": {
-        "kanban_issue_comments_issue_id_kanban_issues_id_fk": {
-          "name": "kanban_issue_comments_issue_id_kanban_issues_id_fk",
-          "tableFrom": "kanban_issue_comments",
-          "tableTo": "kanban_issues",
+        "issue_comments_issue_id_issues_id_fk": {
+          "name": "issue_comments_issue_id_issues_id_fk",
+          "tableFrom": "issue_comments",
+          "tableTo": "issues",
           "columnsFrom": [
             "issue_id"
           ],
@@ -7680,8 +8609,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "kanban_issue_field_changes": {
-      "name": "kanban_issue_field_changes",
+    "issue_field_changes": {
+      "name": "issue_field_changes",
       "columns": {
         "id": {
           "name": "id",
@@ -7750,8 +8679,8 @@
         }
       },
       "indexes": {
-        "kanban_issue_field_changes_issue_id_idx": {
-          "name": "kanban_issue_field_changes_issue_id_idx",
+        "issue_field_changes_issue_id_idx": {
+          "name": "issue_field_changes_issue_id_idx",
           "columns": [
             "issue_id"
           ],
@@ -7759,10 +8688,10 @@
         }
       },
       "foreignKeys": {
-        "kanban_issue_field_changes_issue_id_kanban_issues_id_fk": {
-          "name": "kanban_issue_field_changes_issue_id_kanban_issues_id_fk",
-          "tableFrom": "kanban_issue_field_changes",
-          "tableTo": "kanban_issues",
+        "issue_field_changes_issue_id_issues_id_fk": {
+          "name": "issue_field_changes_issue_id_issues_id_fk",
+          "tableFrom": "issue_field_changes",
+          "tableTo": "issues",
           "columnsFrom": [
             "issue_id"
           ],
@@ -7777,8 +8706,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "kanban_milestones": {
-      "name": "kanban_milestones",
+    "issue_milestones": {
+      "name": "issue_milestones",
       "columns": {
         "id": {
           "name": "id",
@@ -7841,8 +8770,8 @@
         }
       },
       "indexes": {
-        "kanban_milestones_workspace_id_idx": {
-          "name": "kanban_milestones_workspace_id_idx",
+        "issue_milestones_workspace_id_idx": {
+          "name": "issue_milestones_workspace_id_idx",
           "columns": [
             "workspace_id"
           ],
@@ -7850,9 +8779,9 @@
         }
       },
       "foreignKeys": {
-        "kanban_milestones_workspace_id_workspaces_id_fk": {
-          "name": "kanban_milestones_workspace_id_workspaces_id_fk",
-          "tableFrom": "kanban_milestones",
+        "issue_milestones_workspace_id_workspaces_id_fk": {
+          "name": "issue_milestones_workspace_id_workspaces_id_fk",
+          "tableFrom": "issue_milestones",
           "tableTo": "workspaces",
           "columnsFrom": [
             "workspace_id"
@@ -7868,8 +8797,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "kanban_issue_relations": {
-      "name": "kanban_issue_relations",
+    "issue_relations": {
+      "name": "issue_relations",
       "columns": {
         "id": {
           "name": "id",
@@ -7909,26 +8838,35 @@
         }
       },
       "indexes": {
-        "kanban_issue_relations_source_issue_id_idx": {
-          "name": "kanban_issue_relations_source_issue_id_idx",
+        "issue_relations_source_issue_id_idx": {
+          "name": "issue_relations_source_issue_id_idx",
           "columns": [
             "source_issue_id"
           ],
           "isUnique": false
         },
-        "kanban_issue_relations_target_issue_id_idx": {
-          "name": "kanban_issue_relations_target_issue_id_idx",
+        "issue_relations_target_issue_id_idx": {
+          "name": "issue_relations_target_issue_id_idx",
           "columns": [
             "target_issue_id"
           ],
           "isUnique": false
+        },
+        "issue_relations_pair_type_unique": {
+          "name": "issue_relations_pair_type_unique",
+          "columns": [
+            "source_issue_id",
+            "target_issue_id",
+            "type"
+          ],
+          "isUnique": true
         }
       },
       "foreignKeys": {
-        "kanban_issue_relations_source_issue_id_kanban_issues_id_fk": {
-          "name": "kanban_issue_relations_source_issue_id_kanban_issues_id_fk",
-          "tableFrom": "kanban_issue_relations",
-          "tableTo": "kanban_issues",
+        "issue_relations_source_issue_id_issues_id_fk": {
+          "name": "issue_relations_source_issue_id_issues_id_fk",
+          "tableFrom": "issue_relations",
+          "tableTo": "issues",
           "columnsFrom": [
             "source_issue_id"
           ],
@@ -7938,10 +8876,10 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "kanban_issue_relations_target_issue_id_kanban_issues_id_fk": {
-          "name": "kanban_issue_relations_target_issue_id_kanban_issues_id_fk",
-          "tableFrom": "kanban_issue_relations",
-          "tableTo": "kanban_issues",
+        "issue_relations_target_issue_id_issues_id_fk": {
+          "name": "issue_relations_target_issue_id_issues_id_fk",
+          "tableFrom": "issue_relations",
+          "tableTo": "issues",
           "columnsFrom": [
             "target_issue_id"
           ],
@@ -7956,8 +8894,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "kanban_statuses": {
-      "name": "kanban_statuses",
+    "issue_statuses": {
+      "name": "issue_statuses",
       "columns": {
         "id": {
           "name": "id",
@@ -8013,18 +8951,26 @@
         }
       },
       "indexes": {
-        "kanban_statuses_workspace_id_idx": {
-          "name": "kanban_statuses_workspace_id_idx",
+        "issue_statuses_workspace_id_idx": {
+          "name": "issue_statuses_workspace_id_idx",
           "columns": [
             "workspace_id"
           ],
           "isUnique": false
+        },
+        "issue_statuses_workspace_name_unique": {
+          "name": "issue_statuses_workspace_name_unique",
+          "columns": [
+            "workspace_id",
+            "name"
+          ],
+          "isUnique": true
         }
       },
       "foreignKeys": {
-        "kanban_statuses_workspace_id_workspaces_id_fk": {
-          "name": "kanban_statuses_workspace_id_workspaces_id_fk",
-          "tableFrom": "kanban_statuses",
+        "issue_statuses_workspace_id_workspaces_id_fk": {
+          "name": "issue_statuses_workspace_id_workspaces_id_fk",
+          "tableFrom": "issue_statuses",
           "tableTo": "workspaces",
           "columnsFrom": [
             "workspace_id"
@@ -8040,8 +8986,8 @@
       "uniqueConstraints": {},
       "checkConstraints": {}
     },
-    "kanban_issues": {
-      "name": "kanban_issues",
+    "issues": {
+      "name": "issues",
       "columns": {
         "id": {
           "name": "id",
@@ -8062,8 +9008,7 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true,
-          "autoincrement": false,
-          "default": 0
+          "autoincrement": false
         },
         "status_id": {
           "name": "status_id",
@@ -8167,8 +9112,8 @@
           "notNull": false,
           "autoincrement": false
         },
-        "delegate_agent_profile_id": {
-          "name": "delegate_agent_profile_id",
+        "delegate_provider_target_id": {
+          "name": "delegate_provider_target_id",
           "type": "text",
           "primaryKey": false,
           "notNull": false,
@@ -8208,53 +9153,61 @@
         }
       },
       "indexes": {
-        "kanban_issues_workspace_id_idx": {
-          "name": "kanban_issues_workspace_id_idx",
+        "issues_workspace_id_idx": {
+          "name": "issues_workspace_id_idx",
           "columns": [
             "workspace_id"
           ],
           "isUnique": false
         },
-        "kanban_issues_status_id_idx": {
-          "name": "kanban_issues_status_id_idx",
+        "issues_workspace_number_unique": {
+          "name": "issues_workspace_number_unique",
+          "columns": [
+            "workspace_id",
+            "number"
+          ],
+          "isUnique": true
+        },
+        "issues_status_id_idx": {
+          "name": "issues_status_id_idx",
           "columns": [
             "status_id"
           ],
           "isUnique": false
         },
-        "kanban_issues_milestone_id_idx": {
-          "name": "kanban_issues_milestone_id_idx",
+        "issues_milestone_id_idx": {
+          "name": "issues_milestone_id_idx",
           "columns": [
             "milestone_id"
           ],
           "isUnique": false
         },
-        "kanban_issues_parent_issue_id_idx": {
-          "name": "kanban_issues_parent_issue_id_idx",
+        "issues_parent_issue_id_idx": {
+          "name": "issues_parent_issue_id_idx",
           "columns": [
             "parent_issue_id"
           ],
           "isUnique": false
         },
-        "kanban_issues_delegate_agent_id_idx": {
-          "name": "kanban_issues_delegate_agent_id_idx",
+        "issues_delegate_agent_id_idx": {
+          "name": "issues_delegate_agent_id_idx",
           "columns": [
             "delegate_agent_id"
           ],
           "isUnique": false
         },
-        "kanban_issues_delegate_agent_profile_id_idx": {
-          "name": "kanban_issues_delegate_agent_profile_id_idx",
+        "issues_delegate_provider_target_id_idx": {
+          "name": "issues_delegate_provider_target_id_idx",
           "columns": [
-            "delegate_agent_profile_id"
+            "delegate_provider_target_id"
           ],
           "isUnique": false
         }
       },
       "foreignKeys": {
-        "kanban_issues_workspace_id_workspaces_id_fk": {
-          "name": "kanban_issues_workspace_id_workspaces_id_fk",
-          "tableFrom": "kanban_issues",
+        "issues_workspace_id_workspaces_id_fk": {
+          "name": "issues_workspace_id_workspaces_id_fk",
+          "tableFrom": "issues",
           "tableTo": "workspaces",
           "columnsFrom": [
             "workspace_id"
@@ -8265,10 +9218,10 @@
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
-        "kanban_issues_status_id_kanban_statuses_id_fk": {
-          "name": "kanban_issues_status_id_kanban_statuses_id_fk",
-          "tableFrom": "kanban_issues",
-          "tableTo": "kanban_statuses",
+        "issues_status_id_issue_statuses_id_fk": {
+          "name": "issues_status_id_issue_statuses_id_fk",
+          "tableFrom": "issues",
+          "tableTo": "issue_statuses",
           "columnsFrom": [
             "status_id"
           ],
@@ -8278,10 +9231,10 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
-        "kanban_issues_milestone_id_kanban_milestones_id_fk": {
-          "name": "kanban_issues_milestone_id_kanban_milestones_id_fk",
-          "tableFrom": "kanban_issues",
-          "tableTo": "kanban_milestones",
+        "issues_milestone_id_issue_milestones_id_fk": {
+          "name": "issues_milestone_id_issue_milestones_id_fk",
+          "tableFrom": "issues",
+          "tableTo": "issue_milestones",
           "columnsFrom": [
             "milestone_id"
           ],
@@ -8291,9 +9244,22 @@
           "onDelete": "set null",
           "onUpdate": "no action"
         },
-        "kanban_issues_delegate_agent_id_agents_id_fk": {
-          "name": "kanban_issues_delegate_agent_id_agents_id_fk",
-          "tableFrom": "kanban_issues",
+        "issues_parent_issue_id_issues_id_fk": {
+          "name": "issues_parent_issue_id_issues_id_fk",
+          "tableFrom": "issues",
+          "tableTo": "issues",
+          "columnsFrom": [
+            "parent_issue_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "set null",
+          "onUpdate": "no action"
+        },
+        "issues_delegate_agent_id_agents_id_fk": {
+          "name": "issues_delegate_agent_id_agents_id_fk",
+          "tableFrom": "issues",
           "tableTo": "agents",
           "columnsFrom": [
             "delegate_agent_id"
@@ -8303,233 +9269,13 @@
           ],
           "onDelete": "set null",
           "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "agent_activities": {
-      "name": "agent_activities",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
         },
-        "agent_session_id": {
-          "name": "agent_session_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "type": {
-          "name": "type",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "content": {
-          "name": "content",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "signal": {
-          "name": "signal",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "signal_metadata": {
-          "name": "signal_metadata",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch())"
-        }
-      },
-      "indexes": {
-        "agent_activities_agent_session_id_idx": {
-          "name": "agent_activities_agent_session_id_idx",
-          "columns": [
-            "agent_session_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "agent_activities_agent_session_id_agent_sessions_id_fk": {
-          "name": "agent_activities_agent_session_id_agent_sessions_id_fk",
-          "tableFrom": "agent_activities",
-          "tableTo": "agent_sessions",
-          "columnsFrom": [
-            "agent_session_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "agent_sessions": {
-      "name": "agent_sessions",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "issue_id": {
-          "name": "issue_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "provider_target_id": {
-          "name": "provider_target_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "agent_id": {
-          "name": "agent_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "chat_session_id": {
-          "name": "chat_session_id",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": false,
-          "autoincrement": false
-        },
-        "status": {
-          "name": "status",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'created'"
-        },
-        "created_at": {
-          "name": "created_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch())"
-        },
-        "updated_at": {
-          "name": "updated_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch())"
-        }
-      },
-      "indexes": {
-        "agent_sessions_issue_id_idx": {
-          "name": "agent_sessions_issue_id_idx",
-          "columns": [
-            "issue_id"
-          ],
-          "isUnique": false
-        },
-        "agent_sessions_provider_target_id_idx": {
-          "name": "agent_sessions_provider_target_id_idx",
-          "columns": [
-            "provider_target_id"
-          ],
-          "isUnique": false
-        },
-        "agent_sessions_agent_id_idx": {
-          "name": "agent_sessions_agent_id_idx",
-          "columns": [
-            "agent_id"
-          ],
-          "isUnique": false
-        },
-        "agent_sessions_chat_session_id_idx": {
-          "name": "agent_sessions_chat_session_id_idx",
-          "columns": [
-            "chat_session_id"
-          ],
-          "isUnique": false
-        }
-      },
-      "foreignKeys": {
-        "agent_sessions_issue_id_kanban_issues_id_fk": {
-          "name": "agent_sessions_issue_id_kanban_issues_id_fk",
-          "tableFrom": "agent_sessions",
-          "tableTo": "kanban_issues",
-          "columnsFrom": [
-            "issue_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        },
-        "agent_sessions_provider_target_id_provider_targets_id_fk": {
-          "name": "agent_sessions_provider_target_id_provider_targets_id_fk",
-          "tableFrom": "agent_sessions",
+        "issues_delegate_provider_target_id_provider_targets_id_fk": {
+          "name": "issues_delegate_provider_target_id_provider_targets_id_fk",
+          "tableFrom": "issues",
           "tableTo": "provider_targets",
           "columnsFrom": [
-            "provider_target_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "restrict",
-          "onUpdate": "no action"
-        },
-        "agent_sessions_agent_id_agents_id_fk": {
-          "name": "agent_sessions_agent_id_agents_id_fk",
-          "tableFrom": "agent_sessions",
-          "tableTo": "agents",
-          "columnsFrom": [
-            "agent_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "set null",
-          "onUpdate": "no action"
-        },
-        "agent_sessions_chat_session_id_sessions_id_fk": {
-          "name": "agent_sessions_chat_session_id_sessions_id_fk",
-          "tableFrom": "agent_sessions",
-          "tableTo": "sessions",
-          "columnsFrom": [
-            "chat_session_id"
+            "delegate_provider_target_id"
           ],
           "columnsTo": [
             "id"
@@ -9274,54 +10020,12 @@
       "foreignKeys": {},
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
-      "checkConstraints": {}
-    },
-    "provider_model_cache": {
-      "name": "provider_model_cache",
-      "columns": {
-        "provider_target_id": {
-          "name": "provider_target_id",
-          "type": "text",
-          "primaryKey": true,
-          "notNull": true,
-          "autoincrement": false
-        },
-        "models_json": {
-          "name": "models_json",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "'[]'"
-        },
-        "fetched_at": {
-          "name": "fetched_at",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true,
-          "autoincrement": false,
-          "default": "(unixepoch())"
+      "checkConstraints": {
+        "provider_targets_kind_source_shape_check": {
+          "name": "provider_targets_kind_source_shape_check",
+          "value": "\n      (\n        \"provider_targets\".\"kind\" = 'manual'\n        AND \"provider_targets\".\"source_key\" IS NULL\n        AND \"provider_targets\".\"external_record_id\" IS NULL\n      )\n      OR\n      (\n        \"provider_targets\".\"kind\" = 'external'\n        AND \"provider_targets\".\"source_key\" IS NOT NULL\n        AND \"provider_targets\".\"external_record_id\" IS NOT NULL\n      )\n    "
         }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "provider_model_cache_provider_target_id_provider_targets_id_fk": {
-          "name": "provider_model_cache_provider_target_id_provider_targets_id_fk",
-          "tableFrom": "provider_model_cache",
-          "tableTo": "provider_targets",
-          "columnsFrom": [
-            "provider_target_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "checkConstraints": {}
+      }
     },
     "provider_target_model_cache": {
       "name": "provider_target_model_cache",

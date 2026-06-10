@@ -50,27 +50,3 @@ export type ExternalProviderSource = typeof externalProviderSources.$inferSelect
 export type NewExternalProviderSource = typeof externalProviderSources.$inferInsert
 export type ExternalProviderRecord = typeof externalProviderRecords.$inferSelect
 export type NewExternalProviderRecord = typeof externalProviderRecords.$inferInsert
-
-export const externalProviderRuntimeTargets = sqliteTable('external_provider_runtime_targets', {
-  id: textPk(),
-  sourceKey: text('source_key').notNull(),
-  externalRecordId: text('external_record_id').notNull(),
-  providerKind: text('provider_kind', {
-    enum: ['openai-compatible', 'anthropic', 'cli-tool'],
-  }).notNull(),
-  displayName: text('display_name').notNull(),
-  enabled: int('enabled', { mode: 'boolean' }).notNull().default(true),
-  configJson: text('config_json').notNull().default('{}'),
-  credentialRef: text('credential_ref'),
-  customModelsJson: text('custom_models_json').notNull().default('[]'),
-  iconSlug: text('icon_slug'),
-  lastResolvedFingerprint: text('last_resolved_fingerprint').notNull(),
-  ...timestamps(),
-}, table => ({
-  bySourceRecord: uniqueIndex('external_provider_runtime_targets_source_record_unique')
-    .on(table.sourceKey, table.externalRecordId),
-  byEnabled: index('external_provider_runtime_targets_enabled_idx').on(table.enabled),
-}))
-
-export type ExternalProviderRuntimeTarget = typeof externalProviderRuntimeTargets.$inferSelect
-export type NewExternalProviderRuntimeTarget = typeof externalProviderRuntimeTargets.$inferInsert

@@ -4,45 +4,14 @@
 
 这里存放 SQLite 的 Drizzle migration 产物，是运行时真正执行的 schema 历史。
 SQL 文件负责重放数据库结构，`meta/` 负责 journal 与 snapshot，三者必须成套维护。
-当前历史已重新基线化；后续新增 migration 时不要再只提交其中一部分。
+当前历史已在首次个人/公开使用前重新基线化。后续一旦有外部或长期本地数据需要保留，就只能追加 migration，不要重写历史。
 
 ## Files
 
-- **0000_initial_baseline.sql**: 当前主进程 schema 的干净 baseline migration
-- **0001_steady_phalanx.sql**: 历史增量 migration，曾新增 `backend_timeline_events` append-only timeline 表
-- **0015_message_snapshot_chat_runtime.sql**: 破坏性迁移，新增 `messages.message_json` 与 message-level subagent routing 字段，并删除 `backend_timeline_events`
-- **0016_hot_path_indexes.sql**: 增量 migration，为 chat、Kanban、issue-agent、usage 等热路径外键和查询列补齐索引
-- **0021_violet_stephen_strange.sql**: 增量 migration，为 Kanban issue/comment provenance 和 issue-agent session agent identity 增加字段与索引
-- **0023_outstanding_diamondback.sql**: Drizzle Kit 生成的 Chronicle 增量 migration，新增 snapshot、memory、model resource 与 event 表
-- **0024_wooden_nightcrawler.sql**: Drizzle Kit 生成的 Chronicle Slack 增量 migration，新增 message source 与 message 表
-- **0030_dazzling_blackheart.sql**: Drizzle Kit 生成的 Chronicle activity pipeline migration，新增 activity session、activity segment 与 pipeline run 表
-- **0031_shallow_captain_midlands.sql**: Drizzle Kit 生成的 Chronicle knowledge/dream foundation migration，新增 knowledge card/version/file 与 dream run 表
-- **0032_powerful_talos.sql**: Drizzle Kit 生成的 Chronicle normalized source/candidate migration，新增 knowledge source link 与 dream candidate 表
-- **0033_next_vector.sql**: Drizzle Kit 生成的 Chronicle stable knowledge key migration，新增 `stable_key` 与索引
-- **0034_aberrant_jack_flag.sql**: Drizzle Kit 生成的 Chronicle speaker profile migration，新增 speaker profile/alias/embedding runtime data 表
-- **0035_lethal_greymalkin.sql**: Drizzle Kit 生成的 external provider source migration，新增 plugin-provided provider source、record 与 profile link projection 表
-- **0036_thankful_psylocke.sql**: Drizzle Kit 生成的 Chronicle accessibility event migration，新增 accessibility event history 表与查询索引
-- **0037_sweet_paibok.sql**: Drizzle Kit 生成的 plugin storage migration，新增 `plugin_storage_entries` 表与 plugin/key 隔离索引
-- **0038_chat_session_queue_items.sql**: Chat Runtime-owned continuation queue migration，新增 `chat_session_queue_items` 表与 session/status/run 查询索引
-- **0039_chat_session_queue_repair.sql**: 幂等修复 migration，用于补齐已经记录 0038 但缺少 `chat_session_queue_items` 的开发库
-- **0041_keen_maggott.sql**: Drizzle Kit 生成的 provider-target foundation migration，新增 external runtime target、provider-target model cache 与 provider-target 引用列，并移除旧 external profile link 的 profile FK
-- **0042_bitter_mimic.sql**: Drizzle Kit 生成的 nullable runtime profile migration，让 backend binding/capability snapshot 可以记录 external-record target 而不伪造 profile FK
-- **0043_serious_stature.sql**: Drizzle Kit 生成的 external profile link cleanup migration，删除已废弃的 `external_provider_profile_links` 表
-- **0046_workspace_pinned.sql**: Drizzle Kit 生成的 workspace pinning migration，为 `workspaces` 增加 app sidebar-owned `pinned` 状态列
-- **0047_remarkable_nico_minoru.sql**: Drizzle Kit 生成并补充数据提升的 global model registry migration，新增 `model_registry_mappings` 表，并把旧 profile/provider-target JSON mappings 提升到全局 namespace
-- **0048_curvy_nextwave.sql**: Drizzle Kit 生成并补充数据清理的 model registry cleanup migration，把 custom model JSON 压缩为 `id/label`，并删除 provider-target runtime tables 上已提升到全局 namespace 的旧 mapping JSON 列
-- **0050_nebulous_preak.sql**: Chat Runtime queue migration，为 `chat_session_queue_items` 增加 `permission_mode`，保留排队 continuation 的 runtime permission mode
-- **0053_military_longshot.sql**: Session Await delivery recovery migration，为 `session_awaits` 增加 `resume_text` 与 `failure_kind`，区分 source failure 和 delivery failure 并支持恢复投递重试
-- **0054_session_archive.sql**: Session lifecycle migration，为 `sessions` 增加 `archived_at` 和查询索引，支持软归档而不是删除历史
-- **0055_military_earthquake.sql**: Drizzle Kit 生成的 Chat Runtime queue context migration，为 `chat_session_queue_items` 增加 `context_parts_json`
-- **0056_mean_gravity.sql**: Drizzle Kit 生成的 Issue migration，为 `kanban_issues` 增加 `due_date`，并新增 `kanban_issue_field_changes` 字段变更历史表
-- **0057_backend_run_snapshots.sql**: Drizzle Kit 生成的 Chat Runtime harness snapshot migration，新增 `backend_run_snapshots` 与 `backend_run_snapshot_events`，用于持久化 runtime-neutral run envelope 与 ordered event stream
-- **0059_session_side_chat.sql**: Session side chat migration，为 `sessions` 增加 `parent_session_id`、`side_context_source` 与 parent 查询索引，支持 Chat Runtime-owned side session 关系
-- **0061_chat_runtime_settings.sql**: Chat Runtime queue migration，为 `chat_session_queue_items` 增加 `runtime_access_mode` 与 `runtime_interaction_mode`，保留排队 continuation 的 runtime settings 快照
-- **0062_session_read_state.sql**: Session read-state migration，为 `sessions` 增加 `last_read_at`，支持会话读取状态持久化
-- **0063_agent_thinking_effort_concrete.sql**: Agent identity migration，把旧 `thinking_effort='auto'` 归一到 `high`，并将 `agents.thinking_effort` 默认值改为具体 effort
-- **0064_backend_run_nullable_binding.sql**: Provider Runtime migration，让 `backend_runs.binding_id` 可空并在删除 durable binding 时置空，支持 live-only side conversation run 不写 durable provider binding
-- **0065_agent_thinking_effort_chat_contract.sql**: Agent identity migration，把旧 provider-native effort 值归一到 chat-run 的 `low`/`medium`/`high`/`xhigh` 契约
-- **0067_chat_runtime_events.sql**: Chat Runtime event-log migration，新增 `chat_runtime_events` append-only canonical history 表，按 chat session stream + seq 记录 Cradle-owned lifecycle/message/tool/queue/provider events，供 run/message/queue/session status read model projector 重建状态
-- **0068_chat_runtime_provider_context_event.sql**: Chat Runtime event-log data migration，把早期 provider binding resolution 事件名归一为 run provider context recorded 语义，保持事件流 ownership 与 Provider Runtime binding ownership 分离
+- **0000_initial_release_baseline.sql**: 当前 schema 的干净 baseline migration。
 - **meta/**: Drizzle journal 与 schema snapshot，用于 tooling 和 migration 顺序管理；该目录必须保持 JSON-only，否则 `drizzle-kit generate` 会解析失败
+
+## Regenerate Before Release Boundary
+
+如果还没有任何需要保留的用户数据，可以删除 `*.sql` 和 `meta/` 后重新生成 baseline。
+一旦 release 边界成立，就不要再做这件事；所有 schema 变化都必须追加新的 migration。

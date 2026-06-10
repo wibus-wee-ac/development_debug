@@ -1,1 +1,0 @@
-ALTER TABLE `chat_session_queue_items` ADD `context_parts_json` text DEFAULT '[]' NOT NULL;

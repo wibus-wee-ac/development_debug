@@ -1,2 +1,0 @@
-ALTER TABLE `chat_session_queue_items` ADD `agent_profile_id` text REFERENCES agent_profiles(id);--> statement-breakpoint
-CREATE INDEX `chat_session_queue_items_agent_profile_id_idx` ON `chat_session_queue_items` (`agent_profile_id`);

@@ -5,6 +5,8 @@ description: Drizzle migration artifacts, journal integrity, baseline history, a
 
 Migration files 是兼容性 artifact，不是格式化输出。应把它们视为 local workspace 和 server state 的 durability contract。
 
+当前迁移历史已在首次个人/公开使用前重新基线化为 `0000_initial_release_baseline.sql`。在没有任何需要保留的外部用户数据前，可以重建 baseline；一旦 release 边界成立，后续 schema 变化只能追加 migration，不要再重写历史。
+
 ## 谁负责
 
 `packages/db` owns migration layout and schema export compatibility. Each domain owner owns the migration content for its tables.
@@ -51,4 +53,10 @@ pnpm test
 
 ## 边界
 
-This page intentionally avoids naming a migration generation command because the confirmed package evidence did not expose one. Use the current repo owner-approved command, then update this page when it is stable.
+The current baseline was generated with:
+
+```bash
+pnpm exec drizzle-kit generate --name initial_release_baseline
+```
+
+Use this only when intentionally resetting a pre-release database history. For normal schema changes after the release boundary, use the same Drizzle generation flow with a migration-specific name and append to the existing journal.

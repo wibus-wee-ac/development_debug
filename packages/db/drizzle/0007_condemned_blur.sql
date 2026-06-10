@@ -1,1 +1,0 @@
-ALTER TABLE `sessions` ADD `pty_started_at` integer;

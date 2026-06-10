@@ -1,2 +1,0 @@
-ALTER TABLE `chronicle_knowledge_cards` ADD `stable_key` text DEFAULT '' NOT NULL;--> statement-breakpoint
-CREATE INDEX `chronicle_knowledge_cards_stable_key_idx` ON `chronicle_knowledge_cards` (`stable_key`);
