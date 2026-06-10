@@ -283,9 +283,11 @@ function useNewChatPageOwner(active: boolean) {
 function NewChatComposerCard({
   active,
   owner,
+  testIdPrefix = 'new-chat',
 }: {
   active: boolean
   owner: ReturnType<typeof useNewChatPageOwner>
+  testIdPrefix?: string
 }) {
   const {
     handleSend,
@@ -352,7 +354,7 @@ function NewChatComposerCard({
       onDraftChange={setDraft}
       onSend={handleSend}
       onSendInNewWindow={handleSendInNewWindow}
-      testIdPrefix="new-chat"
+      testIdPrefix={testIdPrefix}
     />
   )
 }
@@ -468,22 +470,37 @@ function NewChatLayoutSlots({
   return null
 }
 
-export function NewChatPage() {
-  const isActive = useSurfaceActive()
-  const owner = useNewChatPageOwner(isActive)
+interface NewChatEntryPointProps {
+  active?: boolean
+  dataTestId?: string
+  includeLayoutSlots?: boolean
+  testIdPrefix?: string
+}
+
+export function NewChatEntryPoint({
+  active = true,
+  dataTestId = 'new-chat-page',
+  includeLayoutSlots = true,
+  testIdPrefix = 'new-chat',
+}: NewChatEntryPointProps) {
+  const owner = useNewChatPageOwner(active)
   const hasWorkspace = !!owner.selectedWorkspace?.path
   const isPlanMode = useNewChatStore(s => s.lastRuntimeSettings.interactionMode === 'plan')
 
   return (
     <div
       className="relative flex h-full flex-col bg-background"
-      data-testid="new-chat-page"
+      data-testid={dataTestId}
       data-new-chat-ready={owner.isReady ? 'true' : 'false'}
     >
-      <NewChatLayoutSlots
-        hasWorkspace={hasWorkspace}
-        workspaceId={owner.selectedWorkspace?.id ?? null}
-      />
+      {includeLayoutSlots
+        ? (
+          <NewChatLayoutSlots
+            hasWorkspace={hasWorkspace}
+            workspaceId={owner.selectedWorkspace?.id ?? null}
+          />
+        )
+        : null}
 
       <m.div
         className="pointer-events-none"
@@ -496,7 +513,7 @@ export function NewChatPage() {
           density={0.4}
           glowRadius={140}
           trackGlobal
-          active={isActive}
+          active={active}
           tone={isPlanMode ? 'plan' : 'neutral'}
         />
       </m.div>
@@ -507,11 +524,16 @@ export function NewChatPage() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ duration: 0.28, ease: [0.25, 0.1, 0.25, 1] }}
         >
-          <NewChatComposerCard owner={owner} active={isActive} />
+          <NewChatComposerCard owner={owner} active={active} testIdPrefix={testIdPrefix} />
           <NewChatQuickActions owner={owner} />
         </m.div>
       </div>
       {/* <NewChatRecentSessions owner={owner} /> */}
     </div>
   )
+}
+
+export function NewChatPage() {
+  const isActive = useSurfaceActive()
+  return <NewChatEntryPoint active={isActive} />
 }

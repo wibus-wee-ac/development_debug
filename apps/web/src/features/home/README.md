@@ -2,12 +2,11 @@
 
 # Features/Home
 
-Dashboard hub feature for the root index route.
-Replaces the chat-composer entry point with an activity-first hub view.
-Place chat-related components in `features/chat/` or `features/new-chat/` instead.
-User-facing dashboard chrome, relative-time labels, quick action labels, and automation status copy are owned by the `home` i18n namespace.
+Root index route start surface.
+Home reuses the new-chat entry point so first-run users can start with a real prompt instead of an empty activity dashboard.
+Home owns no extra instructional chrome; chat creation, workspace selection, runtime selection, and first-turn streaming stay owned by `features/new-chat` and `features/chat`.
 
 ## Files
 
-- **home-dashboard-loader.ts**: Home dashboard route 的共享 lazy loader 与 route preload 入口。
-- **home-dashboard.tsx**: Dashboard component — search bar, API-ordered recent sessions across all workspaces with latest-user-message timestamps, projects list, fresh-install empty states, localized quick action routing to new chat, and the Home projection/entry point for the automation registry.
+- **home-dashboard-loader.ts**: Home route 的共享 lazy loader 与 route preload 入口。
+- **home-dashboard.tsx**: Root start component — renders the reusable New Chat entry surface with no mock activity data or extra instructional UI.
