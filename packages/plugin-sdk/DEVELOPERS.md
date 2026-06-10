@@ -298,7 +298,7 @@ export function activate(ctx: ServerPluginContext): void {
 
 ### `ctx.providers.externalSources.register(source)` — External Provider Source
 
-插件可以提供外部 provider 数据源。这个能力只返回标准化数据，不允许插件渲染 Provider settings UI，也不允许插件直接写 Cradle 的 `agent_profiles` 或 `agent_credentials`。Cradle host 会读取 snapshot、加密 credential、投影 profile、处理 missing/stale 状态，并用固定 Provider UI 展示。
+插件可以提供外部 provider 数据源。这个能力只返回标准化数据，不允许插件渲染 Provider settings UI，也不允许插件直接写 Cradle 的 `provider_targets` 或 `agent_credentials`。Cradle host 会读取 snapshot、加密 credential、投影 provider target、处理 missing/stale 状态，并用固定 Provider UI 展示。
 
 ```ts
 import type { ServerPluginContext } from '@cradle/plugin-sdk/server'
@@ -351,7 +351,7 @@ Provider source contract 的边界是：
 
 ### `ctx.issues.externalSources.register(source)` — External Issue Source
 
-插件可以提供外部 issue 数据源，例如 GitHub Issues。这个能力只读取外部系统并返回标准化 snapshot；插件不得写 `kanban_issues`，不得创建普通 Cradle issue，也不得贡献 Settings 或 Kanban UI。Cradle host 负责 workspace 仓库绑定、共享 repository cursor、ETag/rate-limit 状态、`external_issue_items` 投影、missing 标记和本地 Kanban status overlay。
+插件可以提供外部 issue 数据源，例如 GitHub Issues。这个能力只读取外部系统并返回标准化 snapshot；插件不得写 `issues`，不得创建普通 Cradle issue，也不得贡献 Settings 或 Kanban UI。Cradle host 负责 workspace 仓库绑定、共享 repository cursor、ETag/rate-limit 状态、`external_issue_items` 投影、missing 标记和本地 Kanban status overlay。
 
 ```ts
 import type { ServerPluginContext } from '@cradle/plugin-sdk/server'
