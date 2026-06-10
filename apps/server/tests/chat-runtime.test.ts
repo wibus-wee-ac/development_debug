@@ -13,7 +13,11 @@ import { getRuntimeRegistry, registerRuntime } from '../src/modules/chat-runtime
 import { appendChatRuntimeEvents, readChatRuntimeEvents } from '../src/modules/chat-runtime/event-store'
 import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata, ExecuteShellCommandInput, ExecuteShellCommandResult, ForkRuntimeSessionInput, GenerateSessionTitleInput, ProviderNativeAppServerInvokeInput, ProviderNativeAppServerInvokeResponse, ProviderNativeAppServerStreamInput, ProviderThreadListInput, ProviderThreadListResult, QuickQuestionInput, ResumeChatSessionInput, RuntimePresentationCapabilities, RuntimeSession, StartChatSessionInput, SteerTurnInput, StreamTurnInput, UpdateRuntimeSettingsInput } from '../src/modules/chat-runtime/runtime-provider-types'
 import { ProviderErrors, ProviderRuntimeError } from '../src/modules/chat-runtime/runtime-provider-types'
-import { getActiveRunReplayBufferSummary, reportRuntimeSessionTitle } from '../src/modules/chat-runtime/service'
+import {
+  flushAllActiveRunSnapshots,
+  getActiveRunReplayBufferSummary,
+  reportRuntimeSessionTitle,
+} from '../src/modules/chat-runtime/service'
 import { providerRuntimeHostManager } from '../src/modules/provider-runtime/host-manager'
 import {
   clearSideConversations,
@@ -3827,6 +3831,96 @@ describe('chat runtime capability', () => {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
       }
       vi.restoreAllMocks()
+    }
+  })
+
+  it('persists active streaming snapshots through chat runtime events', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexSideRuntime()
+    runtime.blockStreams = true
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+    let runResponsePromise: Promise<Response> | null = null
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-chat-active-snapshot',
+        name: 'Workspace Chat Active Snapshot',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-chat-active-snapshot', {
+        providerTargetId: 'provider-target-chat-active-snapshot',
+        sessionId: 'session-chat-active-snapshot',
+        runtimeKind: 'codex',
+      })
+
+      runResponsePromise = app.handle(new Request('http://localhost/chat/sessions/session-chat-active-snapshot/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Keep the stream open.', modelId: 'gpt-4o-mini' }),
+      }))
+
+      await vi.waitFor(() => {
+        expect(runtime.streamInputs).toHaveLength(1)
+      })
+      const run = await waitForBackendRunStatus('session-chat-active-snapshot', 'streaming')
+
+      await waitForCondition(() => {
+        const summary = getActiveRunReplayBufferSummary(run.id)
+        expect(summary?.textDeltaCount).toBe(1)
+        return summary
+      }, 'active snapshot replay text delta')
+
+      flushAllActiveRunSnapshots()
+
+      const snapshotEvents = readChatRuntimeEvents('session-chat-active-snapshot')
+        .filter(event => event.type === 'assistant_message.snapshot_recorded')
+      expect(snapshotEvents).toEqual([
+        expect.objectContaining({
+          runId: run.id,
+          messageId: run.messageId,
+          payload: expect.objectContaining({
+            status: 'streaming',
+            text: 'Side response',
+          }),
+        }),
+      ])
+
+      const assistantRow = db()
+        .select()
+        .from(messages)
+        .where(eq(messages.id, run.messageId!))
+        .get()
+      expect(assistantRow).toEqual(expect.objectContaining({
+        status: 'streaming',
+        content: 'Side response',
+      }))
+    }
+    finally {
+      runtime.releaseBlockedStreams()
+      if (runResponsePromise) {
+        const runResponse = await runResponsePromise.catch(() => null)
+        if (runResponse) {
+          await collectSseChunks(runResponse).catch(() => undefined)
+        }
+      }
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
     }
   })
 

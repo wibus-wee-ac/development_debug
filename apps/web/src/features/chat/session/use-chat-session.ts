@@ -31,6 +31,7 @@ import { runtimeSessionStatusQueryKey, useRuntimeSessionStatus } from '../runtim
 import { startChatResponseStream, subscribeChatSessionStreamForSession } from '../transport/chat-stream-transport'
 import { ChatStreamingHandler } from '../transport/chat-streaming-handler'
 import { buildOptimisticUserMessage, readCodexGoalCommandObjective } from './optimistic-chat-turn'
+import { readStableMessageRows, writeStableMessageRows } from './stable-message-cache'
 
 // ── Message Snapshot Types ──────────────────────────────────
 
@@ -109,6 +110,39 @@ function readLatestFailedMainAssistantRow(rows: ChatSessionMessageRow[]): ChatSe
     .reverse()
     .find(row => row.role === 'assistant' && !row.parentToolCallId)
   return latestAssistant?.status === 'failed' ? latestAssistant : undefined
+}
+
+function isEmptyStreamingMainAssistantRow(row: ChatSessionMessageRow): boolean {
+  return row.role === 'assistant'
+    && row.status === 'streaming'
+    && !row.parentToolCallId
+    && row.message.parts.length === 0
+}
+
+function shouldHoldEmptyStreamingSnapshot(input: {
+  rows: ChatSessionMessageRow[]
+  runtimeStatusKnown: boolean
+  runtimeIdle: boolean
+  snapshotFetching: boolean
+}): boolean {
+  if (!input.rows.some(isEmptyStreamingMainAssistantRow)) {
+    return false
+  }
+  if (input.snapshotFetching) {
+    return true
+  }
+  if (!input.runtimeStatusKnown) {
+    return true
+  }
+  return input.runtimeIdle
+}
+
+function projectRowsWithoutEmptyStreamingAssistant(rows: ChatSessionMessageRow[]): ChatSessionMessageRow[] {
+  return rows.filter(row => !isEmptyStreamingMainAssistantRow(row))
+}
+
+function readStableSnapshotRows(rows: ChatSessionMessageRow[]): ChatSessionMessageRow[] | null {
+  return rows.some(row => row.status === 'streaming') ? null : rows
 }
 
 function isMatchingApprovalPart(part: UIMessage['parts'][number], approvalId: string): boolean {
@@ -303,7 +337,7 @@ function useChatSessionRuntimeControls(chatSessionId: string | null): ChatSessio
         void queryClient.invalidateQueries({ queryKey: sessionBindingQueryKey })
       }
     }, delay)
-  }, [chatSessionId, queryClient, sessionBindingQueryKey, snapshotRowsQueryKey])
+  }, [queryClient, sessionBindingQueryKey, snapshotRowsQueryKey])
 
   const refreshSessionLists = useCallback(() => {
     void queryClient.invalidateQueries({ predicate: query => isSessionsQueryKey(query.queryKey) })
@@ -320,7 +354,7 @@ function useChatSessionRuntimeControls(chatSessionId: string | null): ChatSessio
       void queryClient.invalidateQueries({ queryKey: queueQueryKey })
       void queryClient.refetchQueries({ queryKey: queueQueryKey, type: 'active' })
     }, delay)
-  }, [chatSessionId, queryClient, queueQueryKey])
+  }, [queryClient, queueQueryKey])
 
   useEffect(() => {
     return () => {
@@ -366,6 +400,12 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
   const runtimeStatusQuery = useRuntimeSessionStatus(driverEnabled ? chatSessionId : null)
   const snapshotRows = snapshotRowsQuery.data
   const runtimeStatus = runtimeStatusQuery.data
+  const runtimeStatusKnown = Boolean(runtimeStatus)
+  const runtimeIdle = Boolean(
+    runtimeStatus
+    && runtimeStatus.status === 'idle'
+    && !runtimeStatus.activeRun,
+  )
   const passiveStreamRef = useRef<{
     sessionId: string
     messageId: string
@@ -374,6 +414,50 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
   } | null>(null)
   const requestedRuntimeActiveRunMessageRef = useRef<string | null>(null)
   const runtimeQueueSignatureRef = useRef<string | null>(null)
+
+  useEffect(() => {
+    if (!driverEnabled || !chatSessionId) {
+      return
+    }
+
+    let cancelled = false
+    void (async () => {
+      const cachedRows = await readStableMessageRows(chatSessionId).catch((error: unknown) => {
+        console.warn('[useChatSession] failed to read stable message cache', error)
+        return null
+      })
+      if (cancelled || !cachedRows) {
+        return
+      }
+      const stableRows = readStableSnapshotRows(cachedRows)
+      if (!stableRows) {
+        return
+      }
+
+      const store = useChatStore.getState()
+      if ((store.messagesMap.get(chatSessionId)?.length ?? 0) > 0) {
+        return
+      }
+
+      store.setMessages(chatSessionId, projectMainMessagesFromSnapshotRows(stableRows))
+      store.setSessionHydrated(chatSessionId, true)
+      store.setPassiveStreamingMessageIds(chatSessionId, [])
+      store.clearSessionErrors(chatSessionId)
+      store.setSessionMeta(chatSessionId, {
+        cancelling: false,
+        passiveStatus: derivePassiveStatus(stableRows),
+      })
+
+      const failedRow = readLatestFailedMainAssistantRow(stableRows)
+      if (failedRow?.errorText) {
+        store.failGeneration(failedRow.messageId, failedRow.errorText)
+      }
+    })()
+
+    return () => {
+      cancelled = true
+    }
+  }, [chatSessionId, driverEnabled])
 
   useEffect(() => {
     if (driverEnabled) {
@@ -403,14 +487,31 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
       return
     }
 
-    const projected = projectMainMessagesFromSnapshotRows(snapshotRows)
-    const passiveStreamingMessageIds = projectStreamingMainAssistantMessageIds(snapshotRows)
-    const passiveStatus = derivePassiveStatus(snapshotRows)
-    useChatStore.getState().setMessages(chatSessionId, projected)
-    useChatStore.getState().setSessionHydrated(chatSessionId, true)
-    useChatStore.getState().setPassiveStreamingMessageIds(chatSessionId, passiveStreamingMessageIds)
-    useChatStore.getState().clearSessionErrors(chatSessionId)
-    useChatStore.getState().setSessionMeta(chatSessionId, {
+    const holdEmptyStreamingSnapshot = shouldHoldEmptyStreamingSnapshot({
+      rows: snapshotRows,
+      runtimeStatusKnown,
+      runtimeIdle,
+      snapshotFetching: snapshotRowsQuery.isFetching,
+    })
+    const effectiveRows = holdEmptyStreamingSnapshot
+      ? projectRowsWithoutEmptyStreamingAssistant(snapshotRows)
+      : snapshotRows
+    const projected = projectMainMessagesFromSnapshotRows(effectiveRows)
+    const store = useChatStore.getState()
+    const existingMessageCount = store.messagesMap.get(chatSessionId)?.length ?? 0
+    const passiveStreamingMessageIds = holdEmptyStreamingSnapshot
+      ? []
+      : projectStreamingMainAssistantMessageIds(effectiveRows)
+    const passiveStatus = holdEmptyStreamingSnapshot
+      ? 'idle'
+      : derivePassiveStatus(effectiveRows)
+    if (!holdEmptyStreamingSnapshot || existingMessageCount === 0) {
+      store.setMessages(chatSessionId, projected)
+    }
+    store.setSessionHydrated(chatSessionId, true)
+    store.setPassiveStreamingMessageIds(chatSessionId, passiveStreamingMessageIds)
+    store.clearSessionErrors(chatSessionId)
+    store.setSessionMeta(chatSessionId, {
       cancelling: meta?.cancelling && passiveStatus === 'streaming',
       passiveStatus,
     })
@@ -419,6 +520,22 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
     if (failedRow?.errorText) {
       useChatStore.getState().failGeneration(failedRow.messageId, failedRow.errorText)
     }
+    if (holdEmptyStreamingSnapshot && runtimeIdle) {
+      scheduleSnapshotRefresh(0)
+    }
+  }, [chatSessionId, driverEnabled, runtimeIdle, runtimeStatusKnown, scheduleSnapshotRefresh, snapshotRows, snapshotRowsQuery.isFetching])
+
+  useEffect(() => {
+    if (!driverEnabled || !chatSessionId || !snapshotRows) {
+      return
+    }
+    const stableRows = readStableSnapshotRows(snapshotRows)
+    if (!stableRows) {
+      return
+    }
+    void writeStableMessageRows(chatSessionId, stableRows).catch((error: unknown) => {
+      console.warn('[useChatSession] failed to write stable message cache', error)
+    })
   }, [chatSessionId, driverEnabled, snapshotRows])
 
   useEffect(() => {
@@ -528,6 +645,21 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
       return
     }
 
+    const holdEmptyStreamingSnapshot = shouldHoldEmptyStreamingSnapshot({
+      rows: snapshotRows,
+      runtimeStatusKnown,
+      runtimeIdle,
+      snapshotFetching: snapshotRowsQuery.isFetching,
+    })
+    if (holdEmptyStreamingSnapshot) {
+      if (passiveStreamRef.current?.sessionId === chatSessionId) {
+        passiveStreamRef.current.controller.abort()
+        passiveStreamRef.current.handler.dispose()
+        passiveStreamRef.current = null
+      }
+      return
+    }
+
     const streamingMessageId = projectStreamingMainAssistantMessageIds(snapshotRows)[0]
     if (!streamingMessageId) {
       if (passiveStreamRef.current?.sessionId === chatSessionId) {
@@ -592,7 +724,7 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
     })()
 
     return undefined
-  }, [chatSessionId, driverEnabled, refreshQueue, scheduleSnapshotRefresh, snapshotRows])
+  }, [chatSessionId, driverEnabled, refreshQueue, runtimeIdle, runtimeStatusKnown, scheduleSnapshotRefresh, snapshotRows, snapshotRowsQuery.isFetching])
 }
 
 export function useChatSession(chatSessionId: string | null) {

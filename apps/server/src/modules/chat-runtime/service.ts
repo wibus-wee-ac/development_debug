@@ -1337,7 +1337,7 @@ function appendRunTerminalEvents(input: {
   errorText: string | null
   terminalChunk: UIMessageChunk
 }): void {
-  const storedFinalMessage = compactStoredMessageSnapshot(normalizeMessageSnapshot(input.activeRun.finalMessage))
+  const snapshot = buildStoredMessageSnapshot(input.activeRun.finalMessage)
   const terminalType = input.status === 'complete'
     ? 'run.completed'
     : input.status === 'aborted'
@@ -1355,8 +1355,8 @@ function appendRunTerminalEvents(input: {
         queueItemId: input.activeRun.queueItemId,
         payload: {
           status: input.status,
-          text: extractMessageText(storedFinalMessage),
-          snapshot: storedFinalMessage,
+          text: snapshot.text,
+          snapshot: snapshot.message,
           errorText: input.errorText,
         },
       },
@@ -2162,16 +2162,52 @@ function toRunTraceDto(run: BackendRun): ChatRunTraceDto {
   }
 }
 
+interface StoredMessageSnapshotBuild {
+  message: UIMessage
+  text: string
+  messageJsonBytes: number
+}
+
+function buildStoredMessageSnapshot(message: UIMessage): StoredMessageSnapshotBuild {
+  const storedMessage = compactStoredMessageSnapshot(normalizeMessageSnapshot(message))
+  const messageJson = JSON.stringify(storedMessage)
+  return {
+    message: storedMessage,
+    text: extractMessageText(storedMessage),
+    messageJsonBytes: Buffer.byteLength(messageJson),
+  }
+}
+
 function persistMessageSnapshot(input: {
   sessionId: string
   messageId: string
   message: UIMessage
   messageStatus: ChatMessageStatus
   errorText: string | null
+  runId?: string | null
+  queueItemId?: string | null
 }): { messageJsonBytes: number } {
-  const message = compactStoredMessageSnapshot(normalizeMessageSnapshot(input.message))
-  const messageJson = JSON.stringify(message)
-  return { messageJsonBytes: Buffer.byteLength(messageJson) }
+  const snapshot = buildStoredMessageSnapshot(input.message)
+  appendAndProjectChatRuntimeEvents({
+    sessionId: input.sessionId,
+    commandId: null,
+    events: [
+      {
+        type: 'assistant_message.snapshot_recorded',
+        actorKind: 'runtime',
+        runId: input.runId ?? null,
+        messageId: input.messageId,
+        queueItemId: input.queueItemId ?? null,
+        payload: {
+          status: input.messageStatus,
+          text: snapshot.text,
+          snapshot: snapshot.message,
+          errorText: input.errorText,
+        },
+      },
+    ],
+  })
+  return { messageJsonBytes: snapshot.messageJsonBytes }
 }
 
 function repairStoredMessageSnapshotIfOversized(input: {
@@ -4887,14 +4923,26 @@ function snapshotActiveRun(activeRun: ActiveRun): void {
   if (activeRun.terminalStatus) {
     return
   }
-  flushFinalMessageProjection(activeRun)
-  persistMessageSnapshot({
-    sessionId: activeRun.sessionId,
-    messageId: activeRun.messageId,
-    message: activeRun.finalMessage,
-    messageStatus: 'streaming',
-    errorText: null
-  })
+  try {
+    flushPendingRunDelta(activeRun)
+    flushFinalMessageProjection(activeRun)
+    persistMessageSnapshot({
+      sessionId: activeRun.sessionId,
+      messageId: activeRun.messageId,
+      message: activeRun.finalMessage,
+      messageStatus: 'streaming',
+      errorText: null,
+      runId: activeRun.runId,
+      queueItemId: activeRun.queueItemId ?? null,
+    })
+  } catch (error) {
+    chatLogger.warn('failed to persist active message snapshot', {
+      error,
+      sessionId: activeRun.sessionId,
+      runId: activeRun.runId,
+      messageId: activeRun.messageId,
+    })
+  }
 }
 
 function startSnapshotTimer(activeRun: ActiveRun): void {
@@ -5264,7 +5312,7 @@ async function finalizeActiveRun(
   finalizeFinalMessageProjection(activeRun)
   flushProjectedToolInputs(activeRun, parsePartialToolInputText)
 
-  const snapshotResult = persistTerminalMessageSnapshot(activeRun, status, errorText)
+  const snapshotResult = measureTerminalMessageSnapshot(activeRun, status, errorText)
   if (profile) {
     profile.finalMessageJsonBytes = snapshotResult?.messageJsonBytes ?? null
   }
@@ -5301,26 +5349,22 @@ async function finalizeActiveRun(
   }
 }
 
-function persistTerminalMessageSnapshot(
+function measureTerminalMessageSnapshot(
   activeRun: ActiveRun,
   status: ChatMessageStatus,
   errorText: string | null
 ): { messageJsonBytes: number } | null {
   try {
-    return persistMessageSnapshot({
-      sessionId: activeRun.sessionId,
-      messageId: activeRun.messageId,
-      message: activeRun.finalMessage,
-      messageStatus: status,
-      errorText
-    })
+    const snapshot = buildStoredMessageSnapshot(activeRun.finalMessage)
+    return { messageJsonBytes: snapshot.messageJsonBytes }
   } catch (error) {
-    chatLogger.error('failed to persist final message snapshot', {
+    chatLogger.error('failed to measure final message snapshot', {
       error,
       sessionId: activeRun.sessionId,
       runId: activeRun.runId,
       messageId: activeRun.messageId,
-      status
+      status,
+      errorText
     })
     return null
   }

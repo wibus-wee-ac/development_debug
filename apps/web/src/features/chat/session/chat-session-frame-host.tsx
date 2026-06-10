@@ -9,7 +9,6 @@ import { chatSelectors, useChatStore } from '~/store/chat'
 import { useChatSessionDriver } from './use-chat-session'
 import { ChatRuntimeView } from '../chat-runtime-view'
 
-const IDLE_FRAME_LIMIT = 6
 const mountedSessionFrameCounts = new Map<string, number>()
 const pendingSessionCacheReleaseDisposers = new Map<string, () => void>()
 type ChatStoreSnapshot = ReturnType<typeof useChatStore.getState>
@@ -58,21 +57,24 @@ export function ChatSessionFrameHost({
         <ChatSessionDriverMount
           key={`driver:${frame.sessionId}`}
           sessionId={frame.sessionId}
-          active={active && frame.sessionId === activeSession.sessionId}
+          active={(active && frame.sessionId === activeSession.sessionId) || streamingSessionIdSet.has(frame.sessionId)}
         />
       ))}
-      {frameDescriptors.map(frame => (
-        <Activity
-          key={frame.sessionId}
-          name={`chat-session:${frame.sessionId}`}
-          mode={frame.sessionId === activeSession.sessionId ? 'visible' : 'hidden'}
-        >
+      {frameDescriptors.map((frame) => {
+        const visible = active && frame.sessionId === activeSession.sessionId
+        return (
+          <Activity
+            key={frame.sessionId}
+            name={`chat-session:${frame.sessionId}`}
+            mode={visible ? 'visible' : 'hidden'}
+          >
           <ChatSessionFrame
             descriptor={frame}
-            visible={frame.sessionId === activeSession.sessionId}
+            visible={visible}
           />
-        </Activity>
-      ))}
+          </Activity>
+        )
+      })}
     </div>
   )
 }
@@ -204,18 +206,6 @@ function trimRetainedFrames(
     if (streamingSessionIds.has(frame.sessionId)) {
       appendFrame(frame)
     }
-  }
-
-  let idleFrameCount = 0
-  for (const frame of currentFrames) {
-    if (frame.sessionId === activeSession.sessionId || streamingSessionIds.has(frame.sessionId)) {
-      continue
-    }
-    if (idleFrameCount >= IDLE_FRAME_LIMIT) {
-      continue
-    }
-    appendFrame(frame)
-    idleFrameCount += 1
   }
 
   return nextFrames
