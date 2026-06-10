@@ -18,7 +18,7 @@
 
 ## User / System Goal
 
-- 系统维护聊天会话元数据（workspace、title、agentProfileId、pinned 等），支持列表、读取、创建、更新、删除。
+- 系统维护聊天会话元数据（workspace、title、providerTargetId、agentId、pinned 等），支持列表、读取、创建、更新、删除。
 - UI 需要读取会话消息列表用于历史展示，并支持导出为 Markdown。
 
 ## Current Behavior Evidence
@@ -33,13 +33,13 @@
 
 - `list(workspaceId)` → `Session[]`（按 `updatedAt` 倒序）
 - `get(id)` → `Session`（不存在时返回 `session_not_found` / 404）
-- `create({ workspaceId?, title, agentProfileId?, agentId?, runtimeKind?, id? })` → `Session`
+- `create({ workspaceId?, title, providerTargetId?, agentId?, runtimeKind?, id? })` → `Session`
 - `update({ id, title?, pinned? })` → `Session`（不存在时返回 `session_not_found` / 404；更新 `updatedAt`）
 - `delete(id)` → `{ ok: true }`
 
 Create-time note:
 
-- 标准 chat session 可通过 `agentProfileId` 创建。
+- 标准 chat session 可通过 `providerTargetId` 或 `agentId` 创建。
 - `runtimeKind === 'cli-tui'` 的 session 必须通过 `agentId` 创建，由 agent/session runtime config owner 提供 launch meaning。
 
 ### Message Read
@@ -72,7 +72,7 @@ type Session = {
   id: string
   workspaceId: string
   title: string
-  agentProfileId: string
+  providerTargetId: string | null
   agentId: string | null
   linkedIssueId: string | null
   pinned: number
@@ -103,7 +103,7 @@ HTTP endpoints (Tsuki/Hono controller):
 
 - `GET /sessions?workspaceId=` → `Session[]`
 - `GET /sessions/:id` → `Session`（不存在时返回 `session_not_found` / 404）
-- `POST /sessions` `{ workspaceId, title, agentProfileId, id? }` → `Session`
+- `POST /sessions` `{ workspaceId, title, providerTargetId?, agentId?, runtimeKind?, modelId?, id? }` → `Session`
 - `PATCH /sessions/:id` `{ title?, pinned? }` → `Session`
 - `DELETE /sessions/:id` → `{ ok: true }`
 - `GET /sessions/:id/messages` → `Message[]`

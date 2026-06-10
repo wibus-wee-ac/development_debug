@@ -1,4 +1,4 @@
-import type { AgentProfile, ProviderTarget } from '@cradle/db'
+import type { ProviderTarget } from '@cradle/db'
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
@@ -15,6 +15,19 @@ export interface UpsertProfileInput {
   configJson: string
   credentialRef: string | null
   iconSlug?: string | null
+}
+
+export interface AgentProfile {
+  id: string
+  name: string
+  providerKind: ProviderKind
+  enabled: boolean
+  configJson: string
+  credentialRef: string | null
+  customModels: string
+  iconSlug: string | null
+  createdAt: number
+  updatedAt: number
 }
 
 function toProfile(target: ProviderTarget): AgentProfile {

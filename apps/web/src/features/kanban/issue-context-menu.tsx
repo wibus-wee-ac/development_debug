@@ -137,7 +137,7 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
 
   const handleAgentChange = (value: string) => {
     if (value === '') {
-      if (issue.delegateAgentId || issue.delegateAgentProfileId) {
+      if (issue.delegateAgentId || issue.delegateProviderTargetId) {
         undelegateIssue.mutate({ issueId: issue.id })
       }
       return

@@ -265,11 +265,11 @@ describe('pty capability HTTP control plane', () => {
   })
 })
 
-function insertSessionRow(input: { id: string, workspaceId: string, title: string, agentProfileId?: string | null, agentId?: string | null, runtimeKind?: string, configJson?: string }): void {
+function insertSessionRow(input: { id: string, workspaceId: string, title: string, providerTargetId?: string | null, agentId?: string | null, runtimeKind?: string, configJson?: string }): void {
   const now = Math.floor(Date.now() / 1000)
   db().run(sql`
-    INSERT INTO sessions (id, workspace_id, title, agent_profile_id, runtime_kind, agent_id, config_json, pinned, created_at, updated_at)
-    VALUES (${input.id}, ${input.workspaceId}, ${input.title}, ${input.agentProfileId ?? null}, ${input.runtimeKind ?? 'standard'}, ${input.agentId ?? null}, ${input.configJson ?? '{}'}, 0, ${now}, ${now})
+    INSERT INTO sessions (id, workspace_id, title, provider_target_id, runtime_kind, agent_id, config_json, pinned, created_at, updated_at)
+    VALUES (${input.id}, ${input.workspaceId}, ${input.title}, ${input.providerTargetId ?? null}, ${input.runtimeKind ?? 'standard'}, ${input.agentId ?? null}, ${input.configJson ?? '{}'}, 0, ${now}, ${now})
   `)
 }
 

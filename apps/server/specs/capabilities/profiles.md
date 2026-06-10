@@ -2,15 +2,15 @@
 
 ## User / System Goal
 
-- 系统需要提供保存型 runtime profile 的 CRUD。
-- profile 是用户可选的运行时配置单元，负责承载 `providerKind`、`configJson`、`credentialRef`。
-- 删除 profile 时，server 必须同时清理其拥有的 session 与 profile 相关审计数据。
+- 系统需要保留 `/profiles` API 作为 manual provider target 的投影接口。
+- profile 是用户可选的运行时配置单元，实际持久化 owner 是 `provider_targets(kind = 'manual')`，负责承载 `providerKind`、`connectionConfigJson`、`credentialRef`。
+- 删除 profile 时，server 必须删除对应 provider target，并让 provider target owner 清理 runtime binding、session 与相关审计数据。
 
 ## Current Behavior Evidence
 
-- 旧 agent runtime 暴露 profile CRUD，并以 `agent_profiles` 为配置持久化载体。
-- session 与 runtime 审计数据通过 `agentProfileId` 关联 profile。
-- 用户在设置页、新建聊天、issue agent 等流程里都依赖稳定的 profile id。
+- 旧 agent runtime 暴露 profile CRUD；发布 baseline 后 profile 不再有独立数据表。
+- session 与 runtime 审计数据通过 `providerTargetId` 关联 provider target。
+- 用户在设置页、新建聊天、issue agent 等流程里都依赖稳定的 provider target id。
 
 ## Target API
 
@@ -23,8 +23,8 @@
 
 - `ProfilesModule`
   - `ProfilesController`: HTTP 参数校验与错误边界
-  - `ProfilesService`: profile 生命周期与 session cleanup 编排
-  - `ProfilesStore`: `agent_profiles` 持久化与 profile-owned cascade delete
+  - `ProfilesService`: profile API 到 manual provider target 生命周期的投影
+  - `ProviderTargetsService`: `provider_targets` 持久化与 provider-target-owned cleanup
 
 ## Test Plan
 

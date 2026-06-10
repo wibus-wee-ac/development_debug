@@ -206,7 +206,7 @@ describe('issue-agent capability', () => {
         assigneeKind: 'user',
         assigneeId: '__self__',
         delegateAgentId: 'agent-delegation-model',
-        delegateAgentProfileId: 'provider-target-delegation-model',
+        delegateProviderTargetId: 'provider-target-delegation-model',
       }))
 
       Issue.addComment({
@@ -339,7 +339,7 @@ describe('issue-agent capability', () => {
         assigneeKind: null,
         assigneeId: null,
         delegateAgentId: agent.id,
-        delegateAgentProfileId: 'profile-issue-agent',
+        delegateProviderTargetId: 'profile-issue-agent',
       }))
 
       const commentsRes = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}/comments`))
@@ -413,7 +413,7 @@ describe('issue-agent capability', () => {
         assigneeKind: null,
         assigneeId: null,
         delegateAgentId: null,
-        delegateAgentProfileId: null,
+        delegateProviderTargetId: null,
       }))
 
       const activitiesAfterDeleteRes = await app.handle(new Request(`http://localhost/issue-agent-sessions/${encodeURIComponent(delegatedSession.id)}/activities`))

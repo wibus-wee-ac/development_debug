@@ -138,7 +138,7 @@ export const IssueModel = {
     createdById: t.String(),
     sourceChatSessionId: t.Nullable(t.String()),
     delegateAgentId: t.Nullable(t.String()),
-    delegateAgentProfileId: t.Nullable(t.String()),
+    delegateProviderTargetId: t.Nullable(t.String()),
     contextRefs: t.String(),
     order: t.Number(),
     createdAt: t.Number(),

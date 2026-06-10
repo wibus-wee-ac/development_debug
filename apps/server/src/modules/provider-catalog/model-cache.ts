@@ -1,4 +1,4 @@
-import { providerModelCache, providerTargetModelCache } from '@cradle/db'
+import { providerTargetModelCache } from '@cradle/db'
 import { eq, lt } from 'drizzle-orm'
 import { z } from 'zod'
 
@@ -51,15 +51,6 @@ const CachedModelsJsonSchema = z.string()
   .transform(raw => JSON.parse(raw))
   .pipe(z.array(ModelDescriptorSchema))
 
-export function getCachedModels(profileId: string): CachedModelsResult | null {
-  const row = db().select().from(providerModelCache).where(eq(providerModelCache.providerTargetId, profileId)).get()
-  if (!row) {
-    return null
-  }
-  const models = projectProviderModelListCapabilities(CachedModelsJsonSchema.parse(row.modelsJson))
-  return { models, fetchedAt: row.fetchedAt, cached: true }
-}
-
 export function getCachedModelsForTarget(target: ProviderTarget): CachedModelsResult | null {
   const row = db()
     .select()
@@ -67,26 +58,10 @@ export function getCachedModelsForTarget(target: ProviderTarget): CachedModelsRe
     .where(eq(providerTargetModelCache.providerTargetId, providerTargetCacheId(target)))
     .get()
   if (!row) {
-    return getCachedModels(providerTargetCacheId(target))
+    return null
   }
   const models = projectProviderModelListCapabilities(CachedModelsJsonSchema.parse(row.modelsJson))
   return { models, fetchedAt: row.fetchedAt, cached: true }
-}
-
-export function setCachedModels(profileId: string, models: ModelDescriptor[]): void {
-  const now = Math.floor(Date.now() / 1000)
-  const projectedModels = projectProviderModelListCapabilities(models)
-  db().insert(providerModelCache).values({
-    providerTargetId: profileId,
-    modelsJson: JSON.stringify(projectedModels),
-    fetchedAt: now,
-  }).onConflictDoUpdate({
-    target: providerModelCache.providerTargetId,
-    set: {
-      modelsJson: JSON.stringify(projectedModels),
-      fetchedAt: now,
-    },
-  }).run()
 }
 
 export function setCachedModelsForTarget(target: ProviderTarget, models: ModelDescriptor[]): void {
@@ -105,10 +80,6 @@ export function setCachedModelsForTarget(target: ProviderTarget, models: ModelDe
   }).run()
 }
 
-export function deleteCachedModels(profileId: string): void {
-  db().delete(providerModelCache).where(eq(providerModelCache.providerTargetId, profileId)).run()
-}
-
 export function deleteCachedModelsForTarget(target: ProviderTarget): void {
   db().delete(providerTargetModelCache).where(eq(providerTargetModelCache.providerTargetId, providerTargetCacheId(target))).run()
 }
@@ -118,8 +89,12 @@ export function isCacheStale(fetchedAt: number): boolean {
   return (now - fetchedAt) > STALE_THRESHOLD_S
 }
 
-export function getStaleProfileIds(): string[] {
+export function getStaleProviderTargetIds(): string[] {
   const threshold = Math.floor(Date.now() / 1000) - STALE_THRESHOLD_S
-  const rows = db().select({ profileId: providerModelCache.providerTargetId }).from(providerModelCache).where(lt(providerModelCache.fetchedAt, threshold)).all()
-  return rows.map(r => r.profileId)
+  const rows = db()
+    .select({ providerTargetId: providerTargetModelCache.providerTargetId })
+    .from(providerTargetModelCache)
+    .where(lt(providerTargetModelCache.fetchedAt, threshold))
+    .all()
+  return rows.map(r => r.providerTargetId)
 }

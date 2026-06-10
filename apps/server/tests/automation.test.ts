@@ -93,7 +93,7 @@ async function createAutomation(app: ElysiaApp, input?: { id?: string, workspace
       artifactRequests: [
         { kind: 'markdown', name: 'weekly-report.md', description: 'Final report' },
       ],
-      agentProfileId: profileId,
+      providerTargetId: profileId,
       modelId: 'gpt-4o-mini',
     },
     createdByKind: 'agent',
@@ -130,7 +130,7 @@ async function createAutomationWithInputs(app: ElysiaApp, inputs: Array<Record<s
         prompt: 'Read the input.',
         inputs,
         artifactRequests: [],
-        agentProfileId: 'profile-automation',
+        providerTargetId: 'profile-automation',
       },
     }),
   }))
@@ -185,7 +185,7 @@ describe('automation capability', () => {
       const getRes = await app.handle(new Request('http://localhost/automations/automation-weekly-report'))
       expect(await getRes.json()).toEqual(expect.objectContaining({
         id: 'automation-weekly-report',
-        recipe: expect.objectContaining({ agentProfileId: 'profile-automation' }),
+        recipe: expect.objectContaining({ providerTargetId: 'profile-automation' }),
       }))
 
       const updateRes = await app.handle(new Request('http://localhost/automations/automation-weekly-report', {
@@ -267,7 +267,7 @@ describe('automation capability', () => {
           scheduleConfig: 'FREQ=WEEKLY;BYDAY=TU;BYHOUR=10;BYMINUTE=0;BYSECOND=0',
           timezone: 'Asia/Shanghai',
           prompt: 'Write the cron report.',
-          agentProfileId: 'profile-automation',
+          providerTargetId: 'profile-automation',
           modelId: 'gpt-4o-mini',
         }),
       }))

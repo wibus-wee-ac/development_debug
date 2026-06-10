@@ -7,7 +7,6 @@ import {
   acpAuditLog,
   agentActivities,
   agentCredentials,
-  agentProfiles,
   agents,
   agentSessions,
   automationArtifacts,
@@ -18,7 +17,6 @@ import {
   backendRuns,
   backendSessionBindings,
   externalProviderRecords,
-  externalProviderRuntimeTargets,
   externalProviderSources,
   issueComments,
   issueMilestones,
@@ -29,7 +27,6 @@ import {
   messages,
   observabilityEvents,
   observabilityIncidents,
-  providerModelCache,
   providerTargetModelCache,
   providerTargets,
   runtimeAuditLog,
@@ -62,10 +59,8 @@ const TABLES_IN_DELETION_ORDER = [
   backendCapabilitySnapshots,
   backendSessionBindings,
   backendRuns,
-  providerModelCache,
   providerTargetModelCache,
   providerTargets,
-  externalProviderRuntimeTargets,
   externalProviderRecords,
   externalProviderSources,
   acpAuditLog,
@@ -76,7 +71,6 @@ const TABLES_IN_DELETION_ORDER = [
   workspaces,
   agents,
   agentCredentials,
-  agentProfiles,
 ] as const
 
 function isPathInside(parentDir: string, childDir: string): boolean {

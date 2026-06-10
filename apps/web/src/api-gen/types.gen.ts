@@ -2508,7 +2508,6 @@ export type DeleteModelRegistryMappingsByModelIdResponse = DeleteModelRegistryMa
 
 export type PutModelRegistryMappingsByModelIdData = {
     body: {
-        modelId: string;
         registryModelId?: string;
         matchType?: 'manual' | 'alias';
         model?: {
@@ -5080,7 +5079,7 @@ export type GetIssuesSearchResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -5126,7 +5125,7 @@ export type GetIssuesResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -5181,7 +5180,7 @@ export type PostIssuesResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -5242,7 +5241,7 @@ export type GetIssuesByIdResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -5299,7 +5298,7 @@ export type PatchIssuesByIdResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -5373,7 +5372,7 @@ export type PatchIssuesByIdStatusByStatusNameResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -5663,7 +5662,7 @@ export type PostIssuesByIdContextRefsResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;
@@ -5705,7 +5704,7 @@ export type DeleteIssuesByIdContextRefsByIndexResponses = {
         createdById: string;
         sourceChatSessionId: string | null;
         delegateAgentId: string | null;
-        delegateAgentProfileId: string | null;
+        delegateProviderTargetId: string | null;
         contextRefs: string;
         order: number;
         createdAt: number;

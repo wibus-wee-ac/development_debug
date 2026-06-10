@@ -4,10 +4,8 @@ import { lookupModel, searchModels } from '../model-registry/model-info-registry
 import { resolveProviderTarget } from '../provider-targets/service'
 import { ProvidersModel } from './model'
 import {
-  getCachedModels,
   getCachedModelsForTarget,
   isCacheStale,
-  setCachedModels,
   setCachedModelsForTarget,
 } from './model-cache'
 import * as Providers from './service'
@@ -30,9 +28,8 @@ export const providers = new Elysia({
           models,
         )
       }
- else if (request.profileId) {
+      else if (request.profileId) {
         setCachedModelsForTarget({ kind: 'manual', id: request.profileId }, models)
-        setCachedModels(request.profileId, models)
       }
       return models
     },
@@ -83,7 +80,7 @@ export const providers = new Elysia({
   .get(
     '/:profileId/models-cache',
     async ({ params }) => {
-      const cached = getCachedModels(params.profileId)
+      const cached = getCachedModelsForTarget({ kind: 'manual', id: params.profileId })
       if (!cached) {
         return { models: [], cached: false, stale: false }
       }

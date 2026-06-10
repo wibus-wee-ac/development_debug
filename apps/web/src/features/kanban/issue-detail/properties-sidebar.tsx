@@ -437,7 +437,7 @@ function AgentDelegatePicker({
       return
     }
     if (value === '') {
-      if (issue.delegateAgentId || issue.delegateAgentProfileId) {
+      if (issue.delegateAgentId || issue.delegateProviderTargetId) {
         undelegateIssue.mutate({ issueId: issue.id })
       }
       return

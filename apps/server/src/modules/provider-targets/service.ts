@@ -7,7 +7,6 @@ import {
   backendCapabilitySnapshots,
   chatSessionQueueItems,
   externalProviderRecords,
-  providerModelCache,
   providerTargetModelCache,
   providerTargets,
   runtimeAuditLog,
@@ -332,7 +331,6 @@ export function removeProviderTarget(providerTargetId: string): void {
       .set({ providerTargetId: null, updatedAt: now })
       .where(eq(chatSessionQueueItems.providerTargetId, target.id))
       .run()
-    tx.delete(providerModelCache).where(eq(providerModelCache.providerTargetId, target.id)).run()
     tx.delete(providerTargetModelCache).where(eq(providerTargetModelCache.providerTargetId, target.id)).run()
     tx.delete(agentSessions).where(eq(agentSessions.providerTargetId, target.id)).run()
     if (ownedAgentIds.length > 0) {

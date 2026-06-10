@@ -3,7 +3,7 @@ import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
-import { agentProfiles, sessions, usageLogs, workspaces } from '@cradle/db'
+import { providerTargets, sessions, usageLogs, workspaces } from '@cradle/db'
 import { afterEach, beforeEach, describe, expect, it } from 'vitest'
 
 import { createServerApp } from '../src/app'
@@ -130,6 +130,11 @@ describe('elysia migration skeleton', () => {
         modelId: null,
         configSelections: {},
         continuationBehavior: 'queue',
+        titleGeneration: {
+          providerTargetId: null,
+          modelId: null,
+          thinkingEffort: 'minimal',
+        },
       })
       expect(existsSync(filePath)).toBe(false)
 
@@ -155,6 +160,11 @@ describe('elysia migration skeleton', () => {
           webSearch: true,
         },
         continuationBehavior: 'steer',
+        titleGeneration: {
+          providerTargetId: null,
+          modelId: null,
+          thinkingEffort: 'minimal',
+        },
       })
 
       const finalResponse = await app.handle(new Request('http://localhost/preferences/chat'))
@@ -166,6 +176,11 @@ describe('elysia migration skeleton', () => {
           webSearch: true,
         },
         continuationBehavior: 'steer',
+        titleGeneration: {
+          providerTargetId: null,
+          modelId: null,
+          thinkingEffort: 'minimal',
+        },
       })
     }
     finally {
@@ -714,26 +729,26 @@ describe('elysia migration skeleton', () => {
       const d = db()
 
       const workspaceId = randomUUID()
-      const profileOneId = randomUUID()
-      const profileTwoId = randomUUID()
+      const providerTargetOneId = randomUUID()
+      const providerTargetTwoId = randomUUID()
       const sessionOneId = randomUUID()
       const sessionTwoId = randomUUID()
 
       d.insert(workspaces).values({ id: workspaceId, name: 'Workspace', path: workspaceRoot }).run()
-      d.insert(agentProfiles).values([
-        { id: profileOneId, name: 'Profile One', providerKind: 'openai-compatible' },
-        { id: profileTwoId, name: 'Profile Two', providerKind: 'codex' },
+      d.insert(providerTargets).values([
+        { id: providerTargetOneId, kind: 'manual', providerKind: 'openai-compatible', displayName: 'Provider One' },
+        { id: providerTargetTwoId, kind: 'manual', providerKind: 'anthropic', displayName: 'Provider Two' },
       ]).run()
       d.insert(sessions).values([
-        { id: sessionOneId, workspaceId, title: 'Session One', agentProfileId: profileOneId },
-        { id: sessionTwoId, workspaceId, title: 'Session Two', agentProfileId: profileTwoId },
+        { id: sessionOneId, workspaceId, title: 'Session One', providerTargetId: providerTargetOneId },
+        { id: sessionTwoId, workspaceId, title: 'Session Two', providerTargetId: providerTargetTwoId },
       ]).run()
       d.insert(usageLogs).values([
         {
           id: randomUUID(),
           sessionId: sessionOneId,
           messageId: null,
-          agentProfileId: profileOneId,
+          providerTargetId: providerTargetOneId,
           modelId: 'gpt-4o',
           promptTokens: 10,
           completionTokens: 5,
@@ -744,7 +759,7 @@ describe('elysia migration skeleton', () => {
           id: randomUUID(),
           sessionId: sessionOneId,
           messageId: null,
-          agentProfileId: profileOneId,
+          providerTargetId: providerTargetOneId,
           modelId: 'gpt-4o',
           promptTokens: 20,
           completionTokens: 10,
@@ -755,7 +770,7 @@ describe('elysia migration skeleton', () => {
           id: randomUUID(),
           sessionId: sessionTwoId,
           messageId: null,
-          agentProfileId: profileTwoId,
+          providerTargetId: providerTargetTwoId,
           modelId: 'codex-mini',
           promptTokens: 8,
           completionTokens: 7,
@@ -781,9 +796,10 @@ describe('elysia migration skeleton', () => {
         totalCompletionTokens: 22,
         totalTokens: 60,
         totalTurns: 3,
-        byAgent: [
-          { agentProfileId: profileOneId, agentProfileName: 'Profile One', totalTokens: 45, count: 2 },
-          { agentProfileId: profileTwoId, agentProfileName: 'Profile Two', totalTokens: 15, count: 1 },
+        byAgent: [],
+        byProviderTarget: [
+          { providerTargetId: providerTargetOneId, providerTargetName: 'Provider One', totalTokens: 45, count: 2 },
+          { providerTargetId: providerTargetTwoId, providerTargetName: 'Provider Two', totalTokens: 15, count: 1 },
         ],
         byModel: [
           { modelId: 'gpt-4o', totalTokens: 45, count: 2 },

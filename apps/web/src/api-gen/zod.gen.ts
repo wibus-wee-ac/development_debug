@@ -535,7 +535,6 @@ export const zDeleteModelRegistryMappingsByModelIdPath = z.object({
 });
 
 export const zPutModelRegistryMappingsByModelIdBody = z.object({
-    modelId: z.string().min(1),
     registryModelId: z.string().min(1).optional(),
     matchType: z.enum(['manual', 'alias']).optional(),
     model: z.object({

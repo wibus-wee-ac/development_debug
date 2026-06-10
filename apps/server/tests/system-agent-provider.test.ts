@@ -62,7 +62,7 @@ describe('systemAgentProvider', () => {
         credentialRef: null,
         customModels: '[]',
         iconSlug: null,
-        providerTargetKind: 'manual-profile',
+        providerTargetKind: 'manual',
         providerTargetId: 'profile-jarvis',
       }
       const message: UIMessage = {
@@ -76,8 +76,6 @@ describe('systemAgentProvider', () => {
         runtimeSession: {
           id: 'chat-session-jarvis',
           chatSessionId: 'chat-session-jarvis',
-          agentProfileId: 'profile-jarvis',
-          providerTargetKind: 'manual-profile',
           providerTargetId: 'profile-jarvis',
           runtimeKind: 'jar-core',
           providerSessionId: null,

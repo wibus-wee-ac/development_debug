@@ -531,7 +531,7 @@ export function createIssue(rawInput: {
     createdById: actor.id,
     sourceChatSessionId: actor.chatSessionId,
     delegateAgentId: null,
-    delegateAgentProfileId: null,
+    delegateProviderTargetId: null,
     contextRefs: '[]',
     order,
     createdAt: now,
@@ -552,7 +552,7 @@ const TRACKED_FIELDS = [
   'assigneeId',
   'dueDate',
   'delegateAgentId',
-  'delegateAgentProfileId',
+  'delegateProviderTargetId',
   'contextRefs',
   'order',
 ] as const
@@ -658,7 +658,7 @@ const HIDDEN_ACTIVITY_FIELDS = new Set([
   'assigneeKind',
   'contextRefs',
   'delegateAgentId',
-  'delegateAgentProfileId',
+  'delegateProviderTargetId',
   'order',
 ])
 
@@ -1012,7 +1012,7 @@ export function updateIssueDelegation(
   const issue = getIssueRow(id)
   const updates = {
     delegateAgentId: delegation?.agentId ?? null,
-    delegateAgentProfileId: delegation?.providerTargetId ?? null,
+    delegateProviderTargetId: delegation?.providerTargetId ?? null,
     updatedAt: currentUnixSeconds(),
   }
   recordFieldChanges(id, issue, updates, actor)

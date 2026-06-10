@@ -6,7 +6,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { agentProfiles, sessionAwaits, sessions, workspaces } from '@cradle/db'
+import { providerTargets, sessionAwaits, sessions, workspaces } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -52,15 +52,20 @@ describe('session-await trigger', () => {
   function seedSession(): { workspaceId: string, sessionId: string } {
     const d = db()
     const workspaceId = randomUUID()
-    const profileId = randomUUID()
+    const providerTargetId = randomUUID()
     const sessionId = randomUUID()
 
     d.insert(workspaces).values({ id: workspaceId, name: 'ws', path: '/tmp/ws' }).run()
-    d.insert(agentProfiles).values({ id: profileId, name: 'p', providerKind: 'openai-compatible' }).run()
+    d.insert(providerTargets).values({
+      id: providerTargetId,
+      kind: 'manual',
+      providerKind: 'openai-compatible',
+      displayName: 'p',
+    }).run()
     d.insert(sessions).values({
       id: sessionId,
       workspaceId,
-      agentProfileId: profileId,
+      providerTargetId,
       title: 'test',
     }).run()
 

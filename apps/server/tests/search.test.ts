@@ -4,10 +4,10 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
-  agentProfiles,
   chronicleKnowledgeCards,
   chronicleMemories,
   messages,
+  providerTargets,
   sessions,
   workspaces,
 } from '@cradle/db'
@@ -35,7 +35,7 @@ describe('search capability', () => {
 
       const workspaceOneId = randomUUID()
       const workspaceTwoId = randomUUID()
-      const agentProfileId = randomUUID()
+      const providerTargetId = randomUUID()
       const sessionOneId = randomUUID()
       const sessionTwoId = randomUUID()
       const userMessageOneId = randomUUID()
@@ -47,10 +47,15 @@ describe('search capability', () => {
         { id: workspaceOneId, name: 'Workspace One', path: workspaceRootOne },
         { id: workspaceTwoId, name: 'Workspace Two', path: workspaceRootTwo },
       ]).run()
-      d.insert(agentProfiles).values({ id: agentProfileId, name: 'Search Agent', providerKind: 'openai-compatible' }).run()
+      d.insert(providerTargets).values({
+        id: providerTargetId,
+        kind: 'manual',
+        providerKind: 'openai-compatible',
+        displayName: 'Search Provider',
+      }).run()
       d.insert(sessions).values([
-        { id: sessionOneId, workspaceId: workspaceOneId, title: 'Alpha deployment', agentProfileId },
-        { id: sessionTwoId, workspaceId: workspaceTwoId, title: 'Beta planning', agentProfileId },
+        { id: sessionOneId, workspaceId: workspaceOneId, title: 'Alpha deployment', providerTargetId },
+        { id: sessionTwoId, workspaceId: workspaceTwoId, title: 'Beta planning', providerTargetId },
       ]).run()
       d.insert(messages).values([
         {

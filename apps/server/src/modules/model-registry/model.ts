@@ -43,7 +43,6 @@ export const ModelRegistryModel = {
   }),
 
   mappingBody: t.Object({
-    modelId: t.String({ minLength: 1 }),
     registryModelId: t.Optional(t.String({ minLength: 1 })),
     matchType: t.Optional(t.Union([t.Literal('manual'), t.Literal('alias')])),
     model: t.Optional(modelsDevModel),

@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { agentProfiles, agents, providerTargets, sessions, workspaces } from '@cradle/db'
+import { agents, providerTargets, sessions, workspaces } from '@cradle/db'
 import { describe, expect, it } from 'vitest'
 
 import { createServerApp } from '../src/app'
@@ -240,23 +240,24 @@ describe('kanban capability', () => {
         identifier: 'KAG',
         path: workspaceRoot,
       }).run()
-      db().insert(agentProfiles).values({
-        id: 'profile-kanban-agent',
-        name: 'Kanban Agent Profile',
+      db().insert(providerTargets).values({
+        id: 'provider-target-kanban-agent',
+        kind: 'manual',
         providerKind: 'openai-compatible',
+        displayName: 'Kanban Agent Provider',
       }).run()
       db().insert(agents).values({
         id: 'agent-kanban',
         name: 'Kanban Agent',
         avatarStyle: 'bottts-neutral',
         avatarSeed: 'kanban-agent',
-        agentProfileId: 'profile-kanban-agent',
+        providerTargetId: 'provider-target-kanban-agent',
       }).run()
       db().insert(sessions).values({
         id: 'chat-session-kanban-agent',
         workspaceId: 'workspace-kanban-agent',
         title: 'Agent Runtime',
-        agentProfileId: 'profile-kanban-agent',
+        providerTargetId: 'provider-target-kanban-agent',
         agentId: 'agent-kanban',
       }).run()
 

@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import type { BackendSessionBinding } from '@cradle/db'
 import { backendSessionBindings } from '@cradle/db'
-import { and, eq, isNotNull } from 'drizzle-orm'
+import { and, eq } from 'drizzle-orm'
 
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
@@ -52,10 +52,7 @@ export function clearProviderTargetFromProviderRuntimeBindings(
 ): void {
   writer.update(backendSessionBindings)
     .set({ providerTargetId: null, updatedAt: currentUnixSeconds() })
-    .where(and(
-      eq(backendSessionBindings.providerTargetId, providerTargetId),
-      isNotNull(backendSessionBindings.backendSessionId),
-    ))
+    .where(eq(backendSessionBindings.providerTargetId, providerTargetId))
     .run()
 }
 

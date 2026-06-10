@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { agentProfiles, providerModelCache } from '@cradle/db'
+import { providerTargetModelCache, providerTargets } from '@cradle/db'
 import { describe, expect, it } from 'vitest'
 
 import { createServerApp } from '../src/app'
@@ -141,20 +141,21 @@ describe('test-reset capability', () => {
     try {
       const app = await createServerApp({ startBackgroundTasks: false })
       const store = db()
-      store.insert(agentProfiles).values({
-        id: 'profile-with-model-cache',
-        name: 'Cached Profile',
+      store.insert(providerTargets).values({
+        id: 'provider-target-with-model-cache',
+        kind: 'manual',
         providerKind: 'openai-compatible',
+        displayName: 'Cached Provider',
       }).run()
-      store.insert(providerModelCache).values({
-        profileId: 'profile-with-model-cache',
+      store.insert(providerTargetModelCache).values({
+        providerTargetId: 'provider-target-with-model-cache',
         modelsJson: '[{"id":"stale-model","label":"Stale Model","providerKind":"openai-compatible","capabilities":{}}]',
       }).run()
 
       const res = await app.handle(new Request('http://localhost/test/reset', { method: 'POST' }))
 
       expect(res.status).toBe(200)
-      expect(store.select().from(providerModelCache).all()).toHaveLength(0)
+      expect(store.select().from(providerTargetModelCache).all()).toHaveLength(0)
     }
     finally {
       shutdownInfra()

@@ -515,7 +515,7 @@ describe('provider runtime session resolution', () => {
     })
   })
 
-  it('unlinks provider targets only from durable provider runtime bindings', async () => {
+  it('unlinks provider targets from provider runtime bindings', async () => {
     await withDataDir(async () => {
       db().insert(providerTargets).values({
         id: 'provider-target',
@@ -594,7 +594,7 @@ describe('provider runtime session resolution', () => {
         .from(backendSessionBindings)
         .where(eq(backendSessionBindings.id, 'binding-legacy'))
         .get()).toEqual(expect.objectContaining({
-          providerTargetId: 'provider-target',
+          providerTargetId: null,
           backendSessionId: null,
         }))
     })

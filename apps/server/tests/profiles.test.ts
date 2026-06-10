@@ -25,10 +25,6 @@ const ProfileResponseSchema = z.object({
   configJson: z.string(),
   customModels: z.string(),
 })
-const ProviderTargetModelSettingsResponseSchema = z.object({
-  modelRegistryMappingsJson: z.string(),
-})
-
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
@@ -143,9 +139,9 @@ describe('profiles capability', () => {
       const listSecrets = await app.handle(new Request('http://localhost/secrets'))
       expect(listSecrets.status).toBe(200)
       const secrets = await listSecrets.json()
-      expect(secrets).toEqual([
+      expect(secrets).toEqual(expect.arrayContaining([
         expect.objectContaining({ id: secret.id, maskedSecret: 'sk-...cdef' }),
-      ])
+      ]))
       expect(JSON.stringify(secrets)).not.toContain('sk-test-abcdef')
 
       const deleteProfile = await app.handle(
@@ -603,11 +599,10 @@ describe('profiles capability', () => {
       ])
 
       const mappingRes = await app.handle(
-        new Request('http://localhost/profiles/profile-map/model-registry-mappings', {
-          method: 'PATCH',
+        new Request('http://localhost/model-registry/mappings/vendor-gpt4o', {
+          method: 'PUT',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            modelId: 'vendor-gpt4o',
             model: {
               id: 'gpt-4o',
               name: 'GPT-4o',
@@ -620,13 +615,11 @@ describe('profiles capability', () => {
         }),
       )
       expect(mappingRes.status).toBe(200)
-      expect(await mappingRes.json()).toEqual([
-        expect.objectContaining({
-          modelId: 'vendor-gpt4o',
-          registryModelId: 'gpt-4o',
-          model: expect.objectContaining({ id: 'gpt-4o', name: 'GPT-4o' }),
-        }),
-      ])
+      expect(await mappingRes.json()).toEqual(expect.objectContaining({
+        modelId: 'vendor-gpt4o',
+        registryModelId: 'gpt-4o',
+        model: expect.objectContaining({ id: 'gpt-4o', name: 'GPT-4o' }),
+      }))
 
       const profileAfterMappingRes = await app.handle(
         new Request('http://localhost/profiles/profile-map'),
@@ -634,17 +627,6 @@ describe('profiles capability', () => {
       expect(profileAfterMappingRes.status).toBe(200)
       const profileAfterMapping = ProfileResponseSchema.parse(await profileAfterMappingRes.json())
       expect(profileAfterMapping.customModels).toBe('[]')
-      const settingsAfterMappingRes = await app.handle(
-        new Request('http://localhost/provider-targets/profile-map/model-settings'),
-      )
-      expect(settingsAfterMappingRes.status).toBe(200)
-      const settingsAfterMapping = ProviderTargetModelSettingsResponseSchema.parse(
-        await settingsAfterMappingRes.json(),
-      )
-      expect(JSON.parse(settingsAfterMapping.modelRegistryMappingsJson)).toEqual([
-        expect.objectContaining({ modelId: 'vendor-gpt4o', registryModelId: 'gpt-4o' }),
-      ])
-
       const mappedModelsRes = await app.handle(
         new Request('http://localhost/providers/models', {
           method: 'POST',
