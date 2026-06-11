@@ -593,7 +593,6 @@ function codexRecord(input: CodexConfigReadResult): ExternalProviderRecord | nul
       baseUrl,
       model: input.config.model,
       apiFormat: wireApi ? `openai_${wireApi}` : 'openai',
-      iconSlug: 'codex',
       rawFingerprintHint: hashText({
         configFound: input.configFound,
         authFound: input.authFound,

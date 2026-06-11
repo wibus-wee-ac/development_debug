@@ -87,6 +87,7 @@ import type { UserInput } from './app-server-protocol/v2/UserInput'
 import type { CodexAppServerAuthCarrier, CodexAppServerAuthResolution, CodexChatgptAuthCredential } from './chatgpt-auth'
 import {
   buildCodexChatgptAuthLoginParams,
+  CodexChatgptAuthReauthRequiredError,
   ensureCodexChatgptAuthAccessToken,
   resolveCodexAppServerAuth,
 } from './chatgpt-auth'
@@ -108,6 +109,12 @@ import {
 } from './metadata'
 import { projectCodexNativeTurnsToCodexItems } from './native-history-projector'
 import { resolveCodexRuntimeContext } from './runtime-context'
+import {
+  buildCodexExternalModelProviderConfig,
+  codexConfigRequiresApiKey,
+  resolveCodexAuthMode,
+  resolveCodexExternalModelProviderBaseUrl,
+} from './runtime-config'
 import type { CodexNativeHistorySnapshot } from './state-projector'
 import {
   clearCodexGoalSnapshot,
@@ -173,8 +180,6 @@ import type {
 } from './types'
 import { projectCodexUiSlotStates } from './ui-slot-projector'
 
-const CRADLE_CODEX_MODEL_PROVIDER = 'cradle-openai-compatible'
-const CRADLE_CODEX_API_KEY_ENV = 'CRADLE_CODEX_API_KEY'
 const CODEX_THREAD_TURNS_LIST_LIMIT = 100
 const CODEX_SIDE_BOUNDARY_PROMPT = [
   'You are in a Cradle side conversation.',
@@ -343,7 +348,7 @@ export class CodexProvider implements ChatRuntime {
 
     const config = readTrustedCodexConfig(input.profile.configJson)
     const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
-    if (config.baseUrl && !auth.apiKey) {
+    if (codexConfigRequiresApiKey(config, auth)) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }
 
@@ -353,7 +358,7 @@ export class CodexProvider implements ChatRuntime {
     const runtimeContext = resolveCodexRuntimeContext(workspacePath, agentId)
     const effectiveModel = input.modelId ?? snapshot.models.currentModelId ?? config.model
     const skillExtraRoots = resolveCodexSkillExtraRoots(config, workspacePath, this.resolveSkillPaths)
-    const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel)
+    const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel, auth)
     const hostLease = await this.acquireCodexAppServerHost({
       providerTargetId: input.profile.providerTargetId,
       scopeId: input.childChatSessionId,
@@ -440,7 +445,7 @@ export class CodexProvider implements ChatRuntime {
     const config = readTrustedCodexConfig(input.profile.configJson)
     const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
 
-    if (config.baseUrl && !auth.apiKey) {
+    if (codexConfigRequiresApiKey(config, auth)) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }
 
@@ -451,7 +456,7 @@ export class CodexProvider implements ChatRuntime {
 
     // Build minimal codex config for quick question. It still receives the full
     // transcript below, but it must not initialize tool or skill surfaces.
-    const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel)
+    const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel, auth)
     codexConfig.mcp = false
     codexConfig.computer_use = false
     codexConfig.use_bash = false
@@ -596,7 +601,7 @@ export class CodexProvider implements ChatRuntime {
   async getUiSlotStates(input: GetUiSlotStatesInput): Promise<RuntimeUiSlotState[]> {
     const config = readTrustedCodexConfig(input.profile.configJson)
     const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
-    if (config.baseUrl && !auth.apiKey) {
+    if (codexConfigRequiresApiKey(config, auth)) {
       return []
     }
 
@@ -625,7 +630,7 @@ export class CodexProvider implements ChatRuntime {
       chatgptAuth: auth.chatgptAuth,
       options: {
         apiKey: auth.apiKey ?? undefined,
-        config: buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, input.modelId ?? snapshot.models.currentModelId),
+        config: buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, input.modelId ?? snapshot.models.currentModelId, auth),
         env: buildCradleCodexAppServerEnv({
           chatSessionId: input.runtimeSession.chatSessionId,
           workspaceId: input.workspaceId,
@@ -811,7 +816,7 @@ export class CodexProvider implements ChatRuntime {
   }> {
     const config = readTrustedCodexConfig(input.profile.configJson)
     const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
-    if (config.baseUrl && !auth.apiKey) {
+    if (codexConfigRequiresApiKey(config, auth)) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }
 
@@ -835,7 +840,7 @@ export class CodexProvider implements ChatRuntime {
       chatgptAuth: auth.chatgptAuth,
       options: {
         apiKey: auth.apiKey ?? undefined,
-        config: buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, input.modelId ?? snapshot.models.currentModelId),
+        config: buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, input.modelId ?? snapshot.models.currentModelId, auth),
         env: buildCradleCodexAppServerEnv({
           chatSessionId: input.runtimeSession.chatSessionId,
           workspaceId: input.workspaceId,
@@ -860,7 +865,7 @@ export class CodexProvider implements ChatRuntime {
 
     const config = readTrustedCodexConfig(input.profile.configJson)
     const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
-    if (config.baseUrl && !auth.apiKey) {
+    if (codexConfigRequiresApiKey(config, auth)) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }
 
@@ -870,7 +875,7 @@ export class CodexProvider implements ChatRuntime {
     const runtimeContext = resolveCodexRuntimeContext(workspacePath, agentId)
     const effectiveModel = input.modelId ?? snapshot.models.currentModelId ?? config.model
     const skillExtraRoots = resolveCodexSkillExtraRoots(config, workspacePath, this.resolveSkillPaths)
-    const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel)
+    const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel, auth)
     const hostLease = await this.acquireCodexAppServerHost({
       providerTargetId: input.profile.providerTargetId,
       scopeId: input.runtimeSession.chatSessionId,
@@ -942,7 +947,7 @@ export class CodexProvider implements ChatRuntime {
     const goalContinuationRequested = typeof input.message !== 'string' && isCodexGoalContinuationMessage(input.message)
     const goalCommandObjective = readCodexGoalCommandObjective(input.message)
     const compactCommandRequested = isCodexCompactCommand(input.message)
-    if (config.baseUrl && !auth.apiKey) {
+    if (codexConfigRequiresApiKey(config, auth)) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }
 
@@ -959,7 +964,7 @@ export class CodexProvider implements ChatRuntime {
         })
       : null
     const skillExtraRoots = resolveCodexSkillExtraRoots(config, workspacePath, this.resolveSkillPaths)
-    const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, systemPromptFile, effectiveModel)
+    const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, systemPromptFile, effectiveModel, auth)
     if (runtimeAccess) {
       codexConfig.approval_policy = runtimeAccess.approvalPolicy
       codexConfig.sandbox_mode = runtimeAccess.sandbox
@@ -1486,9 +1491,10 @@ export class CodexProvider implements ChatRuntime {
 
     const config = readTrustedCodexConfig(profile.configJson)
     const model = explicitModelId ?? config.model ?? null
+    const auth = this.resolveAppServerAuth(profile, config.apiKey)
     return {
-      auth: this.resolveAppServerAuth(profile, config.apiKey),
-      codexConfig: buildCodexConfig(config, input.workspacePath, this.resolveSkillPaths, null, model),
+      auth,
+      codexConfig: buildCodexConfig(config, input.workspacePath, this.resolveSkillPaths, null, model, auth),
       model,
       fallbackModel: config.model ?? input.fallbackModel,
       thinkingEffort,
@@ -1503,10 +1509,18 @@ export class CodexProvider implements ChatRuntime {
     if (!chatgptAuth) {
       return
     }
-    const credential = await ensureCodexChatgptAuthAccessToken(chatgptAuth, {
-      updateSecretValue: this.deps.updateSecret,
-    })
-    await client.request('account/login/start', buildCodexChatgptAuthLoginParams(credential))
+    try {
+      const credential = await ensureCodexChatgptAuthAccessToken(chatgptAuth, {
+        updateSecretValue: this.deps.updateSecret,
+      })
+      await client.request('account/login/start', buildCodexChatgptAuthLoginParams(credential))
+    }
+    catch (error) {
+      if (error instanceof CodexChatgptAuthReauthRequiredError) {
+        throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind), { cause: error })
+      }
+      throw error
+    }
   }
 
   private generateCodexThreadTitleInBackground(input: {
@@ -1576,7 +1590,7 @@ export class CodexProvider implements ChatRuntime {
   async generateSessionTitle(input: GenerateSessionTitleInput): Promise<string | null> {
     const config = readTrustedCodexConfig(input.profile.configJson)
     const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
-    if (config.baseUrl && !auth.apiKey) {
+    if (codexConfigRequiresApiKey(config, auth)) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }
 
@@ -1585,7 +1599,7 @@ export class CodexProvider implements ChatRuntime {
     const agentId = input.agentId ?? snapshot.agentId ?? null
     const runtimeContext = resolveCodexRuntimeContext(workspacePath, agentId)
     const effectiveModel = input.modelId ?? snapshot.models.currentModelId ?? config.model ?? null
-    const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel)
+    const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel, auth)
     const codexEnv = buildCradleCodexAppServerEnv({
       chatSessionId: input.runtimeSession.chatSessionId,
       workspaceId: input.workspaceId,
@@ -2768,7 +2782,8 @@ function buildCodexConfig(
   _workspacePath: string,
   _resolveSkillPaths: (workspacePath: string) => string[],
   systemPromptFile: string | null,
-  effectiveModel?: string | null,
+  effectiveModel: string | null | undefined,
+  auth: CodexAppServerAuthResolution,
 ): NonNullable<ThreadForkParams['config']> {
   const codexConfig: NonNullable<ThreadForkParams['config']> = {
     network_access: 'enabled',
@@ -2784,17 +2799,10 @@ function buildCodexConfig(
   if (systemPromptFile) {
     codexConfig.instructions_paths = [systemPromptFile]
   }
-  if (config.baseUrl) {
-    codexConfig.model_provider = CRADLE_CODEX_MODEL_PROVIDER
-    codexConfig.model_providers = {
-      [CRADLE_CODEX_MODEL_PROVIDER]: {
-        name: 'Cradle OpenAI Compatible',
-        base_url: config.baseUrl,
-        env_key: CRADLE_CODEX_API_KEY_ENV,
-        wire_api: 'responses',
-        requires_openai_auth: true,
-      },
-    }
+  const authMode = resolveCodexAuthMode(config, auth)
+  const externalBaseUrl = resolveCodexExternalModelProviderBaseUrl(config)
+  if (externalBaseUrl) {
+    Object.assign(codexConfig, buildCodexExternalModelProviderConfig(externalBaseUrl, authMode))
   }
   if (effectiveModel) {
     codexConfig.model = effectiveModel

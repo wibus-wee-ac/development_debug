@@ -3,6 +3,7 @@ import { randomUUID } from 'node:crypto'
 import type { ProviderTarget as ProviderTargetRow } from '@cradle/db'
 import {
   agents,
+  agentCredentials,
   agentSessions,
   backendCapabilitySnapshots,
   chatSessionQueueItems,
@@ -18,6 +19,7 @@ import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
+import { CodexAuthModeSchema } from '../provider-contracts/provider-base'
 import { runtimeSupportsProviderKind } from '../provider-contracts/runtime-compatibility'
 import type { ModelCapabilities, ProviderKind, RuntimeKind } from '../provider-contracts/types'
 import {
@@ -116,6 +118,41 @@ function mergeConnectionConfigWithEnabledModels(
     ...config,
     enabledModels,
   })
+}
+
+function normalizeManualConnectionConfig(input: UpsertManualProviderTargetInput): string {
+  if (input.providerKind !== 'openai-compatible') {
+    return input.connectionConfigJson
+  }
+
+  const config = JsonObjectTextSchema.parse(input.connectionConfigJson)
+  const credentialAuthMode = resolveCredentialAuthMode(input.credentialRef ?? null)
+  const storedAuthMode = CodexAuthModeSchema.safeParse(config.authMode)
+  const inlineApiKey = typeof config.apiKey === 'string' && config.apiKey.trim().length > 0
+  const baseUrl = typeof config.baseUrl === 'string' && config.baseUrl.trim().length > 0
+  const authMode = credentialAuthMode
+    ?? (storedAuthMode.success ? storedAuthMode.data : null)
+    ?? (inlineApiKey || baseUrl ? 'apikey' : null)
+
+  return JSON.stringify({
+    ...config,
+    ...(authMode ? { authMode } : {}),
+  })
+}
+
+function resolveCredentialAuthMode(credentialRef: string | null): z.infer<typeof CodexAuthModeSchema> | null {
+  if (!credentialRef) {
+    return null
+  }
+  const credential = db()
+    .select({ kind: agentCredentials.kind })
+    .from(agentCredentials)
+    .where(eq(agentCredentials.id, credentialRef))
+    .get()
+  if (!credential) {
+    return null
+  }
+  return credential.kind === 'chatgpt-auth' ? 'chatgptAuthTokens' : 'apikey'
 }
 
 function toResolvedProviderTarget(row: ProviderTargetRow): ResolvedProviderTarget {
@@ -226,6 +263,7 @@ export function upsertManualProviderTarget(
   }
 
   const nextEnabled = input.enabled ?? existing?.enabled ?? true
+  const connectionConfigJson = normalizeManualConnectionConfig(input)
   const d = db()
   d.transaction((tx) => {
     tx.insert(providerTargets)
@@ -235,7 +273,7 @@ export function upsertManualProviderTarget(
         providerKind: input.providerKind,
         displayName: input.displayName,
         enabled: nextEnabled,
-        connectionConfigJson: input.connectionConfigJson,
+        connectionConfigJson,
         credentialRef: input.credentialRef ?? null,
         iconSlug: input.iconSlug ?? null,
         enabledModelsJson: existing?.enabledModelsJson ?? '[]',
@@ -249,7 +287,7 @@ export function upsertManualProviderTarget(
           providerKind: input.providerKind,
           displayName: input.displayName,
           enabled: nextEnabled,
-          connectionConfigJson: input.connectionConfigJson,
+          connectionConfigJson,
           credentialRef: input.credentialRef ?? null,
           ...(input.iconSlug !== undefined ? { iconSlug: input.iconSlug } : {}),
           updatedAt: now,

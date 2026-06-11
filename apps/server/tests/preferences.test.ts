@@ -8,7 +8,7 @@ import { createServerApp } from '../src/app'
 import { shutdownInfra } from '../src/infra'
 import { setCodexChatgptCredentialLoginFetchForTests } from '../src/modules/chat-runtime-providers/codex/account-service'
 import { setCodexChatgptModelListClientFactoryForTests } from '../src/modules/chat-runtime-providers/codex/model-list'
-import { readSecret } from '../src/modules/secrets/service'
+import { readSecret, saveSecret } from '../src/modules/secrets/service'
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -309,35 +309,39 @@ describe('preferences capability', () => {
       }))
 
       const codexRequests: Array<{ method: string, params?: unknown }> = []
-      setCodexChatgptModelListClientFactoryForTests(() => ({
-        initialize: vi.fn(async () => undefined),
-        request: vi.fn(async (method: string, params?: unknown) => {
-          codexRequests.push({ method, params })
-          if (method === 'account/login/start') {
-            return {}
-          }
-          if (method === 'model/list') {
-            return {
-              data: [
-                {
-                  id: 'gpt-5-codex',
-                  model: 'gpt-5-codex',
-                  displayName: 'GPT-5 Codex',
-                  supportedReasoningEfforts: [
-                    { reasoningEffort: 'medium', description: 'Medium' },
-                    { reasoningEffort: 'high', description: 'High' },
-                  ],
-                  inputModalities: ['text'],
-                },
-              ],
-              nextCursor: null,
+      const codexClientOptions: Array<{ config?: Record<string, unknown> } | undefined> = []
+      setCodexChatgptModelListClientFactoryForTests((options) => {
+        codexClientOptions.push(options)
+        return {
+          initialize: vi.fn(async () => undefined),
+          request: vi.fn(async (method: string, params?: unknown) => {
+            codexRequests.push({ method, params })
+            if (method === 'account/login/start') {
+              return {}
             }
-          }
-          throw new Error(`unexpected Codex app-server method ${method}`)
-        }),
-        nextNotification: vi.fn(async () => null),
-        close: vi.fn(),
-      }))
+            if (method === 'model/list') {
+              return {
+                data: [
+                  {
+                    id: 'gpt-5-codex',
+                    model: 'gpt-5-codex',
+                    displayName: 'GPT-5 Codex',
+                    supportedReasoningEfforts: [
+                      { reasoningEffort: 'medium', description: 'Medium' },
+                      { reasoningEffort: 'high', description: 'High' },
+                    ],
+                    inputModalities: ['text'],
+                  },
+                ],
+                nextCursor: null,
+              }
+            }
+            throw new Error(`unexpected Codex app-server method ${method}`)
+          }),
+          nextNotification: vi.fn(async () => null),
+          close: vi.fn(),
+        }
+      })
       const profileRes = await app.handle(new Request('http://localhost/profiles/provider-chatgpt', {
         method: 'PUT',
         headers: { 'content-type': 'application/json' },
@@ -350,6 +354,11 @@ describe('preferences capability', () => {
         }),
       }))
       expect(profileRes.status).toBe(200)
+      const profileJson = await profileRes.json() as { configJson: string }
+      expect(JSON.parse(profileJson.configJson)).toEqual({
+        baseUrl: 'https://api.openai.com/v1',
+        authMode: 'chatgptAuthTokens',
+      })
       const modelsRes = await app.handle(new Request('http://localhost/providers/models', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -375,11 +384,119 @@ describe('preferences capability', () => {
         expect.stringContaining('/v1/models'),
         expect.anything(),
       )
+      expect(codexClientOptions[0]?.config).toEqual({
+        model_provider: 'cradle-openai-compatible',
+        model_providers: {
+          'cradle-openai-compatible': {
+            name: 'Cradle OpenAI Compatible',
+            base_url: 'https://api.openai.com/v1',
+            wire_api: 'responses',
+            requires_openai_auth: true,
+          },
+        },
+      })
       expect(codexRequests.map(request => request.method)).toEqual(['account/login/start', 'model/list'])
     }
     finally {
       setCodexChatgptCredentialLoginFetchForTests(null)
       setCodexChatgptModelListClientFactoryForTests(null)
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousCredentialSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousCredentialSecret
+      }
+    }
+  })
+
+  it('reports expired ChatGPT auth during model refresh without an unhandled server error', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousCredentialSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'test-secret'
+    const expiredAccessToken = makeJwt({
+      exp: Math.floor(Date.now() / 1000) - 60,
+      'https://api.openai.com/auth': {
+        chatgpt_account_id: 'account-expired',
+        chatgpt_plan_type: 'plus',
+      },
+    })
+    const fetchMock = vi.fn(async (input: Parameters<typeof fetch>[0]) => {
+      if (String(input) === 'https://auth.openai.com/oauth/token') {
+        return new Response(JSON.stringify({
+          error: {
+            message: 'Your refresh token has been invalidated. Please try signing in again.',
+            type: 'invalid_request_error',
+            code: 'refresh_token_invalidated',
+          },
+        }), { status: 401 })
+      }
+      return new Response(JSON.stringify({ error: 'unexpected_url', url: String(input) }), { status: 500 })
+    }) as typeof fetch
+    vi.stubGlobal('fetch', fetchMock)
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const credential = saveSecret({
+        kind: 'chatgpt-auth',
+        label: 'Expired ChatGPT',
+        secret: JSON.stringify({
+          kind: 'chatgpt-auth',
+          accessToken: expiredAccessToken,
+          refreshToken: 'invalidated-refresh-token',
+          chatgptAccountId: 'account-expired',
+          chatgptPlanType: 'plus',
+        }),
+      })
+      const profileRes = await app.handle(new Request('http://localhost/profiles/provider-chatgpt-expired', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Expired ChatGPT',
+          providerKind: 'openai-compatible',
+          enabled: true,
+          config: {},
+          credentialRef: credential.id,
+        }),
+      }))
+      expect(profileRes.status).toBe(200)
+
+      const modelsRes = await app.handle(new Request('http://localhost/providers/models', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          providerKind: 'openai-compatible',
+          label: 'Expired ChatGPT',
+          config: {},
+          secretRef: credential.id,
+          profileId: 'provider-chatgpt-expired',
+          providerTargetKind: 'manual',
+          providerTargetId: 'provider-chatgpt-expired',
+        }),
+      }))
+      expect(modelsRes.status).toBe(401)
+      expect(await modelsRes.json()).toEqual({
+        code: 'codex_chatgpt_auth_reauth_required',
+        message: 'ChatGPT sign-in expired. Please sign in again.',
+        details: { providerKind: 'openai-compatible' },
+      })
+      expect(fetchMock).toHaveBeenCalledWith(
+        'https://auth.openai.com/oauth/token',
+        expect.objectContaining({ method: 'POST' }),
+      )
+    }
+    finally {
+      vi.unstubAllGlobals()
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {

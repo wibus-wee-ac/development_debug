@@ -13,7 +13,7 @@ import {
   createCodexAppServerHostResource,
   subscribeCodexAppServerHostNotifications,
 } from './app-server-host-resource'
-import type { CodexChatgptAuthCredential } from './chatgpt-auth'
+import type { CodexAppServerAuthResolution, CodexChatgptAuthCredential } from './chatgpt-auth'
 import {
   buildCodexChatgptAuthLoginParams,
   ensureCodexChatgptAuthAccessToken,
@@ -21,13 +21,16 @@ import {
   resolveCodexAppServerAuth,
 } from './chatgpt-auth'
 import { resolveCodexRuntimeContext } from './runtime-context'
+import {
+  resolveCodexAuthMode,
+  buildCodexExternalModelProviderConfig,
+  codexConfigRequiresApiKey,
+  resolveCodexExternalModelProviderBaseUrl,
+} from './runtime-config'
 import { buildCodexServerRequestToolInput, buildCodexServerRequestToolOutput } from './tools/mapper'
 import type { CodexAppServerClientLike, CodexAppServerHostResource } from './types'
 
 export type { CodexAppServerCapabilityManifest } from './app-server-capabilities'
-
-const CRADLE_CODEX_MODEL_PROVIDER = 'cradle-openai-compatible'
-const CRADLE_CODEX_API_KEY_ENV = 'CRADLE_CODEX_API_KEY'
 
 function resolveBridgeCodexSkillExtraRoots(
   config: CodexConfig,
@@ -229,14 +232,14 @@ export class CodexAppServerBridge {
   ): Promise<CodexAppServerBridgeHostLease> {
     const config = readTrustedCodexConfig(context.profile.configJson)
     const auth = resolveCodexAppServerAuth(context.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
-    if (config.baseUrl && !auth.apiKey) {
+    if (codexConfigRequiresApiKey(config, auth)) {
       throw new Error('Codex app-server bridge requires an API key for external model providers')
     }
     const runtimeContext = resolveCodexRuntimeContext(context.workspacePath, context.agentId)
     const skillExtraRoots = resolveBridgeCodexSkillExtraRoots(config, context.workspacePath, this.deps.resolveSkillPaths)
     const clientOptions: CodexAppServerClientOptions = this.configureAppServerClientOptions({
       apiKey: auth.apiKey ?? undefined,
-      config: buildBridgeCodexConfig(config, context.workspacePath, this.deps.resolveSkillPaths, context.modelId),
+      config: buildBridgeCodexConfig(config, context.workspacePath, this.deps.resolveSkillPaths, context.modelId, auth),
       env: buildCradleCodexAppServerEnv({
         chatSessionId: context.runtimeSession.chatSessionId,
         workspaceId: context.workspaceId,
@@ -332,9 +335,12 @@ function buildBridgeCodexConfig(
   config: CodexConfig,
   _workspacePath: string,
   _resolveSkillPaths: (workspacePath: string) => string[],
-  effectiveModel?: string | null,
+  effectiveModel: string | null | undefined,
+  auth: CodexAppServerAuthResolution,
 ): Record<string, unknown> {
   const mcpServers = buildCodexMcpServersConfig()
+  const authMode = resolveCodexAuthMode(config, auth)
+  const externalBaseUrl = resolveCodexExternalModelProviderBaseUrl(config)
   return {
     approval_policy: config.approvalPolicy,
     sandbox_mode: config.sandboxMode,
@@ -342,19 +348,8 @@ function buildBridgeCodexConfig(
     show_raw_agent_reasoning: true,
     disable_response_storage: true,
     ...(Object.keys(mcpServers).length > 0 ? { mcp_servers: mcpServers } : {}),
-    ...(config.baseUrl
-      ? {
-          model_provider: CRADLE_CODEX_MODEL_PROVIDER,
-          model_providers: {
-            [CRADLE_CODEX_MODEL_PROVIDER]: {
-              name: 'Cradle OpenAI Compatible',
-              base_url: config.baseUrl,
-              env_key: CRADLE_CODEX_API_KEY_ENV,
-              wire_api: 'responses',
-              requires_openai_auth: true,
-            },
-          },
-        }
+    ...(externalBaseUrl
+      ? buildCodexExternalModelProviderConfig(externalBaseUrl, authMode)
       : {}),
     ...(effectiveModel ?? config.model ? { model: effectiveModel ?? config.model } : {}),
   }

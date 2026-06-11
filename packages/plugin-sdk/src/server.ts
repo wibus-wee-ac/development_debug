@@ -196,7 +196,7 @@ export interface ExternalProviderRecord {
 }
 
 export interface ExternalProviderCredential {
-  kind: 'api-key'
+  kind: 'api-key' | 'chatgpt-auth'
   value: string
   label?: string
 }

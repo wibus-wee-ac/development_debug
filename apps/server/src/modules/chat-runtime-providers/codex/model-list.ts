@@ -15,9 +15,11 @@ let createClientForTests: ((options?: CodexAppServerClientOptions) => CodexAppSe
 
 export async function listCodexChatgptModels(input: {
   credential: CodexChatgptAuthCredential
+  config?: Record<string, unknown>
   updateSecretValue?: (credentialRef: string, secret: string) => void
 }): Promise<ModelDescriptor[]> {
-  const client = createClientForTests?.() ?? new CodexAppServerClient()
+  const clientOptions = input.config ? { config: input.config } : undefined
+  const client = createClientForTests?.(clientOptions) ?? new CodexAppServerClient(clientOptions)
   try {
     await client.initialize()
     const credential = await ensureCodexChatgptAuthAccessToken(input.credential, {

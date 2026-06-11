@@ -40,7 +40,7 @@ const recordMetadataSchema = t.Object({
 })
 
 const credentialSchema = t.Object({
-  kind: t.Literal('api-key'),
+  kind: t.Union([t.Literal('api-key'), t.Literal('chatgpt-auth')]),
   label: t.Optional(t.String()),
   value: t.String(),
 })

@@ -54,7 +54,7 @@ class FakeBridgeAppServerClient {
   }
 }
 
-function createProfile(): RuntimeProviderTargetProfile {
+function createProfile(config: Record<string, unknown> = {}): RuntimeProviderTargetProfile {
   return {
     id: 'profile-codex',
     name: 'Codex',
@@ -63,6 +63,7 @@ function createProfile(): RuntimeProviderTargetProfile {
     configJson: JSON.stringify({
       apiKey: 'sk-test',
       model: 'gpt-5-codex',
+      ...config,
     }),
     credentialRef: null,
     customModels: '[]',
@@ -84,6 +85,27 @@ function createRuntimeSession(): RuntimeSession {
       models: { currentModelId: null },
     }),
   }
+}
+
+function createFakeChatgptJwt(input: {
+  accountId: string
+  planType?: string
+  email?: string
+  exp?: number
+}): string {
+  const encode = (value: unknown) => Buffer.from(JSON.stringify(value)).toString('base64url')
+  return [
+    encode({ alg: 'none', typ: 'JWT' }),
+    encode({
+      'email': input.email ?? 'user@example.com',
+      ...(input.exp !== undefined ? { exp: input.exp } : {}),
+      'https://api.openai.com/auth': {
+        chatgpt_account_id: input.accountId,
+        chatgpt_plan_type: input.planType ?? 'plus',
+      },
+    }),
+    'sig',
+  ].join('.')
 }
 
 function createBridge(client: FakeBridgeAppServerClient): CodexAppServerBridge {
@@ -262,5 +284,65 @@ describe('codexAppServerBridge stream lifecycle', () => {
       CRADLE_WORKSPACE_ID: 'workspace-1',
       CRADLE_WORKSPACE_PATH: '/tmp/cradle-workspace',
     })
+  })
+
+  it('uses ChatGPT auth with an OpenAI-compatible base URL without requiring an API key', async () => {
+    const accessToken = createFakeChatgptJwt({ accountId: 'workspace-1', planType: 'plus' })
+    const appServerOptions: CodexAppServerClientOptions[] = []
+    const client = new FakeBridgeAppServerClient({
+      'config/read': { config: {} },
+    })
+    const bridge = new CodexAppServerBridge({
+      readSecret: () => JSON.stringify({
+        kind: 'chatgpt-auth',
+        accessToken,
+        refreshToken: 'refresh-token-1',
+        chatgptAccountId: 'workspace-1',
+        chatgptPlanType: 'plus',
+      }),
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      createAppServerClient: (options) => {
+        appServerOptions.push(options)
+        return client
+      },
+    })
+
+    await bridge.invoke({
+      ...createBridgeContext(),
+      profile: {
+        ...createProfile({
+          apiKey: undefined,
+          baseUrl: 'https://api.openai.com/v1',
+        }),
+        credentialRef: 'credential-chatgpt',
+      },
+      method: 'config/read',
+      params: { cwd: '/tmp/cradle-workspace' },
+    })
+
+    expect(appServerOptions[0]?.apiKey).toBeUndefined()
+    expect(appServerOptions[0]?.config).toEqual(expect.objectContaining({
+      model_provider: 'cradle-openai-compatible',
+      model_providers: {
+        'cradle-openai-compatible': {
+          name: 'Cradle OpenAI Compatible',
+          base_url: 'https://api.openai.com/v1',
+          wire_api: 'responses',
+          requires_openai_auth: true,
+        },
+      },
+    }))
+    expect(client.requests).toEqual([
+      {
+        method: 'account/login/start',
+        params: {
+          type: 'chatgptAuthTokens',
+          accessToken,
+          chatgptAccountId: 'workspace-1',
+          chatgptPlanType: 'plus',
+        },
+      },
+      { method: 'config/read', params: { cwd: '/tmp/cradle-workspace' } },
+    ])
   })
 })

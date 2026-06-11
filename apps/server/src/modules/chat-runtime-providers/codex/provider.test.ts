@@ -3911,6 +3911,93 @@ describe('codexProvider app-server integration', () => {
     await drainStream(stream)
   })
 
+  it('uses ChatGPT auth with an OpenAI-compatible base URL without requiring an API key', async () => {
+    const accessToken = createFakeChatgptJwt({ accountId: 'workspace-1', planType: 'plus' })
+    const appServerOptions: CodexAppServerClientOptions[] = []
+    const clients: FakeCodexAppServerClient[] = []
+    const provider = new CodexProvider({
+      readSecret: () => JSON.stringify({
+        kind: 'chatgpt-auth',
+        accessToken,
+        refreshToken: 'refresh-token-1',
+        chatgptAccountId: 'workspace-1',
+        chatgptPlanType: 'plus',
+      }),
+      updateSecret: vi.fn(),
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        appServerOptions.push(options)
+        const client = new FakeCodexAppServerClient(options)
+        clients.push(client)
+        return client
+      },
+    })
+    const stream = provider.streamTurn({
+      runId: 'run-codex-chatgpt-auth-base-url-residue',
+      runtimeSession: createRuntimeSession(),
+      profile: {
+        ...createProfile({
+          apiKey: undefined,
+          baseUrl: 'https://api.openai.com/v1',
+        }),
+        credentialRef: 'credential-chatgpt',
+      },
+      message: createUserMessage('Use ChatGPT auth'),
+      workspaceId: 'workspace-1',
+    })
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(clients[0]?.requests.map(request => request.method).slice(0, 3)).toEqual([
+        'account/login/start',
+        'thread/start',
+        'turn/start',
+      ])
+    })
+
+    expect(appServerOptions[0]?.apiKey).toBeUndefined()
+    expect(appServerOptions[0]?.config).toEqual(expect.objectContaining({
+      model_provider: 'cradle-openai-compatible',
+      model_providers: {
+        'cradle-openai-compatible': {
+          name: 'Cradle OpenAI Compatible',
+          base_url: 'https://api.openai.com/v1',
+          wire_api: 'responses',
+          requires_openai_auth: true,
+        },
+      },
+    }))
+    expect(clients[0]?.requests[0]).toEqual({
+      method: 'account/login/start',
+      params: {
+        type: 'chatgptAuthTokens',
+        accessToken,
+        chatgptAccountId: 'workspace-1',
+        chatgptPlanType: 'plus',
+      },
+    })
+
+    clients[0]?.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    clients[0]?.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    await drainStream(stream)
+  })
+
   it('refreshes ChatGPT auth token requests and updates the credential secret', async () => {
     const accessToken = createFakeChatgptJwt({ accountId: 'workspace-1', planType: 'plus' })
     const refreshedAccessToken = createFakeChatgptJwt({ accountId: 'workspace-1', planType: 'pro' })
@@ -4074,6 +4161,63 @@ describe('codexProvider app-server integration', () => {
       },
     })
     await drainStream(stream)
+  })
+
+  it('reports invalidated ChatGPT refresh tokens as Codex auth failures during app-server login', async () => {
+    const nowSeconds = Math.floor(Date.now() / 1000)
+    const accessToken = createFakeChatgptJwt({
+      accountId: 'workspace-1',
+      planType: 'plus',
+      exp: nowSeconds - 60,
+    })
+    const updateSecret = vi.fn()
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
+      error: {
+        message: 'Your refresh token has been invalidated. Please try signing in again.',
+        type: 'invalid_request_error',
+        code: 'refresh_token_invalidated',
+      },
+    }), {
+      status: 401,
+      headers: { 'Content-Type': 'application/json' },
+    })))
+
+    const client = new FakeCodexAppServerClient({})
+    const provider = new CodexProvider({
+      readSecret: () => JSON.stringify({
+        kind: 'chatgpt-auth',
+        accessToken,
+        refreshToken: 'refresh-token-1',
+        chatgptAccountId: 'workspace-1',
+        chatgptPlanType: 'plus',
+      }),
+      updateSecret,
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        client.options = options
+        return client
+      },
+    })
+    const stream = provider.streamTurn({
+      runId: 'run-codex-chatgpt-invalid-refresh',
+      runtimeSession: createRuntimeSession(),
+      profile: {
+        ...createProfile({ apiKey: undefined, baseUrl: undefined }),
+        credentialRef: 'credential-chatgpt',
+      },
+      message: createUserMessage('Use ChatGPT auth'),
+      workspaceId: 'workspace-1',
+    })
+
+    await expect(stream.next()).rejects.toMatchObject({
+      providerError: {
+        _tag: 'auth_failed',
+        provider: 'codex',
+      },
+    })
+    expect(client.requests).toEqual([])
+    expect(updateSecret).not.toHaveBeenCalled()
   })
 
   it('passes Cradle session context into the Codex app-server environment', async () => {

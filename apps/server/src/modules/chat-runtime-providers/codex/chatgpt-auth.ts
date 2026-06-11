@@ -9,6 +9,15 @@ const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const OPENAI_OAUTH_TOKEN_URL = 'https://auth.openai.com/oauth/token'
 const ACCESS_TOKEN_REFRESH_SKEW_SECONDS = 5 * 60
 
+export class CodexChatgptAuthReauthRequiredError extends Error {
+  readonly code = 'codex_chatgpt_auth_reauth_required'
+
+  constructor(message = 'Codex ChatGPT auth expired. Please sign in again.') {
+    super(message)
+    this.name = 'CodexChatgptAuthReauthRequiredError'
+  }
+}
+
 export interface CodexChatgptAuthCredential {
   credentialRef: string
   accessToken: string | null
@@ -193,6 +202,9 @@ export async function refreshCodexChatgptAuthCredential(
 
   if (!response.ok) {
     const text = await response.text().catch(() => '')
+    if (isReauthRequiredRefreshResponse(response.status, text)) {
+      throw new CodexChatgptAuthReauthRequiredError()
+    }
     throw new Error(`Codex ChatGPT auth refresh failed: ${response.status} ${text}`.trim())
   }
 
@@ -239,6 +251,18 @@ function parseJsonRecord(raw: string): Record<string, unknown> | null {
   catch {
     return null
   }
+}
+
+function isReauthRequiredRefreshResponse(status: number, body: string): boolean {
+  if (status !== 400 && status !== 401) {
+    return false
+  }
+  const parsed = parseJsonRecord(body)
+  const error = readRecord(parsed?.error)
+  return readString(error?.code) === 'refresh_token_invalidated'
+    || readString(error?.code) === 'token_expired'
+    || readString(error?.message)?.toLowerCase().includes('refresh token has been invalidated') === true
+    || readString(error?.message)?.toLowerCase().includes('try signing in again') === true
 }
 
 function readRecord(value: unknown): Record<string, unknown> | null {

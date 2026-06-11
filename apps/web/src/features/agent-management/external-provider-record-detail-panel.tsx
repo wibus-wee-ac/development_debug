@@ -28,7 +28,7 @@ import type {
   ExternalProviderRuntimeTargetView,
   ExternalProviderSourceView,
 } from './provider-settings-utils'
-import { isApiProviderKind, presetForProviderKind, PROVIDER_KIND_LABELS } from './provider-settings-utils'
+import { isApiProviderKind, presetForProviderKind, providerTargetDisplayIconSlug, PROVIDER_KIND_LABELS } from './provider-settings-utils'
 import type { EditableCustomModel } from './provider-target-model-settings'
 import {
   CustomModelsJsonSchema,
@@ -369,7 +369,13 @@ export function ExternalProviderRecordDetailPanel({
       <header className="flex items-start gap-3">
         <div className="mt-1 shrink-0 rounded-md p-0.5 text-muted-foreground">
           <ProviderIcon
-            iconSlug={runtimeTarget?.iconSlug ?? null}
+            iconSlug={runtimeTarget
+              ? providerTargetDisplayIconSlug({
+                  kind: 'external',
+                  providerKind: runtimeTarget.providerKind,
+                  iconSlug: runtimeTarget.iconSlug,
+                })
+              : null}
             presetId={preset.id}
             className="size-6"
           />

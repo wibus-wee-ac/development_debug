@@ -9,7 +9,7 @@ import type { ModelDescriptor } from '~/features/agent-runtime/types'
 import { BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS } from '~/features/browser/native-surface-occlusion'
 import { cn } from '~/lib/cn'
 
-import { presetForProviderKind } from '../agent-management/provider-settings-utils'
+import { presetForProviderKind, providerTargetDisplayIconSlug } from '../agent-management/provider-settings-utils'
 import type { ProviderModelOption } from './types'
 
 export interface ThinkingOption<TThinking extends string | null> {
@@ -205,7 +205,11 @@ function ProviderTargetGroup<TThinking extends string | null>({
         className={cn(isActive && 'font-medium')}
       >
         <CheckIcon className={cn('size-3.5 shrink-0', isActive ? 'text-primary' : 'text-transparent')} />
-        <ProviderIcon iconSlug={providerTarget.iconSlug} presetId={preset.id} className="size-3.5 shrink-0" />
+        <ProviderIcon
+          iconSlug={providerTargetDisplayIconSlug(providerTarget)}
+          presetId={preset.id}
+          className="size-3.5 shrink-0"
+        />
         <span>{providerTarget.name}</span>
       </MenuSubTrigger>
       <MenuSubPopup {...(occludeNativeBrowserSurface ? BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS : {})}>

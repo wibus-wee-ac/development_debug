@@ -7,7 +7,7 @@ import { Menu, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import type { ModelDescriptor } from '~/features/agent-runtime/types'
 import { BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS } from '~/features/browser/native-surface-occlusion'
 
-import { presetForProviderKind } from '../agent-management/provider-settings-utils'
+import { presetForProviderKind, providerTargetDisplayIconSlug } from '../agent-management/provider-settings-utils'
 import type { ModelsByProviderTargetId, ThinkingOption } from './provider-model-menu'
 import { ProviderModelMenu } from './provider-model-menu'
 import type { ProviderModelOption } from './types'
@@ -98,7 +98,13 @@ export function ProviderModelPicker<TThinking extends string | null>({
     <Menu>
       <MenuTrigger render={<Button variant="ghost" size="xs" data-testid={triggerTestId} disabled={disabled} className="min-w-0 max-w-full shrink" />}>
         {selectedProviderTarget
-          ? <ProviderIcon iconSlug={selectedProviderTarget.iconSlug} presetId={presetForProviderKind(selectedProviderTarget.providerKind).id} className="size-3.5 shrink-0" />
+          ? (
+              <ProviderIcon
+                iconSlug={providerTargetDisplayIconSlug(selectedProviderTarget)}
+                presetId={presetForProviderKind(selectedProviderTarget.providerKind).id}
+                className="size-3.5 shrink-0"
+              />
+            )
           : <CpuIcon className="size-3.5 shrink-0 text-muted-foreground/70" />}
         <span className="flex min-w-0 max-w-64 items-center gap-1">
           {providerLabel && (

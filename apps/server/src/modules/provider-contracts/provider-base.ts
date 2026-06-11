@@ -3,10 +3,13 @@ import { z } from 'zod'
 export const CODEX_DEFAULT_APPROVAL_POLICY = 'never'
 export const CODEX_DEFAULT_SANDBOX_MODE = 'danger-full-access'
 
+export const CodexAuthModeSchema = z.enum(['apikey', 'chatgpt', 'chatgptAuthTokens', 'agentIdentity'])
+
 export const BaseProviderConfig = z.object({
   baseUrl: z.string().optional(),
   model: z.string().optional(),
   apiKey: z.string().optional(),
+  authMode: CodexAuthModeSchema.optional(),
   enabledModels: z.array(z.string()).default([]),
   skillPaths: z.array(z.string()).default([]),
   additionalDirectories: z.array(z.string()).default([]),
@@ -15,6 +18,7 @@ export const BaseProviderConfig = z.object({
 export const OpenAICompatibleConfigSchema = BaseProviderConfig.pick({
   baseUrl: true,
   model: true,
+  authMode: true,
   enabledModels: true,
 }).extend({
   baseUrl: z.string().nullable().default(null),
@@ -62,6 +66,7 @@ export const UniversalProviderConfigJsonSchema = z.string()
   .pipe(UniversalProviderConfigSchema)
 
 export type UniversalProviderConfig = z.infer<typeof UniversalProviderConfigSchema>
+export type CodexAuthMode = z.infer<typeof CodexAuthModeSchema>
 
 export function readTrustedUniversalConfig(raw: string): UniversalProviderConfig {
   const config = JSON.parse(raw) as Partial<UniversalProviderConfig>
@@ -135,6 +140,7 @@ export function readTrustedOpenAICompatibleConfig(raw: string): OpenAICompatible
   return {
     baseUrl: config.baseUrl ?? null,
     model: config.model ?? null,
+    authMode: config.authMode,
     enabledModels: config.enabledModels ?? [],
     maxMessages: config.maxMessages ?? 50,
     apiMode: config.apiMode,
@@ -147,6 +153,7 @@ export function readTrustedCodexConfig(raw: string): CodexConfig {
     baseUrl: config.baseUrl,
     model: config.model,
     apiKey: config.apiKey,
+    authMode: config.authMode,
     enabledModels: config.enabledModels ?? [],
     skillPaths: config.skillPaths ?? [],
     additionalDirectories: config.additionalDirectories ?? [],

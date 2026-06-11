@@ -110,7 +110,7 @@ const ExternalProviderSourceCapabilitiesSchema = z
   .default({})
 
 const ExternalProviderCredentialSchema = z.object({
-  kind: z.literal('api-key'),
+  kind: z.enum(['api-key', 'chatgpt-auth']),
   value: z.string(),
   label: z.string().optional(),
 })
@@ -216,8 +216,12 @@ function iconSlugFromMetadata(metadata: Record<string, unknown>): string | null 
   return iconUrl ? `url:${encodeURIComponent(iconUrl)}` : null
 }
 
-function sourceIconSlugFromMetadata(metadata: Record<string, unknown>, existingIconSlug?: string | null): string | null {
-  return iconSlugFromMetadata(metadata) ?? existingIconSlug ?? null
+function sourceIconSlugFromMetadata(record: ParsedExternalProviderRecord): string | null {
+  const iconSlug = iconSlugFromMetadata(record.metadata)
+  if (record.app === 'codex' && record.providerKind === 'openai-compatible' && iconSlug === 'codex') {
+    return null
+  }
+  return iconSlug
 }
 
 function sourceStatusFromWarnings(warnings: ExternalProviderWarning[]): 'ok' | 'warning' | 'error' {
@@ -440,7 +444,7 @@ function syncRuntimeTarget(
       }).id
     : (existing?.credentialRef ?? null)
   const now = nowUnix()
-  const sourceIconSlug = sourceIconSlugFromMetadata(record.metadata, existing?.iconSlug)
+  const sourceIconSlug = sourceIconSlugFromMetadata(record)
 
   database
     .insert(providerTargets)

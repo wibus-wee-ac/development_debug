@@ -1,11 +1,13 @@
 /* Reads CC Switch local provider data and maps it into Cradle external provider snapshots. */
 
+import { Buffer } from 'node:buffer'
 import { createHash } from 'node:crypto'
 import { existsSync, readFileSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { join } from 'node:path'
 
 import type {
+  ExternalProviderCredential,
   ExternalProviderRecord,
   ExternalProviderSource,
   ExternalProviderSourceReadContext,
@@ -46,6 +48,21 @@ const ProviderEnvSchema = z.preprocess(value => value === null ? undefined : val
 
 const ProviderAuthFieldsSchema = z.object({
   OPENAI_API_KEY: OptionalExternalStringSchema,
+  auth_mode: OptionalExternalStringSchema,
+  access_token: OptionalExternalStringSchema,
+  refresh_token: OptionalExternalStringSchema,
+  id_token: OptionalExternalStringSchema,
+  account_id: OptionalExternalStringSchema,
+  chatgpt_account_id: OptionalExternalStringSchema,
+  chatgptAccountId: OptionalExternalStringSchema,
+  chatgpt_plan_type: OptionalExternalStringSchema,
+  chatgptPlanType: OptionalExternalStringSchema,
+  tokens: z.object({
+    access_token: OptionalExternalStringSchema,
+    refresh_token: OptionalExternalStringSchema,
+    id_token: OptionalExternalStringSchema,
+    account_id: OptionalExternalStringSchema,
+  }).catchall(z.unknown()).optional(),
 }).catchall(z.unknown())
 
 const ProviderAuthSchema = z.preprocess(value => value === null ? undefined : value, ProviderAuthFieldsSchema.optional().default({}))
@@ -458,7 +475,6 @@ function metadataBase(provider: CcSwitchProviderRow): JsonObject {
 
 function providerIconSlug(provider: CcSwitchProviderRow): string | undefined {
   if (provider.appType === 'claude') { return 'claude' }
-  if (provider.appType === 'codex') { return 'codex' }
   if (provider.appType === 'gemini') { return 'gemini' }
   return undefined
 }
@@ -469,6 +485,76 @@ function optionalStringFromRecord(value: unknown, key: string): string | undefin
   if (typeof entry !== 'string') { return undefined }
   const trimmed = entry.trim()
   return trimmed.length > 0 ? trimmed : undefined
+}
+
+function readJsonRecord(value: unknown): JsonObject | null {
+  return value && typeof value === 'object' && !Array.isArray(value)
+    ? value as JsonObject
+    : null
+}
+
+function parseJwtClaims(token: string | undefined): JsonObject | null {
+  if (!token) { return null }
+  const parts = token.split('.')
+  if (parts.length < 2 || !parts[1]) { return null }
+  try {
+    const normalized = parts[1].replace(/-/g, '+').replace(/_/g, '/')
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, '=')
+    return readJsonRecord(JSON.parse(Buffer.from(padded, 'base64').toString('utf8')))
+  }
+  catch {
+    return null
+  }
+}
+
+function chatgptAuthClaim(claims: JsonObject | null, key: string): string | undefined {
+  const authClaims = readJsonRecord(claims?.['https://api.openai.com/auth'])
+  return optionalStringFromRecord(authClaims, key) ?? optionalStringFromRecord(claims, key)
+}
+
+function codexChatgptAuthCredential(
+  auth: z.infer<typeof ProviderAuthFieldsSchema>,
+  label: string,
+): ExternalProviderCredential | undefined {
+  const tokens = auth.tokens
+  const accessToken = auth.access_token ?? tokens?.access_token
+  if (!accessToken) { return undefined }
+
+  const refreshToken = auth.refresh_token ?? tokens?.refresh_token
+  const idToken = auth.id_token ?? tokens?.id_token
+  const accessClaims = parseJwtClaims(accessToken)
+  const idClaims = parseJwtClaims(idToken)
+  const chatgptAccountId = auth.chatgptAccountId
+    ?? auth.chatgpt_account_id
+    ?? auth.account_id
+    ?? tokens?.account_id
+    ?? chatgptAuthClaim(idClaims, 'chatgpt_account_id')
+    ?? chatgptAuthClaim(accessClaims, 'chatgpt_account_id')
+  if (!chatgptAccountId) { return undefined }
+
+  const chatgptPlanType = auth.chatgptPlanType
+    ?? auth.chatgpt_plan_type
+    ?? chatgptAuthClaim(idClaims, 'chatgpt_plan_type')
+    ?? chatgptAuthClaim(accessClaims, 'chatgpt_plan_type')
+    ?? null
+
+  return {
+    kind: 'chatgpt-auth',
+    label,
+    value: JSON.stringify({
+      kind: 'chatgpt-auth',
+      accessToken,
+      refreshToken: refreshToken ?? null,
+      chatgptAccountId,
+      chatgptPlanType,
+      tokens: compactJsonObject({
+        access_token: accessToken,
+        refresh_token: refreshToken,
+        id_token: idToken,
+        account_id: chatgptAccountId,
+      }),
+    }),
+  }
 }
 
 function claudeApiFormat(provider: CcSwitchProviderRow): string {
@@ -537,7 +623,12 @@ function mapCodexProvider(provider: CcSwitchProviderRow): ExternalProviderRecord
   const approvalPolicy = parsedToml.approval_policy
   const sandboxMode = parsedToml.sandbox_mode
   const wireApi = activeProvider?.wire_api
-  const credential = auth.OPENAI_API_KEY
+  const chatgptCredential = (auth.auth_mode === 'chatgpt' || (!auth.OPENAI_API_KEY && auth.tokens?.access_token))
+    ? codexChatgptAuthCredential(auth, provider.name)
+    : undefined
+  const credential: ExternalProviderCredential | undefined = chatgptCredential
+    ?? (auth.OPENAI_API_KEY ? { kind: 'api-key', value: auth.OPENAI_API_KEY, label: provider.name } : undefined)
+  const usesChatgptAuth = credential?.kind === 'chatgpt-auth'
 
   return {
     externalId: `cc-switch:${provider.appType}:${provider.id}`,
@@ -545,14 +636,14 @@ function mapCodexProvider(provider: CcSwitchProviderRow): ExternalProviderRecord
     name: `${provider.name}`,
     providerKind: 'openai-compatible',
     config: compactJsonObject({
-      baseUrl,
+      baseUrl: usesChatgptAuth ? undefined : baseUrl,
       model,
       reasoningEffort,
       approvalPolicy,
       sandboxMode,
       apiMode: wireApi === 'responses' ? 'responses' : 'chat-completions',
     }),
-    credential: credential ? { kind: 'api-key', value: credential, label: provider.name } : undefined,
+    credential,
     current: provider.isCurrent,
     metadata: compactJsonObject({
       ...metadataBase(provider),
@@ -562,6 +653,8 @@ function mapCodexProvider(provider: CcSwitchProviderRow): ExternalProviderRecord
       approvalPolicy,
       sandboxMode,
       apiFormat: wireApi === 'responses' ? 'openai_responses' : 'openai_chat',
+      authMode: usesChatgptAuth ? 'chatgpt' : undefined,
+      credentialKind: credential?.kind,
     }),
   }
 }

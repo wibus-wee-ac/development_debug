@@ -359,6 +359,88 @@ describe('cC Switch external provider source', () => {
     ]))
   })
 
+  it('maps Codex auth token JSON to a Cradle ChatGPT auth credential', async () => {
+    const dir = createTempWorkspace()
+    const dbPath = join(dir, 'cc-switch.db')
+    const settingsPath = join(dir, 'settings.json')
+    writeFixtureDatabase(dbPath)
+    writeFileSync(settingsPath, JSON.stringify({ currentProviderCodex: 'codex-official-oauth' }))
+
+    const db = new Database(dbPath)
+    try {
+      db.prepare(`
+        INSERT INTO providers (id, app_type, name, settings_config, meta, is_current)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        'codex-official-oauth',
+        'codex',
+        'OpenAI Official',
+        JSON.stringify({
+          auth: {
+            OPENAI_API_KEY: null,
+            last_refresh: '2026-06-11T00:00:00.000Z',
+            tokens: {
+              access_token: 'fixture-access-token',
+              refresh_token: 'fixture-refresh-token',
+              id_token: 'fixture-id-token',
+              account_id: 'fixture-chatgpt-account',
+            },
+          },
+          config: [
+            'model = "gpt-5-codex"',
+            'model_reasoning_effort = "medium"',
+          ].join('\n'),
+        }),
+        '{}',
+        1,
+      )
+    }
+    finally {
+      db.close()
+    }
+
+    const snapshot = await readCcSwitchExternalProviderSnapshot({
+      signal: new AbortController().signal,
+      logger: {
+        info() {},
+        warn() {},
+        error() {},
+        debug() {},
+      },
+      sharedConfig: new Map([
+        ['CC_SWITCH_DB_PATH', dbPath],
+        ['CC_SWITCH_SETTINGS_PATH', settingsPath],
+      ]),
+    })
+
+    const provider = snapshot.providers.find(provider => provider.externalId === 'cc-switch:codex:codex-official-oauth')
+    expect(provider).toEqual(expect.objectContaining({
+      providerKind: 'openai-compatible',
+      config: expect.objectContaining({
+        model: 'gpt-5-codex',
+        reasoningEffort: 'medium',
+      }),
+      credential: expect.objectContaining({
+        kind: 'chatgpt-auth',
+        label: 'OpenAI Official',
+      }),
+      metadata: expect.objectContaining({
+        authMode: 'chatgpt',
+        credentialKind: 'chatgpt-auth',
+      }),
+    }))
+    expect(provider?.config).not.toHaveProperty('baseUrl')
+
+    const secret = JSON.parse(provider?.credential?.value ?? '{}') as Record<string, unknown>
+    expect(secret).toEqual(expect.objectContaining({
+      kind: 'chatgpt-auth',
+      accessToken: 'fixture-access-token',
+      refreshToken: 'fixture-refresh-token',
+      chatgptAccountId: 'fixture-chatgpt-account',
+      chatgptPlanType: null,
+    }))
+  })
+
   it('tolerates nullable external fields and skips only malformed provider rows', async () => {
     const dir = createTempWorkspace()
     const dbPath = join(dir, 'cc-switch.db')

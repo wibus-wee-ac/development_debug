@@ -4,7 +4,7 @@ This plugin registers a Cradle external provider source named `cc-switch`. It re
 
 The plugin never writes to `~/.cc-switch`, never owns Cradle Provider UI, and never writes `agent_profiles` directly. The Cradle host owns projection, credential encryption, read-only guards, refresh routes, and the fixed Provider settings UI.
 
-CC Switch is treated as a connection source. Snapshot records project base URLs and API keys into Cradle, while available model lists, custom models, visibility, models.dev mappings, and cost metadata stay owned by Cradle provider/profile modules.
+CC Switch is treated as a connection source. Snapshot records project base URLs and credentials into Cradle-owned encrypted secrets, including API keys and Codex ChatGPT auth tokens from CC Switch Codex auth JSON. Available model lists, custom models, visibility, models.dev mappings, and cost metadata stay owned by Cradle provider/profile modules.
 
 External CC Switch data is parsed defensively. Nullable optional fields such as missing API keys are treated as absent values, and malformed provider rows are reported as source warnings instead of failing the whole refresh.
 
@@ -32,4 +32,4 @@ The paths can be overridden with shared config keys or environment variables:
 
 ## Supported Projection
 
-The first version projects `claude`, `codex`, and OpenAI-compatible `gemini` providers. Claude providers are projected only when their CC Switch API format is native Anthropic Messages (`anthropic`); routed formats such as `openai_chat`, `openai_responses`, and `gemini_native` are skipped because Cradle does not own CC Switch's routing converter. Other CC Switch app families are counted and reported as warnings, but they are not projected as runnable Cradle provider profiles yet.
+The first version projects `claude`, `codex`, and OpenAI-compatible `gemini` providers. Codex providers with `auth.tokens.access_token` and a ChatGPT account ID are projected with a Cradle `chatgpt-auth` credential instead of a plain API key. Claude providers are projected only when their CC Switch API format is native Anthropic Messages (`anthropic`); routed formats such as `openai_chat`, `openai_responses`, and `gemini_native` are skipped because Cradle does not own CC Switch's routing converter. Other CC Switch app families are counted and reported as warnings, but they are not projected as runnable Cradle provider profiles yet.

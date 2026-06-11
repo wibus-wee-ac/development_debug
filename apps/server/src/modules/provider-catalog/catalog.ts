@@ -1,8 +1,9 @@
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
-import { readCodexChatgptAuthCredential } from '../chat-runtime-providers/codex/chatgpt-auth'
+import { CodexChatgptAuthReauthRequiredError, readCodexChatgptAuthCredential } from '../chat-runtime-providers/codex/chatgpt-auth'
 import { listCodexChatgptModels } from '../chat-runtime-providers/codex/model-list'
+import { buildCodexExternalModelProviderConfig } from '../chat-runtime-providers/codex/runtime-config'
 import { normalizeBaseUrl, OpenAICompatibleConfigJsonSchema, UniversalProviderConfigJsonSchema } from '../provider-contracts/provider-base'
 import type { ModelDescriptor, ProviderKind, ProviderRequest } from '../provider-contracts/types'
 import { readProviderDefaultModelCapabilities } from './model-capabilities'
@@ -89,10 +90,18 @@ class OpenAICompatibleMetadataProvider implements ProviderMetadataProvider {
     const secret = input.secretRef ? deps.readSecret(input.secretRef) : null
     const chatgptAuth = readCodexChatgptAuthCredential(input.secretRef, secret)
     if (chatgptAuth) {
-      return listCodexChatgptModels({
-        credential: chatgptAuth,
-        updateSecretValue: deps.updateSecretValue,
-      })
+      try {
+        return await listCodexChatgptModels({
+          credential: chatgptAuth,
+          config: config.baseUrl
+            ? buildCodexExternalModelProviderConfig(normalizeBaseUrl(config.baseUrl), 'chatgptAuthTokens')
+            : undefined,
+          updateSecretValue: deps.updateSecretValue,
+        })
+      }
+      catch (error) {
+        throw wrapProviderModelsError(this.providerKind, error)
+      }
     }
 
     if (!config.baseUrl) {
@@ -117,7 +126,7 @@ class OpenAICompatibleMetadataProvider implements ProviderMetadataProvider {
         capabilities: {},
       }))
     }
- catch (error) {
+    catch (error) {
       throw wrapProviderModelsError(this.providerKind, error)
     }
   }
@@ -153,7 +162,7 @@ class AnthropicMetadataProvider implements ProviderMetadataProvider {
         capabilities: readProviderDefaultModelCapabilities('anthropic'),
       }))
     }
- catch (error) {
+    catch (error) {
       throw wrapProviderModelsError(this.providerKind, error)
     }
   }
@@ -238,6 +247,14 @@ function wrapProviderModelsError(providerKind: ProviderKind, error: unknown): Ap
   if (error instanceof AppError) {
     return error
   }
+  if (error instanceof CodexChatgptAuthReauthRequiredError) {
+    return new AppError({
+      code: error.code,
+      status: 401,
+      message: 'ChatGPT sign-in expired. Please sign in again.',
+      details: { providerKind },
+    })
+  }
   const message = error instanceof Error ? error.message : String(error)
   return providerModelsUnavailable(providerKind, message)
 }
@@ -268,7 +285,7 @@ async function fetchModelsPayload(
         `Provider models request failed at ${option.url} with status ${response.status}`,
       )
     }
- catch (error) {
+    catch (error) {
       lastError = error
     }
   }

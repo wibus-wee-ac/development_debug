@@ -28,6 +28,30 @@ import type {
 
 const SKILL_PATH_CACHE_TTL_MS = 30_000
 
+// CLI TUI sessions are launched by session/PTY; the catalog entry only feeds launch selectors.
+const CLI_TUI_RUNTIME_METADATA = {
+  label: 'CLI TUI',
+  description: 'Launch a configured terminal agent',
+  providerKinds: [],
+  iconKey: 'claude-cli',
+  surfaces: ['chat'],
+  sortOrder: 60,
+} satisfies ChatRuntimeMetadata
+
+const CATALOG_ONLY_BUILTIN_RUNTIMES: Array<{
+  runtimeKind: RuntimeKind
+  metadata: ChatRuntimeMetadata
+}> = [
+  {
+    runtimeKind: 'cli-tui',
+    metadata: CLI_TUI_RUNTIME_METADATA,
+  },
+]
+
+const CATALOG_ONLY_BUILTIN_RUNTIME_KINDS = new Set<RuntimeKind>(
+  CATALOG_ONLY_BUILTIN_RUNTIMES.map(runtime => runtime.runtimeKind),
+)
+
 interface SkillPathCacheEntry {
   paths: string[]
   expiresAt: number
@@ -42,6 +66,9 @@ export class RuntimeRegistry {
 
   register(runtime: ChatRuntime, metadata?: ChatRuntimeMetadata, pluginOwner: string | null = null): void {
     assertChatRuntime(runtime)
+    if (pluginOwner !== null && CATALOG_ONLY_BUILTIN_RUNTIME_KINDS.has(runtime.runtimeKind)) {
+      throw new Error(`Runtime ${runtime.runtimeKind} is reserved by builtin catalog metadata.`)
+    }
     const existing = this.runtimes.get(runtime.runtimeKind)
     const resolvedMetadata = metadata ?? runtime.metadata ?? existing?.metadata
     if (!resolvedMetadata) {
@@ -75,12 +102,27 @@ export class RuntimeRegistry {
   }
 
   list(): ChatRuntimeCatalogItem[] {
-    return Array.from(this.runtimes.entries(), ([runtimeKind, entry]) => ({
-        runtimeKind,
-        ...entry.metadata,
-        source: entry.pluginOwner ? 'plugin' as const : 'builtin' as const,
-        pluginOwner: entry.pluginOwner,
-      }))
+    const items = Array.from(this.runtimes.entries(), ([runtimeKind, entry]) => ({
+      runtimeKind,
+      ...entry.metadata,
+      source: entry.pluginOwner ? 'plugin' as const : 'builtin' as const,
+      pluginOwner: entry.pluginOwner,
+    }))
+
+    const registeredRuntimeKinds = new Set(items.map(item => item.runtimeKind))
+    for (const runtime of CATALOG_ONLY_BUILTIN_RUNTIMES) {
+      if (registeredRuntimeKinds.has(runtime.runtimeKind)) {
+        continue
+      }
+      items.push({
+        runtimeKind: runtime.runtimeKind,
+        ...runtime.metadata,
+        source: 'builtin',
+        pluginOwner: null,
+      })
+    }
+
+    return items
       .sort((left, right) =>
         (left.sortOrder ?? 1000) - (right.sortOrder ?? 1000)
         || left.label.localeCompare(right.label)

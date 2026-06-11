@@ -10,6 +10,7 @@ import { z } from 'zod'
 
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
+import { readSecret } from '../src/modules/secrets/service'
 import { registerExternalProviderSource } from '../src/plugins/external-provider-source-registry'
 
 const MODELS_DEV_URL = 'https://models.dev/api.json'
@@ -328,7 +329,7 @@ describe('external provider sources capability', () => {
           externalRecordId: 'codex:test-openai',
           providerKind: 'openai-compatible',
           displayName: 'Fixture OpenAI',
-          iconSlug: 'codex',
+          iconSlug: null,
         }),
       )
 
@@ -357,6 +358,93 @@ describe('external provider sources capability', () => {
       registration.dispose()
     }
  finally {
+      shutdownInfra()
+      restoreEnv(previous)
+      rmSync(dataDir, { recursive: true, force: true })
+    }
+  })
+
+  it('stores external ChatGPT auth credentials as encrypted runtime target secrets', async () => {
+    const dataDir = makeTempDir('cradle-external-provider-source-chatgpt-auth-')
+    const previous = {
+      dataDir: process.env.CRADLE_DATA_DIR,
+      credentialSecret: process.env.CRADLE_CREDENTIAL_SECRET,
+      pluginsDir: process.env.CRADLE_PLUGINS_DIR,
+      externalPluginsDirs: process.env.CRADLE_EXTERNAL_PLUGINS_DIRS,
+    }
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'external-provider-source-chatgpt-auth-secret'
+    process.env.CRADLE_PLUGINS_DIR = join(dataDir, 'plugins')
+    process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = ''
+
+    const chatgptSecret = JSON.stringify({
+      kind: 'chatgpt-auth',
+      accessToken: 'fixture-access-token',
+      refreshToken: 'fixture-refresh-token',
+      chatgptAccountId: 'fixture-chatgpt-account',
+      chatgptPlanType: 'plus',
+    })
+
+    try {
+      const app = await createServerApp({ startBackgroundTasks: false })
+      const registration = registerExternalProviderSource('fixture-chatgpt-auth-plugin', {
+        id: 'fixture-chatgpt-auth-providers',
+        label: 'Fixture ChatGPT Auth Providers',
+        capabilities: { refresh: true },
+        async readSnapshot() {
+          return {
+            source: { status: 'ok', observedAt: '2026-06-11T00:00:00Z' },
+            providers: [{
+              externalId: 'codex:chatgpt-auth',
+              app: 'codex',
+              name: 'Fixture ChatGPT Auth',
+              providerKind: 'openai-compatible',
+              config: { model: 'gpt-5-codex' },
+              credential: { kind: 'chatgpt-auth', value: chatgptSecret, label: 'Fixture ChatGPT Auth' },
+              metadata: { apiFormat: 'openai_chat' },
+            }],
+          }
+        },
+      })
+
+      const sourcesRes = await app.handle(new Request('http://localhost/external-provider-sources'))
+      expect(sourcesRes.status).toBe(200)
+      const sourceList = (await sourcesRes.json()) as Array<{ id: string, label: string }>
+      const sourceKey = sourceList.find(source => source.label === 'Fixture ChatGPT Auth Providers')?.id
+      expect(sourceKey).toBeTruthy()
+
+      const refresh = await app.handle(
+        new Request(`http://localhost/external-provider-sources/${sourceKey}/refresh`, {
+          method: 'POST',
+        }),
+      )
+      expect(refresh.status).toBe(200)
+      expect(await refresh.json()).toEqual(expect.objectContaining({
+        sourceKey,
+        status: 'ok',
+        recordsSeen: 1,
+        recordsProjected: 1,
+      }))
+
+      const targetRes = await app.handle(
+        new Request(
+          `http://localhost/external-provider-sources/${sourceKey}/records/codex:chatgpt-auth/runtime-target`,
+        ),
+      )
+      expect(targetRes.status).toBe(200)
+      const target = RuntimeTargetResponseSchema.parse(await targetRes.json())
+      expect(target.credentialRef).toEqual(expect.stringMatching(/^external_credential_/))
+      expect(JSON.parse(readSecret(target.credentialRef!))).toEqual(expect.objectContaining({
+        kind: 'chatgpt-auth',
+        accessToken: 'fixture-access-token',
+        refreshToken: 'fixture-refresh-token',
+        chatgptAccountId: 'fixture-chatgpt-account',
+        chatgptPlanType: 'plus',
+      }))
+
+      registration.dispose()
+    }
+    finally {
       shutdownInfra()
       restoreEnv(previous)
       rmSync(dataDir, { recursive: true, force: true })

@@ -1,5 +1,5 @@
 import { ALL_MODELS_DISABLED_SENTINEL } from '~/features/agent-runtime/model-visibility'
-import type { AgentProfile, ApiProviderKind, ProviderKind } from '~/features/agent-runtime/types'
+import type { AgentProfile, ApiProviderKind, ProviderKind, ProviderTargetKind } from '~/features/agent-runtime/types'
 
 import type { ProviderPreset } from './provider-templates'
 import { PROVIDER_PRESETS } from './provider-templates'
@@ -109,6 +109,21 @@ export function presetForProviderKind(providerKind: ProviderKind): ProviderPrese
 
 export function presetForProfile(profile: AgentProfile): ProviderPreset {
   return presetForProviderKind(profile.providerKind)
+}
+
+export function providerTargetDisplayIconSlug({
+  kind,
+  providerKind,
+  iconSlug,
+}: {
+  kind?: ProviderTargetKind
+  providerKind: ProviderKind
+  iconSlug: string | null
+}): string | null {
+  if (kind === 'external' && providerKind === 'openai-compatible' && iconSlug === 'codex') {
+    return null
+  }
+  return iconSlug
 }
 
 export function isApiProviderKind(providerKind: ProviderKind): providerKind is ApiProviderKind {
