@@ -12,6 +12,7 @@ afterEach(() => {
 class FakeBridgeAppServerClient {
   readonly requests: Array<{ method: string, params?: unknown }> = []
   readonly skillExtraRootsRequests: unknown[] = []
+  readonly unsupportedMethods = new Set<string>()
   close = vi.fn()
   initialize = vi.fn(async () => undefined)
 
@@ -23,9 +24,15 @@ class FakeBridgeAppServerClient {
   async request(method: string, params?: unknown): Promise<unknown> {
     if (method === 'skills/extraRoots/set') {
       this.skillExtraRootsRequests.push(params)
+      if (this.unsupportedMethods.has(method)) {
+        throw new Error(`Invalid request: unknown variant \`${method}\`, expected one of \`initialize\`, \`turn/start\``)
+      }
       return {}
     }
     this.requests.push({ method, params })
+    if (this.unsupportedMethods.has(method)) {
+      throw new Error(`Invalid request: unknown variant \`${method}\`, expected one of \`initialize\`, \`turn/start\``)
+    }
     return this.responseByMethod[method] ?? {}
   }
 
@@ -166,6 +173,26 @@ describe('codexAppServerBridge stream lifecycle', () => {
     ])
     expect(client.skillExtraRootsRequests).toEqual([{ extraRoots: ['/tmp/cradle-skill'] }])
     expect(events.map(event => event.event)).toEqual(['request_started', 'result', 'done'])
+    expect(client.close).toHaveBeenCalledOnce()
+  })
+
+  it('continues bridge calls when app-server does not support skill extra roots sync', async () => {
+    const client = new FakeBridgeAppServerClient({
+      'config/read': { config: { model: 'gpt-5-codex' } },
+    })
+    client.unsupportedMethods.add('skills/extraRoots/set')
+
+    const result = await createBridge(client).invoke({
+      ...createBridgeContext(),
+      method: 'config/read',
+      params: { cwd: '/tmp/cradle-workspace' },
+    })
+
+    expect(client.skillExtraRootsRequests).toEqual([{ extraRoots: ['/tmp/cradle-skill'] }])
+    expect(client.requests).toEqual([
+      { method: 'config/read', params: { cwd: '/tmp/cradle-workspace' } },
+    ])
+    expect(result.result).toEqual({ config: { model: 'gpt-5-codex' } })
     expect(client.close).toHaveBeenCalledOnce()
   })
 

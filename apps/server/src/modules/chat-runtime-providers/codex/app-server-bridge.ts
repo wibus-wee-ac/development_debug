@@ -6,7 +6,7 @@ import { providerRuntimeHostManager } from '../../provider-runtime/host-manager'
 import type { CodexAppServerCapabilityManifest, CodexAppServerMethodCapability } from './app-server-capabilities'
 import { CODEX_APP_SERVER_CAPABILITIES, CODEX_APP_SERVER_CLIENT_METHOD_SET, readCodexAppServerMethodCapability } from './app-server-capabilities'
 import type { CodexAppServerClientOptions, CodexAppServerServerRequest } from './app-server-client'
-import { buildCradleCodexAppServerEnv, CodexAppServerClient } from './app-server-client'
+import { buildCradleCodexAppServerEnv, CodexAppServerClient, isCodexAppServerUnknownMethodError } from './app-server-client'
 import { createCodexAppServerHostFingerprint } from './app-server-host-fingerprint'
 import {
   addCodexAppServerHostRequestHandler,
@@ -20,13 +20,13 @@ import {
   refreshCodexChatgptAuthCredential,
   resolveCodexAppServerAuth,
 } from './chatgpt-auth'
-import { resolveCodexRuntimeContext } from './runtime-context'
 import {
-  resolveCodexAuthMode,
   buildCodexExternalModelProviderConfig,
   codexConfigRequiresApiKey,
+  resolveCodexAuthMode,
   resolveCodexExternalModelProviderBaseUrl,
 } from './runtime-config'
+import { resolveCodexRuntimeContext } from './runtime-context'
 import { buildCodexServerRequestToolInput, buildCodexServerRequestToolOutput } from './tools/mapper'
 import type { CodexAppServerClientLike, CodexAppServerHostResource } from './types'
 
@@ -50,6 +50,9 @@ async function syncBridgeCodexSkillExtraRoots(client: CodexAppServerClientLike, 
     await client.request('skills/extraRoots/set', { extraRoots })
   }
   catch (error) {
+    if (isCodexAppServerUnknownMethodError(error, 'skills/extraRoots/set')) {
+      return
+    }
     const detail = error instanceof Error ? error.message : String(error)
     throw new Error(`Codex app-server skills/extraRoots/set failed: ${detail}`)
   }

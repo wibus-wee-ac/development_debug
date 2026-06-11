@@ -65,7 +65,7 @@ import {
   getCodexAppServerCapabilities,
 } from './app-server-bridge'
 import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server-client'
-import { buildCradleCodexAppServerEnv, CodexAppServerClient } from './app-server-client'
+import { buildCradleCodexAppServerEnv, CodexAppServerClient, isCodexAppServerUnknownMethodError } from './app-server-client'
 import { createCodexAppServerHostFingerprint } from './app-server-host-fingerprint'
 import {
   addCodexAppServerHostRequestHandler,
@@ -108,13 +108,13 @@ import {
   createCodexRuntimePresentation,
 } from './metadata'
 import { projectCodexNativeTurnsToCodexItems } from './native-history-projector'
-import { resolveCodexRuntimeContext } from './runtime-context'
 import {
   buildCodexExternalModelProviderConfig,
   codexConfigRequiresApiKey,
   resolveCodexAuthMode,
   resolveCodexExternalModelProviderBaseUrl,
 } from './runtime-config'
+import { resolveCodexRuntimeContext } from './runtime-context'
 import type { CodexNativeHistorySnapshot } from './state-projector'
 import {
   clearCodexGoalSnapshot,
@@ -223,6 +223,9 @@ async function syncCodexSkillExtraRoots(client: CodexAppServerClientLike, extraR
     await client.request('skills/extraRoots/set', { extraRoots })
   }
   catch (error) {
+    if (isCodexAppServerUnknownMethodError(error, 'skills/extraRoots/set')) {
+      return
+    }
     throw codexRequestError('skills/extraRoots/set', formatUnknownError(error))
   }
 }

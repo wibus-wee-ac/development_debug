@@ -32,6 +32,7 @@ class FakeCodexAppServerClient {
   threadListData: unknown[] | null = null
   threadTurnsListData: unknown[] | null = null
   hangingMethods = new Set<string>()
+  unsupportedMethods = new Set<string>()
 
   private readonly notifications: CodexAppServerMessage[] = []
   private notificationWaiter: ((message: CodexAppServerMessage | null) => void) | null = null
@@ -44,9 +45,15 @@ class FakeCodexAppServerClient {
   async request(method: string, params?: unknown): Promise<unknown> {
     if (method === 'skills/extraRoots/set') {
       this.skillExtraRootsRequests.push(params)
+      if (this.unsupportedMethods.has(method)) {
+        throw new Error(`Invalid request: unknown variant \`${method}\`, expected one of \`initialize\`, \`turn/start\``)
+      }
       return {}
     }
     this.requests.push({ method, params })
+    if (this.unsupportedMethods.has(method)) {
+      throw new Error(`Invalid request: unknown variant \`${method}\`, expected one of \`initialize\`, \`turn/start\``)
+    }
     if (this.hangingMethods.has(method)) {
       return new Promise(() => undefined)
     }
@@ -4450,6 +4457,62 @@ describe('codexProvider app-server integration', () => {
         input: [{ type: 'text', text: 'Use React Query instead', text_elements: [] }],
       },
     })
+
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await expect(firstChunkPromise).resolves.toEqual({
+      done: false,
+      value: expect.objectContaining({ type: 'text-start' }),
+    })
+
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of stream) {
+      chunks.push(chunk)
+      if (chunk.type === 'text-delta') {
+        client.pushNotification({
+          method: 'turn/completed',
+          params: {
+            threadId: 'codex-thread-1',
+            turn: { id: 'codex-turn-1', status: 'completed' },
+          },
+        })
+      }
+    }
+
+    expect(chunks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'text-delta', delta: 'Done' }),
+      expect.objectContaining({ type: 'text-end' }),
+    ]))
+    expect(runtimeSession.providerSessionId).toBe('codex-thread-1')
+    expect(client.close).toHaveBeenCalledOnce()
+  })
+
+  it('continues streaming when app-server does not support skill extra roots sync', async () => {
+    const client = new FakeCodexAppServerClient({})
+    client.unsupportedMethods.add('skills/extraRoots/set')
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-codex-unsupported-skill-roots',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Implement the feature'),
+      workspaceId: 'workspace-1',
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(client.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+    expect(client.skillExtraRootsRequests).toEqual([{ extraRoots: ['/tmp/cradle-skill'] }])
 
     client.pushNotification({
       method: 'item/agentMessage/delta',

@@ -345,6 +345,11 @@ export function readCradleCodexClientVersion(env: Record<string, string | undefi
   return env.CRADLE_VERSION?.trim() || env.npm_package_version?.trim() || '0.0.1'
 }
 
+export function isCodexAppServerUnknownMethodError(error: unknown, method: string): boolean {
+  const message = error instanceof Error ? error.message : String(error)
+  return message.includes(`unknown variant \`${method}\``)
+}
+
 export function resolveCodexAppServerPath(env: Record<string, string | undefined> = process.env): string {
   return env[CODEX_APP_SERVER_PATH_ENV]?.trim() || resolveVendoredCodexAppServerPath() || 'codex'
 }

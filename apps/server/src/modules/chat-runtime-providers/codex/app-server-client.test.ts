@@ -7,6 +7,7 @@ import { describe, expect, it, vi } from 'vitest'
 import {
   buildCradleCodexAppServerEnv,
   CodexAppServerClient,
+  isCodexAppServerUnknownMethodError,
   readCradleCodexClientVersion,
   resolveCodexAppServerHome,
   resolveCodexAppServerPath,
@@ -110,6 +111,26 @@ describe('resolveCodexAppServerPath', () => {
 
   it('uses the vendored Codex runtime for non-desktop runtimes', () => {
     expect(resolveCodexAppServerPath({}).replaceAll('\\', '/')).toContain('@openai/codex/bin/codex.js')
+  })
+})
+
+describe('isCodexAppServerUnknownMethodError', () => {
+  it('matches Codex app-server unknown variant errors for the requested method', () => {
+    expect(isCodexAppServerUnknownMethodError(
+      new Error('Invalid request: unknown variant `skills/extraRoots/set`, expected one of `initialize`, `turn/start`'),
+      'skills/extraRoots/set',
+    )).toBe(true)
+  })
+
+  it('does not match different methods or generic failures', () => {
+    expect(isCodexAppServerUnknownMethodError(
+      new Error('Invalid request: unknown variant `thread/settings/update`, expected one of `initialize`, `turn/start`'),
+      'skills/extraRoots/set',
+    )).toBe(false)
+    expect(isCodexAppServerUnknownMethodError(
+      new Error('Codex app-server exited with code 1'),
+      'skills/extraRoots/set',
+    )).toBe(false)
   })
 })
 
