@@ -576,8 +576,10 @@ export class MockLlmServer {
       response: {
         usage: {
           input_tokens: 10,
+          input_tokens_details: { cached_tokens: 0 },
           output_tokens: words.length,
           output_tokens_details: { reasoning_tokens: this.reasoningText ? this.reasoningText.length : 0 },
+          total_tokens: 10 + words.length,
         },
       },
     })
@@ -639,8 +641,10 @@ export class MockLlmServer {
       response: {
         usage: {
           input_tokens: 10,
+          input_tokens_details: { cached_tokens: 0 },
           output_tokens: 5,
           output_tokens_details: { reasoning_tokens: 0 },
+          total_tokens: 15,
         },
       },
     })
