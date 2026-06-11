@@ -555,33 +555,85 @@ export class MockLlmServer {
     // Message output item
     const msgId = `msg-${Date.now()}`
     const outputIndex = this.reasoningText ? 1 : 0
-    this.writeSSE(res, { type: 'response.output_item.added', output_index: outputIndex, item: { type: 'message', id: msgId } })
+    this.writeSSE(res, {
+      type: 'response.output_item.added',
+      output_index: outputIndex,
+      item: { type: 'message', id: msgId, status: 'in_progress', role: 'assistant', content: [] },
+    })
+    await this.delay(this.chunkDelay)
+
+    this.writeSSE(res, {
+      type: 'response.content_part.added',
+      item_id: msgId,
+      output_index: outputIndex,
+      content_index: 0,
+      part: { type: 'output_text', text: '', annotations: [] },
+    })
     await this.delay(this.chunkDelay)
 
     // Stream text deltas word by word
     const words = responseText.split(' ')
+    let outputText = ''
     for (let i = 0; i < words.length; i++) {
       const delta = i === 0 ? words[i] : ` ${words[i]}`
-      this.writeSSE(res, { type: 'response.output_text.delta', item_id: msgId, delta })
+      outputText += delta
+      this.writeSSE(res, {
+        type: 'response.output_text.delta',
+        item_id: msgId,
+        output_index: outputIndex,
+        content_index: 0,
+        delta,
+      })
       await this.delay(this.chunkDelay)
     }
 
+    const outputTextPart = { type: 'output_text', text: outputText, annotations: [] }
+    this.writeSSE(res, {
+      type: 'response.output_text.done',
+      item_id: msgId,
+      output_index: outputIndex,
+      content_index: 0,
+      text: outputText,
+    })
+    await this.delay(this.chunkDelay)
+
+    this.writeSSE(res, {
+      type: 'response.content_part.done',
+      item_id: msgId,
+      output_index: outputIndex,
+      content_index: 0,
+      part: outputTextPart,
+    })
+    await this.delay(this.chunkDelay)
+
     // output_item.done (message)
-    this.writeSSE(res, { type: 'response.output_item.done', output_index: outputIndex, item: { type: 'message', id: msgId } })
+    const messageItem = {
+      type: 'message',
+      id: msgId,
+      status: 'completed',
+      role: 'assistant',
+      content: [outputTextPart],
+    }
+    this.writeSSE(res, { type: 'response.output_item.done', output_index: outputIndex, item: messageItem })
     await this.delay(this.chunkDelay)
 
     // response.completed
+    const usage = {
+      input_tokens: 10,
+      input_tokens_details: { cached_tokens: 0 },
+      output_tokens: words.length,
+      output_tokens_details: { reasoning_tokens: this.reasoningText ? this.reasoningText.length : 0 },
+      total_tokens: 10 + words.length,
+    }
     this.writeSSE(res, {
       type: 'response.completed',
-      response: {
-        usage: {
-          input_tokens: 10,
-          input_tokens_details: { cached_tokens: 0 },
-          output_tokens: words.length,
-          output_tokens_details: { reasoning_tokens: this.reasoningText ? this.reasoningText.length : 0 },
-          total_tokens: 10 + words.length,
-        },
-      },
+      response: this.buildCompletedResponsesApiResponse({
+        id: responseId,
+        createdAt: created,
+        model,
+        output: [messageItem],
+        usage,
+      }),
     })
     res.end()
   }
@@ -602,6 +654,7 @@ export class MockLlmServer {
     await this.delay(this.chunkDelay)
 
     // Emit each tool call as a function_call item
+    const output: Record<string, unknown>[] = []
     for (let i = 0; i < this.toolCalls.length; i++) {
       const tc = this.toolCalls[i]!
       const itemId = `fc-${i}-${Date.now()}`
@@ -620,35 +673,76 @@ export class MockLlmServer {
       await this.delay(this.chunkDelay)
 
       // output_item.done
+      const item = {
+        type: 'function_call',
+        id: itemId,
+        call_id: tc.id,
+        name: tc.function.name,
+        arguments: tc.function.arguments,
+        status: 'completed',
+      }
       this.writeSSE(res, {
         type: 'response.output_item.done',
         output_index: i,
-        item: {
-          type: 'function_call',
-          id: itemId,
-          call_id: tc.id,
-          name: tc.function.name,
-          arguments: tc.function.arguments,
-          status: 'completed',
-        },
+        item,
       })
+      output.push(item)
       await this.delay(this.chunkDelay)
     }
 
     // response.completed
+    const usage = {
+      input_tokens: 10,
+      input_tokens_details: { cached_tokens: 0 },
+      output_tokens: 5,
+      output_tokens_details: { reasoning_tokens: 0 },
+      total_tokens: 15,
+    }
     this.writeSSE(res, {
       type: 'response.completed',
-      response: {
-        usage: {
-          input_tokens: 10,
-          input_tokens_details: { cached_tokens: 0 },
-          output_tokens: 5,
-          output_tokens_details: { reasoning_tokens: 0 },
-          total_tokens: 15,
-        },
-      },
+      response: this.buildCompletedResponsesApiResponse({
+        id: responseId,
+        createdAt: created,
+        model,
+        output,
+        usage,
+      }),
     })
     res.end()
+  }
+
+  private buildCompletedResponsesApiResponse(input: {
+    id: string
+    createdAt: number
+    model: string
+    output: Record<string, unknown>[]
+    usage: Record<string, unknown>
+  }): Record<string, unknown> {
+    return {
+      id: input.id,
+      object: 'response',
+      created_at: input.createdAt,
+      status: 'completed',
+      error: null,
+      incomplete_details: null,
+      instructions: null,
+      max_output_tokens: null,
+      model: input.model,
+      output: input.output,
+      parallel_tool_calls: true,
+      previous_response_id: null,
+      reasoning: { effort: null, summary: null },
+      store: false,
+      temperature: 1,
+      text: { format: { type: 'text' } },
+      tool_choice: 'auto',
+      tools: [],
+      top_p: 1,
+      truncation: 'disabled',
+      usage: input.usage,
+      user: null,
+      metadata: {},
+    }
   }
 
   // ── Anthropic Messages API (/v1/messages) ─────────────────────────────────
