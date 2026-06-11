@@ -1,6 +1,7 @@
 import type { ChildProcess } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import { mkdtempSync, rmSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { createServer } from 'node:net'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
@@ -51,6 +52,8 @@ async function stopProcessGroup(proc: ChildProcess | null, timeoutMs: number): P
 }
 
 const ROOT = resolve(__dirname, '..', '..', '..')
+const CODEX_APP_SERVER_PATH_ENV = 'CRADLE_CODEX_APP_SERVER_PATH'
+const CODEX_APP_SERVER_PACKAGE_PATH = '@openai/codex/bin/codex.js'
 
 interface E2EServerInstance {
   serverProcess: ChildProcess
@@ -112,6 +115,22 @@ async function reserveAvailablePort(): Promise<number> {
   })
 }
 
+function resolveManagedCodexAppServerPath(): string {
+  const configuredPath = process.env[CODEX_APP_SERVER_PATH_ENV]?.trim()
+  if (configuredPath) {
+    return configuredPath
+  }
+
+  try {
+    return createRequire(join(ROOT, 'package.json')).resolve(CODEX_APP_SERVER_PACKAGE_PATH)
+  }
+  catch (error) {
+    throw new Error(`Unable to resolve ${CODEX_APP_SERVER_PACKAGE_PATH} for the managed E2E server`, {
+      cause: error,
+    })
+  }
+}
+
 /**
  * If CRADLE_SERVER_URL is set, we assume the user is managing the server themselves.
  * Otherwise, we start an isolated server with a temp data directory.
@@ -124,6 +143,7 @@ BeforeAll({ timeout: 120_000 }, async () => {
 
   const dataDir = mkdtempSync(join(tmpdir(), 'cradle-e2e-data-'))
   const serverPort = await reserveAvailablePort()
+  const codexAppServerPath = resolveManagedCodexAppServerPath()
 
   let serverProcess: ChildProcess | null = null
   let webProcess: ChildProcess | null = null
@@ -138,6 +158,7 @@ BeforeAll({ timeout: 120_000 }, async () => {
         CRADLE_HOST: '127.0.0.1',
         CRADLE_CREDENTIAL_SECRET: 'e2e-test-secret',
         CRADLE_MOCK_LLM_URL: 'http://127.0.0.1:1', // Placeholder — actual URL set per-profile config.baseUrl
+        CRADLE_CODEX_APP_SERVER_PATH: codexAppServerPath,
         NODE_ENV: 'test',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
