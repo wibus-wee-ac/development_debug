@@ -147,6 +147,7 @@ export class CradleWorld extends World {
           baseUrl: this.mockLlmBaseUrl,
           model: 'mock-model',
           apiMode: 'responses',
+          apiKey: 'sk-mock-test-key',
         },
         credentialRef: null,
       }),
