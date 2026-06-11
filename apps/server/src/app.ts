@@ -150,6 +150,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     { providerRuntimeHostManager },
     { clearSideConversations },
     { activateServerPlugins },
+    { destroyWorkspaceFileIndexes },
   ] = await Promise.all([
     import('./infra'),
     import('./modules/chat-runtime/service'),
@@ -161,6 +162,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     import('./modules/provider-runtime/host-manager'),
     import('./modules/provider-runtime/side-conversation-registry'),
     import('./plugins'),
+    import('./modules/workspace/files'),
   ])
   if (recoverPersistedRunsOnCreate) {
     recoverPersistedRunProjections()
@@ -180,6 +182,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     () => chronicleService.stopSlackBackgroundSync(),
     () => chronicleCleanup(),
     () => shutdownTraceStreams(),
+    () => destroyWorkspaceFileIndexes(),
     () => shutdownInfra(),
   ])
 

@@ -8,7 +8,7 @@
 
 ## Files
 
-- **backend-control-plane.ts**: backend binding、run、run snapshot/event、Chat Runtime canonical event log 与 session-start capability snapshot 相关表；`chat_runtime_events` 是 Chat Runtime-owned append-only canonical history，只保存 Cradle-owned 语义事件，`backend_runs` / `messages` / queue / snapshot 表都是 projector-owned read model；binding 只保留 Cradle-owned backend snapshot + requested model，run snapshot/event 表承载 Cradle-owned harness envelope 与 ordered forensic event stream，不复制 provider-owned goal/plan/tool 语义；snapshot/event 使用毫秒时间并在 session/run 删除后保留取证记录，只将对应 FK 置空
+- **backend-control-plane.ts**: backend binding、run、run snapshot/event 与 session-start capability snapshot 相关表；`backend_runs` 是 Chat Runtime run 查询状态，`messages.message_json` 是 Chat message hydration 真相源，`chat_session_queue_items` 是 durable queue 状态；binding 只保留 Cradle-owned backend snapshot + requested model，run snapshot/event 表承载 Cradle-owned harness envelope 与 ordered forensic event stream，不复制 provider-owned goal/plan/tool 语义；snapshot/event 使用毫秒时间并在 session/run 删除后保留取证记录，只将对应 FK 置空
 - **automation.ts**: Agent-authored automation definition、run、artifact 与 event 相关表；只写 automation namespace，通过 ID 引用 normal chat session/backend run
 - **index.ts**: Schema barrel，聚合导出所有 context-specific schema 模块
 - **shared.ts**: 共享列片段与 `workspaces` 表；workspace records own project pin state for app sidebar ordering

@@ -2,6 +2,10 @@ import { router } from '~/router'
 
 import type { AppSurface, SurfaceDraft } from './surface-identity'
 import {
+  clearRouteSurfaceSyncSuppressionForSurface,
+  suppressRouteSurfaceSync,
+} from './route-surface-sync-guard'
+import {
   chatSurfaceId,
   createHomeSurfaceDraft,
   kanbanSurfaceId,
@@ -25,6 +29,7 @@ export function navigateToSurface(surface: AppSurface, options: { replace?: bool
 }
 
 function openSurface(surface: SurfaceDraft, options: { replace?: boolean } = {}): void {
+  clearRouteSurfaceSyncSuppressionForSurface(surface.id)
   useSurfaceStore.getState().syncSurface(surface)
   void router.navigate(toRouterNavigateOptions(surface, options.replace))
 }
@@ -145,6 +150,10 @@ export function openUsage(options: { replace?: boolean } = {}): void {
 
 export function closeSurfaceById(surfaceId: string): void {
   const previousActiveSurfaceId = useSurfaceStore.getState().activeSurfaceId
+  if (previousActiveSurfaceId === surfaceId) {
+    suppressRouteSurfaceSync(surfaceId)
+  }
+
   useSurfaceStore.getState().closeSurface(surfaceId)
 
   if (previousActiveSurfaceId !== surfaceId) {

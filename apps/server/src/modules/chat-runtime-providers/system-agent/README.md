@@ -13,5 +13,4 @@ System Agent runs from Cradle's server data directory, with `jar-sessions` for j
 - `input-projector.ts`: Projects Cradle turn input into the text-only jar-core prompt.
 - `model-registry-bridge.ts`: Bridges Cradle provider kind/model-registry data into jar-core provider, API, thinking, and model metadata config.
 - `event-to-chunk-mapper.ts`: Maps jar-core assistant message events into AI SDK `UIMessageChunk` events.
-- `replay-projector.ts`: Experimental diagnostic/future migration helper that projects Chat Runtime event history into text-only jar-core replay context. Live System Agent turns currently use `input-projector.ts` and `provider.ts`, not this helper.
 - `state-projector.ts`: Projects provider snapshot model state for started/resumed sessions.

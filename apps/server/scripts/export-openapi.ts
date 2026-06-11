@@ -16,6 +16,7 @@ if (!response.ok) {
 
 const document = await response.json()
 normalizeNullableSchemas(document)
+normalizeConstUnionSchemas(document)
 await writeFile(outputPath, JSON.stringify(document, null, 2))
 
 function normalizeNullableSchemas(value: unknown): void {
@@ -55,4 +56,56 @@ function normalizeNullableSchemas(value: unknown): void {
 
 function isNullSchema(value: unknown): boolean {
   return !!value && typeof value === 'object' && !Array.isArray(value) && (value as Record<string, unknown>).type === 'null'
+}
+
+function normalizeConstUnionSchemas(value: unknown): void {
+  if (!value || typeof value !== 'object') {
+    return
+  }
+
+  if (Array.isArray(value)) {
+    for (const item of value) {
+      normalizeConstUnionSchemas(item)
+    }
+    return
+  }
+
+  const record = value as Record<string, unknown>
+  for (const child of Object.values(record)) {
+    normalizeConstUnionSchemas(child)
+  }
+
+  const anyOf = record.anyOf
+  if (!Array.isArray(anyOf) || anyOf.length === 0) {
+    return
+  }
+  if (record.nullable === true) {
+    return
+  }
+
+  const enumValues: string[] = []
+  for (const schema of anyOf) {
+    const enumValue = getStringConstSchemaValue(schema)
+    if (enumValue === null) {
+      return
+    }
+    enumValues.push(enumValue)
+  }
+
+  delete record.anyOf
+  record.type = 'string'
+  record.enum = [...new Set(enumValues)]
+}
+
+function getStringConstSchemaValue(value: unknown): string | null {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return null
+  }
+
+  const record = value as Record<string, unknown>
+  if (record.type !== undefined && record.type !== 'string') {
+    return null
+  }
+
+  return typeof record.const === 'string' ? record.const : null
 }

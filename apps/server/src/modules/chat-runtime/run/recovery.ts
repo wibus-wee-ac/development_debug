@@ -1,5 +1,5 @@
 import type { BackendRun } from '@cradle/db'
-import { backendRunSnapshots, backendRuns, chatSessionQueueItems, messages, sessions } from '@cradle/db'
+import { backendRuns, backendRunSnapshots, chatSessionQueueItems, messages, sessions } from '@cradle/db'
 import { and, eq, or } from 'drizzle-orm'
 
 import { currentUnixSeconds } from '../../../helpers/time'
@@ -9,33 +9,48 @@ const ORPHANED_STREAMING_RUN_STOP_REASON = 'response.interrupted'
 const ORPHANED_STREAMING_RUN_ERROR_TEXT =
   'Response interrupted because the Cradle server process exited while the run was streaming.'
 
-type TerminalRunProjectionStatus = Extract<BackendRun['status'], 'complete' | 'aborted' | 'failed'>
+export type TerminalRunProjectionStatus = 'complete' | 'aborted' | 'failed'
 
 interface TerminalRunProjectionRepairOptions {
   persistBackendRun?: boolean
 }
 
-export function failLegacyOrphanedPersistedRun(run: BackendRun): void {
+export function abortPersistedRun(run: BackendRun): void {
   if (run.status !== 'streaming') {
-    repairLegacyTerminalRunProjection(run)
+    repairTerminalRunProjection(run)
     return
   }
 
   const now = currentUnixSeconds()
-  repairLegacyTerminalRunProjection(
-    {
-      ...run,
-      status: 'failed',
-      stopReason: ORPHANED_STREAMING_RUN_STOP_REASON,
-      errorText: ORPHANED_STREAMING_RUN_ERROR_TEXT,
-      finishedAt: now,
-    },
-    { persistBackendRun: true },
-  )
+  const abortedRun: BackendRun = {
+    ...run,
+    status: 'aborted',
+    stopReason: 'response.cancelled',
+    errorText: null,
+    finishedAt: now
+  }
+  repairTerminalRunProjection(abortedRun, { persistBackendRun: true })
 }
 
-export function failLegacyOrphanedPersistedStreamingSession(sessionId: string): void {
-  repairLegacyTerminalRunProjections({ sessionId })
+export function failOrphanedPersistedRun(run: BackendRun): void {
+  if (run.status !== 'streaming') {
+    repairTerminalRunProjection(run)
+    return
+  }
+
+  const now = currentUnixSeconds()
+  const failedRun: BackendRun = {
+    ...run,
+    status: 'failed',
+    stopReason: ORPHANED_STREAMING_RUN_STOP_REASON,
+    errorText: ORPHANED_STREAMING_RUN_ERROR_TEXT,
+    finishedAt: now
+  }
+  repairTerminalRunProjection(failedRun, { persistBackendRun: true })
+}
+
+export function abortPersistedStreamingSession(sessionId: string): void {
+  repairTerminalRunProjectionsForSession(sessionId)
 
   const streamingRuns = db()
     .select()
@@ -45,20 +60,44 @@ export function failLegacyOrphanedPersistedStreamingSession(sessionId: string): 
 
   if (streamingRuns.length > 0) {
     for (const run of streamingRuns) {
-      failLegacyOrphanedPersistedRun(run)
+      abortPersistedRun(run)
     }
-    markLegacyPersistedStreamingMessages(sessionId, 'failed', ORPHANED_STREAMING_RUN_ERROR_TEXT)
+    markPersistedStreamingMessages(sessionId, 'aborted', null)
     return
   }
 
-  markLegacyPersistedStreamingMessages(sessionId, 'failed', ORPHANED_STREAMING_RUN_ERROR_TEXT)
+  markPersistedStreamingMessages(sessionId, 'aborted', null)
 }
 
-export function repairLegacyTerminalRunProjections(input: { sessionId?: string } = {}): number {
+export function failOrphanedPersistedStreamingSession(sessionId: string): void {
+  repairTerminalRunProjectionsForSession(sessionId)
+
+  const streamingRuns = db()
+    .select()
+    .from(backendRuns)
+    .where(and(eq(backendRuns.chatSessionId, sessionId), eq(backendRuns.status, 'streaming')))
+    .all()
+
+  if (streamingRuns.length > 0) {
+    for (const run of streamingRuns) {
+      failOrphanedPersistedRun(run)
+    }
+    markPersistedStreamingMessages(sessionId, 'failed', ORPHANED_STREAMING_RUN_ERROR_TEXT)
+    return
+  }
+
+  markPersistedStreamingMessages(sessionId, 'failed', ORPHANED_STREAMING_RUN_ERROR_TEXT)
+}
+
+export function repairTerminalRunProjectionsForSession(sessionId: string): number {
+  return repairTerminalRunProjections({ sessionId })
+}
+
+export function repairTerminalRunProjections(input: { sessionId?: string } = {}): number {
   const terminalStatusPredicate = or(
     eq(backendRuns.status, 'complete'),
     eq(backendRuns.status, 'aborted'),
-    eq(backendRuns.status, 'failed'),
+    eq(backendRuns.status, 'failed')
   )
   const terminalRuns = db()
     .select()
@@ -66,21 +105,21 @@ export function repairLegacyTerminalRunProjections(input: { sessionId?: string }
     .where(
       input.sessionId
         ? and(eq(backendRuns.chatSessionId, input.sessionId), terminalStatusPredicate)
-        : terminalStatusPredicate,
+        : terminalStatusPredicate
     )
     .all()
 
   return terminalRuns.reduce(
-    (count, run) => (repairLegacyTerminalRunProjection(run) ? count + 1 : count),
-    0,
+    (count, run) => (repairTerminalRunProjection(run) ? count + 1 : count),
+    0
   )
 }
 
-export function repairLegacyTerminalRunProjection(
+export function repairTerminalRunProjection(
   run: BackendRun,
-  options: TerminalRunProjectionRepairOptions = {},
+  options: TerminalRunProjectionRepairOptions = {}
 ): boolean {
-  const status = readLegacyTerminalRunProjectionStatus(run.status)
+  const status = readTerminalRunProjectionStatus(run.status)
   if (!status) {
     return false
   }
@@ -92,7 +131,7 @@ export function repairLegacyTerminalRunProjection(
     ? and(
         eq(messages.sessionId, run.chatSessionId),
         eq(messages.status, 'streaming'),
-        or(eq(messages.id, run.messageId), eq(messages.parentMessageId, run.messageId)),
+        or(eq(messages.id, run.messageId), eq(messages.parentMessageId, run.messageId))
       )
     : and(eq(messages.sessionId, run.chatSessionId), eq(messages.status, 'streaming'))
 
@@ -102,9 +141,9 @@ export function repairLegacyTerminalRunProjection(
         .update(backendRuns)
         .set({
           status,
-          stopReason: readLegacyTerminalRunCompletionReason(run, status),
+          stopReason: readTerminalRunCompletionReason(run, status),
           errorText: run.errorText,
-          finishedAt,
+          finishedAt
         })
         .where(eq(backendRuns.id, run.id))
         .run()
@@ -116,7 +155,7 @@ export function repairLegacyTerminalRunProjection(
       .set({
         status,
         errorText: run.errorText,
-        updatedAt: now,
+        updatedAt: now
       })
       .where(messagePredicate)
       .run()
@@ -125,16 +164,16 @@ export function repairLegacyTerminalRunProjection(
     const queueResult = tx
       .update(chatSessionQueueItems)
       .set({
-        status: toLegacyQueueTerminalStatus(status),
+        status: toQueueTerminalStatus(status),
         errorText: run.errorText,
-        updatedAt: now,
+        updatedAt: now
       })
       .where(
         and(
           eq(chatSessionQueueItems.startedRunId, run.id),
           eq(chatSessionQueueItems.mode, 'queue'),
-          eq(chatSessionQueueItems.status, 'running'),
-        ),
+          eq(chatSessionQueueItems.status, 'running')
+        )
       )
       .run()
     changed = changed || queueResult.changes > 0
@@ -144,8 +183,8 @@ export function repairLegacyTerminalRunProjection(
       .set({
         status,
         completedAt: finishedAt * 1000,
-        completionReason: readLegacyTerminalRunCompletionReason(run, status),
-        errorText: run.errorText,
+        completionReason: readTerminalRunCompletionReason(run, status),
+        errorText: run.errorText
       })
       .where(and(eq(backendRunSnapshots.runId, run.id), eq(backendRunSnapshots.status, 'running')))
       .run()
@@ -159,19 +198,19 @@ export function repairLegacyTerminalRunProjection(
   return changed
 }
 
-export function readLegacyTerminalRunProjectionStatus(
-  status: BackendRun['status'],
+export function readTerminalRunProjectionStatus(
+  status: BackendRun['status']
 ): TerminalRunProjectionStatus | null {
   return status === 'complete' || status === 'aborted' || status === 'failed' ? status : null
 }
 
-function toLegacyQueueTerminalStatus(status: TerminalRunProjectionStatus) {
+function toQueueTerminalStatus(status: TerminalRunProjectionStatus) {
   return status === 'complete' ? 'completed' : status === 'aborted' ? 'cancelled' : 'failed'
 }
 
-function readLegacyTerminalRunCompletionReason(
+function readTerminalRunCompletionReason(
   run: BackendRun,
-  status: TerminalRunProjectionStatus,
+  status: TerminalRunProjectionStatus
 ): string {
   if (run.stopReason) {
     return run.stopReason
@@ -183,10 +222,10 @@ function readLegacyTerminalRunCompletionReason(
       : 'response.failed'
 }
 
-function markLegacyPersistedStreamingMessages(
+function markPersistedStreamingMessages(
   sessionId: string,
   status: TerminalRunProjectionStatus,
-  errorText: string | null,
+  errorText: string | null
 ): void {
   const now = currentUnixSeconds()
   db().transaction((tx) => {
@@ -194,7 +233,7 @@ function markLegacyPersistedStreamingMessages(
       .set({
         status,
         errorText,
-        updatedAt: now,
+        updatedAt: now
       })
       .where(and(eq(messages.sessionId, sessionId), eq(messages.status, 'streaming')))
       .run()

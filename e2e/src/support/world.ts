@@ -192,6 +192,12 @@ export class CradleWorld extends World {
     this.context = await this.browser.newContext({
       permissions: ['clipboard-read', 'clipboard-write'],
     })
+    await this.context.addInitScript(() => {
+      window.localStorage.setItem('cradle:onboarding:v1', JSON.stringify({
+        state: { completed: true, step: 4 },
+        version: 1,
+      }))
+    })
     this.page = await this.context.newPage()
     await this.page.goto(this.params.webUrl)
     await this.page.waitForLoadState('domcontentloaded')

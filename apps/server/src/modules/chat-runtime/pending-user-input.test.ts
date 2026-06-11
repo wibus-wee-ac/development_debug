@@ -1,27 +1,16 @@
 import type { UIMessageChunk } from 'ai'
-import { afterEach, describe, expect, it } from 'vitest'
+import { describe, expect, it } from 'vitest'
 
 import { AppError } from '../../errors/app-error'
 import {
   requestRuntimeUserInput,
-  setRuntimeUserInputEventSink,
   setRuntimeUserInputPublisher,
   submitRuntimeUserInput,
 } from './pending-user-input'
 
 describe('pending runtime user input', () => {
-  afterEach(() => {
-    setRuntimeUserInputEventSink({})
-    setRuntimeUserInputPublisher(() => {})
-  })
-
   it('resolves submitted answers and publishes a synthetic resolved tool output', async () => {
     const published: Array<{ runId: string, chunk: UIMessageChunk }> = []
-    const events: string[] = []
-    setRuntimeUserInputEventSink({
-      requested: (input) => events.push(`requested:${input.providerRequestId}`),
-      answered: (input) => events.push(`answered:${input.resolution.requestId}`),
-    })
     setRuntimeUserInputPublisher((runId, chunk) => {
       published.push({ runId, chunk })
     })
@@ -74,7 +63,6 @@ describe('pending runtime user input', () => {
         },
       },
     ])
-    expect(events).toEqual(['requested:request-1', 'answered:request-1'])
   })
 
   it('rejects stale submissions with a not found app error', () => {

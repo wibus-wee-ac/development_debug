@@ -82,6 +82,8 @@ export function ChatSessionRouteContent({ sessionId }: { sessionId: string }) {
     ...getSessionsByIdOptions({ path: { id: sessionId } }),
     enabled: !!sessionId,
   })
+  const hasLoadedSession = !!session
+  const sessionTitle = session?.title ?? null
   const sessionProviderTargetId = session?.providerTargetId ?? null
   const sessionModelId = session?.modelId ?? null
   const isCliTui = session?.runtimeKind === 'cli-tui'
@@ -99,8 +101,11 @@ export function ChatSessionRouteContent({ sessionId }: { sessionId: string }) {
   }, [session?.archivedAt, sessionId, surfaceId])
 
   useEffect(() => {
-    updateSurfaceTitle(surfaceId, session?.title || CHAT_SESSION_FALLBACK_LABEL)
-  }, [session?.title, surfaceId, updateSurfaceTitle])
+    if (!hasLoadedSession) {
+      return
+    }
+    updateSurfaceTitle(surfaceId, sessionTitle || CHAT_SESSION_FALLBACK_LABEL)
+  }, [hasLoadedSession, sessionTitle, surfaceId, updateSurfaceTitle])
 
   const workspaceId = session?.workspaceId ?? null
   const agentId = session?.agentId ?? null

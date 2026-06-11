@@ -12,7 +12,6 @@ import {
 } from '../../helpers/agent-runtime-config'
 import { db } from '../../infra'
 import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-state-snapshot'
-import { readEventDerivedRuntimeState } from '../chat-runtime/runtime-state'
 import {
   mergeRuntimeSettings,
   normalizeRuntimeSettingsPatch,
@@ -166,14 +165,6 @@ function listStatusesBySessionIds(sessionIds: string[]): Map<string, SessionStat
     return new Map()
   }
 
-  const eventStatusesBySessionId = new Map<string, SessionStatus>()
-  for (const sessionId of sessionIds) {
-    const state = readEventDerivedRuntimeState(sessionId)
-    if (state.hasEvents) {
-      eventStatusesBySessionId.set(sessionId, toSessionStatusFromEventState(state.status))
-    }
-  }
-
   const bindingsBySessionId = new Map(
     db()
       .select({
@@ -203,10 +194,6 @@ function listStatusesBySessionIds(sessionIds: string[]): Map<string, SessionStat
 
   const statusesBySessionId = new Map<string, SessionStatus>()
 
-  for (const [sessionId, status] of eventStatusesBySessionId.entries()) {
-    statusesBySessionId.set(sessionId, status)
-  }
-
   for (const row of runRows) {
     if (statusesBySessionId.has(row.chatSessionId)) {
       continue
@@ -230,11 +217,6 @@ function listStatusesBySessionIds(sessionIds: string[]): Map<string, SessionStat
 }
 
 function readSessionStatus(sessionId: string): SessionStatus {
-  const eventState = readEventDerivedRuntimeState(sessionId)
-  if (eventState.hasEvents) {
-    return toSessionStatusFromEventState(eventState.status)
-  }
-
   const latestRun = db()
     .select({
       status: backendRuns.status,
@@ -261,10 +243,6 @@ function readSessionStatus(sessionId: string): SessionStatus {
     runStatus: latestRun?.status,
     binding,
   })
-}
-
-function toSessionStatusFromEventState(status: 'idle' | 'streaming' | 'error'): SessionStatus {
-  return status
 }
 
 function toSessionView(

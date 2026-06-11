@@ -1,9 +1,10 @@
 import type { FileUIPart, UIMessage } from 'ai'
 
 import { chatSessionQueueItems } from '@cradle/db'
-import { and, eq } from 'drizzle-orm'
+import { and, eq, isNull } from 'drizzle-orm'
 
 import { AppError } from '../../../errors/app-error'
+import { currentUnixSeconds } from '../../../helpers/time'
 import { db } from '../../../infra'
 import type { ChatContextPart } from '../context-parts'
 import type {
@@ -190,4 +191,39 @@ export function listPendingQueueRows(sessionId: string): QueueItemRow[] {
     )
     .orderBy(chatSessionQueueItems.position, chatSessionQueueItems.createdAt)
     .all()
+}
+
+export function recoverOrphanedRunningQueueItems(sessionId: string): void {
+  db()
+    .update(chatSessionQueueItems)
+    .set({
+      status: 'pending',
+      errorText: null,
+      updatedAt: currentUnixSeconds()
+    })
+    .where(
+      and(
+        eq(chatSessionQueueItems.sessionId, sessionId),
+        eq(chatSessionQueueItems.mode, 'queue'),
+        eq(chatSessionQueueItems.status, 'running'),
+        isNull(chatSessionQueueItems.startedRunId)
+      )
+    )
+    .run()
+}
+
+export function normalizePendingQueuePositions(sessionId: string): void {
+  const pendingRows = listPendingQueueRows(sessionId)
+  const now = currentUnixSeconds()
+  db().transaction((tx) => {
+    pendingRows.forEach((row, index) => {
+      const position = index + 1
+      if (row.position !== position) {
+        tx.update(chatSessionQueueItems)
+          .set({ position, updatedAt: now })
+          .where(eq(chatSessionQueueItems.id, row.id))
+          .run()
+      }
+    })
+  })
 }

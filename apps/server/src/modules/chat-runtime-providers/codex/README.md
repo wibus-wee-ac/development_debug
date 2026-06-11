@@ -36,7 +36,6 @@ Codex UI slots are projected from the app-server capability manifest and declare
 - `tools/`: Codex tool identifier and app-server item payload mapper.
 - `native-history-projector.ts`: Projects full Codex app-server `Turn` snapshots into Responses API items for best-effort restoration when a fresh Codex thread replaces a previous native thread.
 - `transcript-projector.ts`: Projects reconstructed Cradle transcript history into Codex Responses API items for native thread injection, unwrapping tool envelopes and Cradle bang-command result metadata back to provider-native function-call names, arguments, and outputs.
-- `replay-projector.ts`: Experimental diagnostic/future migration helper that projects Chat Runtime event history into Codex-native replay items. Live Codex turns currently use app-server native history and Cradle transcript injection in `provider.ts`, not this helper.
 - `ui-slot-projector.ts`: Projects generated Codex app-server capabilities into runtime UI slot descriptors and projects provider snapshots plus app-server config/list/native reads into `RuntimeUiSlotState[]`.
 - `app-server-protocol/`: Generated TypeScript bindings from `codex app-server generate-ts --experimental --out apps/server/src/modules/chat-runtime-providers/codex/app-server-protocol`. Do not edit generated files by hand.
 

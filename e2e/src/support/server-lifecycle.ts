@@ -123,14 +123,13 @@ BeforeAll({ timeout: 120_000 }, async () => {
   }
 
   const dataDir = mkdtempSync(join(tmpdir(), 'cradle-e2e-data-'))
-  const homeDir = join(dataDir, 'home')
   const serverPort = await reserveAvailablePort()
 
   let serverProcess: ChildProcess | null = null
   let webProcess: ChildProcess | null = null
 
   try {
-    serverProcess = spawn('npx', ['vite-node', 'src/index.ts'], {
+    serverProcess = spawn(join(ROOT, 'apps', 'server', 'node_modules', '.bin', 'vite-node'), ['src/index.ts'], {
       cwd: join(ROOT, 'apps', 'server'),
       env: {
         ...process.env,
@@ -139,7 +138,6 @@ BeforeAll({ timeout: 120_000 }, async () => {
         CRADLE_HOST: '127.0.0.1',
         CRADLE_CREDENTIAL_SECRET: 'e2e-test-secret',
         CRADLE_MOCK_LLM_URL: 'http://127.0.0.1:1', // Placeholder — actual URL set per-profile config.baseUrl
-        HOME: homeDir,
         NODE_ENV: 'test',
       },
       stdio: ['ignore', 'pipe', 'pipe'],
@@ -167,7 +165,7 @@ BeforeAll({ timeout: 120_000 }, async () => {
 
     if (!process.env.CRADLE_WEB_URL) {
       const webPort = await reserveAvailablePort()
-      webProcess = spawn('npx', ['vite', '--port', String(webPort), '--strictPort'], {
+      webProcess = spawn(join(ROOT, 'apps', 'web', 'node_modules', '.bin', 'vite'), ['--port', String(webPort), '--strictPort'], {
         cwd: join(ROOT, 'apps', 'web'),
         env: {
           ...process.env,

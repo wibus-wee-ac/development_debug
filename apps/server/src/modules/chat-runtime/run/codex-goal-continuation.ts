@@ -34,8 +34,6 @@ export interface CodexGoalContinuationSchedulerDeps {
   scheduleQueueDrain(sessionId: string): void
   getBinding(sessionId: string): BackendSessionBinding | undefined
   isProviderTargetAvailable(providerTargetId: string | null | undefined): boolean
-  onContinuationScheduled?(input: CodexGoalContinuationScheduleInput & { delayMs: number }): void
-  onContinuationStarted?(input: CodexGoalContinuationScheduleInput): void
   createContinuationRun(input: {
     sessionId: string
     providerTargetId?: string
@@ -130,7 +128,6 @@ export function scheduleCodexGoalContinuation(
     void startScheduledCodexGoalContinuation(input, deps)
   }, delayMs)
   pendingTimers.set(input.sessionId, timer)
-  deps.onContinuationScheduled?.({ ...input, delayMs })
 }
 
 async function startScheduledCodexGoalContinuation(
@@ -153,7 +150,6 @@ async function startScheduledCodexGoalContinuation(
   }
 
   try {
-    deps.onContinuationStarted?.(input)
     await deps.createContinuationRun({
       sessionId: input.sessionId,
       providerTargetId: input.providerTargetId,

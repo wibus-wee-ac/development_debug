@@ -1,5 +1,5 @@
 import { Outlet, useLocation, useNavigate, useRouterState } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useThemeClass } from '~/app-providers'
 import { AppLayout } from '~/components/layout/app-layout'
@@ -17,6 +17,10 @@ import { isTearoffWindow, tearoffSessionId } from '~/lib/electron'
 import { installSurfaceResourceLifecycle } from '~/navigation/surface-resource-lifecycle'
 import { installTearoffSessionRestore } from '~/navigation/tearoff-sessions'
 import {
+  createRouteSurfaceSyncRouteKey,
+  isRouteSurfaceSyncSuppressed,
+} from '~/navigation/route-surface-sync-guard'
+import {
   layoutSlotIdForSurface,
   surfaceDraftFromRoute,
 } from '~/navigation/surface-identity'
@@ -32,22 +36,36 @@ function RouteSurfaceSync() {
   'use no memo'
 
   const syncSurface = useSurfaceStore(state => state.syncSurface)
+  const lastSyncedRouteKeyRef = useRef<string | null>(null)
   const routeSnapshot = useRouterState({
     select: (state) => {
       const match = state.matches.at(-1)
+      const location = state.location as typeof state.location & { href?: string }
       return {
-        pathname: state.location.pathname,
+        routeKey: createRouteSurfaceSyncRouteKey(location),
+        pathname: location.pathname,
         params: match?.params as Record<string, unknown> | undefined,
-        search: state.location.search as Record<string, unknown> | undefined,
+        search: location.search as Record<string, unknown> | undefined,
       }
     },
   })
 
   useEffect(() => {
     const surface = surfaceDraftFromRoute(routeSnapshot)
-    if (surface) {
-      syncSurface(surface)
+    if (!surface) {
+      return
     }
+
+    if (isRouteSurfaceSyncSuppressed(surface.id)) {
+      return
+    }
+
+    const syncKey = `${routeSnapshot.routeKey}:${surface.id}`
+    if (lastSyncedRouteKeyRef.current === syncKey) {
+      return
+    }
+    lastSyncedRouteKeyRef.current = syncKey
+    syncSurface(surface)
   }, [routeSnapshot, syncSurface])
 
   return null

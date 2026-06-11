@@ -173,6 +173,7 @@ describe('workspace capability', () => {
     try {
       writeFileSync(join(workspaceRoot, '.gitignore'), 'ignored.txt\nignored-dir/\n', 'utf8')
       mkdirSync(join(workspaceRoot, 'src'), { recursive: true })
+      mkdirSync(join(workspaceRoot, 'empty-dir'), { recursive: true })
       mkdirSync(join(workspaceRoot, '.git', 'objects'), { recursive: true })
       mkdirSync(join(workspaceRoot, 'ignored-dir'), { recursive: true })
       mkdirSync(join(workspaceRoot, 'node_modules', 'pkg'), { recursive: true })
@@ -195,6 +196,7 @@ describe('workspace capability', () => {
       const filesRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files`))
       const entries = await filesRes.json()
       expect(entries).toEqual(expect.arrayContaining([
+        { type: 'directory', name: 'empty-dir', path: 'empty-dir' },
         { type: 'directory', name: 'src', path: 'src' },
         { type: 'file', name: 'main.ts', path: 'src/main.ts' },
         { type: 'file', name: 'notes.md', path: 'notes.md' },
@@ -209,6 +211,7 @@ describe('workspace capability', () => {
       expect(rootChildrenRes.status).toBe(200)
       const rootChildren = await rootChildrenRes.json()
       expect(rootChildren).toEqual([
+        { type: 'directory', name: 'empty-dir', path: 'empty-dir' },
         { type: 'directory', name: 'src', path: 'src' },
         { type: 'file', name: 'notes.md', path: 'notes.md' },
       ])
@@ -228,6 +231,10 @@ describe('workspace capability', () => {
       expect(await searchRes.json()).toEqual([
         { type: 'file', name: 'main.ts', path: 'src/main.ts' },
       ])
+
+      const ignoredSearchRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/search?q=${encodeURIComponent('ignored')}&limit=5`))
+      expect(ignoredSearchRes.status).toBe(200)
+      expect(await ignoredSearchRes.json()).toEqual([])
 
       const completionRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/search?q=${encodeURIComponent('src/')}&limit=5`))
       expect(completionRes.status).toBe(200)

@@ -1541,12 +1541,19 @@ export const zPostChatSessionsBySessionIdResponseBody = z.object({
             type: z.string(),
             name: z.string().min(1),
             path: z.string().min(1),
-            scope: z.string(),
+            scope: z.enum([
+                'builtin',
+                'legacy',
+                'global',
+                'repository',
+                'workspace',
+                'agent'
+            ]),
             description: z.string().nullable(),
             position: z.number().gte(0).optional()
         }), z.object({
             type: z.string(),
-            provider: z.string().optional(),
+            provider: z.enum(['cradle', 'codex']).optional(),
             pluginName: z.string().min(1),
             displayName: z.string().min(1),
             description: z.string().nullable(),
@@ -1555,7 +1562,11 @@ export const zPostChatSessionsBySessionIdResponseBody = z.object({
             capabilities: z.array(z.object({
                 id: z.string().min(1),
                 type: z.string().min(1),
-                layer: z.string(),
+                layer: z.enum([
+                    'server',
+                    'web',
+                    'desktop'
+                ]),
                 label: z.string().nullable()
             })),
             mcpServers: z.array(z.string().min(1)),
@@ -1646,12 +1657,19 @@ export const zPostChatSideConversationsBySideConversationIdResponseBody = z.obje
             type: z.string(),
             name: z.string().min(1),
             path: z.string().min(1),
-            scope: z.string(),
+            scope: z.enum([
+                'builtin',
+                'legacy',
+                'global',
+                'repository',
+                'workspace',
+                'agent'
+            ]),
             description: z.string().nullable(),
             position: z.number().gte(0).optional()
         }), z.object({
             type: z.string(),
-            provider: z.string().optional(),
+            provider: z.enum(['cradle', 'codex']).optional(),
             pluginName: z.string().min(1),
             displayName: z.string().min(1),
             description: z.string().nullable(),
@@ -1660,7 +1678,11 @@ export const zPostChatSideConversationsBySideConversationIdResponseBody = z.obje
             capabilities: z.array(z.object({
                 id: z.string().min(1),
                 type: z.string().min(1),
-                layer: z.string(),
+                layer: z.enum([
+                    'server',
+                    'web',
+                    'desktop'
+                ]),
                 label: z.string().nullable()
             })),
             mcpServers: z.array(z.string().min(1)),
@@ -1725,12 +1747,19 @@ export const zPostChatSessionsBySessionIdQueueBody = z.object({
             type: z.string(),
             name: z.string().min(1),
             path: z.string().min(1),
-            scope: z.string(),
+            scope: z.enum([
+                'builtin',
+                'legacy',
+                'global',
+                'repository',
+                'workspace',
+                'agent'
+            ]),
             description: z.string().nullable(),
             position: z.number().gte(0).optional()
         }), z.object({
             type: z.string(),
-            provider: z.string().optional(),
+            provider: z.enum(['cradle', 'codex']).optional(),
             pluginName: z.string().min(1),
             displayName: z.string().min(1),
             description: z.string().nullable(),
@@ -1739,7 +1768,11 @@ export const zPostChatSessionsBySessionIdQueueBody = z.object({
             capabilities: z.array(z.object({
                 id: z.string().min(1),
                 type: z.string().min(1),
-                layer: z.string(),
+                layer: z.enum([
+                    'server',
+                    'web',
+                    'desktop'
+                ]),
                 label: z.string().nullable()
             })),
             mcpServers: z.array(z.string().min(1)),
@@ -1780,12 +1813,19 @@ export const zPostChatSessionsBySessionIdSteerBody = z.object({
             type: z.string(),
             name: z.string().min(1),
             path: z.string().min(1),
-            scope: z.string(),
+            scope: z.enum([
+                'builtin',
+                'legacy',
+                'global',
+                'repository',
+                'workspace',
+                'agent'
+            ]),
             description: z.string().nullable(),
             position: z.number().gte(0).optional()
         }), z.object({
             type: z.string(),
-            provider: z.string().optional(),
+            provider: z.enum(['cradle', 'codex']).optional(),
             pluginName: z.string().min(1),
             displayName: z.string().min(1),
             description: z.string().nullable(),
@@ -1794,7 +1834,11 @@ export const zPostChatSessionsBySessionIdSteerBody = z.object({
             capabilities: z.array(z.object({
                 id: z.string().min(1),
                 type: z.string().min(1),
-                layer: z.string(),
+                layer: z.enum([
+                    'server',
+                    'web',
+                    'desktop'
+                ]),
                 label: z.string().nullable()
             })),
             mcpServers: z.array(z.string().min(1)),

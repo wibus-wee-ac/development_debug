@@ -2333,9 +2333,9 @@ export type PostExternalWorkImportImportResponses = {
             status: 'pending' | 'imported' | 'duplicate' | 'skipped' | 'error';
             record: {
                 id: string;
-                sourceApp: string;
-                sourceScope: string;
-                sourceKind: string;
+                sourceApp: 'claude' | 'codex' | 'cursor' | 'windsurf' | 'gemini' | 'unknown';
+                sourceScope: 'server' | 'electron-upload';
+                sourceKind: 'settings' | 'project' | 'session' | 'instruction' | 'mcp' | 'command' | 'hook' | 'skill' | 'plugin' | 'subagent';
                 sourcePath: string | null;
                 externalId: string;
                 fingerprint: string;
@@ -2344,7 +2344,7 @@ export type PostExternalWorkImportImportResponses = {
                 workspaceId: string | null;
                 sessionId: string | null;
                 messageId: string | null;
-                status: string;
+                status: 'imported' | 'skipped' | 'error';
                 statusReason: string | null;
                 importedAt: number;
                 createdAt: number;
@@ -2760,7 +2760,7 @@ export type PostProvidersModelLookupResponses = {
             inputModalities?: Array<string>;
             outputModalities?: Array<string>;
             reasoning?: boolean;
-            reasoningEfforts?: Array<string>;
+            reasoningEfforts?: Array<'none' | 'minimal' | 'low' | 'medium' | 'high' | 'xhigh' | 'max'>;
             toolCall?: boolean;
             temperature?: boolean;
             structuredOutput?: boolean;
@@ -2773,7 +2773,7 @@ export type PostProvidersModelLookupResponses = {
             family?: string;
             knowledgeCutoff?: string;
             releaseDate?: string;
-            registryMatch?: string;
+            registryMatch?: 'exact' | 'fuzzy' | 'manual' | 'alias' | 'unmatched';
             registryModelId?: string;
             registryModelLabel?: string;
         };
@@ -3043,7 +3043,7 @@ export type PostAgentsImportLocalConfigResponses = {
                     avatarSeed: string;
                     providerTargetId: string | null;
                     modelId: string | null;
-                    thinkingEffort: string;
+                    thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh';
                     runtimeKind: string;
                     configJson: string;
                     enabled: boolean;
@@ -3082,7 +3082,7 @@ export type PostAgentsImportLocalConfigResponses = {
                 avatarSeed: string;
                 providerTargetId: string | null;
                 modelId: string | null;
-                thinkingEffort: string;
+                thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh';
                 runtimeKind: string;
                 configJson: string;
                 enabled: boolean;
@@ -3139,7 +3139,7 @@ export type PostAgentsImportLocalConfigPreviewResponses = {
                 avatarSeed: string;
                 providerTargetId: string | null;
                 modelId: string | null;
-                thinkingEffort: string;
+                thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh';
                 runtimeKind: string;
                 configJson: string;
                 enabled: boolean;
@@ -5411,7 +5411,7 @@ export type GetIssuesByIdActivityResponses = {
             systemKind: string | null;
         } | null;
         fieldChange: {
-            action: string;
+            action: 'added-description' | 'changed-field' | 'cleared-description' | 'renamed-issue' | 'updated-description';
             field: string | null;
             fromValue: {
                 kind: string;
@@ -5421,7 +5421,7 @@ export type GetIssuesByIdActivityResponses = {
                 text: string;
             } | {
                 kind: string;
-                token: string;
+                token: 'changed' | 'current-user' | 'empty' | 'no-due-date' | 'no-labels' | 'no-milestone' | 'no-parent' | 'no-status' | 'priority-high' | 'priority-low' | 'priority-medium' | 'priority-none' | 'priority-urgent' | 'unassigned' | 'unknown-issue' | 'unknown-milestone' | 'unknown-status' | 'unknown-user';
             } | null;
             toValue: {
                 kind: string;
@@ -5431,7 +5431,7 @@ export type GetIssuesByIdActivityResponses = {
                 text: string;
             } | {
                 kind: string;
-                token: string;
+                token: 'changed' | 'current-user' | 'empty' | 'no-due-date' | 'no-labels' | 'no-milestone' | 'no-parent' | 'no-status' | 'priority-high' | 'priority-low' | 'priority-medium' | 'priority-none' | 'priority-urgent' | 'unassigned' | 'unknown-issue' | 'unknown-milestone' | 'unknown-status' | 'unknown-user';
             } | null;
         } | null;
         sourceChatSessionId: string | null;
@@ -6808,12 +6808,12 @@ export type PostChatSessionsBySessionIdResponseData = {
             type: string;
             name: string;
             path: string;
-            scope: string;
+            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
             description: string | null;
             position?: number;
         } | {
             type: string;
-            provider?: string;
+            provider?: 'cradle' | 'codex';
             pluginName: string;
             displayName: string;
             description: string | null;
@@ -6822,7 +6822,7 @@ export type PostChatSessionsBySessionIdResponseData = {
             capabilities: Array<{
                 id: string;
                 type: string;
-                layer: string;
+                layer: 'server' | 'web' | 'desktop';
                 label: string | null;
             }>;
             mcpServers: Array<string>;
@@ -7046,12 +7046,12 @@ export type PostChatSideConversationsBySideConversationIdResponseData = {
             type: string;
             name: string;
             path: string;
-            scope: string;
+            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
             description: string | null;
             position?: number;
         } | {
             type: string;
-            provider?: string;
+            provider?: 'cradle' | 'codex';
             pluginName: string;
             displayName: string;
             description: string | null;
@@ -7060,7 +7060,7 @@ export type PostChatSideConversationsBySideConversationIdResponseData = {
             capabilities: Array<{
                 id: string;
                 type: string;
-                layer: string;
+                layer: 'server' | 'web' | 'desktop';
                 label: string | null;
             }>;
             mcpServers: Array<string>;
@@ -7220,12 +7220,12 @@ export type GetChatSessionsBySessionIdQueueResponses = {
                 type: string;
                 name: string;
                 path: string;
-                scope: string;
+                scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
                 description: string | null;
                 position?: number;
             } | {
                 type: string;
-                provider?: string;
+                provider?: 'cradle' | 'codex';
                 pluginName: string;
                 displayName: string;
                 description: string | null;
@@ -7234,7 +7234,7 @@ export type GetChatSessionsBySessionIdQueueResponses = {
                 capabilities: Array<{
                     id: string;
                     type: string;
-                    layer: string;
+                    layer: 'server' | 'web' | 'desktop';
                     label: string | null;
                 }>;
                 mcpServers: Array<string>;
@@ -7278,12 +7278,12 @@ export type PostChatSessionsBySessionIdQueueData = {
             type: string;
             name: string;
             path: string;
-            scope: string;
+            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
             description: string | null;
             position?: number;
         } | {
             type: string;
-            provider?: string;
+            provider?: 'cradle' | 'codex';
             pluginName: string;
             displayName: string;
             description: string | null;
@@ -7292,7 +7292,7 @@ export type PostChatSessionsBySessionIdQueueData = {
             capabilities: Array<{
                 id: string;
                 type: string;
-                layer: string;
+                layer: 'server' | 'web' | 'desktop';
                 label: string | null;
             }>;
             mcpServers: Array<string>;
@@ -7339,12 +7339,12 @@ export type PostChatSessionsBySessionIdQueueResponses = {
             type: string;
             name: string;
             path: string;
-            scope: string;
+            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
             description: string | null;
             position?: number;
         } | {
             type: string;
-            provider?: string;
+            provider?: 'cradle' | 'codex';
             pluginName: string;
             displayName: string;
             description: string | null;
@@ -7353,7 +7353,7 @@ export type PostChatSessionsBySessionIdQueueResponses = {
             capabilities: Array<{
                 id: string;
                 type: string;
-                layer: string;
+                layer: 'server' | 'web' | 'desktop';
                 label: string | null;
             }>;
             mcpServers: Array<string>;
@@ -7396,12 +7396,12 @@ export type PostChatSessionsBySessionIdSteerData = {
             type: string;
             name: string;
             path: string;
-            scope: string;
+            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
             description: string | null;
             position?: number;
         } | {
             type: string;
-            provider?: string;
+            provider?: 'cradle' | 'codex';
             pluginName: string;
             displayName: string;
             description: string | null;
@@ -7410,7 +7410,7 @@ export type PostChatSessionsBySessionIdSteerData = {
             capabilities: Array<{
                 id: string;
                 type: string;
-                layer: string;
+                layer: 'server' | 'web' | 'desktop';
                 label: string | null;
             }>;
             mcpServers: Array<string>;
@@ -7487,12 +7487,12 @@ export type PostChatSessionsBySessionIdQueueReorderResponses = {
                 type: string;
                 name: string;
                 path: string;
-                scope: string;
+                scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
                 description: string | null;
                 position?: number;
             } | {
                 type: string;
-                provider?: string;
+                provider?: 'cradle' | 'codex';
                 pluginName: string;
                 displayName: string;
                 description: string | null;
@@ -7501,7 +7501,7 @@ export type PostChatSessionsBySessionIdQueueReorderResponses = {
                 capabilities: Array<{
                     id: string;
                     type: string;
-                    layer: string;
+                    layer: 'server' | 'web' | 'desktop';
                     label: string | null;
                 }>;
                 mcpServers: Array<string>;
@@ -7562,12 +7562,12 @@ export type DeleteChatSessionsBySessionIdQueueByQueueItemIdResponses = {
             type: string;
             name: string;
             path: string;
-            scope: string;
+            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
             description: string | null;
             position?: number;
         } | {
             type: string;
-            provider?: string;
+            provider?: 'cradle' | 'codex';
             pluginName: string;
             displayName: string;
             description: string | null;
@@ -7576,7 +7576,7 @@ export type DeleteChatSessionsBySessionIdQueueByQueueItemIdResponses = {
             capabilities: Array<{
                 id: string;
                 type: string;
-                layer: string;
+                layer: 'server' | 'web' | 'desktop';
                 label: string | null;
             }>;
             mcpServers: Array<string>;
@@ -7700,7 +7700,7 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
             slotId: string;
             threadId: string;
             objective: string;
-            status: string;
+            status: 'active' | 'paused' | 'blocked' | 'usageLimited' | 'budgetLimited' | 'complete';
             tokenBudget: number | null;
             tokensUsed: number;
             timeUsedSeconds: number;
@@ -7711,7 +7711,7 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
             slotId: string;
             threadId: string;
             turnId: string | null;
-            status: string;
+            status: 'idle' | 'running' | 'nearLimit' | 'overLimit' | 'compacted';
             isCompactRelevant: boolean;
             total: {
                 totalTokens: number;
@@ -7738,7 +7738,7 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
             kind: string;
             slotId: string;
             threadId: string;
-            status: string;
+            status: 'notLoaded' | 'idle' | 'systemError' | 'active';
             activeFlags: Array<string>;
             updatedAt: number;
         } | {
@@ -7773,7 +7773,7 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
             content: string | null;
             steps: Array<{
                 step: string;
-                status: string;
+                status: 'pending' | 'inProgress' | 'completed';
             }>;
             currentStep: string | null;
             pendingCount: number;
@@ -7814,7 +7814,7 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
                 id: string;
                 type: string;
                 label: string;
-                status: string;
+                status: 'running' | 'completed' | 'failed';
                 startedAt: number | null;
                 completedAt: number | null;
             }>;
@@ -7830,8 +7830,8 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
             recentProgress: string | null;
             servers: Array<{
                 name: string;
-                status: string;
-                authStatus: string;
+                status: 'starting' | 'ready' | 'failed' | 'cancelled' | 'unknown';
+                authStatus: 'unsupported' | 'notLoggedIn' | 'bearerToken' | 'oAuth' | 'unknown';
                 toolCount: number;
                 resourceCount: number;
                 error: string | null;
@@ -7869,7 +7869,7 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
             recentItems: Array<{
                 id: string;
                 targetItemId: string | null;
-                status: string;
+                status: 'pending' | 'approved' | 'denied' | 'timedOut' | 'aborted';
                 label: string;
                 riskLevel: string | null;
                 rationale: string | null;
@@ -7885,7 +7885,7 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
             errorCount: number;
             recentItems: Array<{
                 id: string;
-                severity: string;
+                severity: 'info' | 'warning' | 'error';
                 message: string;
                 source: string;
                 updatedAt: number;
@@ -7936,7 +7936,7 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
                 id: string;
                 type: string;
                 label: string;
-                status: string;
+                status: 'running' | 'completed' | 'failed';
                 startedAt: number | null;
                 completedAt: number | null;
             }>;
@@ -7960,7 +7960,7 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
             calls: Array<{
                 id: string;
                 tool: string;
-                status: string;
+                status: 'running' | 'completed' | 'failed';
                 senderThreadId: string | null;
                 receiverThreadIds: Array<string>;
                 prompt: string | null;
@@ -8256,29 +8256,29 @@ export type GetChatSessionsBySessionIdRuntimeStatusResponses = {
         activeRun: {
             runId: string;
             messageId: string | null;
-            status: string;
+            status: 'streaming' | 'complete' | 'aborted' | 'failed';
             startedAt: number;
             finishedAt: number | null;
             modelId: string | null;
             providerSessionId: string | null;
             queueItemId: string | null;
             runtimeSettings: {
-                accessMode: string;
-                interactionMode: string;
+                accessMode: 'approval-required' | 'full-access';
+                interactionMode: 'default' | 'plan';
             };
         } | null;
         latestRun: {
             runId: string;
             messageId: string | null;
-            status: string;
+            status: 'streaming' | 'complete' | 'aborted' | 'failed';
             startedAt: number;
             finishedAt: number | null;
             modelId: string | null;
             providerSessionId: string | null;
             queueItemId: string | null;
             runtimeSettings: {
-                accessMode: string;
-                interactionMode: string;
+                accessMode: 'approval-required' | 'full-access';
+                interactionMode: 'default' | 'plan';
             };
         } | null;
         queue: {

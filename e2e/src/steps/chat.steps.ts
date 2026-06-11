@@ -57,10 +57,7 @@ function recallSessionAlias(world: CradleWorld, alias: string): SessionAlias {
 }
 
 async function getChatView(world: CradleWorld) {
-  // ALL tabs are rendered via React 19 Activity; only the active tab has data-tab-visible="true".
-  // We wait until the active tab's content contains a chat-view.
-  // This handles the timing lag between clicking send and openTab() switching the active tab.
-  const chatView = world.page.locator('[data-tab-visible="true"] [data-testid="chat-view"]').first()
+  const chatView = world.page.locator('[data-testid="chat-view"]').first()
   await expect(chatView).toBeVisible({ timeout: CHAT_VIEW_TIMEOUT })
   return chatView
 }
@@ -90,7 +87,7 @@ function recallSelectedNewChatWorkspace(world: CradleWorld): string {
 
 /** Get the visible new-chat page container to avoid strict mode violations with multiple tabs */
 function visibleNewChatPage(world: CradleWorld) {
-  return world.page.locator('[data-tab-visible="true"] [data-testid="new-chat-page"]').first()
+  return world.page.locator('[data-testid="new-chat-page"]').first()
 }
 
 async function getLastAssistantBubble(world: CradleWorld) {
@@ -104,7 +101,7 @@ async function navigateToNewChat(world: CradleWorld): Promise<void> {
   const navItem = world.page.locator('[data-testid="nav-new-chat"]')
   await expect(navItem).toBeVisible({ timeout: 15_000 })
   await navItem.click()
-  const newChatPage = world.page.locator('[data-tab-visible="true"] [data-testid="new-chat-page"]').first()
+  const newChatPage = world.page.locator('[data-testid="new-chat-page"]').first()
   await expect(newChatPage).toBeVisible({ timeout: 15_000 })
   await expect(newChatPage).toHaveAttribute('data-new-chat-ready', 'true', { timeout: 30_000 })
 }
@@ -183,7 +180,7 @@ async function createRememberedSession(world: CradleWorld, alias: string, firstU
   await navigateToNewChat(world)
 
   // Scope to the visible tab to avoid strict mode violations with multiple new-chat pages
-  const visibleNewChat = world.page.locator('[data-tab-visible="true"] [data-testid="new-chat-page"]').first()
+  const visibleNewChat = world.page.locator('[data-testid="new-chat-page"]').first()
   const textarea = visibleNewChat.locator('[data-testid="new-chat-textarea"]')
   await expect(textarea).toBeVisible({ timeout: 10_000 })
   await textarea.fill(firstUserText)
@@ -321,7 +318,7 @@ Given('我已导航到新建聊天页面', async function (this: CradleWorld) {
 })
 
 Then('我应该看到新建聊天页面', async function (this: CradleWorld) {
-  await expect(this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-page"]').first()).toBeVisible({ timeout: 10_000 })
+  await expect(this.page.locator('[data-testid="new-chat-page"]').first()).toBeVisible({ timeout: 10_000 })
 })
 
 Then('聊天输入框应可见', async function (this: CradleWorld) {

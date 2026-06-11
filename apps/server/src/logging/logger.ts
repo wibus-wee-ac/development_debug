@@ -54,10 +54,32 @@ function formatFields(fields: Record<string, unknown>): string {
   return ` ${pairs.join(' ')}`
 }
 
+function isBrokenPipeError(error: unknown): boolean {
+  return (
+    typeof error === 'object'
+    && error !== null
+    && 'code' in error
+    && ((error as { code?: unknown }).code === 'EPIPE'
+      || (error as { code?: unknown }).code === 'ERR_STREAM_DESTROYED')
+  )
+}
+
+function writeTerminalStream(stream: { write: (chunk: string) => unknown }, chunk: string): void {
+  try {
+    stream.write(chunk)
+  }
+  catch (error) {
+    if (!isBrokenPipeError(error)) {
+      throw error
+    }
+  }
+}
+
 const prettyStream: pino.StreamEntry = {
   level: 'trace',
   stream: {
     write(chunk: string) {
+      let output = chunk
       try {
         const obj = JSON.parse(chunk) as Record<string, unknown>
         const label = String(obj.level ?? 'info')
@@ -66,12 +88,12 @@ const prettyStream: pino.StreamEntry = {
         const context = obj.module ? pc.magenta(`[${String(obj.module)}]`) : ''
         const fields = formatFields(obj)
 
-        process.stdout.write(`${ts} ${styleLevel(label)} ${context}${pc.reset(' ')}${msg}${fields}\n`)
+        output = `${ts} ${styleLevel(label)} ${context}${pc.reset(' ')}${msg}${fields}\n`
       }
       catch {
-        // Not JSON — write raw
-        process.stdout.write(chunk)
+        // Not JSON - write raw.
       }
+      writeTerminalStream(process.stdout, output)
     },
   },
 }
@@ -106,7 +128,7 @@ function createStreams() {
     const dest = pino.destination({ dest: logFile, sync: process.env.CRADLE_LOG_SYNC === '1' })
     fileDestinations.push(dest)
     streams.push({ level, stream: dest })
-    process.stderr.write(`[logger] file logging enabled: ${logFile}\n`)
+    writeTerminalStream(process.stderr, `[logger] file logging enabled: ${logFile}\n`)
   }
   return streams
 }

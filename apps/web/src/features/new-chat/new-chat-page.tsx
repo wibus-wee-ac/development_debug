@@ -305,7 +305,7 @@ function NewChatComposerCard({
 
   const workspaceSelector = (
     <Menu>
-      <MenuTrigger render={<Button variant="ghost" size="xs" className="text-muted-foreground/35 hover:text-muted-foreground/60" />} data-testid="new-chat-workspace-selector">
+      <MenuTrigger render={<Button variant="ghost" size="xs" className="text-foreground hover:text-foreground" />} data-testid="new-chat-workspace-selector">
         <FolderIcon className="size-3 shrink-0" />
         <span className="max-w-24 truncate">{selectedWorkspace?.name ?? t('workspace.adhoc')}</span>
       </MenuTrigger>

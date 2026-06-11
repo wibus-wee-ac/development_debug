@@ -38,6 +38,7 @@
     "@elysia/openapi": "^1.4.15",
     "@elysiajs/cors": "^1.4.2",
     "@elysiajs/node": "^1.4.5",
+    "@ff-labs/fff-node": "^0.9.3",
     "@hijarvis/core": "^0.1.0",
     "@hono/node-server": "^1.19.9",
     "@langfuse/otel": "^5.3.0",

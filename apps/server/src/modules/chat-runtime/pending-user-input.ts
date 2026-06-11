@@ -16,25 +16,12 @@ interface PendingUserInputState {
 }
 
 type RuntimeUserInputPublisher = (runId: string, chunk: UIMessageChunk) => void
-type RuntimeUserInputEventSink = {
-  requested?: (input: RuntimeUserInputRequest & { createdAt: number }) => void
-  answered?: (input: {
-    request: RuntimeUserInputRequest
-    resolution: RuntimeUserInputResolution
-    acceptedAt: number
-  }) => void
-}
 
 const pendingUserInputById = new Map<string, PendingUserInputState>()
 let publisher: RuntimeUserInputPublisher | null = null
-let eventSink: RuntimeUserInputEventSink = {}
 
 export function setRuntimeUserInputPublisher(nextPublisher: RuntimeUserInputPublisher): void {
   publisher = nextPublisher
-}
-
-export function setRuntimeUserInputEventSink(nextSink: RuntimeUserInputEventSink): void {
-  eventSink = nextSink
 }
 
 export function requestRuntimeUserInput(
@@ -53,14 +40,12 @@ export function requestRuntimeUserInput(
   }
 
   return new Promise((resolve, reject) => {
-    const createdAt = currentUnixSeconds()
     pendingUserInputById.set(pendingKey, {
       request: input,
-      createdAt,
+      createdAt: currentUnixSeconds(),
       resolve,
       reject
     })
-    eventSink.requested?.({ ...input, createdAt })
   })
 }
 
@@ -85,13 +70,7 @@ export function submitRuntimeUserInput(input: {
     requestId: input.requestId,
     answers: input.answers
   }
-  const acceptedAt = currentUnixSeconds()
   pending.resolve(resolution)
-  eventSink.answered?.({
-    request: pending.request,
-    resolution,
-    acceptedAt
-  })
   publisher?.(pending.request.runId, {
     type: 'tool-output-available',
     toolCallId: pending.request.toolCallId,
@@ -99,7 +78,7 @@ export function submitRuntimeUserInput(input: {
       type: 'cradle.runtime-user-input.resolved.v1',
       requestId: input.requestId,
       answers: input.answers,
-      acceptedAt
+      acceptedAt: currentUnixSeconds()
     }
   })
   return resolution

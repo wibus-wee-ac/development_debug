@@ -6,7 +6,10 @@ import { mkdir, mkdtemp, open, readdir, readFile, rename, rm, stat, writeFile } 
 import { tmpdir } from 'node:os'
 import { basename, delimiter, dirname, extname, join, resolve, sep } from 'node:path'
 
+import { FileFinder, type MixedItem } from '@ff-labs/fff-node'
 import ignore from 'ignore'
+
+import { createChildLogger } from '../../logging/logger'
 
 export interface WorkspaceFileEntry {
   type: 'file' | 'directory'
@@ -40,23 +43,23 @@ interface WorkspaceIgnoreContext {
   filter: ReturnType<ReturnType<typeof ignore>['createFilter']>
 }
 
-interface WorkspaceFileListCacheEntry {
-  expiresAt: number
-  entries: WorkspaceFileEntry[]
+interface WorkspaceFileFinderCacheEntry {
+  finder: FileFinder
+  lastUsedAt: number
+  ready: Promise<void>
 }
 
-const WORKSPACE_FILE_LIST_CACHE_TTL_MS = 30_000
-const WORKSPACE_FILE_LIST_CACHE_MAX_WORKSPACES = 32
+const logger = createChildLogger({ module: 'workspace.files' })
+
 const WORKSPACE_FILE_LIST_MAX_ENTRIES = 5_000
 const WORKSPACE_FILE_LIST_MAX_DIRECTORIES = 1_500
-const WORKSPACE_FILE_SEARCH_MAX_SCAN_ENTRIES = 3_000
-const WORKSPACE_FILE_SEARCH_MAX_DIRECTORIES = 600
 const WORKSPACE_FILE_SEARCH_DEFAULT_LIMIT = 30
 const WORKSPACE_FILE_SEARCH_MAX_LIMIT = 100
-const WORKSPACE_SEARCH_TIER_DISTANCE = 1_000_000
-const WORKSPACE_SEARCH_TYPE_DIRECTORY_OFFSET = 25_000
-const WORKSPACE_SEARCH_SEGMENT_SPLIT_RE = /[\s/\\_.:()[\]{}-]+/
-const workspaceFileListCache = new Map<string, WorkspaceFileListCacheEntry>()
+const WORKSPACE_FILE_FINDER_CACHE_MAX_WORKSPACES = 16
+const WORKSPACE_FILE_FINDER_IDLE_TTL_MS = 5 * 60_000
+const WORKSPACE_FILE_FINDER_SCAN_TIMEOUT_MS = 10_000
+const WORKSPACE_FILE_FINDER_SEARCH_PAGE_SIZE = 400
+const workspaceFileFinderCache = new Map<string, WorkspaceFileFinderCacheEntry>()
 const ignoredWorkspaceFileNames = new Set([
   '.git',
   'node_modules',
@@ -66,24 +69,26 @@ const ignoredWorkspaceFileNames = new Set([
 ])
 
 export async function listFiles(workspacePath: string): Promise<WorkspaceFileEntry[]> {
-  const now = Date.now()
-  pruneWorkspaceFileListCache(now)
-  const cached = workspaceFileListCache.get(workspacePath)
-  if (cached && cached.expiresAt > now) {
-    workspaceFileListCache.delete(workspacePath)
-    workspaceFileListCache.set(workspacePath, cached)
-    return cached.entries
+  const ignoreContext = await createWorkspaceIgnoreContext(workspacePath)
+  const finder = await getWorkspaceFileFinder(workspacePath)
+  const result = finder.mixedSearch('', { pageSize: WORKSPACE_FILE_LIST_MAX_ENTRIES + 1 })
+  if (!result.ok) {
+    throw new Error(`Workspace file index listing failed: ${result.error}`)
   }
 
-  const ignoreContext = await createWorkspaceIgnoreContext(workspacePath)
-  const fileEntries = await collectWorkspaceFileEntries(workspacePath, ignoreContext)
-  workspaceFileListCache.set(workspacePath, {
-    expiresAt: now + WORKSPACE_FILE_LIST_CACHE_TTL_MS,
-    entries: fileEntries,
-  })
-  trimWorkspaceFileListCache()
+  const entriesByPath = new Map<string, WorkspaceFileEntry>()
+  for (const entry of await collectWorkspaceDirectoryEntries(workspacePath, ignoreContext)) {
+    entriesByPath.set(entry.path, entry)
+  }
+  for (const entry of result.value.items
+    .map(item => workspaceFileEntryFromMixedItem(item))
+    .filter((entry): entry is WorkspaceFileEntry => entry !== null && isVisibleWorkspaceFileEntry(entry, ignoreContext))) {
+    entriesByPath.set(entry.path, entry)
+  }
 
-  return fileEntries
+  return [...entriesByPath.values()]
+    .sort(compareWorkspaceFileEntries)
+    .slice(0, WORKSPACE_FILE_LIST_MAX_ENTRIES)
 }
 
 export async function listFileChildren(workspacePath: string, relativePath = ''): Promise<WorkspaceFileEntry[]> {
@@ -126,82 +131,20 @@ export async function searchWorkspaceFiles(input: {
     const leafQuery = query.slice(slashIndex + 1).toLowerCase()
     return (await listFileChildren(input.workspacePath, parentPath))
       .filter(entry => !leafQuery || entry.name.toLowerCase().includes(leafQuery))
-      .map(entry => ({
-        entry,
-        score: leafQuery ? scoreWorkspaceFileEntrySearch({ ...entry, path: entry.name }, leafQuery) ?? Number.MAX_SAFE_INTEGER : 0,
-      }))
-      .sort((left, right) => left.score - right.score || left.entry.name.localeCompare(right.entry.name))
-      .map(result => result.entry)
       .slice(0, limit)
   }
 
   const ignoreContext = await createWorkspaceIgnoreContext(input.workspacePath)
-  const matches: Array<{ entry: WorkspaceFileEntry, score: number }> = []
-  const queue: string[] = ['']
-  let visitedDirectories = 0
-  let scannedEntries = 0
-
-  while (
-    queue.length > 0
-    && scannedEntries < WORKSPACE_FILE_SEARCH_MAX_SCAN_ENTRIES
-    && visitedDirectories < WORKSPACE_FILE_SEARCH_MAX_DIRECTORIES
-  ) {
-    const currentPath = queue.shift() ?? ''
-    const directoryPath = currentPath ? join(input.workspacePath, currentPath) : input.workspacePath
-    visitedDirectories += 1
-
-    let dirEntries: Dirent[]
-    try {
-      dirEntries = await readdir(directoryPath, { withFileTypes: true })
-    }
-    catch {
-      continue
-    }
-
-    dirEntries.sort((left, right) => {
-      if (left.isDirectory() !== right.isDirectory()) {
-        return left.isDirectory() ? -1 : 1
-      }
-      return left.name.localeCompare(right.name)
-    })
-
-    for (const dirEntry of dirEntries) {
-      if (scannedEntries >= WORKSPACE_FILE_SEARCH_MAX_SCAN_ENTRIES) {
-        break
-      }
-      if (!dirEntry.isDirectory() && !dirEntry.isFile()) {
-        continue
-      }
-      if (ignoredWorkspaceFileNames.has(dirEntry.name)) {
-        continue
-      }
-
-      const entryPath = currentPath ? `${currentPath}/${dirEntry.name}` : dirEntry.name
-      const filterPath = dirEntry.isDirectory() ? `${entryPath}/` : entryPath
-      if (!ignoreContext.filter(filterPath)) {
-        continue
-      }
-
-      scannedEntries += 1
-      const entry: WorkspaceFileEntry = {
-        type: dirEntry.isDirectory() ? 'directory' : 'file',
-        name: dirEntry.name,
-        path: entryPath,
-      }
-      const score = scoreWorkspaceFileEntrySearch(entry, query)
-      if (score !== null) {
-        matches.push({ entry, score })
-      }
-      if (dirEntry.isDirectory()) {
-        queue.push(entryPath)
-      }
-    }
+  const finder = await getWorkspaceFileFinder(input.workspacePath)
+  const result = finder.mixedSearch(query, { pageSize: Math.max(WORKSPACE_FILE_FINDER_SEARCH_PAGE_SIZE, limit * 4) })
+  if (!result.ok) {
+    throw new Error(`Workspace file index search failed: ${result.error}`)
   }
 
-  return matches
-    .sort((left, right) => left.score - right.score || left.entry.path.localeCompare(right.entry.path))
+  return result.value.items
+    .map(item => workspaceFileEntryFromMixedItem(item))
+    .filter((entry): entry is WorkspaceFileEntry => entry !== null && isVisibleWorkspaceFileEntry(entry, ignoreContext))
     .slice(0, limit)
-    .map(match => match.entry)
 }
 
 async function createWorkspaceIgnoreContext(workspacePath: string): Promise<WorkspaceIgnoreContext> {
@@ -214,61 +157,6 @@ async function createWorkspaceIgnoreContext(workspacePath: string): Promise<Work
   }
   ig.add(['node_modules', '.git', '.DS_Store'])
   return { filter: ig.createFilter() }
-}
-
-async function collectWorkspaceFileEntries(workspacePath: string, ignoreContext: WorkspaceIgnoreContext): Promise<WorkspaceFileEntry[]> {
-  const entries: WorkspaceFileEntry[] = []
-  const queue: string[] = ['']
-  let visitedDirectories = 0
-
-  while (queue.length > 0 && entries.length < WORKSPACE_FILE_LIST_MAX_ENTRIES && visitedDirectories < WORKSPACE_FILE_LIST_MAX_DIRECTORIES) {
-    const currentPath = queue.shift() ?? ''
-    const directoryPath = currentPath ? join(workspacePath, currentPath) : workspacePath
-    visitedDirectories += 1
-
-    let dirEntries: Dirent[]
-    try {
-      dirEntries = await readdir(directoryPath, { withFileTypes: true })
-    }
-    catch {
-      continue
-    }
-
-    dirEntries.sort((left, right) => {
-      if (left.isDirectory() !== right.isDirectory()) {
-        return left.isDirectory() ? -1 : 1
-      }
-      return left.name.localeCompare(right.name)
-    })
-
-    for (const dirEntry of dirEntries) {
-      if (entries.length >= WORKSPACE_FILE_LIST_MAX_ENTRIES) {
-        break
-      }
-      if (!dirEntry.isDirectory() && !dirEntry.isFile()) {
-        continue
-      }
-      if (ignoredWorkspaceFileNames.has(dirEntry.name)) {
-        continue
-      }
-
-      const entryPath = currentPath ? `${currentPath}/${dirEntry.name}` : dirEntry.name
-      const filterPath = dirEntry.isDirectory() ? `${entryPath}/` : entryPath
-      if (!ignoreContext.filter(filterPath)) {
-        continue
-      }
-
-      if (dirEntry.isDirectory()) {
-        entries.push({ type: 'directory', name: dirEntry.name, path: entryPath })
-        queue.push(entryPath)
-        continue
-      }
-
-      entries.push({ type: 'file', name: dirEntry.name, path: entryPath })
-    }
-  }
-
-  return entries
 }
 
 async function readDirectWorkspaceChildren(input: {
@@ -317,6 +205,49 @@ async function readDirectWorkspaceChildren(input: {
   return entries
 }
 
+async function collectWorkspaceDirectoryEntries(workspacePath: string, ignoreContext: WorkspaceIgnoreContext): Promise<WorkspaceFileEntry[]> {
+  const entries: WorkspaceFileEntry[] = []
+  const queue: string[] = ['']
+  let visitedDirectories = 0
+
+  while (queue.length > 0 && entries.length < WORKSPACE_FILE_LIST_MAX_DIRECTORIES && visitedDirectories < WORKSPACE_FILE_LIST_MAX_DIRECTORIES) {
+    const currentPath = queue.shift() ?? ''
+    const directoryPath = currentPath ? join(workspacePath, currentPath) : workspacePath
+    visitedDirectories += 1
+
+    let dirEntries: Dirent[]
+    try {
+      dirEntries = await readdir(directoryPath, { withFileTypes: true })
+    }
+    catch {
+      continue
+    }
+
+    const directories = dirEntries
+      .filter(dirEntry => dirEntry.isDirectory())
+      .sort((left, right) => left.name.localeCompare(right.name))
+
+    for (const dirEntry of directories) {
+      if (entries.length >= WORKSPACE_FILE_LIST_MAX_DIRECTORIES) {
+        break
+      }
+      if (!dirEntry.isDirectory() || ignoredWorkspaceFileNames.has(dirEntry.name)) {
+        continue
+      }
+
+      const entryPath = currentPath ? `${currentPath}/${dirEntry.name}` : dirEntry.name
+      if (!ignoreContext.filter(`${entryPath}/`)) {
+        continue
+      }
+
+      entries.push({ type: 'directory', name: dirEntry.name, path: entryPath })
+      queue.push(entryPath)
+    }
+  }
+
+  return entries
+}
+
 function normalizeRelativePath(relativePath: string): string {
   return relativePath.split(sep).join('/').replace(/^\/+|\/+$/g, '')
 }
@@ -332,68 +263,127 @@ function clampSearchLimit(limit: number | undefined): number {
   return Math.max(1, Math.min(WORKSPACE_FILE_SEARCH_MAX_LIMIT, Math.floor(limit ?? WORKSPACE_FILE_SEARCH_DEFAULT_LIMIT)))
 }
 
-function scoreWorkspaceFileSearch(path: string, query: string): number | null {
-  const normalizedPath = path.toLowerCase()
-  const normalizedQuery = query.toLowerCase()
-  const basename = readPathBasename(normalizedPath)
-
-  if (!normalizedQuery) {
-    return 0
-  }
-
-  if (normalizedPath === normalizedQuery) {
-    return 0
-  }
-
-  if (basename === normalizedQuery) {
-    return WORKSPACE_SEARCH_TIER_DISTANCE
-  }
-
-  if (normalizedPath.startsWith(normalizedQuery)) {
-    return 2 * WORKSPACE_SEARCH_TIER_DISTANCE + normalizedPath.length
-  }
-
-  if (basename.startsWith(normalizedQuery)) {
-    return 3 * WORKSPACE_SEARCH_TIER_DISTANCE + basename.length
-  }
-
-  const segmentIndex = normalizedPath
-    .split(WORKSPACE_SEARCH_SEGMENT_SPLIT_RE)
-    .filter(Boolean)
-    .findIndex(segment => segment.startsWith(normalizedQuery))
-  if (segmentIndex >= 0) {
-    return 4 * WORKSPACE_SEARCH_TIER_DISTANCE + segmentIndex
-  }
-
-  if (normalizedPath.includes(normalizedQuery)) {
-    return 5 * WORKSPACE_SEARCH_TIER_DISTANCE + normalizedPath.indexOf(normalizedQuery)
-  }
-
-  let score = 8 * WORKSPACE_SEARCH_TIER_DISTANCE + normalizedPath.length
-  let pathIndex = 0
-  for (const char of normalizedQuery) {
-    const nextIndex = normalizedPath.indexOf(char, pathIndex)
-    if (nextIndex < 0) {
-      return null
-    }
-    score += nextIndex - pathIndex + 1
-    pathIndex = nextIndex + 1
-  }
-
-  return score
-}
-
-function scoreWorkspaceFileEntrySearch(entry: WorkspaceFileEntry, query: string): number | null {
-  const score = scoreWorkspaceFileSearch(entry.path, query)
-  if (score === null) {
-    return null
-  }
-  return score + (entry.type === 'directory' ? WORKSPACE_SEARCH_TYPE_DIRECTORY_OFFSET : 0)
-}
-
 function readPathBasename(path: string): string {
   const slashIndex = Math.max(path.lastIndexOf('/'), path.lastIndexOf('\\'))
   return slashIndex >= 0 ? path.slice(slashIndex + 1) : path
+}
+
+async function getWorkspaceFileFinder(workspacePath: string): Promise<FileFinder> {
+  const normalizedWorkspacePath = resolve(workspacePath)
+  const now = Date.now()
+  pruneWorkspaceFileFinderCache(now)
+
+  const cached = workspaceFileFinderCache.get(normalizedWorkspacePath)
+  if (cached && !cached.finder.isDestroyed) {
+    cached.lastUsedAt = now
+    workspaceFileFinderCache.delete(normalizedWorkspacePath)
+    workspaceFileFinderCache.set(normalizedWorkspacePath, cached)
+    await cached.ready
+    return cached.finder
+  }
+
+  const created = FileFinder.create({
+    basePath: normalizedWorkspacePath,
+    aiMode: true,
+    disableWatch: process.env.NODE_ENV === 'test',
+  })
+  if (!created.ok) {
+    throw new Error(`Workspace file index initialization failed: ${created.error}`)
+  }
+
+  const finder = created.value
+  const entry: WorkspaceFileFinderCacheEntry = {
+    finder,
+    lastUsedAt: now,
+    ready: finder.waitForScan(WORKSPACE_FILE_FINDER_SCAN_TIMEOUT_MS).then((result) => {
+      if (!result.ok) {
+        throw new Error(`Workspace file index scan failed: ${result.error}`)
+      }
+      if (!result.value) {
+        logger.warn('workspace file index scan timed out; returning partial indexed results', {
+          workspacePath: normalizedWorkspacePath,
+          timeoutMs: WORKSPACE_FILE_FINDER_SCAN_TIMEOUT_MS,
+        })
+      }
+    }).catch((error) => {
+      finder.destroy()
+      workspaceFileFinderCache.delete(normalizedWorkspacePath)
+      throw error
+    }),
+  }
+  workspaceFileFinderCache.set(normalizedWorkspacePath, entry)
+  trimWorkspaceFileFinderCache()
+  await entry.ready
+  return finder
+}
+
+function workspaceFileEntryFromMixedItem(item: MixedItem): WorkspaceFileEntry | null {
+  if (item.type === 'file') {
+    const path = normalizeRelativePath(item.item.relativePath)
+    if (!path) {
+      return null
+    }
+    return {
+      type: 'file',
+      name: item.item.fileName || readPathBasename(path),
+      path,
+    }
+  }
+
+  const path = normalizeRelativePath(item.item.relativePath)
+  if (!path) {
+    return null
+  }
+  return {
+    type: 'directory',
+    name: readPathBasename(path),
+    path,
+  }
+}
+
+function isVisibleWorkspaceFileEntry(entry: WorkspaceFileEntry, ignoreContext: WorkspaceIgnoreContext): boolean {
+  if (ignoredWorkspaceFileNames.has(entry.name)) {
+    return false
+  }
+  const filterPath = entry.type === 'directory' ? `${entry.path}/` : entry.path
+  return ignoreContext.filter(filterPath)
+}
+
+function compareWorkspaceFileEntries(left: WorkspaceFileEntry, right: WorkspaceFileEntry): number {
+  const leftParent = readParentPath(left.path)
+  const rightParent = readParentPath(right.path)
+  if (leftParent !== rightParent) {
+    return leftParent.localeCompare(rightParent)
+  }
+  if (left.type !== right.type) {
+    return left.type === 'directory' ? -1 : 1
+  }
+  return left.name.localeCompare(right.name)
+}
+
+function readParentPath(path: string): string {
+  const index = path.lastIndexOf('/')
+  return index < 0 ? '' : path.slice(0, index)
+}
+
+function pruneWorkspaceFileFinderCache(now: number): void {
+  for (const [workspacePath, entry] of workspaceFileFinderCache) {
+    if (now - entry.lastUsedAt >= WORKSPACE_FILE_FINDER_IDLE_TTL_MS) {
+      entry.finder.destroy()
+      workspaceFileFinderCache.delete(workspacePath)
+    }
+  }
+}
+
+function trimWorkspaceFileFinderCache(): void {
+  while (workspaceFileFinderCache.size > WORKSPACE_FILE_FINDER_CACHE_MAX_WORKSPACES) {
+    const oldestWorkspacePath = workspaceFileFinderCache.keys().next().value
+    if (typeof oldestWorkspacePath !== 'string') {
+      return
+    }
+    workspaceFileFinderCache.get(oldestWorkspacePath)?.finder.destroy()
+    workspaceFileFinderCache.delete(oldestWorkspacePath)
+  }
 }
 
 export async function readTextFile(workspacePath: string, relativePath: string): Promise<string | null> {
@@ -592,25 +582,16 @@ export async function renameWorkspacePath(workspacePath: string, sourcePath: str
 }
 
 export function invalidateWorkspaceFileList(workspacePath: string): void {
-  workspaceFileListCache.delete(workspacePath)
+  const normalizedWorkspacePath = resolve(workspacePath)
+  workspaceFileFinderCache.get(normalizedWorkspacePath)?.finder.destroy()
+  workspaceFileFinderCache.delete(normalizedWorkspacePath)
 }
 
-function pruneWorkspaceFileListCache(now: number): void {
-  for (const [workspacePath, entry] of workspaceFileListCache) {
-    if (entry.expiresAt <= now) {
-      workspaceFileListCache.delete(workspacePath)
-    }
+export function destroyWorkspaceFileIndexes(): void {
+  for (const entry of workspaceFileFinderCache.values()) {
+    entry.finder.destroy()
   }
-}
-
-function trimWorkspaceFileListCache(): void {
-  while (workspaceFileListCache.size > WORKSPACE_FILE_LIST_CACHE_MAX_WORKSPACES) {
-    const oldestWorkspacePath = workspaceFileListCache.keys().next().value
-    if (typeof oldestWorkspacePath !== 'string') {
-      return
-    }
-    workspaceFileListCache.delete(oldestWorkspacePath)
-  }
+  workspaceFileFinderCache.clear()
 }
 
 export function resolveWorkspaceFilePath(workspacePath: string, relativePath: string): string | null {

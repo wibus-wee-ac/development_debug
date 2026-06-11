@@ -60,7 +60,7 @@ function appendOrUpdateSurface(surfaces: readonly AppSurface[], surface: Surface
     ? {
         ...item,
         kind: surface.kind,
-        title: surface.title || item.title,
+        title: item.title || surface.title,
         route: surface.route,
         closable: surface.closable,
       }
@@ -97,16 +97,16 @@ function clearLegacyTabsPersistence(): void {
 
 export const useSurfaceStore = create<SurfaceState>()(
   persist(
-    (set) => ({
+    set => ({
       surfaces: [HOME_SURFACE],
       activeSurfaceId: HOME_SURFACE_ID,
 
-      syncSurface: surface => set((state) => ({
+      syncSurface: surface => set(state => ({
         surfaces: appendOrUpdateSurface(state.surfaces, surface),
         activeSurfaceId: surface.id,
       })),
 
-      setActiveSurfaceId: surfaceId => set((state) => ({
+      setActiveSurfaceId: surfaceId => set(state => ({
         activeSurfaceId: state.surfaces.some(surface => surface.id === surfaceId)
           ? surfaceId
           : state.activeSurfaceId,
@@ -136,7 +136,7 @@ export const useSurfaceStore = create<SurfaceState>()(
         }
       }),
 
-      updateSurfaceTitle: (surfaceId, title) => set((state) => ({
+      updateSurfaceTitle: (surfaceId, title) => set(state => ({
         surfaces: state.surfaces.map(surface => surface.id === surfaceId && title
           ? { ...surface, title }
           : surface),
