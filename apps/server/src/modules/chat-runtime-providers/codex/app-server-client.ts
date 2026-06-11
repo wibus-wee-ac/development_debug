@@ -1,6 +1,7 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { spawn } from 'node:child_process'
 import { mkdirSync } from 'node:fs'
+import { createRequire } from 'node:module'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
@@ -40,6 +41,7 @@ export interface CodexAppServerClientOptions {
 const CODEX_NATIVE_CLIENT_INFO_FALLBACK_VERSION = '0.0.0'
 const CODEX_APP_SERVER_PATH_ENV = 'CRADLE_CODEX_APP_SERVER_PATH'
 const codexNativeClientVersionByPath = new Map<string, Promise<string>>()
+let vendoredCodexAppServerPath: string | null | undefined
 
 export function buildCradleCodexAppServerEnv(input: {
   chatSessionId: string
@@ -344,7 +346,21 @@ export function readCradleCodexClientVersion(env: Record<string, string | undefi
 }
 
 export function resolveCodexAppServerPath(env: Record<string, string | undefined> = process.env): string {
-  return env[CODEX_APP_SERVER_PATH_ENV]?.trim() || 'codex'
+  return env[CODEX_APP_SERVER_PATH_ENV]?.trim() || resolveVendoredCodexAppServerPath() || 'codex'
+}
+
+function resolveVendoredCodexAppServerPath(): string | null {
+  if (vendoredCodexAppServerPath !== undefined) {
+    return vendoredCodexAppServerPath
+  }
+  try {
+    const sdkEntry = import.meta.resolve('@openai/codex-sdk')
+    vendoredCodexAppServerPath = createRequire(sdkEntry).resolve('@openai/codex/bin/codex.js')
+  }
+  catch {
+    vendoredCodexAppServerPath = null
+  }
+  return vendoredCodexAppServerPath
 }
 
 export function readCodexNativeClientVersion(codexPath = 'codex'): Promise<string> {

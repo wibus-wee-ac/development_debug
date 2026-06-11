@@ -108,8 +108,8 @@ describe('resolveCodexAppServerPath', () => {
     })).toBe('/Applications/Cradle.app/Contents/Resources/codex')
   })
 
-  it('falls back to the Codex command for non-desktop runtimes', () => {
-    expect(resolveCodexAppServerPath({})).toBe('codex')
+  it('uses the vendored Codex runtime for non-desktop runtimes', () => {
+    expect(resolveCodexAppServerPath({}).replaceAll('\\', '/')).toContain('@openai/codex/bin/codex.js')
   })
 })
 
