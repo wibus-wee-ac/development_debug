@@ -285,7 +285,10 @@ function cloneMessageForStreamReader(message: UIMessage | undefined): UIMessage 
   if (!message) {
     return undefined
   }
-  return structuredClone(message) as UIMessage
+  return {
+    ...message,
+    parts: [...message.parts],
+  }
 }
 
 function hasVisibleContent(message: UIMessage): boolean {

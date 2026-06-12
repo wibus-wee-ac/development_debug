@@ -10,13 +10,14 @@ import type {
 } from '~/lib/electron'
 import { readDesktopChatStreamBridge } from '~/lib/electron'
 
+import type { ChatResponseRequestBody } from '../commands/chat-response-command'
+import { startChatResponse, subscribeChatSessionStream } from '../commands/chat-response-command'
 import {
   buildUIMessageChunkStreamFromResponse,
   emitChatRunActivity,
   emitChatRunSettled,
   readTerminalChunkStatus,
 } from './sse-chat-transport'
-import { ChatResponseRequestBody, startChatResponse, subscribeChatSessionStream } from '../commands/chat-response-command'
 
 export interface ChatStreamTransportResult {
   streamId: string | null
@@ -335,6 +336,24 @@ function throwIfAborted(signal: AbortSignal | undefined): void {
   if (signal?.aborted) {
     throw createAbortError()
   }
+}
+
+export function disposeChatStreamTransport(): void {
+  if (desktopSubscriptions) {
+    for (const unsubscribe of desktopSubscriptions) {
+      unsubscribe()
+    }
+    desktopSubscriptions = null
+  }
+  for (const state of desktopStreams.values()) {
+    if (!state.closed) {
+      state.closed = true
+      state.controller.error(createAbortError())
+    }
+  }
+  desktopStreams.clear()
+  pendingDesktopEvents.clear()
+  closedDesktopStreamIds.clear()
 }
 
 function createAbortError(): DOMException {

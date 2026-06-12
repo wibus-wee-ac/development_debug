@@ -94,6 +94,16 @@ function ensureBroadcastListener(): void {
   })
 }
 
+export function disposeChatRunBroadcast(): void {
+  if (broadcastChannel) {
+    broadcastChannel.close()
+  }
+  broadcastChannel = undefined
+  broadcastListenerAttached = false
+  globalHandlers.clear()
+  settledHandlers.clear()
+}
+
 function readBroadcastChannel(): BroadcastChannel | null {
   if (broadcastChannel !== undefined) {
     return broadcastChannel

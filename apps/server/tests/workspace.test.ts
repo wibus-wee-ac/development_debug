@@ -1,4 +1,4 @@
-import { mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { basename, join } from 'node:path'
 
@@ -166,6 +166,7 @@ describe('workspace capability', () => {
   it('lists files and enforces safe text IO', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
+    const linkedRoot = makeTempDir('cradle-linked-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
     process.env.CRADLE_DATA_DIR = dataDir
     let app: Awaited<ReturnType<typeof createServerApp>> | undefined
@@ -177,6 +178,7 @@ describe('workspace capability', () => {
       mkdirSync(join(workspaceRoot, '.git', 'objects'), { recursive: true })
       mkdirSync(join(workspaceRoot, 'ignored-dir'), { recursive: true })
       mkdirSync(join(workspaceRoot, 'node_modules', 'pkg'), { recursive: true })
+      mkdirSync(join(linkedRoot, 'lib'), { recursive: true })
       writeFileSync(join(workspaceRoot, 'src', 'main.ts'), 'console.log("hi")\n', 'utf8')
       writeFileSync(join(workspaceRoot, 'notes.md'), '# Notes\n', 'utf8')
       writeFileSync(join(workspaceRoot, '.DS_Store'), 'ignored', 'utf8')
@@ -184,6 +186,9 @@ describe('workspace capability', () => {
       writeFileSync(join(workspaceRoot, 'ignored-dir', 'keep-out.md'), 'nope\n', 'utf8')
       writeFileSync(join(workspaceRoot, '.git', 'config'), '[core]\n', 'utf8')
       writeFileSync(join(workspaceRoot, 'node_modules', 'pkg', 'index.js'), 'module.exports = {}\n', 'utf8')
+      writeFileSync(join(linkedRoot, 'lib', 'linked-main.ts'), 'export const linked = true\n', 'utf8')
+      writeFileSync(join(linkedRoot, 'README.md'), '# Linked\n', 'utf8')
+      symlinkSync(linkedRoot, join(workspaceRoot, 'linked'), process.platform === 'win32' ? 'junction' : 'dir')
 
       app = await createServerApp()
       const createRes = await app.handle(new Request('http://localhost/workspaces/from-directory', {
@@ -197,6 +202,9 @@ describe('workspace capability', () => {
       const entries = await filesRes.json()
       expect(entries).toEqual(expect.arrayContaining([
         { type: 'directory', name: 'empty-dir', path: 'empty-dir' },
+        { type: 'directory', name: 'linked', path: 'linked' },
+        { type: 'directory', name: 'lib', path: 'linked/lib' },
+        { type: 'file', name: 'linked-main.ts', path: 'linked/lib/linked-main.ts' },
         { type: 'directory', name: 'src', path: 'src' },
         { type: 'file', name: 'main.ts', path: 'src/main.ts' },
         { type: 'file', name: 'notes.md', path: 'notes.md' },
@@ -212,6 +220,7 @@ describe('workspace capability', () => {
       const rootChildren = await rootChildrenRes.json()
       expect(rootChildren).toEqual([
         { type: 'directory', name: 'empty-dir', path: 'empty-dir' },
+        { type: 'directory', name: 'linked', path: 'linked' },
         { type: 'directory', name: 'src', path: 'src' },
         { type: 'file', name: 'notes.md', path: 'notes.md' },
       ])
@@ -222,6 +231,13 @@ describe('workspace capability', () => {
         { type: 'file', name: 'main.ts', path: 'src/main.ts' },
       ])
 
+      const linkedChildrenRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/children?path=${encodeURIComponent('linked')}`))
+      expect(linkedChildrenRes.status).toBe(200)
+      expect(await linkedChildrenRes.json()).toEqual([
+        { type: 'directory', name: 'lib', path: 'linked/lib' },
+        { type: 'file', name: 'README.md', path: 'linked/README.md' },
+      ])
+
       const missingChildrenRes = await app.handle(new Request('http://localhost/workspaces/missing-workspace/files/children'))
       expect(missingChildrenRes.status).toBe(200)
       expect(await missingChildrenRes.json()).toEqual([])
@@ -229,7 +245,14 @@ describe('workspace capability', () => {
       const searchRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/search?q=${encodeURIComponent('main')}&limit=5`))
       expect(searchRes.status).toBe(200)
       expect(await searchRes.json()).toEqual([
+        { type: 'file', name: 'linked-main.ts', path: 'linked/lib/linked-main.ts' },
         { type: 'file', name: 'main.ts', path: 'src/main.ts' },
+      ])
+
+      const linkedSearchRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/search?q=${encodeURIComponent('linked-main')}&limit=5`))
+      expect(linkedSearchRes.status).toBe(200)
+      expect(await linkedSearchRes.json()).toEqual([
+        { type: 'file', name: 'linked-main.ts', path: 'linked/lib/linked-main.ts' },
       ])
 
       const ignoredSearchRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/search?q=${encodeURIComponent('ignored')}&limit=5`))
@@ -257,6 +280,10 @@ describe('workspace capability', () => {
       const readRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/content?path=${encodeURIComponent('notes.md')}`))
       const readBody = await readRes.json()
       expect(readBody.content).toBe('# Notes\n')
+
+      const linkedReadRes = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/content?path=${encodeURIComponent('linked/lib/linked-main.ts')}`))
+      const linkedReadBody = await linkedReadRes.json()
+      expect(linkedReadBody.content).toBe('export const linked = true\n')
 
       const blockedRead = await app.handle(new Request(`http://localhost/workspaces/${workspace.id}/files/content?path=${encodeURIComponent('../outside.md')}`))
       const blockedReadBody = await blockedRead.json()
@@ -339,6 +366,7 @@ describe('workspace capability', () => {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
+      rmSync(linkedRoot, { recursive: true, force: true })
       if (previousDataDir === undefined) {
         delete process.env.CRADLE_DATA_DIR
       }
