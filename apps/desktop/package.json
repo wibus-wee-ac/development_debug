@@ -38,6 +38,7 @@
   },
   "devDependencies": {
     "@tailwindcss/vite": "^4.2.2",
+    "@tanstack/router-plugin": "^1.168.18",
     "@types/node": "^22.19.1",
     "@vitejs/plugin-react": "^5.1.1",
     "babel-plugin-react-compiler": "^1.0.0",

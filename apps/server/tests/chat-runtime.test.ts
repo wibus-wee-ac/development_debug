@@ -4,6 +4,7 @@ import { join } from 'node:path'
 
 import { backendRuns, backendRunSnapshots, backendSessionBindings, chatSessionQueueItems, messages, providerTargets, sessions, workspaces } from '@cradle/db'
 import type { UIMessage, UIMessageChunk } from 'ai'
+import { readUIMessageStream } from 'ai'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -239,6 +240,26 @@ async function collectSseChunks(response: Response): Promise<UIMessageChunk[]> {
       }
       return [JSON.parse(data) as UIMessageChunk]
     })
+}
+
+async function readMessageFromUiChunks(chunks: UIMessageChunk[]): Promise<UIMessage | null> {
+  let latest: UIMessage | null = null
+  const stream = new ReadableStream<UIMessageChunk>({
+    start(controller) {
+      for (const chunk of chunks) {
+        controller.enqueue(chunk)
+      }
+      controller.close()
+    },
+  })
+  for await (const message of readUIMessageStream<UIMessage>({
+    message: { id: 'assistant-test', role: 'assistant', parts: [] },
+    stream,
+    terminateOnError: true,
+  })) {
+    latest = message
+  }
+  return latest
 }
 
 class TestCodexGoalContinuationRuntime implements ChatRuntime {
@@ -665,6 +686,19 @@ class TestCodexSideRuntime implements ChatRuntime {
   }
 
   async cancelTurn(): Promise<void> {}
+}
+
+class TestCodexProtocolChunkRuntime extends TestCodexSideRuntime {
+  constructor(private readonly chunks: UIMessageChunk[]) {
+    super()
+  }
+
+  override async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
+    this.streamInputs.push(input)
+    for (const chunk of this.chunks) {
+      yield chunk
+    }
+  }
 }
 
 class TestFallbackSideRuntime implements ChatRuntime {
@@ -1470,7 +1504,7 @@ describe('chat runtime capability', () => {
     }
   })
 
-  it('adds the Cradle CLI skill to ordinary Codex chat sessions', async () => {
+  it('does not add baseline skills to ordinary Codex chat sessions', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -1511,28 +1545,12 @@ describe('chat runtime capability', () => {
 
       expect(runtime.streamInputs).toHaveLength(1)
       const runtimeSkillPart = runtime.streamInputs[0]?.message.parts.find(part => part.type === 'data-cradle-skill')
-      expect(runtimeSkillPart).toEqual(expect.objectContaining({
-        type: 'data-cradle-skill',
-        data: expect.objectContaining({
-          type: 'data-cradle-skill',
-          name: 'cradle-cli',
-          scope: 'builtin',
-          path: expect.stringContaining('resources/skills/cradle-cli/SKILL.md'),
-        }),
-      }))
+      expect(runtimeSkillPart).toBeUndefined()
 
       const rows = await getChatMessages(app, 'session-codex-skill')
       const userRow = rows.find(row => row.role === 'user')
       const storedSkillPart = userRow?.message.parts.find(part => part.type === 'data-cradle-skill')
-      expect(storedSkillPart).toEqual(expect.objectContaining({
-        type: 'data-cradle-skill',
-        data: expect.objectContaining({
-          type: 'data-cradle-skill',
-          name: 'cradle-cli',
-          scope: 'builtin',
-          path: expect.stringContaining('resources/skills/cradle-cli/SKILL.md'),
-        }),
-      }))
+      expect(storedSkillPart).toBeUndefined()
     }
     finally {
       if (originalCodexRuntime) {
@@ -3749,6 +3767,82 @@ describe('chat runtime capability', () => {
       else {
         process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
       }
+    }
+  })
+
+  it('normalizes missing text and tool protocol anchors before streaming to clients', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexProtocolChunkRuntime([
+      { type: 'text-delta', id: 'text-missing-start', delta: 'Recovered text' },
+      { type: 'text-end', id: 'text-missing-start' },
+      { type: 'tool-output-available', toolCallId: 'call_missing_tool', output: { ok: true } },
+      { type: 'finish', finishReason: 'stop' },
+    ])
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-chat-protocol-normalization',
+        name: 'Workspace Chat Protocol Normalization',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-chat-protocol-normalization', {
+        providerTargetId: 'provider-target-chat-protocol-normalization',
+        sessionId: 'session-chat-protocol-normalization',
+        runtimeKind: 'codex',
+      })
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-protocol-normalization/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Normalize malformed stream' }),
+      }))
+      expect(runRes.status).toBe(200)
+
+      const chunks = await collectSseChunks(runRes)
+      expect(chunks).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'text-start', id: 'text-missing-start' }),
+        expect.objectContaining({ type: 'text-delta', id: 'text-missing-start', delta: 'Recovered text' }),
+        expect.objectContaining({ type: 'tool-input-start', toolCallId: 'call_missing_tool', toolName: 'unknown_tool' }),
+        expect.objectContaining({ type: 'tool-output-available', toolCallId: 'call_missing_tool', output: { ok: true } }),
+      ]))
+      expect(chunks.findIndex(chunk => chunk.type === 'text-start')).toBeLessThan(
+        chunks.findIndex(chunk => chunk.type === 'text-delta'),
+      )
+      expect(chunks.findIndex(chunk => chunk.type === 'tool-input-start')).toBeLessThan(
+        chunks.findIndex(chunk => chunk.type === 'tool-output-available'),
+      )
+
+      const message = await readMessageFromUiChunks(chunks)
+      expect(message?.parts).toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'text', text: 'Recovered text' }),
+        expect.objectContaining({
+          type: 'tool-unknown_tool',
+          toolCallId: 'call_missing_tool',
+          state: 'output-available',
+          output: { ok: true },
+        }),
+      ]))
+    }
+    finally {
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
     }
   })
 

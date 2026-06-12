@@ -238,7 +238,7 @@ describe('chat stream broker', () => {
       body: { text: 'hello' },
     })
     for (let index = 0; index < totalChunks; index += 1) {
-      controlled.controller.enqueue(encodeSse({ type: 'text-start', id: `text-${index}` }))
+      controlled.controller.enqueue(encodeSse({ type: 'message-metadata', messageMetadata: { index } }))
     }
 
     await vi.waitFor(() => {
@@ -252,8 +252,69 @@ describe('chat stream broker', () => {
 
     const lateChunks = readChannelPayloads(late, DESKTOP_CHAT_STREAM_CHUNK_CHANNEL)
     expect(lateChunks).toHaveLength(DESKTOP_CHAT_REPLAY_MAX_CHUNKS)
-    expect(lateChunks[0]).toMatchObject({ chunk: { id: `text-${overflowCount}` } })
-    expect(lateChunks.at(-1)).toMatchObject({ chunk: { id: `text-${totalChunks - 1}` } })
+    expect(lateChunks[0]).toMatchObject({ chunk: { messageMetadata: { index: overflowCount } } })
+    expect(lateChunks.at(-1)).toMatchObject({ chunk: { messageMetadata: { index: totalChunks - 1 } } })
+  })
+
+  it('retains replay anchors needed by later text deltas and tool outputs', async () => {
+    const controlled = createControlledSseResponse({ 'x-cradle-run-id': 'run-protocol-replay' })
+    const fetchFn = vi.fn(async () => controlled.response)
+    const broker = new ChatStreamBroker({
+      serverUrl: 'http://127.0.0.1:21423',
+      fetchFn: fetchFn as typeof fetch,
+    })
+    const first = new FakeWebContents()
+    const late = new FakeWebContents()
+
+    await broker.startResponse(first as never, {
+      sessionId: 'session-protocol-replay',
+      body: { text: 'hello' },
+    })
+
+    controlled.controller.enqueue(encodeSse({ type: 'text-start', id: 'text-protected' }))
+    controlled.controller.enqueue(encodeSse({ type: 'tool-input-start', toolCallId: 'call-protected', toolName: 'shell' }))
+    for (let index = 0; index < DESKTOP_CHAT_REPLAY_MAX_CHUNKS + 8; index += 1) {
+      controlled.controller.enqueue(encodeSse({ type: 'message-metadata', messageMetadata: { index } }))
+    }
+    controlled.controller.enqueue(encodeSse({ type: 'text-delta', id: 'text-protected', delta: 'kept' }))
+    controlled.controller.enqueue(encodeSse({ type: 'tool-output-available', toolCallId: 'call-protected', output: { ok: true } }))
+
+    await vi.waitFor(() => {
+      expect(readChannelPayloads(first, DESKTOP_CHAT_STREAM_CHUNK_CHANNEL).length)
+        .toBe(DESKTOP_CHAT_REPLAY_MAX_CHUNKS + 12)
+    })
+
+    await broker.subscribeSession(late as never, {
+      sessionId: 'session-protocol-replay',
+    })
+
+    const lateChunks = readChannelPayloads(late, DESKTOP_CHAT_STREAM_CHUNK_CHANNEL)
+      .map(payload => (payload as { chunk: unknown }).chunk)
+    const textStartIndex = lateChunks.findIndex(chunk =>
+      typeof chunk === 'object' &&
+      chunk !== null &&
+      (chunk as { type?: unknown, id?: unknown }).type === 'text-start' &&
+      (chunk as { id?: unknown }).id === 'text-protected')
+    const textDeltaIndex = lateChunks.findIndex(chunk =>
+      typeof chunk === 'object' &&
+      chunk !== null &&
+      (chunk as { type?: unknown, id?: unknown }).type === 'text-delta' &&
+      (chunk as { id?: unknown }).id === 'text-protected')
+    const toolStartIndex = lateChunks.findIndex(chunk =>
+      typeof chunk === 'object' &&
+      chunk !== null &&
+      (chunk as { type?: unknown, toolCallId?: unknown }).type === 'tool-input-start' &&
+      (chunk as { toolCallId?: unknown }).toolCallId === 'call-protected')
+    const toolOutputIndex = lateChunks.findIndex(chunk =>
+      typeof chunk === 'object' &&
+      chunk !== null &&
+      (chunk as { type?: unknown, toolCallId?: unknown }).type === 'tool-output-available' &&
+      (chunk as { toolCallId?: unknown }).toolCallId === 'call-protected')
+
+    expect(textStartIndex).toBeGreaterThanOrEqual(0)
+    expect(textDeltaIndex).toBeGreaterThan(textStartIndex)
+    expect(toolStartIndex).toBeGreaterThanOrEqual(0)
+    expect(toolOutputIndex).toBeGreaterThan(toolStartIndex)
   })
 
   it('coalesces replay deltas using the server stream merge rule', async () => {

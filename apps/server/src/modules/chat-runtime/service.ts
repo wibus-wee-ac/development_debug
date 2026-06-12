@@ -39,7 +39,6 @@ import {
 } from '../provider-runtime/side-conversation-registry'
 import { getProviderTarget, resolveProviderTarget } from '../provider-targets/service'
 import * as SessionService from '../session/service'
-import { listSkillInventory } from '../skills/skills.store'
 import type { BangCommandExecutionResult } from './bang-command'
 import { executeLocalBangCommand, persistBangCommandMessages } from './bang-command'
 import {
@@ -50,7 +49,6 @@ import {
 import type { ChatTurnContext } from './context/turn-context'
 import { resolveSessionSystemPrompt, resolveTurnContext } from './context/turn-context'
 import type { ChatContextPart } from './context-parts'
-import { readChatSkillContextPart } from './context-parts'
 import {
   annotateCodexGoalContinuationMessage,
   annotateGoalMessage,
@@ -244,7 +242,6 @@ const DEFAULT_RUN_DELTA_FLUSH_MS = 16
 const DEFAULT_RUN_DELTA_FLUSH_CHARS = 8_192
 const DEFAULT_SNAPSHOT_INTERVAL_MS = 10_000
 const CODEX_GOAL_CONTINUATION_PROMPT = '[internal] Continue the active Codex goal.'
-const CODEX_BASELINE_SKILL_NAMES = ['cradle-cli'] as const
 
 SessionService.onSessionArchived(releaseSideConversationsByParentSessionId)
 SessionService.onSessionCleanup(releaseSideConversationsByParentSessionId)
@@ -275,69 +272,6 @@ function publishRunChunk(runId: string, chunk: UIMessageChunk): void {
 }
 
 setRuntimeUserInputPublisher(publishRunChunk)
-
-function readCodexBaselineSkillParts(existingSkillNames: Set<string>): ChatContextPart[] {
-  if (CODEX_BASELINE_SKILL_NAMES.every((name) => existingSkillNames.has(name))) {
-    return []
-  }
-
-  const builtinSkills = listSkillInventory({})
-  return CODEX_BASELINE_SKILL_NAMES.flatMap((name) => {
-    if (existingSkillNames.has(name)) {
-      return []
-    }
-    const skill = builtinSkills.find((entry) => entry.scope === 'builtin' && entry.name === name)
-    return skill
-      ? [
-          {
-            type: 'data-cradle-skill' as const,
-            name: skill.name,
-            path: skill.location,
-            scope: skill.scope,
-            description: skill.description
-          }
-        ]
-      : []
-  })
-}
-
-function withCodexBaselineSkillContextParts(contextParts: ChatContextPart[]): ChatContextPart[] {
-  const existingSkillNames = new Set(
-    contextParts.flatMap((part) => (part.type === 'data-cradle-skill' ? [part.name] : []))
-  )
-  const baselineParts = readCodexBaselineSkillParts(existingSkillNames)
-  return baselineParts.length > 0 ? [...contextParts, ...baselineParts] : contextParts
-}
-
-function withCodexBaselineSkillUserMessage(message: UIMessage): UIMessage {
-  if (message.role !== 'user') {
-    return message
-  }
-
-  const existingSkillNames = new Set(
-    message.parts
-      .map((part) => readChatSkillContextPart(part)?.name)
-      .filter((name): name is string => typeof name === 'string')
-  )
-  const baselineParts = readCodexBaselineSkillParts(existingSkillNames)
-  if (baselineParts.length === 0) {
-    return message
-  }
-
-  return {
-    ...message,
-    parts: [
-      ...message.parts,
-      ...baselineParts.map(
-        (part) =>
-          ({
-            type: part.type,
-            data: part
-          }) as UIMessage['parts'][number]
-      )
-    ]
-  }
-}
 
 function replaceLastRequestMessage(
   messagesInput: UIMessage[] | undefined,
@@ -398,7 +332,10 @@ interface ActiveRun {
   chunkBufferIndexByKey: Map<string, number>
   pendingDeltaChunk: UIMessageChunk | null
   pendingDeltaFlushTimer: StreamFlushTimer | null
+  activeTextPartIds: Set<string>
+  activeReasoningPartIds: Set<string>
   streamedToolInputStartIds: Set<string>
+  streamedToolInvocationIds: Set<string>
   snapshotTimer: ReturnType<typeof setInterval> | null
   finalMessage: UIMessage
   finalProjection: FinalMessageProjectionState
@@ -3049,15 +2986,9 @@ export async function createRun(input: {
         message: `Runtime is not available: ${runtimeKind}`
       })
     }
-    const runtimeContextParts =
-      runtimeKind === 'codex' ? withCodexBaselineSkillContextParts(contextParts) : contextParts
-    const runtimeLastRequestMessage =
-      runtimeKind === 'codex' && lastRequestMessage?.role === 'user'
-        ? withCodexBaselineSkillUserMessage(lastRequestMessage)
-        : lastRequestMessage
     const runtimeRequestMessages = replaceLastRequestMessage(
       requestMessages,
-      runtimeLastRequestMessage
+      lastRequestMessage
     )
 
     const sessionRuntimeSettings = readSessionRuntimeSettings(context.session.configJson)
@@ -3126,16 +3057,16 @@ export async function createRun(input: {
     const draft =
       input.internalContinuation === 'codexGoal'
         ? createCodexGoalContinuationDraft({ sessionId: input.sessionId })
-        : runtimeLastRequestMessage?.role === 'assistant'
+        : lastRequestMessage?.role === 'assistant'
           ? {
               userMessageId: '',
-              assistantMessageId: runtimeLastRequestMessage.id,
-              userMessage: runtimeLastRequestMessage
+              assistantMessageId: lastRequestMessage.id,
+              userMessage: lastRequestMessage
             }
-          : runtimeLastRequestMessage?.role === 'user'
+          : lastRequestMessage?.role === 'user'
             ? createDraftTurnFromUserMessage({
                 sessionId: input.sessionId,
-                userMessage: runtimeLastRequestMessage,
+                userMessage: lastRequestMessage,
                 continuation: input.continuationMode
                   ? { mode: input.continuationMode, queueItemId: input.queueItemId }
                   : undefined
@@ -3145,7 +3076,7 @@ export async function createRun(input: {
                 runtimeKind,
                 userText,
                 files,
-                contextParts: runtimeContextParts,
+                contextParts,
                 continuation: input.continuationMode
                   ? { mode: input.continuationMode, queueItemId: input.queueItemId }
                   : undefined
@@ -3176,7 +3107,10 @@ export async function createRun(input: {
       chunkBufferIndexByKey: new Map(),
       pendingDeltaChunk: null,
       pendingDeltaFlushTimer: null,
+      activeTextPartIds: new Set(),
+      activeReasoningPartIds: new Set(),
       streamedToolInputStartIds: new Set(),
+      streamedToolInvocationIds: new Set(),
       snapshotTimer: null,
       finalMessage:
         lastRequestMessage?.role === 'assistant'
@@ -4592,8 +4526,19 @@ function normalizeToolInputStreamChunk(
     if (activeRun.streamedToolInputStartIds.has(chunk.toolCallId)) {
       return null
     }
-    activeRun.streamedToolInputStartIds.add(chunk.toolCallId)
     return chunk
+  }
+
+  if (requiresToolInvocationChunk(chunk) && !activeRun.streamedToolInvocationIds.has(chunk.toolCallId)) {
+    publishUIMessageChunk(
+      activeRun,
+      {
+        type: 'tool-input-start',
+        toolCallId: chunk.toolCallId,
+        toolName: 'unknown_tool'
+      },
+      false
+    )
   }
 
   if (chunk.type !== 'tool-input-delta') {
@@ -4622,6 +4567,44 @@ function normalizeToolInputStreamChunk(
   return chunk
 }
 
+function normalizeTextStreamChunk(
+  activeRun: ActiveRun,
+  chunk: UIMessageChunk,
+  terminal: boolean
+): UIMessageChunk {
+  if (terminal) {
+    return chunk
+  }
+
+  if (
+    (chunk.type === 'text-delta' || chunk.type === 'text-end') &&
+    !activeRun.activeTextPartIds.has(chunk.id)
+  ) {
+    publishUIMessageChunk(activeRun, { type: 'text-start', id: chunk.id }, false)
+  }
+
+  if (
+    (chunk.type === 'reasoning-delta' || chunk.type === 'reasoning-end') &&
+    !activeRun.activeReasoningPartIds.has(chunk.id)
+  ) {
+    publishUIMessageChunk(activeRun, { type: 'reasoning-start', id: chunk.id }, false)
+  }
+
+  return chunk
+}
+
+function requiresToolInvocationChunk(
+  chunk: UIMessageChunk
+): chunk is UIMessageChunk & { toolCallId: string } {
+  return (
+    chunk.type === 'tool-input-delta' ||
+    chunk.type === 'tool-approval-request' ||
+    chunk.type === 'tool-output-available' ||
+    chunk.type === 'tool-output-error' ||
+    chunk.type === 'tool-output-denied'
+  )
+}
+
 function publishUIMessageChunk(
   activeRun: ActiveRun,
   chunk: UIMessageChunk,
@@ -4631,11 +4614,12 @@ function publishUIMessageChunk(
   if (!normalizedChunk) {
     return
   }
-  chunk = normalizedChunk
+  chunk = normalizeTextStreamChunk(activeRun, normalizedChunk, terminal)
 
   if (chunk.type === 'start') {
     activeRun.startChunkPublished = true
   }
+  recordPublishedProtocolChunk(activeRun, chunk, terminal)
 
   if (isChatStreamTraceEnabled()) {
     recordChatStreamTrace({
@@ -4677,6 +4661,39 @@ function publishUIMessageChunk(
   }
   if (terminal || subscribers.size === 0) {
     runSubscribers.delete(activeRun.runId)
+  }
+}
+
+function recordPublishedProtocolChunk(
+  activeRun: ActiveRun,
+  chunk: UIMessageChunk,
+  terminal: boolean
+): void {
+  if (terminal) {
+    return
+  }
+
+  switch (chunk.type) {
+    case 'text-start':
+      activeRun.activeTextPartIds.add(chunk.id)
+      break
+    case 'text-end':
+      activeRun.activeTextPartIds.delete(chunk.id)
+      break
+    case 'reasoning-start':
+      activeRun.activeReasoningPartIds.add(chunk.id)
+      break
+    case 'reasoning-end':
+      activeRun.activeReasoningPartIds.delete(chunk.id)
+      break
+    case 'tool-input-start':
+      activeRun.streamedToolInputStartIds.add(chunk.toolCallId)
+      activeRun.streamedToolInvocationIds.add(chunk.toolCallId)
+      break
+    case 'tool-input-available':
+    case 'tool-input-error':
+      activeRun.streamedToolInvocationIds.add(chunk.toolCallId)
+      break
   }
 }
 
@@ -4922,7 +4939,10 @@ function releaseActiveRun(activeRun: ActiveRun): void {
   activeRun.pendingDeltaChunk = null
   activeRun.chunkBuffer = []
   activeRun.chunkBufferIndexByKey.clear()
+  activeRun.activeTextPartIds.clear()
+  activeRun.activeReasoningPartIds.clear()
   activeRun.streamedToolInputStartIds.clear()
+  activeRun.streamedToolInvocationIds.clear()
   activeRun.finalMessage.parts = []
   activeRun.finalProjection.activeTextParts.clear()
   activeRun.finalProjection.activeReasoningParts.clear()

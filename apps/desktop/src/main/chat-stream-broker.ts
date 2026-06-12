@@ -120,6 +120,9 @@ interface ReplayBuffer {
   nextCursor: number
   totalBytes: number
   indexByCoalesceKey: Map<string, number>
+  activeTextPartIds: Set<string>
+  activeReasoningPartIds: Set<string>
+  activeToolInvocationIds: Set<string>
 }
 
 interface WebContentsCleanupRegistration {
@@ -590,10 +593,14 @@ function createReplayBuffer(): ReplayBuffer {
     nextCursor: 0,
     totalBytes: 0,
     indexByCoalesceKey: new Map(),
+    activeTextPartIds: new Set(),
+    activeReasoningPartIds: new Set(),
+    activeToolInvocationIds: new Set(),
   }
 }
 
 function bufferReplayChunk(buffer: ReplayBuffer, chunk: unknown): void {
+  recordReplayProtocolState(buffer, chunk)
   if (coalesceReplayChunk(buffer, chunk)) {
     trimReplayBuffer(buffer)
     return
@@ -650,7 +657,11 @@ function trimReplayBuffer(buffer: ReplayBuffer): void {
     buffer.chunks.length > DESKTOP_CHAT_REPLAY_MAX_CHUNKS
     || buffer.totalBytes > DESKTOP_CHAT_REPLAY_MAX_BYTES
   ) {
-    const removed = buffer.chunks.shift()
+    const removeIndex = findRemovableReplayItemIndex(buffer)
+    if (removeIndex === -1) {
+      break
+    }
+    const [removed] = buffer.chunks.splice(removeIndex, 1)
     if (!removed) {
       break
     }
@@ -660,6 +671,122 @@ function trimReplayBuffer(buffer: ReplayBuffer): void {
   if (changed) {
     rebuildReplayCoalesceIndex(buffer)
   }
+}
+
+function findRemovableReplayItemIndex(buffer: ReplayBuffer): number {
+  const firstUnprotectedIndex = buffer.chunks.findIndex((_, index) =>
+    !isReplayDependencyForLaterChunk(buffer, index)
+  )
+  if (firstUnprotectedIndex !== -1) {
+    return firstUnprotectedIndex
+  }
+  return -1
+}
+
+function isReplayDependencyForLaterChunk(buffer: ReplayBuffer, index: number): boolean {
+  const items = buffer.chunks
+  const chunk = readRecord(items[index]?.chunk)
+  if (!chunk) {
+    return false
+  }
+
+  const type = chunk.type
+  if (type === 'text-start') {
+    const id = typeof chunk.id === 'string' ? chunk.id : null
+    return id !== null && (
+      buffer.activeTextPartIds.has(id) ||
+      hasLaterChunk(items, index, candidate =>
+        (candidate.type === 'text-delta' || candidate.type === 'text-end') &&
+        candidate.id === id
+      )
+    )
+  }
+  if (type === 'reasoning-start') {
+    const id = typeof chunk.id === 'string' ? chunk.id : null
+    return id !== null && (
+      buffer.activeReasoningPartIds.has(id) ||
+      hasLaterChunk(items, index, candidate =>
+        (candidate.type === 'reasoning-delta' || candidate.type === 'reasoning-end') &&
+        candidate.id === id
+      )
+    )
+  }
+  if (
+    type === 'tool-input-start' ||
+    type === 'tool-input-available' ||
+    type === 'tool-input-error'
+  ) {
+    const toolCallId = typeof chunk.toolCallId === 'string' ? chunk.toolCallId : null
+    return toolCallId !== null && (
+      buffer.activeToolInvocationIds.has(toolCallId) ||
+      hasLaterChunk(items, index, candidate =>
+        isToolDependentReplayChunk(candidate) &&
+        candidate.toolCallId === toolCallId
+      )
+    )
+  }
+  return false
+}
+
+function recordReplayProtocolState(buffer: ReplayBuffer, chunk: unknown): void {
+  const record = readRecord(chunk)
+  if (!record) {
+    return
+  }
+  if (
+    (record.type === 'tool-input-start' ||
+      record.type === 'tool-input-available' ||
+      record.type === 'tool-input-error') &&
+    typeof record.toolCallId === 'string'
+  ) {
+    buffer.activeToolInvocationIds.add(record.toolCallId)
+  }
+  if (
+    typeof record.toolCallId === 'string' &&
+    (
+      (record.type === 'tool-output-available' && record.preliminary !== true) ||
+      record.type === 'tool-output-error' ||
+      record.type === 'tool-output-denied'
+    )
+  ) {
+    buffer.activeToolInvocationIds.delete(record.toolCallId)
+  }
+  if (record.type === 'text-start' && typeof record.id === 'string') {
+    buffer.activeTextPartIds.add(record.id)
+  }
+  if (record.type === 'text-end' && typeof record.id === 'string') {
+    buffer.activeTextPartIds.delete(record.id)
+  }
+  if (record.type === 'reasoning-start' && typeof record.id === 'string') {
+    buffer.activeReasoningPartIds.add(record.id)
+  }
+  if (record.type === 'reasoning-end' && typeof record.id === 'string') {
+    buffer.activeReasoningPartIds.delete(record.id)
+  }
+}
+
+function hasLaterChunk(
+  items: ReplayBufferItem[],
+  index: number,
+  predicate: (chunk: Record<string, unknown>) => boolean,
+): boolean {
+  for (let nextIndex = index + 1; nextIndex < items.length; nextIndex += 1) {
+    const candidate = readRecord(items[nextIndex]?.chunk)
+    if (candidate && predicate(candidate)) {
+      return true
+    }
+  }
+  return false
+}
+
+function isToolDependentReplayChunk(chunk: Record<string, unknown>): boolean {
+  return (
+    chunk.type === 'tool-input-delta' ||
+    chunk.type === 'tool-approval-request' ||
+    chunk.type === 'tool-output-available' ||
+    chunk.type === 'tool-output-error' ||
+    chunk.type === 'tool-output-denied'
+  )
 }
 
 function rebuildReplayCoalesceIndex(buffer: ReplayBuffer): void {

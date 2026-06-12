@@ -3,7 +3,7 @@ import { homedir } from 'node:os'
 import { extname, isAbsolute, join, relative } from 'node:path'
 
 import { createServices, getIpcContext, IpcMethod, IpcService } from '@cradle/ipc'
-import { app, BrowserWindow, dialog, screen, shell as nativeLauncher } from 'electron'
+import { app, BrowserWindow, dialog, screen, shell as nativeLauncher, systemPreferences } from 'electron'
 
 import { BrowserTabScriptsService } from './browser-tab-scripts'
 import type {
@@ -69,6 +69,26 @@ export interface DesktopPreferences {
   appshotHotkeyTrigger: MacInputBareModifier
   autoCheckForUpdates: boolean
   autoDownloadUpdates: boolean
+}
+
+export type NativeAuthCapabilityReason = 'available' | 'unsupported-platform' | 'unavailable'
+
+export interface NativeAuthCapability {
+  supported: boolean
+  method: 'local-authentication' | null
+  reason: NativeAuthCapabilityReason
+}
+
+export type NativeAuthAuthenticateStatus = 'authenticated' | 'unsupported' | 'canceled' | 'failed'
+
+export interface NativeAuthAuthenticateOptions {
+  reason?: string
+}
+
+export interface NativeAuthAuthenticateResult {
+  status: NativeAuthAuthenticateStatus
+  method: 'local-authentication' | null
+  message?: string
 }
 
 const MAX_CODEX_APP_CAPTURE_BYTES = 25 * 1024 * 1024
@@ -319,6 +339,94 @@ class NativeService extends IpcService {
     }
 
     return { files, warnings }
+  }
+}
+
+// ── Native Local Authentication Service ──────────────────────────────────────
+
+function readNativeAuthCapability(): NativeAuthCapability {
+  if (process.platform !== 'darwin') {
+    return {
+      supported: false,
+      method: null,
+      reason: 'unsupported-platform',
+    }
+  }
+
+  try {
+    if (!systemPreferences.canPromptTouchID()) {
+      return {
+        supported: false,
+        method: null,
+        reason: 'unavailable',
+      }
+    }
+  }
+  catch {
+    return {
+      supported: false,
+      method: null,
+      reason: 'unavailable',
+    }
+  }
+
+  return {
+    supported: true,
+    method: 'local-authentication',
+    reason: 'available',
+  }
+}
+
+function readNativeAuthPromptReason(value: unknown): string {
+  if (typeof value !== 'string') {
+    return 'Confirm this action in Cradle.'
+  }
+  const reason = value.trim()
+  return reason.length > 0 ? reason.slice(0, 180) : 'Confirm this action in Cradle.'
+}
+
+function readErrorMessage(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
+}
+
+function isNativeAuthCancellation(error: unknown): boolean {
+  const message = readErrorMessage(error).toLowerCase()
+  return message.includes('cancel') || message.includes('user')
+}
+
+class NativeAuthService extends IpcService {
+  static readonly groupName = 'nativeAuth'
+
+  @IpcMethod()
+  async getCapability(): Promise<NativeAuthCapability> {
+    return readNativeAuthCapability()
+  }
+
+  @IpcMethod()
+  async authenticate(options: NativeAuthAuthenticateOptions = {}): Promise<NativeAuthAuthenticateResult> {
+    const capability = readNativeAuthCapability()
+    if (!capability.supported) {
+      return {
+        status: 'unsupported',
+        method: null,
+        message: capability.reason,
+      }
+    }
+
+    try {
+      await systemPreferences.promptTouchID(readNativeAuthPromptReason(options.reason))
+      return {
+        status: 'authenticated',
+        method: 'local-authentication',
+      }
+    }
+    catch (error) {
+      return {
+        status: isNativeAuthCancellation(error) ? 'canceled' : 'failed',
+        method: 'local-authentication',
+        message: readErrorMessage(error),
+      }
+    }
   }
 }
 
@@ -1002,6 +1110,7 @@ export function createNativeServices(context: NativeServicesContext) {
   nativeServicesContext = context
   return createServices([
     NativeService,
+    NativeAuthService,
     WindowService,
     DesktopUpdateService,
     DesktopChatStreamService,

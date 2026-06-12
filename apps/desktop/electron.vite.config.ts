@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url'
 
 import { pluginImportMap } from '@cradle/plugin-sdk/vite-plugin-import-map'
 import tailwindcss from '@tailwindcss/vite'
+import { tanstackRouter } from '@tanstack/router-plugin/vite'
 import viteReact from '@vitejs/plugin-react'
 import { defineConfig } from 'electron-vite'
 
@@ -56,6 +57,10 @@ export default defineConfig({
     root: webRoot,
     plugins: [
       tailwindcss(),
+      tanstackRouter({
+        target: 'react',
+        autoCodeSplitting: true,
+      }),
       viteReact({
         babel: {
           plugins: ['babel-plugin-react-compiler'],
