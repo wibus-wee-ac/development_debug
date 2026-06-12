@@ -5,10 +5,9 @@ import { useTranslation } from 'react-i18next'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Progress } from '~/components/ui/progress'
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Spinner } from '~/components/ui/spinner'
 import { Switch } from '~/components/ui/switch'
-import type { DesktopCliStatus, DesktopUpdateStatus, MacInputBareModifier } from '~/lib/electron'
+import type { DesktopCliStatus, DesktopUpdateStatus } from '~/lib/electron'
 import { isElectron, nativeIpc, subscribeDesktopUpdateStatus } from '~/lib/electron'
 import { formatCompactBytes } from '~/lib/number-format'
 
@@ -18,22 +17,6 @@ import type { DesktopPreferences } from './use-desktop-preferences'
 import { useDesktopPreferences } from './use-desktop-preferences'
 
 type SettingsKey = keyof typeof import('~/locales/default').default.settings
-
-const APP_SHOT_HOTKEY_TRIGGERS: MacInputBareModifier[] = [
-  'DoubleCommand',
-  'DoubleOption',
-  'DoubleShift',
-]
-
-const APP_SHOT_HOTKEY_LABEL_KEYS = {
-  DoubleCommand: 'desktop.appshotHotkey.option.command',
-  DoubleOption: 'desktop.appshotHotkey.option.option',
-  DoubleShift: 'desktop.appshotHotkey.option.shift',
-} satisfies Record<MacInputBareModifier, SettingsKey>
-
-function isAppshotHotkeyTrigger(value: string): value is MacInputBareModifier {
-  return APP_SHOT_HOTKEY_TRIGGERS.includes(value as MacInputBareModifier)
-}
 
 const EMPTY_UPDATE_STATUS: DesktopUpdateStatus = {
   unsupported: true,
@@ -233,46 +216,6 @@ export function DesktopUpdateSettings() {
             aria-label={t('desktop.doubleCommandQ.label' as SettingsKey)}
             data-testid="desktop-double-command-q"
           />
-        </SettingsRow>
-
-        <SettingsRow
-          label={t('desktop.appshotHotkey.label' as SettingsKey)}
-          description={t('desktop.appshotHotkey.description' as SettingsKey)}
-        >
-          <div className="flex items-center gap-3">
-            <Select
-              value={desktopPrefs?.appshotHotkeyTrigger ?? 'DoubleCommand'}
-              onValueChange={(value) => {
-                if (isAppshotHotkeyTrigger(value)) {
-                  savePreference({ appshotHotkeyTrigger: value })
-                }
-              }}
-              disabled={prefsDisabled}
-            >
-              <SelectTrigger
-                size="sm"
-                className="w-40"
-                aria-label={t('desktop.appshotHotkey.triggerLabel' as SettingsKey)}
-                data-testid="desktop-appshot-hotkey-trigger"
-              >
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {APP_SHOT_HOTKEY_TRIGGERS.map(trigger => (
-                  <SelectItem key={trigger} value={trigger}>
-                    {t(APP_SHOT_HOTKEY_LABEL_KEYS[trigger])}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <Switch
-              checked={desktopPrefs?.appshotHotkeyEnabled ?? true}
-              onCheckedChange={appshotHotkeyEnabled => savePreference({ appshotHotkeyEnabled })}
-              disabled={prefsDisabled}
-              aria-label={t('desktop.appshotHotkey.label' as SettingsKey)}
-              data-testid="desktop-appshot-hotkey"
-            />
-          </div>
         </SettingsRow>
 
         <SettingsRow
