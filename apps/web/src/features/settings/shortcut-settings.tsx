@@ -33,8 +33,150 @@ const APP_SHOT_HOTKEY_LABEL_KEYS = {
   DoubleShift: 'shortcut.appshotHotkey.option.shift'
 } satisfies Record<MacInputBareModifier, SettingsKey>
 
+interface BuiltInShortcutItem {
+  labelKey: SettingsKey
+  descriptionKey: SettingsKey
+  keys: readonly string[]
+}
+
+interface BuiltInShortcutGroup {
+  labelKey: SettingsKey
+  descriptionKey: SettingsKey
+  items: readonly BuiltInShortcutItem[]
+}
+
+const BUILT_IN_SHORTCUT_GROUPS: readonly BuiltInShortcutGroup[] = [
+  {
+    labelKey: 'shortcut.builtIn.global.title',
+    descriptionKey: 'shortcut.builtIn.global.description',
+    items: [
+      {
+        labelKey: 'shortcut.builtIn.settings.label',
+        descriptionKey: 'shortcut.builtIn.settings.description',
+        keys: ['⌘,']
+      },
+      {
+        labelKey: 'shortcut.builtIn.commandPalette.label',
+        descriptionKey: 'shortcut.builtIn.commandPalette.description',
+        keys: ['⌘K', '⇧⌘P']
+      },
+      {
+        labelKey: 'shortcut.builtIn.quickOpen.label',
+        descriptionKey: 'shortcut.builtIn.quickOpen.description',
+        keys: ['⌘P']
+      },
+      {
+        labelKey: 'shortcut.builtIn.newChat.label',
+        descriptionKey: 'shortcut.builtIn.newChat.description',
+        keys: ['⌘T']
+      },
+      {
+        labelKey: 'shortcut.builtIn.closeSurface.label',
+        descriptionKey: 'shortcut.builtIn.closeSurface.description',
+        keys: ['⌘W']
+      },
+      {
+        labelKey: 'shortcut.builtIn.switchSurface.label',
+        descriptionKey: 'shortcut.builtIn.switchSurface.description',
+        keys: ['⌘1-⌘9']
+      },
+      {
+        labelKey: 'shortcut.builtIn.cycleSurface.label',
+        descriptionKey: 'shortcut.builtIn.cycleSurface.description',
+        keys: ['Ctrl Tab', 'Ctrl ⇧Tab']
+      },
+      {
+        labelKey: 'shortcut.builtIn.sidebar.label',
+        descriptionKey: 'shortcut.builtIn.sidebar.description',
+        keys: ['⌘B']
+      },
+      {
+        labelKey: 'shortcut.builtIn.rightAside.label',
+        descriptionKey: 'shortcut.builtIn.rightAside.description',
+        keys: ['⌘⌥B']
+      },
+      {
+        labelKey: 'shortcut.builtIn.bottomPanel.label',
+        descriptionKey: 'shortcut.builtIn.bottomPanel.description',
+        keys: ['Ctrl `']
+      },
+      {
+        labelKey: 'shortcut.builtIn.jarvis.label',
+        descriptionKey: 'shortcut.builtIn.jarvis.description',
+        keys: ['⌘J']
+      },
+      {
+        labelKey: 'shortcut.builtIn.layoutFocus.label',
+        descriptionKey: 'shortcut.builtIn.layoutFocus.description',
+        keys: ['⌘.']
+      }
+    ]
+  },
+  {
+    labelKey: 'shortcut.builtIn.contextual.title',
+    descriptionKey: 'shortcut.builtIn.contextual.description',
+    items: [
+      {
+        labelKey: 'shortcut.builtIn.settingsClose.label',
+        descriptionKey: 'shortcut.builtIn.settingsClose.description',
+        keys: ['⌘Esc']
+      },
+      {
+        labelKey: 'shortcut.builtIn.chatSend.label',
+        descriptionKey: 'shortcut.builtIn.chatSend.description',
+        keys: ['Enter']
+      },
+      {
+        labelKey: 'shortcut.builtIn.chatAlternateSend.label',
+        descriptionKey: 'shortcut.builtIn.chatAlternateSend.description',
+        keys: ['⇧⌘↵', '⇧Ctrl↵']
+      },
+      {
+        labelKey: 'shortcut.builtIn.chatMode.label',
+        descriptionKey: 'shortcut.builtIn.chatMode.description',
+        keys: ['⇧Tab']
+      },
+      {
+        labelKey: 'shortcut.builtIn.browserTabSwitch.label',
+        descriptionKey: 'shortcut.builtIn.browserTabSwitch.description',
+        keys: ['⌘1-⌘9', '⌘0']
+      },
+      {
+        labelKey: 'shortcut.builtIn.browserTabClose.label',
+        descriptionKey: 'shortcut.builtIn.browserTabClose.description',
+        keys: ['⌘W']
+      },
+      {
+        labelKey: 'shortcut.builtIn.workspaceCopyPath.label',
+        descriptionKey: 'shortcut.builtIn.workspaceCopyPath.description',
+        keys: ['P', '⌘K P']
+      },
+      {
+        labelKey: 'shortcut.builtIn.workspaceCopyRelativePath.label',
+        descriptionKey: 'shortcut.builtIn.workspaceCopyRelativePath.description',
+        keys: ['⌘⇧⌥C']
+      }
+    ]
+  }
+]
+
 function isAppshotHotkeyTrigger(value: string): value is MacInputBareModifier {
   return APP_SHOT_HOTKEY_TRIGGERS.includes(value as MacInputBareModifier)
+}
+
+function ShortcutKeyList({ keys }: { keys: readonly string[] }) {
+  return (
+    <div className="flex max-w-[18rem] flex-wrap justify-end gap-1.5">
+      {keys.map((key) => (
+        <kbd
+          key={key}
+          className="inline-flex h-6 items-center rounded-md border border-border bg-muted px-1.5 font-mono text-[11px] leading-none text-foreground"
+        >
+          {key}
+        </kbd>
+      ))}
+    </div>
+  )
 }
 
 export function ShortcutSettings() {
@@ -73,7 +215,10 @@ export function ShortcutSettings() {
       }
       data-testid="shortcut-settings"
     >
-      <SettingsGroup>
+      <SettingsGroup
+        label={t('shortcut.configurable.title' as SettingsKey)}
+        description={t('shortcut.configurable.description' as SettingsKey)}
+      >
         <SettingsRow
           label={t('shortcut.appshotHotkey.label' as SettingsKey)}
           description={t('shortcut.appshotHotkey.description' as SettingsKey)}
@@ -114,6 +259,24 @@ export function ShortcutSettings() {
           </div>
         </SettingsRow>
       </SettingsGroup>
+
+      {BUILT_IN_SHORTCUT_GROUPS.map((group) => (
+        <SettingsGroup
+          key={group.labelKey}
+          label={t(group.labelKey)}
+          description={t(group.descriptionKey)}
+        >
+          {group.items.map((item) => (
+            <SettingsRow
+              key={item.labelKey}
+              label={t(item.labelKey)}
+              description={t(item.descriptionKey)}
+            >
+              <ShortcutKeyList keys={item.keys} />
+            </SettingsRow>
+          ))}
+        </SettingsGroup>
+      ))}
 
       {!isElectron && (
         <p className="text-[12px] text-muted-foreground" data-testid="shortcut-web-notice">

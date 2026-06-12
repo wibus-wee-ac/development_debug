@@ -26,7 +26,7 @@
 - **settings-row.tsx**: Settings 页面复用的分组标题、分隔线与行布局组件；支持在 label 旁挂载轻量 accessory，例如 dev-only badge。
 - **settings-sidebar.tsx**: Settings 侧边栏导航与返回入口，使用面向用户的中文导航标签；记录/Chronicle 入口只在 dev runtime 下展示。
 - **settings-sidebar.test.tsx**: Settings 侧边栏返回按钮与导航回调的可访问性回归测试
-- **shortcut-settings.tsx**: Shortcuts 设置页，承载 desktop-owned AppShot bare modifier 全局触发键（Double Command / Double Option / Double Shift）和启停开关；保存后复用 desktop preferences API，并在 Electron 中通过 `native.setDesktopPreferences` 立即同步 mac bridge input configuration。
+- **shortcut-settings.tsx**: Shortcuts 设置页，承载 desktop-owned AppShot bare modifier 全局触发键（Double Command / Double Option / Double Shift）和启停开关；保存后复用 desktop preferences API，并在 Electron 中通过 `native.setDesktopPreferences` 立即同步 mac bridge input configuration。页面下方使用现有 Settings row primitive 只读列举 Cradle 内置 application/contextual 快捷键，不新增 shortcut storage ownership。
 - **support-settings.tsx**: Support 设置页，提供本地 diagnostics JSON 导出、feedback template copy、feedback issue 入口、Cradle-owned data directory reveal 和卸载数据保留说明；diagnostics bundle schema 跟随 Observability export contract 验证 events、incidents、errorPatterns、timeline 与 logs；Settings Support 首屏在 feedback template 与控制表面 ready 后记录 performance gate。
 - **use-app-preferences.ts**: App preferences query / mutation hook，读取与写入 server-owned feature flags；`useFeatureFlag` 是前端能力入口门控的统一读取口。
 - **use-chat-preferences.ts**: Chat preferences query / mutation hook，读取与写入默认 continuation behavior。
