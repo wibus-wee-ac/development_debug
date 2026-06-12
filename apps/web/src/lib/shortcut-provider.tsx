@@ -4,33 +4,40 @@ import { ShortcutContext } from './shortcut-context'
 import type { ShortcutDefinition, ShortcutEntry } from './shortcut-utils'
 import { matchesShortcut } from './shortcut-utils'
 
+function isEditableShortcutTarget(target: EventTarget | null): boolean {
+  if (!(target instanceof HTMLElement)) {
+    return false
+  }
+
+  return target.tagName === 'INPUT'
+    || target.tagName === 'TEXTAREA'
+    || target.tagName === 'SELECT'
+    || target.isContentEditable
+}
+
 export function ShortcutProvider({ children }: { children: React.ReactNode }) {
   const entriesRef = React.useRef<Map<string, ShortcutEntry>>(new Map())
 
-  const register = (id: string, shortcut: ShortcutDefinition, handler: () => void, enabled = true) => {
-      entriesRef.current.set(id, { id, shortcut, handler, enabled })
-    }
+  const register = React.useCallback((id: string, shortcut: ShortcutDefinition, handler: () => void, enabled = true) => {
+    entriesRef.current.set(id, { id, shortcut, handler, enabled })
+  }, [])
 
-  const unregister = (id: string) => {
+  const unregister = React.useCallback((id: string) => {
     entriesRef.current.delete(id)
-  }
+  }, [])
 
   React.useEffect(() => {
     const onKeyDown = (event: KeyboardEvent): void => {
-      // Skip if focus is in an input-like element
-      const target = event.target as HTMLElement | null
-      if (
-        target
-        && (target.tagName === 'INPUT'
-          || target.tagName === 'TEXTAREA'
-          || target.tagName === 'SELECT'
-          || target.isContentEditable)
-      ) {
+      if (event.defaultPrevented || event.isComposing) {
         return
       }
 
+      const editableTarget = isEditableShortcutTarget(event.target)
       for (const entry of entriesRef.current.values()) {
         if (!entry.enabled) {
+          continue
+        }
+        if (editableTarget && !entry.shortcut.allowInEditable) {
           continue
         }
         if (matchesShortcut(event, entry.shortcut)) {
@@ -41,11 +48,11 @@ export function ShortcutProvider({ children }: { children: React.ReactNode }) {
       }
     }
 
-    window.addEventListener('keydown', onKeyDown)
-    return () => window.removeEventListener('keydown', onKeyDown)
+    window.addEventListener('keydown', onKeyDown, { capture: true })
+    return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
   }, [])
 
-  const value = ({ register, unregister })
+  const value = React.useMemo(() => ({ register, unregister }), [register, unregister])
 
   return (
     <ShortcutContext.Provider value={value}>

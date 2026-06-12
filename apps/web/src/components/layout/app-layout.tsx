@@ -569,7 +569,7 @@ function AppLayoutContent({
     }
   }, [canUseRightAside])
 
-  useShortcut('toggle-zen-sidebars', { meta: true, key: '.' }, handleToggleZenSidebars)
+  useShortcut('toggle-zen-sidebars', { meta: true, key: '.', allowInEditable: true }, handleToggleZenSidebars)
 
   const handleToggleRightAsideSheet = useCallback(() => {
     setRightAsideSheetOpen(open => !open)

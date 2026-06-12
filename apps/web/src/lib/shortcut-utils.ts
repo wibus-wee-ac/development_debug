@@ -6,6 +6,7 @@ type ShortcutModifiers = {
 }
 
 export type ShortcutDefinition = ShortcutModifiers & {
+  allowInEditable?: boolean
   key: string
 }
 

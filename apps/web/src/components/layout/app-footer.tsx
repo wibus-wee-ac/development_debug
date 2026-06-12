@@ -20,7 +20,7 @@ export function AppFooter({ className }: { className?: string }) {
   const setActiveSessionId = useJarvisUiStore(s => s.setActiveSessionId)
   const closeSessionTab = useJarvisUiStore(s => s.closeSessionTab)
 
-  useShortcut('toggle-jarvis', { meta: true, key: 'j' }, () => setJarvisOpen(prev => !prev))
+  useShortcut('toggle-jarvis', { meta: true, key: 'j', allowInEditable: true }, () => setJarvisOpen(prev => !prev))
   const handleHistorySessionSelected = () => setJarvisOpen(true)
 
   // "Ask Jarvis" is the active Jarvis entry when no session is selected.
