@@ -15,6 +15,7 @@
 - **desktop-update-settings.tsx**: Desktop 设置页（preferences-first 布局）。主区是 desktop-owned 偏好开关：Double Command+Q 退出、AppShot bare modifier 触发键（Double Command / Double Option / Double Shift）、自动检查更新、自动下载更新；保存后通过 Electron IPC 立即同步 mac bridge input configuration 与 desktop preferences。仅在 Electron 下，偏好下方再以紧凑卡片承载 `electron-updater` 更新状态/检查/下载/应用与 packaged macOS `cradle` PATH command 的 install/repair/remove 入口；Web 端只显示「仅桌面应用生效」提示。Settings Desktop 首屏在 update status 与 CLI status 初始化完成后记录 performance gate。
 - **external-issue-source-settings.tsx**: GitHub Issues 设置页，通过 Cradle-owned `/external-issue-sources` API 管理 workspace 仓库绑定、手动刷新、启停、每小时调度开关和删除；插件只注册 source reader，不贡献 Settings UI。
 - **external-work-import-settings.tsx**: Import 设置页，只扫描 Server 与 Electron 设备上的 Claude / Codex 会话文件，合并去重后提交到 Server 导入为 Cradle-owned chat sessions。
+- **feature-settings.tsx**: Features 设置页，编辑 server-owned App feature flags；前端入口只读取这些 flags，不拥有门控语义。
 - **jarvis-settings.tsx**: Jarvis 设置页，复用 composer toolbar 的 runtime/provider/model/thinking 级联选择器配置系统助手模型；runtime list comes from Chat Runtime catalog filtered to `jarvis` surfaces, and Settings Jarvis 首屏在 preferences、provider targets 与当前 provider target cached models 查询成功后记录 performance gate
 - **model-registry-settings.tsx**: 全局模型 registry mappings 设置页，管理 Cradle-owned model ID 到 models.dev/manual registry entry 的映射，供所有 provider target 与 custom model 统一 enrichment；采用居中列表布局（`SettingsPage` + 列表卡片），每个 mapping 一行内联展示 registry ID、family、context window 与 cost，编辑复用 `ModelRegistryMappingDialog`，删除内联。
 - **settings-overlay-store.ts**: (moved to `~/store/settings-overlay.ts`) Shared Settings focus state — records active section selection and one-shot Chronicle memory/knowledge and Agent focus targets for Settings-owned panels; Settings visibility is owned by the `/settings/$section` route; emits Settings Agents, Settings Appearance, Settings Chronicle, Settings Desktop, Settings Jarvis, Settings Providers, and Settings Support render-requested performance marks when those sections are requested
@@ -26,5 +27,6 @@
 - **settings-sidebar.tsx**: Settings 侧边栏导航与返回入口，使用面向用户的中文导航标签；记录/Chronicle 入口只在 dev runtime 下展示。
 - **settings-sidebar.test.tsx**: Settings 侧边栏返回按钮与导航回调的可访问性回归测试
 - **support-settings.tsx**: Support 设置页，提供本地 diagnostics JSON 导出、feedback template copy、feedback issue 入口、Cradle-owned data directory reveal 和卸载数据保留说明；diagnostics bundle schema 跟随 Observability export contract 验证 events、incidents、errorPatterns、timeline 与 logs；Settings Support 首屏在 feedback template 与控制表面 ready 后记录 performance gate。
+- **use-app-preferences.ts**: App preferences query / mutation hook，读取与写入 server-owned feature flags；`useFeatureFlag` 是前端能力入口门控的统一读取口。
 - **use-chat-preferences.ts**: Chat preferences query / mutation hook，读取与写入默认 continuation behavior。
 - **use-codex-preferences.ts**: Codex preferences query / mutation hook，读取与写入 Codex app-server 是否使用 Cradle User-Agent 的设置。

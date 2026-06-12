@@ -27,7 +27,7 @@ export interface ComposerReviewSlotActions {
   workspaceId?: string | null
   onDismiss: () => void
   onSubmitPrompt: (prompt: string) => void
-  resolveMergeBase: (baseBranch: string) => Promise<string | null>
+  resolveMergeBase: (baseBranch: string, repositoryPath?: string | null) => Promise<string | null>
 }
 
 export interface ComposerUsageSlotActions {

@@ -324,12 +324,15 @@ export function DraftChatComposer({
     void handleSend(prompt, [], [])
   }
 
-  const resolveCodexReviewMergeBase = async (baseBranch: string) => {
+  const resolveCodexReviewMergeBase = async (baseBranch: string, repositoryPath?: string | null) => {
     if (!workspaceId) {
       return null
     }
     const url = new URL(`/workspaces/${encodeURIComponent(workspaceId)}/git/merge-base`, getServerUrl())
     url.searchParams.set('baseBranch', baseBranch)
+    if (repositoryPath) {
+      url.searchParams.set('repo', repositoryPath)
+    }
     const response = await fetch(url)
     if (!response.ok) {
       throw new Error(`Failed to resolve merge base (${response.status}).`)

@@ -7,7 +7,7 @@
   "dev.action.openDevtools": "打开 DevTools",
   "dev.action.openDevtools.title": "打开 DevTools 窗口",
   "dev.action.reactDiagnostics": "React 工具",
-  "dev.action.reactDiagnostics.disableTitle": "关闭 React Scan 和 React Grab；强制刷新后可完全卸载已加载脚本",
+  "dev.action.reactDiagnostics.disableTitle": "关闭 React Scan 和 React Grab；会重新加载应用以卸载已加载脚本",
   "dev.action.reactDiagnostics.enableTitle": "开启 React Scan 和 React Grab",
   "footer.action.askJarvis": "询问 Jarvis",
   "header.action.closeSidebar": "关闭侧边栏",

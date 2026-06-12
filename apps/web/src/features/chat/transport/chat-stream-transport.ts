@@ -61,7 +61,7 @@ interface UIMessageChunkValidator {
 }
 
 const PENDING_DESKTOP_STREAM_LIMIT = 32
-const PENDING_DESKTOP_EVENTS_PER_STREAM = 64
+const PENDING_DESKTOP_EVENTS_PER_STREAM = 512
 const CLOSED_DESKTOP_STREAM_LIMIT = 512
 
 let desktopSubscriptions: Array<() => void> | null = null

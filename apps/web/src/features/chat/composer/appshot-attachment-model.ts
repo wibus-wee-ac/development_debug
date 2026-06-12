@@ -14,10 +14,18 @@ export interface CradleAppshotMetadata {
   axTree: string
 }
 
+/**
+ * What we actually persist on the file part. The screenshot itself lives in the
+ * part's `url`; storing it again under `imageDataUrl` doubled the base64 payload
+ * retained per message, so the stored shape omits it. Readers reconstitute the
+ * full {@link CradleAppshotMetadata} from `part.url`.
+ */
+export type StoredCradleAppshotMetadata = Omit<CradleAppshotMetadata, 'imageDataUrl'>
+
 export type CradleAppshotFilePart = FileUIPart & {
   providerMetadata?: {
     cradle?: {
-      appshot?: CradleAppshotMetadata
+      appshot?: StoredCradleAppshotMetadata
     }
   }
 }
@@ -44,19 +52,21 @@ export function createCradleAppshotFilePart(input: CreateCradleAppshotFilePartIn
     url: input.imageDataUrl,
     providerMetadata: {
       cradle: {
+        // The screenshot lives in `url`; readCradleAppshotMetadata falls back to
+        // it. Do NOT also store it as `imageDataUrl` here — that doubled the
+        // full-resolution base64 payload held in every retained appshot message.
         appshot: {
           kind: 'cradle-appshot',
           appName: input.appName,
           windowTitle: input.windowTitle,
           bundleIdentifier: input.bundleIdentifier,
           imageName: input.filename,
-          imageDataUrl: input.imageDataUrl,
           imagePath: input.imagePath,
           transitionSnapshotDataUrl: input.transitionSnapshotDataUrl,
           transitionSnapshotHeight: input.transitionSnapshotHeight,
           appIconDataUrl: input.appIconDataUrl ?? null,
           axTree: input.axTree ?? '',
-        },
+        } satisfies StoredCradleAppshotMetadata,
       },
     },
   }

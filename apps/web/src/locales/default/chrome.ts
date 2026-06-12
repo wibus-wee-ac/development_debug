@@ -24,6 +24,6 @@ export default {
   'dev.action.openDevtools': 'Open DevTools',
   'dev.action.openDevtools.title': 'Open DevTools window',
   'dev.action.reactDiagnostics': 'React tools',
-  'dev.action.reactDiagnostics.disableTitle': 'Disable React Scan and React Grab; hard reload to unload active scripts',
+  'dev.action.reactDiagnostics.disableTitle': 'Disable React Scan and React Grab; reloads the app to unload active scripts',
   'dev.action.reactDiagnostics.enableTitle': 'Enable React Scan and React Grab',
 } as const

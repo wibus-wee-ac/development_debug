@@ -7,7 +7,6 @@ import * as ReactDOMClient from 'react-dom/client'
 
 import { App } from './app'
 import { AppErrorBoundary } from './components/common/app-error-boundary'
-import { DevtoolPage } from './features/devtool/ipc-devtool-page'
 import { resolveInitialLocale } from './i18n/browser-locale'
 import { I18nProvider } from './i18n/client'
 import { initPerfMonitor } from './lib/perf-monitor'
@@ -44,13 +43,22 @@ const isDevtoolWindow = window.location.hash === '#devtool' || window.location.h
 
 async function startApp(): Promise<void> {
   const initialLocale = resolveInitialLocale()
+  let appContent: React.ReactNode
+
+  if (isDevtoolWindow) {
+    const { DevtoolPage } = await import('./features/devtool/ipc-devtool-page')
+    appContent = <DevtoolPage />
+  }
+  else {
+    appContent = <App />
+  }
 
   ReactDOMClient.createRoot(document.getElementById('app')!).render(
     <React.StrictMode>
       <AppErrorBoundary>
         <I18nProvider initialLocale={initialLocale}>
           <QueryClientProvider client={queryClient}>
-            {isDevtoolWindow ? <DevtoolPage /> : <App />}
+            {appContent}
           </QueryClientProvider>
         </I18nProvider>
       </AppErrorBoundary>

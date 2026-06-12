@@ -7,4 +7,4 @@
 
 - **index.ts**: Elysia `/preferences` 路由，提供 App、Chat、Codex、Desktop 与 Jarvis preferences 的 get/set，以及 Codex account status/login/logout 操作。
 - **model.ts**: Preference request/response 的 TypeBox schema，包含 App-owned feature flags、Chat continuation behavior、Chat-owned session title-generation config、Codex app-server UA mode、Codex default ChatGPT credential ref、Codex account 状态投影、Desktop quit behavior 和 AppShot trigger selection、Jarvis runtime 与显式模型选择。
-- **service.ts**: Server-owned preferences 的持久化语义。
+- **service.ts**: Server-owned preferences 的持久化语义，并提供后端能力门控使用的 App feature flag 查询与断言 helper。

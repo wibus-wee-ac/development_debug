@@ -8,6 +8,7 @@ import { useSurfaceStore } from './surface-store'
 
 type TerminalPanelStopper = (ownerIds: string[]) => void
 type BrowserPanelOwnerReleaser = (ownerIds: string[]) => void
+type BrowserPanelOwners = ReturnType<typeof useBrowserPanelStore.getState>['owners']
 
 function readTerminalPanelOwnerId(surface: Pick<AppSurface, 'kind' | 'route'>): string | null {
   if (surface.kind === 'chat' && surface.route.to === '/chat/$sessionId') {
@@ -61,15 +62,40 @@ function releaseBrowserPanelOwners(ownerIds: string[]): void {
 
   for (const ownerId of ownerIds) {
     layoutStore.setBrowserPanelOpen(false, ownerId)
-    for (const tab of browserStore.owners[ownerId]?.tabs ?? []) {
-      if (tab.kind === 'tui') {
-        void deleteTerminalSessionsShellByPtyId({
-          path: { ptyId: tab.ptyId },
-        }).catch(() => {})
-      }
-    }
     browserStore.removeOwnerState(ownerId)
     void browserBridge?.close({ threadId: ownerId }).catch(() => {})
+  }
+}
+
+function selectBrowserPanelTuiPtyIds(owners: BrowserPanelOwners): Set<string> {
+  const ptyIds = new Set<string>()
+
+  for (const owner of Object.values(owners)) {
+    for (const tab of owner?.tabs ?? []) {
+      if (tab.kind === 'tui') {
+        ptyIds.add(tab.ptyId)
+      }
+    }
+  }
+
+  return ptyIds
+}
+
+export function selectClosedBrowserPanelTuiPtyIds(
+  previousOwners: BrowserPanelOwners,
+  nextOwners: BrowserPanelOwners,
+): string[] {
+  const previousPtyIds = selectBrowserPanelTuiPtyIds(previousOwners)
+  const nextPtyIds = selectBrowserPanelTuiPtyIds(nextOwners)
+
+  return Array.from(previousPtyIds).filter(ptyId => !nextPtyIds.has(ptyId))
+}
+
+function stopShellPtyIds(ptyIds: Iterable<string>): void {
+  for (const ptyId of ptyIds) {
+    void deleteTerminalSessionsShellByPtyId({
+      path: { ptyId },
+    }).catch(() => {})
   }
 }
 
@@ -91,10 +117,21 @@ export function releaseSurfaceResources(
 }
 
 export function installSurfaceResourceLifecycle(): () => void {
-  return useSurfaceStore.subscribe((state, previousState) => {
+  const unsubscribeSurfaces = useSurfaceStore.subscribe((state, previousState) => {
     if (state.surfaces === previousState.surfaces) {
       return
     }
     releaseSurfaceResources(previousState.surfaces, state.surfaces)
   })
+  const unsubscribeBrowserPanelTabs = useBrowserPanelStore.subscribe((state, previousState) => {
+    if (state.owners === previousState.owners) {
+      return
+    }
+    stopShellPtyIds(selectClosedBrowserPanelTuiPtyIds(previousState.owners, state.owners))
+  })
+
+  return () => {
+    unsubscribeSurfaces()
+    unsubscribeBrowserPanelTabs()
+  }
 }

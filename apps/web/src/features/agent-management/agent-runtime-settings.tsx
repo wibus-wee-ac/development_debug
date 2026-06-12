@@ -24,6 +24,17 @@ import {
   postExternalProviderSourcesRefreshMutation,
 } from '~/api-gen/@tanstack/react-query.gen'
 import { ProviderIcon } from '~/components/common/provider-icons'
+import {
+  AlertDialog,
+  AlertDialogAction,
+  AlertDialogCancel,
+  AlertDialogContent,
+  AlertDialogDescription,
+  AlertDialogFooter,
+  AlertDialogHeader,
+  AlertDialogMedia,
+  AlertDialogTitle,
+} from '~/components/ui/alert-dialog'
 import { Button } from '~/components/ui/button'
 import { Checkbox } from '~/components/ui/checkbox'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
@@ -211,6 +222,7 @@ export function AgentRuntimeSettings() {
   const [filter, setFilter] = useState('')
   const deferredFilter = useDeferredValue(filter)
   const [batchBusy, setBatchBusy] = useState(false)
+  const [pendingBatchRemoveProfiles, setPendingBatchRemoveProfiles] = useState<AgentProfile[]>([])
   const [groupOpenOverrides, setGroupOpenOverrides] = useState<Map<string, boolean>>(
     () => new Map(),
   )
@@ -521,14 +533,21 @@ export function AgentRuntimeSettings() {
       }
     }
 
-  const handleBatchRemove = async () => {
-    if (removableSelectedProfiles.length === 0) {
+  const requestBatchRemove = () => {
+    if (batchBusy || removableSelectedProfiles.length === 0) {
+      return
+    }
+    setPendingBatchRemoveProfiles(removableSelectedProfiles)
+  }
+
+  const handleBatchRemove = async (profilesToRemove: AgentProfile[]) => {
+    if (profilesToRemove.length === 0) {
       return
     }
     setBatchBusy(true)
     try {
       await Promise.all(
-        removableSelectedProfiles.map(profile => removeProfile.mutateAsync({ path: { id: profile.id } })),
+        profilesToRemove.map(profile => removeProfile.mutateAsync({ path: { id: profile.id } })),
       )
       setSelectedIds(new Set())
       selectionAnchorIdRef.current = null
@@ -536,6 +555,12 @@ export function AgentRuntimeSettings() {
  finally {
       setBatchBusy(false)
     }
+  }
+
+  const confirmBatchRemove = async () => {
+    const profilesToRemove = pendingBatchRemoveProfiles
+    setPendingBatchRemoveProfiles([])
+    await handleBatchRemove(profilesToRemove)
   }
 
   const selectionShortcutScopeRef = useSettingsSelectionShortcuts({
@@ -546,7 +571,7 @@ export function AgentRuntimeSettings() {
     onSelectVisible: selectVisibleProfiles,
     onClearSelection: clearSelection,
     onDeleteSelection: () => {
-      void handleBatchRemove()
+      requestBatchRemove()
     },
   })
 
@@ -621,7 +646,7 @@ export function AgentRuntimeSettings() {
             <Button
               size="xs"
               variant="destructive"
-              onClick={() => void handleBatchRemove()}
+              onClick={requestBatchRemove}
               disabled={batchBusy || removableSelectedProfiles.length === 0}
             >
               <Trash2Icon className="size-3" />
@@ -870,6 +895,43 @@ export function AgentRuntimeSettings() {
       listWidth={360}
     >
       <ImportProviderDialog open={importOpen} onOpenChange={setImportOpen} />
+      <AlertDialog
+        open={pendingBatchRemoveProfiles.length > 0}
+        onOpenChange={(open) => {
+          if (!open) {
+            setPendingBatchRemoveProfiles([])
+          }
+        }}
+      >
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogMedia>
+              <Trash2Icon className="size-5 text-destructive" />
+            </AlertDialogMedia>
+            <AlertDialogTitle>
+              {t('runtime.deleteDialog.title')}
+            </AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('runtime.deleteDialog.description', {
+                count: pendingBatchRemoveProfiles.length,
+              })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel size="sm" disabled={batchBusy}>
+              {t('runtime.deleteDialog.cancel')}
+            </AlertDialogCancel>
+            <AlertDialogAction
+              size="sm"
+              variant="destructive"
+              onClick={() => void confirmBatchRemove()}
+              disabled={batchBusy}
+            >
+              {t('runtime.deleteDialog.confirm')}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </SettingsMasterDetail>
   )
 }

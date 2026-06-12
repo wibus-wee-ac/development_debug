@@ -30,10 +30,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~
 import { Spinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
-import { useGitRemotes, useGitStatus } from '~/features/git/use-git'
+import { useGitRemotes, useGitRepositories } from '~/features/git/use-git'
 import { cn } from '~/lib/cn'
 import { queryRefreshPolicies, queryRefreshPolicy } from '~/lib/query-refresh-policy'
-import type { GitRemote, GitStatus } from '~/features/git/types'
+import type { GitFileStatus, GitRemote } from '~/features/git/types'
 
 import {
   derivePullRequestNumberFromStatus,
@@ -68,7 +68,16 @@ function normalizeGitRemotes(value: unknown): GitRemote[] | undefined {
     }))
 }
 
-function normalizeGitStatus(value: unknown): GitStatus | null {
+interface NormalizedGitStatus {
+  branch: string
+  tracking: string | null
+  ahead: number
+  behind: number
+  isDetached: boolean
+  files: Array<{ path: string, status: GitFileStatus['status'] }>
+}
+
+function normalizeGitStatus(value: unknown): NormalizedGitStatus | null {
   if (value === null || typeof value !== 'object') {
     return null
   }
@@ -91,7 +100,7 @@ function normalizeGitStatus(value: unknown): GitStatus | null {
     behind: status.behind,
     isDetached: status.isDetached,
     files: status.files
-      .filter((file): file is { path: string, status: GitStatus['files'][number]['status'] } => {
+      .filter((file): file is { path: string, status: GitFileStatus['status'] } => {
         return file !== null
           && typeof file === 'object'
           && typeof (file as { path?: unknown }).path === 'string'
@@ -1208,10 +1217,14 @@ function GitHubAwaitComposer({
   sessionId: string | null
   workspaceId: string | null
 }) {
-  const { data: remotes, isLoading: remotesLoading, isError: remotesError } = useGitRemotes(workspaceId)
-  const { data: status } = useGitStatus(workspaceId)
+  const repositoriesQuery = useGitRepositories(workspaceId)
+  const selectedRepository = repositoriesQuery.data?.length === 1 ? repositoriesQuery.data[0] : null
+  const repositoryPath = selectedRepository?.path ?? null
+  const { data: remotes, isLoading: gitRemotesLoading, isError: gitRemotesError } = useGitRemotes(repositoryPath ? workspaceId : null, repositoryPath)
+  const remotesLoading = repositoriesQuery.isLoading || gitRemotesLoading
+  const remotesError = repositoriesQuery.isError || gitRemotesError
   const detectedRepo = selectGitHubRepository(normalizeGitRemotes(remotes))
-  const detectedPrNumber = derivePullRequestNumberFromStatus(normalizeGitStatus(status))
+  const detectedPrNumber = derivePullRequestNumberFromStatus(normalizeGitStatus(selectedRepository))
   const [repoInput, setRepoInput] = useState('')
   const [targetInput, setTargetInput] = useState('')
   const [sourceKind, setSourceKind] = useState<GitHubAwaitSourceKind>('github-ci')

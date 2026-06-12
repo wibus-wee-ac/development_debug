@@ -53,6 +53,18 @@ export function FeatureSettings() {
                 aria-label={t('features.multiWorkspace.label' as SettingsKey)}
               />
             </SettingsRow>
+            <SettingsRow
+              label={t('features.localAuthForDangerousActions.label' as SettingsKey)}
+              description={t('features.localAuthForDangerousActions.description' as SettingsKey)}
+            >
+              <Switch
+                size="sm"
+                checked={prefs.featureFlags.localAuthForDangerousActions}
+                disabled={isSaving}
+                onCheckedChange={checked => saveFeatureFlags({ localAuthForDangerousActions: checked })}
+                aria-label={t('features.localAuthForDangerousActions.label' as SettingsKey)}
+              />
+            </SettingsRow>
           </SettingsGroup>
         )}
     </SettingsPage>

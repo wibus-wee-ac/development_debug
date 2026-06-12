@@ -1,7 +1,7 @@
 import type { AnimationPlaybackControls, Transition } from 'motion/react'
 import { animate, m, useMotionValue } from 'motion/react'
 import type { ReactNode } from 'react'
-import { Activity, memo, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
+import { Activity, lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
 
@@ -22,9 +22,7 @@ import {
   useViewportWidth,
 } from '~/components/layout/layout-responsive'
 import { ResizeHandle } from '~/components/layout/resize-handle'
-import { RightAside } from '~/components/layout/right-aside'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
-import { BrowserPanel } from '~/features/browser'
 import { useJarvisUiStore } from '~/features/system-agent/jarvis-ui-store'
 import { useGlobalEventListeners } from '~/hooks/use-global-event-listeners'
 import { useShortcut } from '~/hooks/use-shortcut'
@@ -46,7 +44,17 @@ const BROWSER_NATIVE_BOUNDS_SETTLE_MS = 420
 
 type BrowserBridgeCleanup = () => void
 
-const MemoizedRightAside = memo(RightAside)
+const LazyBrowserPanel = lazy(() =>
+  import('~/features/browser').then(module => ({
+    default: module.BrowserPanel,
+  })))
+
+const LazyRightAside = lazy(() =>
+  import('~/components/layout/right-aside').then(module => ({
+    default: module.RightAside,
+  })))
+
+const MemoizedRightAside = memo(LazyRightAside)
 MemoizedRightAside.displayName = 'MemoizedRightAside'
 
 function useAnimatedSize(initialSize: number) {
@@ -659,14 +667,16 @@ function AppLayoutContent({
                   mode={browserPanelActivityVisible ? 'visible' : 'hidden'}
                   name="browser-panel"
                 >
-                  <BrowserPanel
-                    ownerId={activeBrowserPanelOwnerId}
-                    activeSessionId={activeSessionId}
-                    activeSessionTitle={activeSessionTitle}
-                    terminalCwd={resolvedAsideWorkspacePath}
-                    nativeBoundsPaused={browserPanelNativeBoundsPaused}
-                    onCloseLastTab={handleCloseLastBrowserPanelTab}
-                  />
+                  <Suspense fallback={null}>
+                    <LazyBrowserPanel
+                      ownerId={activeBrowserPanelOwnerId}
+                      activeSessionId={activeSessionId}
+                      activeSessionTitle={activeSessionTitle}
+                      terminalCwd={resolvedAsideWorkspacePath}
+                      nativeBoundsPaused={browserPanelNativeBoundsPaused}
+                      onCloseLastTab={handleCloseLastBrowserPanelTab}
+                    />
+                  </Suspense>
                 </Activity>
               )}
             </m.div>
@@ -728,12 +738,14 @@ function AppLayoutContent({
             contentTestId="app-layout-right-aside"
             className="w-[min(22rem,calc(100vw-2rem))]"
           >
-            <MemoizedRightAside
-              sessionId={resolvedAsideSessionId}
-              workspaceId={resolvedAsideWorkspaceId}
-              workspaceName={resolvedAsideWorkspaceName}
-              workspacePath={resolvedAsideWorkspacePath}
-            />
+            <Suspense fallback={null}>
+              <MemoizedRightAside
+                sessionId={resolvedAsideSessionId}
+                workspaceId={resolvedAsideWorkspaceId}
+                workspaceName={resolvedAsideWorkspaceName}
+                workspacePath={resolvedAsideWorkspacePath}
+              />
+            </Suspense>
           </ChromeSideSheet>
         )}
       </div>
@@ -835,12 +847,14 @@ const AppRightAside = memo(({
           style={{ width: asideWidth }}
         >
           {shouldRenderAsideContent && (
-            <MemoizedRightAside
-              sessionId={sessionId}
-              workspaceId={workspaceId}
-              workspaceName={workspaceName}
-              workspacePath={workspacePath}
-            />
+            <Suspense fallback={null}>
+              <MemoizedRightAside
+                sessionId={sessionId}
+                workspaceId={workspaceId}
+                workspaceName={workspaceName}
+                workspacePath={workspacePath}
+              />
+            </Suspense>
           )}
         </m.div>
       </m.aside>

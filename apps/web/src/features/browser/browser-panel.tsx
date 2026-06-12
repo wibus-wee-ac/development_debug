@@ -38,7 +38,6 @@ import {
   useState,
 } from 'react'
 
-import { deleteTerminalSessionsShellByPtyId } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import {
   Empty,
@@ -64,7 +63,6 @@ import type {
   BrowserAnnotationRecord,
   BrowserPanelTab,
   BrowserTabState,
-  BrowserTuiTab,
   BrowserWebTab,
 } from '~/store/browser-panel'
 import {
@@ -340,10 +338,6 @@ function getPanelTabTitle(tab: BrowserPanelTab): string {
 
 function isBrowserPanelTab(tab: BrowserPanelTab): tab is BrowserWebTab {
   return tab.kind === 'browser'
-}
-
-function isBrowserTuiTab(tab: BrowserPanelTab): tab is BrowserTuiTab {
-  return tab.kind === 'tui'
 }
 
 function isPlanRefineEditorDirtyEvent(event: Event): event is CustomEvent<PlanRefineEditorDirtyDetail> {
@@ -1278,8 +1272,6 @@ export function BrowserPanel({
   const lastNativeBoundsSignatureRef = useRef<string | null>(null)
   const localServerDiscoveryRequestRef = useRef(0)
   const newTabRequestInFlightRef = useRef(false)
-  const tuiPtyIdsByOwnerRef = useRef<Record<string, Set<string> | undefined>>({})
-
   const [addressValue, setAddressValue] = useState('')
   const [isEditingAddress, setIsEditingAddress] = useState(false)
   const [localError, setLocalError] = useState<string | null>(null)
@@ -1383,21 +1375,6 @@ export function BrowserPanel({
       localServerDiscoveryRequestRef.current += 1
     }
   }, [])
-
-  useEffect(() => {
-    const previousPtyIds = tuiPtyIdsByOwnerRef.current[resolvedOwnerId] ?? new Set<string>()
-    const nextPtyIds = new Set(tabs.filter(isBrowserTuiTab).map(tab => tab.ptyId))
-
-    for (const ptyId of previousPtyIds) {
-      if (!nextPtyIds.has(ptyId)) {
-        void deleteTerminalSessionsShellByPtyId({
-          path: { ptyId },
-        }).catch(() => {})
-      }
-    }
-
-    tuiPtyIdsByOwnerRef.current[resolvedOwnerId] = nextPtyIds
-  }, [resolvedOwnerId, tabs])
 
   useEffect(() => {
     if (!activeBrowserTabIsBlank) {
@@ -2988,6 +2965,7 @@ export function BrowserPanel({
             ownerId={resolvedOwnerId}
             tabId={activePanelTab.id}
             workspaceId={activePanelTab.workspaceId}
+            repositoryPath={activePanelTab.repositoryPath}
             paths={activePanelTab.paths}
           />
         )}

@@ -10,6 +10,7 @@ export interface CodexReviewBranchLine {
 export interface BuildCodexReviewPromptInput {
   mode: CodexReviewTargetMode
   sourceBranch: string
+  repositoryPath?: string | null
   baseBranch?: string
   mergeBaseSha?: string
 }
@@ -48,9 +49,10 @@ const UNCOMMITTED_REVIEW_INSTRUCTIONS = 'Review the current code changes (staged
 const BASE_BRANCH_REVIEW_INSTRUCTIONS = 'Review the code changes against the base branch \'{baseBranch}\'. The merge base commit for this comparison is {mergeBaseSha}. Run `git diff {mergeBaseSha}` to inspect the changes relative to {baseBranch}. Provide concise, actionable feedback in a normal Markdown response.'
 
 export function buildCodexReviewPrompt(input: BuildCodexReviewPromptInput): string {
+  const repositoryInstructions = buildRepositoryInstructions(input.repositoryPath)
   if (input.mode === 'uncommitted') {
     return joinCodexReviewPrompt({
-      reviewInstructions: UNCOMMITTED_REVIEW_INSTRUCTIONS,
+      reviewInstructions: joinReviewInstructions(repositoryInstructions, UNCOMMITTED_REVIEW_INSTRUCTIONS),
       requestMessage: 'Please review my uncommitted changes',
     })
   }
@@ -60,11 +62,25 @@ export function buildCodexReviewPrompt(input: BuildCodexReviewPromptInput): stri
   }
 
   return joinCodexReviewPrompt({
-    reviewInstructions: BASE_BRANCH_REVIEW_INSTRUCTIONS
-      .replaceAll('{baseBranch}', input.baseBranch)
-      .replaceAll('{mergeBaseSha}', input.mergeBaseSha.trim()),
+    reviewInstructions: joinReviewInstructions(
+      repositoryInstructions,
+      BASE_BRANCH_REVIEW_INSTRUCTIONS
+        .replaceAll('{baseBranch}', input.baseBranch)
+        .replaceAll('{mergeBaseSha}', input.mergeBaseSha.trim()),
+    ),
     requestMessage: `Please review changes on ${input.sourceBranch} against ${input.baseBranch}`,
   })
+}
+
+function buildRepositoryInstructions(repositoryPath: string | null | undefined): string | null {
+  if (!repositoryPath || repositoryPath === '.') {
+    return null
+  }
+  return `The Git repository under review is the workspace-relative directory \`${repositoryPath}\`. Run Git commands from that directory.`
+}
+
+function joinReviewInstructions(...instructions: Array<string | null>): string {
+  return instructions.filter(Boolean).join('\n\n')
 }
 
 function joinCodexReviewPrompt({

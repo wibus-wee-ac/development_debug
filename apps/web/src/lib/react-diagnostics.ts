@@ -12,6 +12,10 @@ export interface ReactDiagnosticsApi {
 
 type ReactDiagnosticsWindow = Window & {
   __cradleReactDiagnostics?: ReactDiagnosticsApi
+  __REACT_SCAN__?: unknown
+  __REACT_SCAN_TOOLBAR_CONTAINER__?: HTMLElement
+  reactScan?: unknown
+  reactScanCleanupListeners?: unknown
 }
 
 const reactDiagnosticsApi: ReactDiagnosticsApi = {
@@ -87,6 +91,27 @@ function loadEnabledTools(): void {
   loadReactGrab()
 }
 
+function hasActiveReactDiagnosticsRuntime(): boolean {
+  const diagnosticsWindow = window as ReactDiagnosticsWindow
+
+  return Boolean(
+    document.querySelector('script[data-cradle-react-scan]')
+    || document.getElementById('react-scan-root')
+    || document.getElementById('react-scan-toolbar-root')
+    || document.querySelector('html > canvas[style*="2147483600"], body > canvas[style*="2147483600"]')
+    || diagnosticsWindow.__REACT_SCAN__
+    || diagnosticsWindow.__REACT_SCAN_TOOLBAR_CONTAINER__
+    || diagnosticsWindow.reactScan
+    || diagnosticsWindow.reactScanCleanupListeners,
+  )
+}
+
+function reloadAfterDiagnosticsShutdown(): void {
+  window.setTimeout(() => {
+    window.location.reload()
+  }, 0)
+}
+
 function dispatchDiagnosticsChange(): void {
   window.dispatchEvent(new Event(DIAGNOSTICS_CHANGE_EVENT))
 }
@@ -102,11 +127,18 @@ function subscribe(listener: () => void): () => void {
 }
 
 function setEnabled(enabled: boolean): void {
+  const needsReload = !enabled && hasActiveReactDiagnosticsRuntime()
+
   writeEnabled(enabled)
   dispatchDiagnosticsChange()
 
   if (enabled) {
     loadEnabledTools()
+    return
+  }
+
+  if (needsReload) {
+    reloadAfterDiagnosticsShutdown()
   }
 }
 

@@ -177,6 +177,11 @@ export default {
   'runtime.action.addManualProvider': 'Add manual provider',
   'runtime.action.import': 'Import',
   'runtime.action.refreshSources': 'Refresh sources',
+  'runtime.deleteDialog.cancel': 'Cancel',
+  'runtime.deleteDialog.confirm': 'Delete',
+  'runtime.deleteDialog.description':
+    'This will remove {{count}} manual provider profile(s), disconnect every agent that uses them, and delete stored credentials from this machine. This cannot be undone.',
+  'runtime.deleteDialog.title': 'Delete selected providers?',
   'runtime.draft.description': 'Pick a template',
   'runtime.draft.title': 'New provider',
   'runtime.empty.noMatches': 'No matches',

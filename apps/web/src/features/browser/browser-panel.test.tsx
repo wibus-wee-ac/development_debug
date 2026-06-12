@@ -137,7 +137,7 @@ function installTestBrowserBridge() {
 }
 
 vi.mock('./workspace-diff-viewer', () => ({
-  WorkspaceDiffViewer: (props: { tabId: string, workspaceId: string, paths?: string[] }) => {
+  WorkspaceDiffViewer: (props: { tabId: string, workspaceId: string, repositoryPath?: string | null, paths?: string[] }) => {
     diffViewerRender(props)
     return null
   },

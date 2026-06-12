@@ -33,6 +33,7 @@ describe('preferences capability', () => {
       expect(await initialRes.json()).toEqual({
         featureFlags: {
           multiWorkspacePoc: false,
+          localAuthForDangerousActions: false,
         },
       })
 
@@ -45,6 +46,7 @@ describe('preferences capability', () => {
         body: JSON.stringify({
           featureFlags: {
             multiWorkspacePoc: true,
+            localAuthForDangerousActions: true,
           },
         }),
       }))
@@ -54,6 +56,7 @@ describe('preferences capability', () => {
       expect(JSON.parse(readFileSync(filePath, 'utf8'))).toEqual({
         featureFlags: {
           multiWorkspacePoc: true,
+          localAuthForDangerousActions: true,
         },
       })
 
@@ -62,6 +65,7 @@ describe('preferences capability', () => {
       expect(await finalRes.json()).toEqual({
         featureFlags: {
           multiWorkspacePoc: true,
+          localAuthForDangerousActions: true,
         },
       })
     }
@@ -214,7 +218,7 @@ describe('preferences capability', () => {
     process.env.CRADLE_DATA_DIR = dataDir
     process.env.CRADLE_CREDENTIAL_SECRET = 'test-secret'
     const accessToken = makeJwt({
-      email: 'user@example.com',
+      'email': 'user@example.com',
       'https://api.openai.com/auth': {
         chatgpt_account_id: 'account-1',
         chatgpt_plan_type: 'plus',
@@ -424,7 +428,7 @@ describe('preferences capability', () => {
     process.env.CRADLE_DATA_DIR = dataDir
     process.env.CRADLE_CREDENTIAL_SECRET = 'test-secret'
     const expiredAccessToken = makeJwt({
-      exp: Math.floor(Date.now() / 1000) - 60,
+      'exp': Math.floor(Date.now() / 1000) - 60,
       'https://api.openai.com/auth': {
         chatgpt_account_id: 'account-expired',
         chatgpt_plan_type: 'plus',

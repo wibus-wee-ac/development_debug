@@ -17,7 +17,7 @@ import { useMemo, useState } from 'react'
 
 import type { GetWorkspacesByIdGitBranchesResponse } from '~/api-gen/types.gen'
 import { ScrollArea } from '~/components/ui/scroll-area'
-import { useGitBranches, useGitStatus } from '~/features/git/use-git'
+import { useGitBranches, useGitRepositories, useGitStatus } from '~/features/git/use-git'
 import { cn } from '~/lib/cn'
 
 import {
@@ -40,16 +40,23 @@ export function ReviewSlotState({
   const [submittingBranchName, setSubmittingBranchName] = useState<string | null>(null)
   const [submittingUncommitted, setSubmittingUncommitted] = useState(false)
   const [errorText, setErrorText] = useState<string | null>(null)
-  const statusQuery = useGitStatus(review.open ? review.workspaceId : null)
-  const branchesQuery = useGitBranches(review.open ? review.workspaceId : null)
+  const repositoriesQuery = useGitRepositories(review.open ? review.workspaceId : null)
+  const selectedRepository = repositoriesQuery.data?.length === 1 ? repositoriesQuery.data[0] : null
+  const repositoryPath = selectedRepository?.path ?? null
+  const statusQuery = useGitStatus(repositoryPath ? review.workspaceId : null, repositoryPath)
+  const branchesQuery = useGitBranches(repositoryPath ? review.workspaceId : null, repositoryPath)
   const currentBranch = statusQuery.data?.branch ?? null
   const branchLines = useMemo(() => createCodexReviewBranchLines({
     branches: branchesQuery.data as GetWorkspacesByIdGitBranchesResponse | null | undefined,
     currentBranch,
   }), [branchesQuery.data, currentBranch])
-  const loadingBaseBranches = branchesQuery.isLoading || statusQuery.isLoading
+  const loadingBaseBranches = repositoriesQuery.isLoading || branchesQuery.isLoading || statusQuery.isLoading
   const hasWorkspace = Boolean(review.workspaceId)
-  const gitUnavailable = statusQuery.isError || branchesQuery.isError
+  const repositoryCount = repositoriesQuery.data?.length ?? 0
+  const gitUnavailable = repositoriesQuery.isError
+    || statusQuery.isError
+    || branchesQuery.isError
+    || (repositoriesQuery.isSuccess && repositoryCount !== 1)
   const busy = submittingUncommitted || submittingBranchName !== null
 
   function dismissReview() {
@@ -66,6 +73,7 @@ export function ReviewSlotState({
       review.onSubmitPrompt(buildCodexReviewPrompt({
         mode: 'uncommitted',
         sourceBranch: currentBranch ?? 'HEAD',
+        repositoryPath,
       }))
       review.onDismiss()
     }
@@ -78,13 +86,14 @@ export function ReviewSlotState({
     setErrorText(null)
     setSubmittingBranchName(baseBranch)
     try {
-      const mergeBaseSha = await review.resolveMergeBase(baseBranch)
+      const mergeBaseSha = await review.resolveMergeBase(baseBranch, repositoryPath)
       if (!mergeBaseSha) {
         throw new Error(`Failed to resolve a merge base between HEAD and ${baseBranch}.`)
       }
       review.onSubmitPrompt(buildCodexReviewPrompt({
         mode: 'base-branch',
         sourceBranch: currentBranch ?? 'HEAD',
+        repositoryPath,
         baseBranch,
         mergeBaseSha,
       }))
@@ -121,10 +130,11 @@ export function ReviewSlotState({
 
       {gitUnavailable && (
         <div className="mb-2 flex items-center justify-between gap-3 rounded-md border border-destructive/20 bg-destructive/5 px-2.5 py-2 text-xs text-destructive">
-          <span>Git repository unavailable.</span>
+          <span>{repositoryCount > 1 ? 'Choose a workspace with one Git repository for review mode.' : 'Git repository unavailable.'}</span>
           <button
             type="button"
             onClick={() => {
+              void repositoriesQuery.refetch()
               void statusQuery.refetch()
               void branchesQuery.refetch()
             }}

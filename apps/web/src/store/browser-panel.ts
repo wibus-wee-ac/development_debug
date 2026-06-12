@@ -84,6 +84,7 @@ export interface BrowserWorkspaceDiffTab {
   kind: 'workspace-diff'
   id: string
   workspaceId: string
+  repositoryPath?: string
   paths?: string[]
   title: string
   loading: false
@@ -424,6 +425,7 @@ interface BrowserPanelState {
   }) => string
   openWorkspaceDiffTab: (input: {
     workspaceId: string
+    repositoryPath?: string | null
     paths?: string[]
     title?: string
     ownerId?: string | null
@@ -946,13 +948,14 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
         return tab.id
       },
 
-      openWorkspaceDiffTab: ({ workspaceId, paths, title, ownerId: ownerIdInput }) => {
+      openWorkspaceDiffTab: ({ workspaceId, repositoryPath, paths, title, ownerId: ownerIdInput }) => {
         const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
         const ownerState = getOwnerState(get(), ownerId)
         const existing = ownerState.tabs.find(
           tab =>
             tab.kind === 'workspace-diff'
             && tab.workspaceId === workspaceId
+            && tab.repositoryPath === (repositoryPath ?? undefined)
             && arePathListsEqual(tab.paths, paths),
         )
         if (existing) {
@@ -965,6 +968,7 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
           kind: 'workspace-diff',
           id: `legacy-workspace-diff-${++localTabCounter}`,
           workspaceId,
+          repositoryPath: repositoryPath ?? undefined,
           paths,
           title:
             title

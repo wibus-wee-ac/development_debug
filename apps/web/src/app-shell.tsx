@@ -1,15 +1,13 @@
 import { Outlet, useLocation, useNavigate, useRouterState } from '@tanstack/react-router'
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { useThemeClass } from '~/app-providers'
 import { AppLayout } from '~/components/layout/app-layout'
 import { AppSidebar, AppSidebarSheet } from '~/components/layout/app-sidebar'
 import { useSidebarSheetMode } from '~/components/layout/layout-responsive'
 import { useSyncLayoutSlotScope } from '~/components/layout/use-layout-slots'
-import { StreamingChatRetentionHost } from '~/features/chat/session/streaming-chat-retention-host'
 import { useDesktopTrayActionBridge } from '~/features/desktop-tray/use-desktop-tray-action-bridge'
 import { useOnboardingStore } from '~/features/onboarding/onboarding-store'
-import { GlobalSearchDialog } from '~/features/search/global-search-dialog'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'
 import { useUnreadSessionIds } from '~/features/workspace/use-session'
 import { isWorkspaceFileShortcutScopeEvent } from '~/features/workspace/workspace-file-shortcuts'
@@ -26,6 +24,19 @@ import {
 } from '~/navigation/surface-identity'
 import { useSurfaceStore } from '~/navigation/surface-store'
 import { SurfaceActivityProvider } from '~/navigation/surface-activity-context'
+import { chatSelectors, useChatStore } from '~/store/chat'
+
+const loadGlobalSearchDialog = () =>
+  import('~/features/search/global-search-dialog').then(module => ({
+    default: module.GlobalSearchDialog,
+  }))
+
+const GlobalSearchDialog = lazy(loadGlobalSearchDialog)
+
+const StreamingChatRetentionHost = lazy(() =>
+  import('~/features/chat/session/streaming-chat-retention-host').then(module => ({
+    default: module.StreamingChatRetentionHost,
+  })))
 
 function syncDesktopAppBadgeUnreadCount(count: number): void {
   const promise = window.cradle?.desktopAppBadge?.setUnreadCount(count)
@@ -200,6 +211,7 @@ function MainAppRuntime() {
   useSyncLayoutSlotScope(activeSlotId, validSlotIds)
 
   const openGlobalSearch = useCallback(() => {
+    void loadGlobalSearchDialog()
     useGlobalSearchStore.getState().openSearch()
   }, [])
   const openSidebarSheet = useCallback(() => {
@@ -249,8 +261,31 @@ function MainAppRuntime() {
           <GlobalCommandPaletteHost />
         </div>
       </AppLayout>
-      <StreamingChatRetentionHost />
+      <StreamingChatRetentionBoundary />
     </div>
+  )
+}
+
+function StreamingChatRetentionBoundary() {
+  'use no memo'
+
+  const hasStreamingSessions = useChatStore((state) => {
+    for (const sessionId of state.messagesMap.keys()) {
+      if (chatSelectors.isSessionStreaming(sessionId)(state)) {
+        return true
+      }
+    }
+    return false
+  })
+
+  if (!hasStreamingSessions) {
+    return null
+  }
+
+  return (
+    <Suspense fallback={null}>
+      <StreamingChatRetentionHost />
+    </Suspense>
   )
 }
 
@@ -278,12 +313,14 @@ function GlobalCommandPaletteHost() {
           return
         }
         event.preventDefault()
+        void loadGlobalSearchDialog()
         useGlobalSearchStore.getState().openPalette('>')
         return
       }
 
       if (key === 'p') {
         event.preventDefault()
+        void loadGlobalSearchDialog()
         useGlobalSearchStore.getState().openPalette(event.shiftKey ? '>' : '')
       }
     }
@@ -292,5 +329,13 @@ function GlobalCommandPaletteHost() {
     return () => window.removeEventListener('keydown', onKeyDown, { capture: true })
   }, [])
 
-  return <GlobalSearchDialog open={open} initialQuery={initialQuery} onOpenChange={setOpen} />
+  if (!open) {
+    return null
+  }
+
+  return (
+    <Suspense fallback={null}>
+      <GlobalSearchDialog open={open} initialQuery={initialQuery} onOpenChange={setOpen} />
+    </Suspense>
+  )
 }

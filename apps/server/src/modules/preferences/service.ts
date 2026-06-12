@@ -4,6 +4,7 @@ import { dirname, join } from 'node:path'
 
 import type { Static } from 'elysia'
 
+import { AppError } from '../../errors/app-error'
 import { getServerConfig } from '../../infra'
 import type { PreferencesModel } from './model'
 import {
@@ -13,6 +14,8 @@ import {
   DesktopPreferencesJsonSchema,
   JarvisPreferencesJsonSchema,
 } from './model'
+
+export type AppFeatureFlagKey = keyof Static<typeof PreferencesModel['appPreferences']>['featureFlags']
 
 function getPath(name: string): string {
   const config = getServerConfig()
@@ -57,6 +60,21 @@ export function getAppPreferencesSync(): Static<typeof PreferencesModel['appPref
     }
     throw error
   }
+}
+
+export function isAppFeatureFlagEnabled(key: AppFeatureFlagKey): boolean {
+  return getAppPreferencesSync().featureFlags[key] === true
+}
+
+export function assertAppFeatureFlagEnabled(
+  key: AppFeatureFlagKey,
+  error: ConstructorParameters<typeof AppError>[0],
+): void {
+  if (isAppFeatureFlagEnabled(key)) {
+    return
+  }
+
+  throw new AppError(error)
 }
 
 export async function setAppPreferences(preferences: Static<typeof PreferencesModel['appPreferences']>): Promise<void> {

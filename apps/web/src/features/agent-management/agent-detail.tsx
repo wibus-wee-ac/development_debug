@@ -37,8 +37,10 @@ import { CurrentProviderModelList } from '~/features/composer-toolbar/provider-m
 import { ProviderModelPicker } from '~/features/composer-toolbar/provider-model-picker'
 import { SkillManager } from '~/features/skills'
 import { cn } from '~/lib/cn'
+import { authorizeDangerousAction } from '~/lib/electron'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
+import { useFeatureFlag } from '../settings/use-app-preferences'
 
 // ── Constants ─────────────────────────────────────────────────────────────────
 
@@ -1199,6 +1201,7 @@ function useAgentDetailOwner({
   const isCreate = agent === undefined
   const { createAgent, updateAgent, removeAgent } = useAgents()
   const { providerOptions } = useProviderTargets()
+  const localAuthForDangerousActions = useFeatureFlag('localAuthForDangerousActions')
   const persistedConfig = AgentRuntimeConfigJsonSchema.parse(agent?.configJson)
   const { systemPrompt: _systemPrompt, skills: _skills, cliTui: _cliTui, claudeAgent: _claudeAgent, ...baseConfig } = persistedConfig
   const form = useForm<AgentDetailFormValues>({
@@ -1453,6 +1456,15 @@ function useAgentDetailOwner({
 
   const handleDelete = async () => {
     if (!agent) {
+      return
+    }
+    const authorized = await authorizeDangerousAction({
+      action: 'delete',
+      resource: 'agent',
+      label: agent.name,
+      enabled: localAuthForDangerousActions,
+    })
+    if (!authorized) {
       return
     }
     await removeAgent.mutateAsync({ path: { id: agent.id } })

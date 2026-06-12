@@ -26,6 +26,16 @@ const EXIT_BANNER = '\r\n\x1B[2m[Process exited]\x1B[0m\r\n'
 const MAX_TRANSCRIPT_CHARS = 8_000
 const MAX_OSC_LOOKBEHIND_CHARS = 1_000
 
+// xterm's ImageAddon ships memory-hostile defaults: a 128 MB FIFO decode cache
+// plus a worker that permanently reserves `pixelLimit * 4` bytes (default
+// 4096x4096 px ≈ 64 MB) the moment the addon loads — paid per terminal whether
+// or not an inline image is ever rendered. Two shells (bottom panel + a browser
+// TUI tab) silently reserve ~270 MB of working set this way. Clamp to amounts
+// sufficient for terminal inline imagery: a 1024x1024 decode ceiling (~4 MB
+// worker reservation) and a 16 MB cache.
+const TERMINAL_IMAGE_PIXEL_LIMIT = 1024 * 1024
+const TERMINAL_IMAGE_STORAGE_LIMIT_MB = 16
+
 const RE_OSC = /\u001B\][^\u0007]*(\u0007|\u001B\\)/g
 // eslint-disable-next-line regexp/no-obscure-range
 const RE_CSI = /\u001B\[[0-?]*[ -/]*[@-~]/g
@@ -165,7 +175,10 @@ export function ShellView({ ptyId, cwd, visible = true, onExited, onMetadata, st
       })
       terminal.loadAddon(webgl)
       webglLoaded = true
-      terminal.loadAddon(new ImageAddon())
+      terminal.loadAddon(new ImageAddon({
+        pixelLimit: TERMINAL_IMAGE_PIXEL_LIMIT,
+        storageLimit: TERMINAL_IMAGE_STORAGE_LIMIT_MB,
+      }))
     }
     catch { /* WebGL unavailable — fall back to DOM renderer */ }
 

@@ -98,10 +98,10 @@ import { PluginsSidebar } from '~/features/plugins/plugins-sidebar'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'
 import { SettingsGroup, SettingsPage } from '~/features/settings/settings-container'
 import { SettingsRow } from '~/features/settings/settings-row'
-import { useAppPreferences } from '~/features/settings/use-app-preferences'
+import { useFeatureFlag } from '~/features/settings/use-app-preferences'
 import type { Workspace } from '~/features/workspace/types'
 import { cn } from '~/lib/cn'
-import { isElectron, nativeIpc } from '~/lib/electron'
+import { authorizeDangerousAction, isElectron, nativeIpc } from '~/lib/electron'
 import {
   closeSurfaceById,
   openAutomation,
@@ -2657,11 +2657,11 @@ export const WorkspaceSidebar = memo(({ collapsed = false }: { collapsed?: boole
   const { workspaces, ready: workspacesReady } = useWorkspaces()
   const { sessions } = useAllSessions()
   const { addFromPicker, adding } = useAddWorkspace()
-  const { prefs: appPreferences } = useAppPreferences()
   const { remove } = useDeleteWorkspace()
   const { togglePin } = useToggleWorkspacePin()
   const [multiFolderDialogOpen, setMultiFolderDialogOpen] = useState(false)
-  const multiWorkspaceEnabled = appPreferences?.featureFlags.multiWorkspacePoc === true
+  const multiWorkspaceEnabled = useFeatureFlag('multiWorkspacePoc')
+  const localAuthForDangerousActions = useFeatureFlag('localAuthForDangerousActions')
   const { mutateAsync: createMultiFolderWorkspace, isPending: creatingMultiFolderWorkspace } =
     useMutation({
       ...postWorkspacesMultiFolderMutation(),
@@ -2690,10 +2690,20 @@ export const WorkspaceSidebar = memo(({ collapsed = false }: { collapsed?: boole
   }, [setSettingsSection])
 
   const handleDelete = useCallback(
-    (id: string) => {
+    async (id: string) => {
+      const workspace = workspaces.find(candidate => candidate.id === id)
+      const authorized = await authorizeDangerousAction({
+        action: 'remove',
+        resource: 'workspace',
+        label: workspace?.name ?? id,
+        enabled: localAuthForDangerousActions,
+      })
+      if (!authorized) {
+        return
+      }
       remove({ path: { id } })
     },
-    [remove]
+    [localAuthForDangerousActions, remove, workspaces]
   )
 
   const handleToggleWorkspacePin = useCallback(

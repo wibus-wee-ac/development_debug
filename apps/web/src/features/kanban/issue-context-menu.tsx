@@ -41,8 +41,10 @@ import {
 } from '~/components/ui/context-menu'
 import { toastManager } from '~/components/ui/toast'
 import { useAgents } from '~/features/agent-runtime/use-agents'
-import { useWorkspaces } from '~/features/workspace/use-workspace'
 import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
+import { useFeatureFlag } from '~/features/settings/use-app-preferences'
+import { useWorkspaces } from '~/features/workspace/use-workspace'
+import { authorizeDangerousAction } from '~/lib/electron'
 
 import { AssigneeAvatar } from './shared/assignee-avatar'
 import { formatIssueId } from './shared/format-issue-id'
@@ -103,6 +105,7 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
   const deleteIssue = useDeleteIssue()
   const undelegateIssue = useUndelegateIssue()
   const issueKey = formatIssueId(issue, workspaces)
+  const localAuthForDangerousActions = useFeatureFlag('localAuthForDangerousActions')
   const delegateAgents = agents.filter(agent => !!agent.providerTargetId)
   const delegatedAgent = findDelegatedAgent(issue, delegateAgents)
   const currentUserName = t('assignee.currentUser')
@@ -118,7 +121,16 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
   const currentStatusValue = issue.statusId ?? ''
   const currentMilestoneValue = issue.milestoneId ?? ''
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
+    const authorized = await authorizeDangerousAction({
+      action: 'delete',
+      resource: 'issue',
+      label: issueKey,
+      enabled: localAuthForDangerousActions,
+    })
+    if (!authorized) {
+      return
+    }
     setDeleteDialogOpen(false)
     deleteIssue.mutate(issue.id)
   }

@@ -5,6 +5,7 @@ import {
   getWorkspacesByIdFilesContentQueryKey,
   getWorkspacesByIdFilesInfoOptions,
   getWorkspacesByIdFilesInfoQueryKey,
+  getWorkspacesByIdGitRepositoriesQueryKey,
   getWorkspacesByIdGitStatusQueryKey,
   putWorkspacesByIdFilesContentMutation,
 } from '~/api-gen/@tanstack/react-query.gen'
@@ -63,6 +64,9 @@ export function useWorkspaceFileContentMutation(workspaceId: string, path: strin
         throw new Error('The workspace file was not written.')
       }
       queryClient.setQueryData(workspaceFileContentQueryKey(workspaceId, path), { content: variables.body.content })
+      void queryClient.invalidateQueries({
+        queryKey: getWorkspacesByIdGitRepositoriesQueryKey({ path: { id: workspaceId } }),
+      })
       void queryClient.invalidateQueries({
         queryKey: getWorkspacesByIdGitStatusQueryKey({ path: { id: workspaceId } }),
       })

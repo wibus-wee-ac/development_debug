@@ -5,7 +5,7 @@ import { useCallback, useMemo } from 'react'
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import type { ModelDescriptor } from '~/features/agent-runtime/types'
 import { useProviderTargetModels } from '~/features/agent-runtime/use-agent-models'
-import { useGitStatus } from '~/features/git/use-git'
+import { useGitRepositories } from '~/features/git/use-git'
 import { useChatPreferencesQuery } from '~/features/settings/use-chat-preferences'
 import { isElectron, platform } from '~/lib/electron'
 import {
@@ -159,7 +159,7 @@ export function useChatComposerRuntime({
   const hasCodexReviewSlot = useMemo(() => {
     return Boolean(runtimeCapabilities?.uiSlots.some((slot) => slot.id === 'codex:review'))
   }, [runtimeCapabilities?.uiSlots])
-  const gitStatusQuery = useGitStatus(hasCodexReviewSlot ? workspaceId : null)
+  const gitRepositoriesQuery = useGitRepositories(hasCodexReviewSlot ? workspaceId : null)
   const currentSessionModel = useMemo(() => {
     if (composerModel) {
       return composerModel
@@ -198,8 +198,9 @@ export function useChatComposerRuntime({
           command,
           readCodexReviewAvailability({
             workspaceId,
-            gitStatusLoading: gitStatusQuery.isLoading,
-            gitStatusUnavailable: gitStatusQuery.isError
+            gitStatusLoading: gitRepositoriesQuery.isLoading,
+            gitStatusUnavailable: gitRepositoriesQuery.isError
+              || (gitRepositoriesQuery.isSuccess && (gitRepositoriesQuery.data?.length ?? 0) !== 1)
           })
         )
       }
@@ -217,7 +218,14 @@ export function useChatComposerRuntime({
       }
       return command
     },
-    [gitStatusQuery.isError, gitStatusQuery.isLoading, runtimeUiSlotStates?.states, workspaceId]
+    [
+      gitRepositoriesQuery.data?.length,
+      gitRepositoriesQuery.isError,
+      gitRepositoriesQuery.isLoading,
+      gitRepositoriesQuery.isSuccess,
+      runtimeUiSlotStates?.states,
+      workspaceId,
+    ]
   )
   const slashCommands = useMemo(
     () =>

@@ -197,6 +197,23 @@ interface NativeServiceMethods {
   }>
 }
 
+export interface NativeAuthCapability {
+  supported: boolean
+  method: 'local-authentication' | null
+  reason: 'available' | 'unsupported-platform' | 'unavailable'
+}
+
+export interface NativeAuthAuthenticateResult {
+  status: 'authenticated' | 'unsupported' | 'canceled' | 'failed'
+  method: 'local-authentication' | null
+  message?: string
+}
+
+interface NativeAuthServiceMethods {
+  getCapability: () => Promise<NativeAuthCapability>
+  authenticate: (options?: { reason?: string }) => Promise<NativeAuthAuthenticateResult>
+}
+
 export interface DesktopCliStatus {
   supported: boolean
   installed: boolean
@@ -502,6 +519,7 @@ interface MacCaptureServiceMethods {
 
 interface CradleIpcServices {
   native: NativeServiceMethods
+  nativeAuth: NativeAuthServiceMethods
   window: WindowServiceMethods
   desktopUpdate: DesktopUpdateServiceMethods
   browserTabScripts: BrowserTabScriptsServiceMethods
@@ -515,6 +533,34 @@ interface CradleIpcServices {
 export const nativeIpc = createIpcProxy<CradleIpcServices>(
   window.cradle?.ipc ?? null,
 )
+
+export interface DangerousActionAuthorizationOptions {
+  action: 'delete' | 'remove'
+  resource: string
+  label?: string | null
+  enabled?: boolean
+}
+
+function buildDangerousActionReason(options: DangerousActionAuthorizationOptions): string {
+  const resource = options.resource.trim() || 'item'
+  const label = typeof options.label === 'string' && options.label.trim().length > 0
+    ? ` "${options.label.trim()}"`
+    : ''
+  return `Confirm ${options.action} ${resource}${label} in Cradle.`
+}
+
+export async function authorizeDangerousAction(
+  options: DangerousActionAuthorizationOptions,
+): Promise<boolean> {
+  if (options.enabled !== true || !isElectron || !nativeIpc) {
+    return true
+  }
+
+  const result = await nativeIpc.nativeAuth.authenticate({
+    reason: buildDangerousActionReason(options),
+  })
+  return result.status === 'authenticated' || result.status === 'unsupported'
+}
 
 export function subscribeDesktopUpdateStatus(
   handler: (status: DesktopUpdateStatus) => void,

@@ -15,7 +15,7 @@ import { Button } from '~/components/ui/button'
 import { DelayedSpinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import type { GitFileStatus } from '~/features/git/types'
-import { useGitFileStatuses } from '~/features/git/use-git'
+import { useGitRepositories } from '~/features/git/use-git'
 import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { getServerUrl, isElectron, nativeIpc } from '~/lib/electron'
 import { queryRefreshPolicies } from '~/lib/query-refresh-policy'
@@ -60,7 +60,7 @@ type WorkspaceFileEntry = z.infer<typeof WorkspaceFileListSchema>[number]
 const EMPTY_WORKSPACE_FILE_ENTRIES: WorkspaceFileEntry[] = []
 
 function toTreeGitStatus(statuses: GitFileStatus[]): TreeGitStatus[] {
-  return statuses.map(s => ({ path: s.path, status: s.status }))
+  return statuses.map(s => ({ path: s.workspacePath, status: s.status }))
 }
 
 function getDraggedTreeItemPath(event: DragEvent): string | null {
@@ -240,9 +240,9 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
     ...queryRefreshPolicies.active,
   })
 
-  const gitStatusQuery = useGitFileStatuses(workspaceId)
+  const gitRepositoriesQuery = useGitRepositories(workspaceId)
 
-  const gitStatuses = gitStatusQuery.data
+  const gitStatuses = gitRepositoriesQuery.data?.flatMap(repository => repository.files)
   const normalizedSearchQuery = searchQuery.trim()
   const searchEnabled = normalizedSearchQuery.length > 0
   const { files: searchFiles, isPending: searchPending } = useWorkspaceFiles(workspaceId, {
@@ -448,7 +448,7 @@ export function FileTree({ workspaceId, workspacePath }: FileTreeProps) {
       workspaceId={workspaceId}
       paths={paths}
       preparedInput={preparedInput}
-      ready={rootChildrenQuery.isSuccess && gitStatusQuery.isSuccess && !searchPending}
+      ready={rootChildrenQuery.isSuccess && gitRepositoriesQuery.isSuccess && !searchPending}
       gitStatus={treeGitStatus}
       onDirectoryExpanded={loadDirectoryChildren}
       onRefreshDirectory={loadDirectoryChildren}

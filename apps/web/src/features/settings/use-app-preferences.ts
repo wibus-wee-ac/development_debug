@@ -8,14 +8,19 @@ import { putPreferencesApp } from '~/api-gen/sdk.gen'
 export interface AppPreferences {
   featureFlags: {
     multiWorkspacePoc: boolean
+    localAuthForDangerousActions: boolean
   }
 }
+
+export type AppFeatureFlagKey = keyof AppPreferences['featureFlags']
 
 const AppPreferencesSchema = z.object({
   featureFlags: z.object({
     multiWorkspacePoc: z.boolean().default(false),
+    localAuthForDangerousActions: z.boolean().default(false),
   }).default({
     multiWorkspacePoc: false,
+    localAuthForDangerousActions: false,
   }),
 })
 
@@ -63,4 +68,17 @@ export function useAppPreferences() {
   const { mutateAsync: savePrefs, isPending: isSaving } = useUpdateAppPreferencesMutation()
 
   return { prefs: prefs ?? null, isLoading, isSuccess, savePrefs, isSaving }
+}
+
+export function isAppFeatureFlagEnabled(
+  prefs: AppPreferences | null | undefined,
+  key: AppFeatureFlagKey,
+): boolean {
+  return prefs?.featureFlags[key] === true
+}
+
+export function useFeatureFlag(key: AppFeatureFlagKey): boolean {
+  const { data: prefs } = useAppPreferencesQuery()
+
+  return isAppFeatureFlagEnabled(prefs, key)
 }

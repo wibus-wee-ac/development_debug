@@ -855,7 +855,7 @@ export function ChatView({
   )
 
   const resolveCodexReviewMergeBase = useCallback(
-    async (baseBranch: string) => {
+    async (baseBranch: string, repositoryPath?: string | null) => {
       if (!workspaceId) {
         return null
       }
@@ -864,6 +864,9 @@ export function ChatView({
         getServerUrl(),
       )
       url.searchParams.set('baseBranch', baseBranch)
+      if (repositoryPath) {
+        url.searchParams.set('repo', repositoryPath)
+      }
       const response = await fetch(url)
       if (!response.ok) {
         throw new Error(`Failed to resolve merge base (${response.status}).`)

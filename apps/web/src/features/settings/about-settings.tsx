@@ -84,7 +84,7 @@ export function AboutSettings() {
     <SettingsPage
       title={t('about.page.title')}
       description={t('about.page.description')}
-      action={<Badge variant="outline" className="font-mono text-[11px]">{t('about.badge.local')}</Badge>}
+      // action={<Badge variant="outline" className="font-mono text-[11px]">{t('about.badge.local')}</Badge>}
       data-testid="about-settings"
       data-settings-about-ready="true"
     >

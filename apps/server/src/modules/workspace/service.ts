@@ -9,7 +9,7 @@ import { desc, eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { db, getServerConfig } from '../../infra'
-import { getAppPreferencesSync } from '../preferences/service'
+import { assertAppFeatureFlagEnabled } from '../preferences/service'
 import { subscribeWorkspaceFileChanges } from './file-watch'
 import {
   createDirectory,
@@ -427,11 +427,7 @@ function createFileOperationResult(success: boolean, workspacePath: string | nul
 }
 
 function assertMultiWorkspacePocEnabled(): void {
-  if (getAppPreferencesSync().featureFlags.multiWorkspacePoc) {
-    return
-  }
-
-  throw new AppError({
+  assertAppFeatureFlagEnabled('multiWorkspacePoc', {
     code: 'multi_workspace_poc_disabled',
     status: 403,
     message: 'Multi-folder workspace POC is disabled. Enable it in Cradle settings first.',

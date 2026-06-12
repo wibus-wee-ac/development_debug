@@ -7,7 +7,7 @@
   "dev.action.openDevtools": "DevTools を開く",
   "dev.action.openDevtools.title": "DevTools ウィンドウを開く",
   "dev.action.reactDiagnostics": "React ツール",
-  "dev.action.reactDiagnostics.disableTitle": "React Scan と React Grab を無効化します。読み込み済みスクリプトを解除するにはハードリロードしてください",
+  "dev.action.reactDiagnostics.disableTitle": "React Scan と React Grab を無効化します。読み込み済みスクリプトを解除するためにアプリを再読み込みします",
   "dev.action.reactDiagnostics.enableTitle": "React Scan と React Grab を有効化",
   "footer.action.askJarvis": "Jarvis に聞く",
   "header.action.closeSidebar": "サイドバーを閉じる",

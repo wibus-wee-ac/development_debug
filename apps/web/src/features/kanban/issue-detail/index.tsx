@@ -2,6 +2,8 @@ import { useEffect } from 'react'
 
 import { Skeleton } from '~/components/ui/skeleton'
 import type { KanbanIssue } from '~/features/kanban/types'
+import { useFeatureFlag } from '~/features/settings/use-app-preferences'
+import { authorizeDangerousAction } from '~/lib/electron'
 
 import { useDeleteIssue, useIssue, useMilestones, useStatuses, useUpdateIssue } from '../use-kanban'
 import { ActivityTimeline } from './activity-timeline'
@@ -41,6 +43,7 @@ export function IssueDetail({
   const updateIssue = useUpdateIssue()
   const deleteIssue = useDeleteIssue()
   const issue = issueOverride ?? loadedIssue
+  const localAuthForDangerousActions = useFeatureFlag('localAuthForDangerousActions')
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
@@ -59,8 +62,17 @@ export function IssueDetail({
     updateIssue.mutate({ id: issueId, patch })
   }
 
-  const handleDelete = () => {
+  const handleDelete = async () => {
     if (readOnly) {
+      return
+    }
+    const authorized = await authorizeDangerousAction({
+      action: 'delete',
+      resource: 'issue',
+      label: issue?.title ?? issueId,
+      enabled: localAuthForDangerousActions,
+    })
+    if (!authorized) {
       return
     }
     deleteIssue.mutate(issueId, {

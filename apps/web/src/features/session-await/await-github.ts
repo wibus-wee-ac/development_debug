@@ -1,5 +1,3 @@
-import type { GitStatus } from '~/features/git/types'
-
 interface GitRemote {
   name: string
   fetchUrl: string | null
@@ -162,7 +160,10 @@ export function parseGitHubAwaitTargetInput(input: string): GitHubAwaitTarget | 
   return null
 }
 
-export function derivePullRequestNumberFromStatus(status: GitStatus | null | undefined): number | null {
+export function derivePullRequestNumberFromStatus(status: {
+  branch?: string | null
+  tracking?: string | null
+} | null | undefined): number | null {
   const candidates = [status?.tracking, status?.branch].filter((value): value is string => !!value)
 
   for (const candidate of candidates) {

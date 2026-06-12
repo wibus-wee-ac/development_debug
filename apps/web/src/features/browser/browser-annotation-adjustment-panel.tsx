@@ -29,6 +29,8 @@ import { cn } from '~/lib/cn'
 import type { BrowserAnnotationDesignChange, BrowserAnnotationElement } from '~/store/browser-panel'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 
+import { BrowserColorPalette } from './browser-color-palette'
+
 type DesignKey = Exclude<keyof BrowserAnnotationDesignChange, 'comment'>
 type InspectorTab = 'design' | 'css'
 type InspectorGroup = 'Position' | 'Layout' | 'Dimensions' | 'Spacing' | 'Appearance'
@@ -315,10 +317,10 @@ function DesignInput({ field, value, originalValue, onChange, onReset }: DesignI
     <InspectorRow label={field.label} changed={changed} onReset={onReset}>
       <span className="flex min-w-0 items-center gap-1">
         {field.swatch && (
-          <span
-            className="size-5 shrink-0 rounded-full shadow-[0_0_0_1px_rgba(0,0,0,0.10),0_1px_3px_rgba(0,0,0,0.16)] dark:shadow-[0_0_0_1px_rgba(255,255,255,0.12),0_1px_3px_rgba(0,0,0,0.28)]"
-            style={{ backgroundColor: effectiveValue }}
-            aria-hidden="true"
+          <BrowserColorPalette
+            value={effectiveValue}
+            label={field.label}
+            onChange={onChange}
           />
         )}
         {scrubValue && (
