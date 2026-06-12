@@ -20,6 +20,12 @@ const spec = {
   "description": "Create branch",
   "flags": [
     {
+      "name": "repo",
+      "required": false,
+      "target": "body.repo",
+      "type": "string"
+    },
+    {
       "name": "name",
       "required": true,
       "target": "body.name",

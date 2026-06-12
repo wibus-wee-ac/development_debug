@@ -8,6 +8,8 @@ import {
   getWorkspacesByIdGitGraphOptions,
   getWorkspacesByIdGitGraphQueryKey,
   getWorkspacesByIdGitRemotesOptions,
+  getWorkspacesByIdGitRepositoriesOptions,
+  getWorkspacesByIdGitRepositoriesQueryKey,
   getWorkspacesByIdGitStatusOptions,
   getWorkspacesByIdGitStatusQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
@@ -16,24 +18,50 @@ import { queryRefreshPolicies } from '~/lib/query-refresh-policy'
 // ─── Re-export generated query key builders so callers don't import from api-gen ──
 
 export { getWorkspacesByIdGitStatusQueryKey as gitStatusQueryKey }
+export { getWorkspacesByIdGitRepositoriesQueryKey as gitRepositoriesQueryKey }
 export { getWorkspacesByIdGitBranchesQueryKey as gitBranchesQueryKey }
 export { getWorkspacesByIdGitGraphQueryKey as gitGraphQueryKey }
 export { getWorkspacesByIdGitDiffQueryKey as gitDiffQueryKey }
 
 // ─── Hooks ───────────────────────────────────────────────────────────────────
 
-export function useGitStatus(workspaceId: string | null | undefined) {
+function gitRepositoryQuery(repositoryPath: string | null | undefined) {
+  return repositoryPath ? { query: { repo: repositoryPath } } : {}
+}
+
+export function useGitRepositories(workspaceId: string | null | undefined) {
   return useQuery({
-    ...getWorkspacesByIdGitStatusOptions({ path: { id: workspaceId! } }),
+    ...getWorkspacesByIdGitRepositoriesOptions({ path: { id: workspaceId! } }),
     ...queryRefreshPolicies.active,
     enabled: !!workspaceId,
     retry: false,
   })
 }
 
-export function useGitFileStatuses(workspaceId: string | null | undefined) {
+export function useGitStatus(
+  workspaceId: string | null | undefined,
+  repositoryPath?: string | null,
+) {
   return useQuery({
-    ...getWorkspacesByIdGitStatusOptions({ path: { id: workspaceId! } }),
+    ...getWorkspacesByIdGitStatusOptions({
+      path: { id: workspaceId! },
+      ...gitRepositoryQuery(repositoryPath),
+    }),
+    ...queryRefreshPolicies.active,
+    enabled: !!workspaceId,
+    retry: false,
+  })
+}
+
+export function useGitFileStatuses(
+  workspaceId: string | null | undefined,
+  repositoryPath?: string | null,
+) {
+  return useQuery({
+    ...getWorkspacesByIdGitStatusOptions({
+      path: { id: workspaceId! },
+      ...gitRepositoryQuery(repositoryPath),
+    }),
     ...queryRefreshPolicies.active,
     enabled: !!workspaceId,
     retry: false,
@@ -41,27 +69,49 @@ export function useGitFileStatuses(workspaceId: string | null | undefined) {
   })
 }
 
-export function useGitBranches(workspaceId: string | null | undefined) {
+export function useGitBranches(
+  workspaceId: string | null | undefined,
+  repositoryPath?: string | null,
+) {
   return useQuery({
-    ...getWorkspacesByIdGitBranchesOptions({ path: { id: workspaceId! } }),
+    ...getWorkspacesByIdGitBranchesOptions({
+      path: { id: workspaceId! },
+      ...gitRepositoryQuery(repositoryPath),
+    }),
     ...queryRefreshPolicies.background,
     enabled: !!workspaceId,
     retry: false,
   })
 }
 
-export function useGitRemotes(workspaceId: string | null | undefined) {
+export function useGitRemotes(
+  workspaceId: string | null | undefined,
+  repositoryPath?: string | null,
+) {
   return useQuery({
-    ...getWorkspacesByIdGitRemotesOptions({ path: { id: workspaceId! } }),
+    ...getWorkspacesByIdGitRemotesOptions({
+      path: { id: workspaceId! },
+      ...gitRepositoryQuery(repositoryPath),
+    }),
     enabled: !!workspaceId,
     ...queryRefreshPolicies.background,
     retry: false,
   })
 }
 
-export function useGitGraph(workspaceId: string | null | undefined, limit: number = 100) {
+export function useGitGraph(
+  workspaceId: string | null | undefined,
+  limit: number = 100,
+  repositoryPath?: string | null,
+) {
   return useQuery({
-    ...getWorkspacesByIdGitGraphOptions({ path: { id: workspaceId! }, query: { limit: String(limit) } }),
+    ...getWorkspacesByIdGitGraphOptions({
+      path: { id: workspaceId! },
+      query: {
+        limit: String(limit),
+        ...(repositoryPath ? { repo: repositoryPath } : {}),
+      },
+    }),
     ...queryRefreshPolicies.background,
     enabled: !!workspaceId,
     retry: false,
@@ -69,12 +119,23 @@ export function useGitGraph(workspaceId: string | null | undefined, limit: numbe
   })
 }
 
-export function useGitDiff(workspaceId: string | null | undefined, paths?: string[]) {
+export function useGitDiff(
+  workspaceId: string | null | undefined,
+  repositoryPath?: string | null,
+  paths?: string[],
+) {
   const pathsStr = paths?.length ? paths.join(',') : undefined
   return useQuery({
     ...getWorkspacesByIdGitDiffOptions({
       path: { id: workspaceId! },
-      ...(pathsStr ? { query: { paths: pathsStr } } : {}),
+      ...(repositoryPath || pathsStr
+        ? {
+            query: {
+              ...(repositoryPath ? { repo: repositoryPath } : {}),
+              ...(pathsStr ? { paths: pathsStr } : {}),
+            },
+          }
+        : {}),
     }),
     ...queryRefreshPolicies.active,
     enabled: !!workspaceId,

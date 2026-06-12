@@ -27,7 +27,7 @@ const treeMocks = vi.hoisted(() => {
 })
 
 const gitQueryMocks = vi.hoisted(() => ({
-  useGitFileStatuses: vi.fn(),
+  useGitRepositories: vi.fn(),
 }))
 
 vi.mock('@pierre/trees/react', async () => {
@@ -54,7 +54,7 @@ vi.mock('@pierre/trees/react', async () => {
 })
 
 vi.mock('./use-git', () => ({
-  useGitFileStatuses: gitQueryMocks.useGitFileStatuses,
+  useGitRepositories: gitQueryMocks.useGitRepositories,
 }))
 
 beforeEach(() => {
@@ -73,13 +73,27 @@ beforeEach(() => {
     browserPanelOpen: false,
     browserPanelOpenByOwnerId: {},
   })
-  gitQueryMocks.useGitFileStatuses.mockReturnValue({
-    data: [{ path: 'src/app.tsx', status: 'modified' }],
+  gitQueryMocks.useGitRepositories.mockReturnValue({
+    data: [createGitRepository([{ path: 'src/app.tsx', workspacePath: 'src/app.tsx', status: 'modified' }])],
     isLoading: false,
     isError: false,
     isSuccess: true,
   })
 })
+
+function createGitRepository(files: GitFileStatus[]) {
+  return {
+    path: '.',
+    name: 'workspace-1',
+    absolutePath: '/tmp/workspace-1',
+    branch: 'main',
+    tracking: null,
+    ahead: 0,
+    behind: 0,
+    isDetached: false,
+    files,
+  }
+}
 
 function renderWithQueryClient(children: ReactNode) {
   const queryClient = new QueryClient({
@@ -97,11 +111,11 @@ function renderWithQueryClient(children: ReactNode) {
 describe('groupGitFileStatuses', () => {
   it('places tests, markdown docs, and all other files into stable sections', () => {
     const files: GitFileStatus[] = [
-      { path: 'src/app.tsx', status: 'modified' },
-      { path: 'README.md', status: 'modified' },
-      { path: 'src/app.test.ts', status: 'added' },
-      { path: 'docs/spec.mdx', status: 'untracked' },
-      { path: 'src/app.spec.ts', status: 'modified' },
+      { path: 'src/app.tsx', workspacePath: 'src/app.tsx', status: 'modified' },
+      { path: 'README.md', workspacePath: 'README.md', status: 'modified' },
+      { path: 'src/app.test.ts', workspacePath: 'src/app.test.ts', status: 'added' },
+      { path: 'docs/spec.mdx', workspacePath: 'docs/spec.mdx', status: 'untracked' },
+      { path: 'src/app.spec.ts', workspacePath: 'src/app.spec.ts', status: 'modified' },
     ]
 
     expect(groupGitFileStatuses(files)).toEqual([
@@ -109,22 +123,22 @@ describe('groupGitFileStatuses', () => {
         id: 'sources',
         label: 'Sources',
         files: [
-          { path: 'src/app.spec.ts', status: 'modified' },
-          { path: 'src/app.tsx', status: 'modified' },
+          { path: 'src/app.spec.ts', workspacePath: 'src/app.spec.ts', status: 'modified' },
+          { path: 'src/app.tsx', workspacePath: 'src/app.tsx', status: 'modified' },
         ],
       },
       {
         id: 'docs',
         label: 'Docs / Specs',
         files: [
-          { path: 'docs/spec.mdx', status: 'untracked' },
-          { path: 'README.md', status: 'modified' },
+          { path: 'docs/spec.mdx', workspacePath: 'docs/spec.mdx', status: 'untracked' },
+          { path: 'README.md', workspacePath: 'README.md', status: 'modified' },
         ],
       },
       {
         id: 'tests',
         label: 'Tests',
-        files: [{ path: 'src/app.test.ts', status: 'added' }],
+        files: [{ path: 'src/app.test.ts', workspacePath: 'src/app.test.ts', status: 'added' }],
       },
     ])
   })
@@ -132,11 +146,11 @@ describe('groupGitFileStatuses', () => {
 
 describe('changesPanel type interactions', () => {
   it('reuses the all changes diff tab while scrolling to clicked files', () => {
-    gitQueryMocks.useGitFileStatuses.mockReturnValue({
-      data: [
-        { path: 'src/app.tsx', status: 'modified' },
-        { path: 'src/feature.ts', status: 'added' },
-      ],
+    gitQueryMocks.useGitRepositories.mockReturnValue({
+      data: [createGitRepository([
+        { path: 'src/app.tsx', workspacePath: 'src/app.tsx', status: 'modified' },
+        { path: 'src/feature.ts', workspacePath: 'src/feature.ts', status: 'added' },
+      ])],
       isLoading: false,
       isError: false,
       isSuccess: true,
@@ -154,6 +168,7 @@ describe('changesPanel type interactions', () => {
       expect.objectContaining({
         kind: 'workspace-diff',
         workspaceId: 'workspace-1',
+        repositoryPath: '.',
         title: 'All Changes',
       }),
     ])
@@ -179,6 +194,7 @@ describe('changesPanel tree interactions', () => {
       expect.objectContaining({
         kind: 'workspace-diff',
         workspaceId: 'workspace-1',
+        repositoryPath: '.',
         title: 'All Changes',
       }),
     ])

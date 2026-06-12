@@ -17,7 +17,14 @@ const spec = {
     "status"
   ],
   "description": "Get git status",
-  "flags": [],
+  "flags": [
+    {
+      "name": "repo",
+      "required": false,
+      "target": "query.repo",
+      "type": "string"
+    }
+  ],
   "method": "get",
   "path": "/workspaces/{id}/git/status"
 } satisfies CliOperationSpec

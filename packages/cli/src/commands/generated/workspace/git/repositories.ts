@@ -14,25 +14,12 @@ const spec = {
   "command": [
     "workspace",
     "git",
-    "diff"
+    "repositories"
   ],
-  "description": "Get git diff",
-  "flags": [
-    {
-      "name": "repo",
-      "required": false,
-      "target": "query.repo",
-      "type": "string"
-    },
-    {
-      "name": "paths",
-      "required": false,
-      "target": "query.paths",
-      "type": "string"
-    }
-  ],
+  "description": "Get git repositories",
+  "flags": [],
   "method": "get",
-  "path": "/workspaces/{id}/git/diff"
+  "path": "/workspaces/{id}/git/repositories"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

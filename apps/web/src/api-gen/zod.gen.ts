@@ -1432,15 +1432,28 @@ export const zPutWorkflowRulesByWorkspaceIdPath = z.object({
     workspaceId: z.string().min(1)
 });
 
+export const zGetWorkspacesByIdGitRepositoriesPath = z.object({
+    id: z.string().min(1)
+});
+
 export const zGetWorkspacesByIdGitStatusPath = z.object({
     id: z.string().min(1)
+});
+
+export const zGetWorkspacesByIdGitStatusQuery = z.object({
+    repo: z.string().min(1).optional()
 });
 
 export const zGetWorkspacesByIdGitBranchesPath = z.object({
     id: z.string().min(1)
 });
 
+export const zGetWorkspacesByIdGitBranchesQuery = z.object({
+    repo: z.string().min(1).optional()
+});
+
 export const zPostWorkspacesByIdGitBranchesBody = z.object({
+    repo: z.string().min(1).optional(),
     name: z.string().min(1),
     from: z.string().min(1).optional()
 });
@@ -1453,11 +1466,16 @@ export const zGetWorkspacesByIdGitRemotesPath = z.object({
     id: z.string().min(1)
 });
 
+export const zGetWorkspacesByIdGitRemotesQuery = z.object({
+    repo: z.string().min(1).optional()
+});
+
 export const zGetWorkspacesByIdGitGraphPath = z.object({
     id: z.string().min(1)
 });
 
 export const zGetWorkspacesByIdGitGraphQuery = z.object({
+    repo: z.string().min(1).optional(),
     limit: z.union([
         z.string(),
         z.number().gte(1)
@@ -1465,11 +1483,16 @@ export const zGetWorkspacesByIdGitGraphQuery = z.object({
 });
 
 export const zPostWorkspacesByIdGitCheckoutBody = z.object({
+    repo: z.string().min(1).optional(),
     branch: z.string().min(1)
 });
 
 export const zPostWorkspacesByIdGitCheckoutPath = z.object({
     id: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdGitFetchBody = z.object({
+    repo: z.string().min(1).optional()
 });
 
 export const zPostWorkspacesByIdGitFetchPath = z.object({
@@ -1481,6 +1504,7 @@ export const zGetWorkspacesByIdGitDiffPath = z.object({
 });
 
 export const zGetWorkspacesByIdGitDiffQuery = z.object({
+    repo: z.string().min(1).optional(),
     paths: z.string().optional()
 });
 
@@ -1489,6 +1513,7 @@ export const zGetWorkspacesByIdGitMergeBasePath = z.object({
 });
 
 export const zGetWorkspacesByIdGitMergeBaseQuery = z.object({
+    repo: z.string().min(1).optional(),
     baseBranch: z.string().min(1)
 });
 

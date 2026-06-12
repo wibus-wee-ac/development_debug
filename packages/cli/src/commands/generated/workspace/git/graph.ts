@@ -19,6 +19,12 @@ const spec = {
   "description": "Get git graph",
   "flags": [
     {
+      "name": "repo",
+      "required": false,
+      "target": "query.repo",
+      "type": "string"
+    },
+    {
       "name": "limit",
       "required": false,
       "target": "query.limit",

@@ -2,12 +2,15 @@
 import { prepareFileTreeInput } from '@pierre/trees'
 import { FileTree as PierreFileTree, useFileTree } from '@pierre/trees/react'
 import { useQueryClient } from '@tanstack/react-query'
-import { FileDiffIcon, Loader2Icon, ScanEyeIcon } from 'lucide-react'
+import { FileDiffIcon, GitBranchIcon, Loader2Icon, ScanEyeIcon } from 'lucide-react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { getWorkspacesByIdGitStatusQueryKey } from '~/api-gen/@tanstack/react-query.gen'
+import {
+  getWorkspacesByIdGitRepositoriesQueryKey,
+  getWorkspacesByIdGitStatusQueryKey,
+} from '~/api-gen/@tanstack/react-query.gen'
 import { WorkspaceFileIcon, WorkspaceFileIconSpriteSheet } from '~/components/common/workspace-file-icon'
 import { toastManager } from '~/components/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
@@ -27,14 +30,14 @@ import {
 } from '~/features/workspace/workspace-file-shortcuts'
 import { cn } from '~/lib/cn'
 import { isElectron, nativeIpc } from '~/lib/electron'
-import type { GitFileStatus } from '~/features/git/types'
+import type { GitFileStatus, GitRepository } from '~/features/git/types'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 
 import type { ChangeSection } from './changes-grouping'
 import { groupGitFileStatuses } from './changes-grouping'
 import { resolveTreeItemFromEvent } from './tree-event-target'
-import { useGitFileStatuses } from './use-git'
+import { useGitRepositories } from './use-git'
 
 type ChangesViewMode = 'type' | 'tree'
 
@@ -49,37 +52,52 @@ interface ChangesPanelProps {
 
 export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) {
   const [viewMode, setViewMode] = useState<ChangesViewMode>('type')
-  const { data: files, isLoading, isError, isSuccess } = useGitFileStatuses(workspaceId)
-  const sections = groupGitFileStatuses(files ?? [])
-  const changedFiles = files ?? []
-  const changedFileCount = files?.length ?? 0
+  const { data: repositories, isLoading, isError, isSuccess } = useGitRepositories(workspaceId)
+  const gitRepositories = repositories ?? []
+  const changedFileCount = gitRepositories.reduce((total, repository) => total + repository.files.length, 0)
 
   const openDiffTab = useBrowserPanelStore(s => s.openWorkspaceDiffTab)
   const setBrowserPanelOpen = useLayoutStore(s => s.setBrowserPanelOpen)
 
   const requestScrollToFilePath = useBrowserPanelStore(s => s.requestScrollToFilePath)
 
-  const handleReviewAll = () => {
+  const handleReviewRepository = (repository: GitRepository) => {
     if (!workspaceId) {
       return
     }
-    openDiffTab({ workspaceId, title: 'All Changes' })
+    openDiffTab({
+      workspaceId,
+      repositoryPath: repository.path,
+      title: gitRepositories.length > 1 ? `${repository.name} Changes` : 'All Changes',
+    })
     setBrowserPanelOpen(true)
   }
 
-  const handleReviewFile = (path: string) => {
+  const handleReviewFile = (repository: GitRepository, path: string) => {
     if (!workspaceId) {
       return
     }
-    const tabId = openDiffTab({ workspaceId, title: 'All Changes' })
+    const tabId = openDiffTab({
+      workspaceId,
+      repositoryPath: repository.path,
+      title: gitRepositories.length > 1 ? `${repository.name} Changes` : 'All Changes',
+    })
     setBrowserPanelOpen(true)
     requestScrollToFilePath({ path, tabId })
   }
 
-  let changesContent: ReactNode = (
-    <ChangesTypeView sections={sections} onFileClick={handleReviewFile} />
-  )
-  if (changedFileCount === 0) {
+  let changesContent: ReactNode = null
+  if (gitRepositories.length === 0) {
+    changesContent = (
+      <div
+        className="flex flex-1 items-center justify-center p-4 text-center"
+        data-testid="changes-panel-empty"
+      >
+        <p className="text-xs text-muted-foreground">No Git repositories found</p>
+      </div>
+    )
+  }
+  else if (changedFileCount === 0) {
     changesContent = (
       <div
         className="flex flex-1 items-center justify-center p-4 text-center"
@@ -89,13 +107,34 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
       </div>
     )
   }
-  if (changedFileCount > 0 && viewMode === 'tree') {
+  else if (gitRepositories.length === 1) {
+    const repository = gitRepositories[0]!
+    changesContent = viewMode === 'tree'
+      ? (
+        <ChangesTreeView
+          files={repository.files}
+          repositoryPath={repository.path}
+          workspaceId={workspaceId}
+          workspacePath={workspacePath ?? undefined}
+          onFileClick={path => handleReviewFile(repository, path)}
+        />
+        )
+      : (
+        <ChangesTypeView
+          sections={groupGitFileStatuses(repository.files)}
+          onFileClick={path => handleReviewFile(repository, path)}
+        />
+        )
+  }
+  else {
     changesContent = (
-      <ChangesTreeView
-        files={changedFiles}
+      <ChangesRepositoryList
+        repositories={gitRepositories}
+        viewMode={viewMode}
         workspaceId={workspaceId}
         workspacePath={workspacePath ?? undefined}
         onFileClick={handleReviewFile}
+        onReviewRepository={handleReviewRepository}
       />
     )
   }
@@ -150,10 +189,10 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
         >
           {changedFileCount}
         </span>
-        {changedFileCount > 0 && (
+        {changedFileCount > 0 && gitRepositories.length === 1 && (
           <button
             type="button"
-            onClick={handleReviewAll}
+            onClick={() => handleReviewRepository(gitRepositories[0]!)}
             className="flex h-5 items-center gap-1 rounded px-1.5 text-[10px] font-medium text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
             data-testid="changes-review-all"
           >
@@ -193,6 +232,85 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
       </div>
 
       {changesContent}
+    </div>
+  )
+}
+
+function ChangesRepositoryList({
+  repositories,
+  viewMode,
+  workspaceId,
+  workspacePath,
+  onFileClick,
+  onReviewRepository,
+}: {
+  repositories: GitRepository[]
+  viewMode: ChangesViewMode
+  workspaceId: string | null | undefined
+  workspacePath?: string
+  onFileClick: (repository: GitRepository, path: string) => void
+  onReviewRepository: (repository: GitRepository) => void
+}) {
+  const changedRepositories = repositories.filter(repository => repository.files.length > 0)
+
+  return (
+    <div className="min-h-0 flex-1 overflow-y-auto py-2" data-testid="changes-panel-repositories">
+      {changedRepositories.map(repository => (
+        <section
+          key={repository.path}
+          className="px-2 pb-3 last:pb-1"
+          data-testid="changes-repository-section"
+        >
+          <div className="mb-1 flex h-7 min-w-0 items-center gap-2 px-1">
+            <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground/50" aria-hidden />
+            <div className="min-w-0 flex-1">
+              <div className="flex min-w-0 items-center gap-1.5">
+                <span className="min-w-0 truncate text-xs font-medium text-foreground/85">
+                  {repository.name}
+                </span>
+                <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground/55">
+                  {repository.files.length}
+                </span>
+              </div>
+              <div className="flex min-w-0 items-center gap-1.5 text-[10px] text-muted-foreground/50">
+                <span className="min-w-0 truncate">{repository.branch}</span>
+                {repository.path !== '.' && (
+                  <span className="min-w-0 truncate">{repository.path}</span>
+                )}
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => onReviewRepository(repository)}
+              className="flex h-5 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] font-medium text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+              data-testid="changes-repository-review"
+            >
+              <ScanEyeIcon className="size-3" aria-hidden />
+              Review
+            </button>
+          </div>
+          <div className="min-h-0 overflow-hidden rounded-md border border-border/35 bg-background/30">
+            {viewMode === 'tree'
+              ? (
+                <div className="h-64 min-h-0">
+                  <ChangesTreeView
+                    files={repository.files}
+                    repositoryPath={repository.path}
+                    workspaceId={workspaceId}
+                    workspacePath={workspacePath}
+                    onFileClick={path => onFileClick(repository, path)}
+                  />
+                </div>
+                )
+              : (
+                <ChangesTypeView
+                  sections={groupGitFileStatuses(repository.files)}
+                  onFileClick={path => onFileClick(repository, path)}
+                />
+                )}
+          </div>
+        </section>
+      ))}
     </div>
   )
 }
@@ -253,11 +371,13 @@ function ChangeSectionView({
 
 function ChangesTreeView({
   files,
+  repositoryPath,
   workspaceId,
   workspacePath,
   onFileClick,
 }: {
   files: GitFileStatus[]
+  repositoryPath: string
   workspaceId: string | null | undefined
   workspacePath?: string
   onFileClick: (path: string) => void
@@ -272,15 +392,26 @@ function ChangesTreeView({
   const openWorkspaceFileTab = useBrowserPanelStore(state => state.openWorkspaceFileTab)
   const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
   const paths = files.map(file => file.path)
+  const workspacePathByRepoPath = new Map(files.map(file => [file.path, file.workspacePath]))
   const filePathSet = new Set(paths)
   const preparedInput = prepareFileTreeInput(paths, { flattenEmptyDirectories: true })
   const gitStatus = files.map(file => ({ path: file.path, status: file.status }))
+  const resolveWorkspaceRelativePath = (path: string) =>
+    workspacePathByRepoPath.get(path) ?? joinRepositoryPath(repositoryPath, path)
+  const resolveRepoRelativePath = (path: string) =>
+    stripRepositoryPath(repositoryPath, path)
   const refreshChangedFiles = async () => {
     if (!workspaceId) {
       return
     }
     await Promise.all([
-      queryClient.invalidateQueries({ queryKey: getWorkspacesByIdGitStatusQueryKey({ path: { id: workspaceId } }) }),
+      queryClient.invalidateQueries({ queryKey: getWorkspacesByIdGitRepositoriesQueryKey({ path: { id: workspaceId } }) }),
+      queryClient.invalidateQueries({
+        queryKey: getWorkspacesByIdGitStatusQueryKey({
+          path: { id: workspaceId },
+          query: { repo: repositoryPath },
+        }),
+      }),
       queryClient.invalidateQueries({ queryKey: ['workspace-file-search', workspaceId] }),
     ])
   }
@@ -291,8 +422,8 @@ function ChangesTreeView({
 
     await renameWorkspaceFilePath({
       workspaceId,
-      sourcePath,
-      destinationPath,
+      sourcePath: resolveWorkspaceRelativePath(sourcePath),
+      destinationPath: resolveWorkspaceRelativePath(destinationPath),
       operationFailedMessage: t('fileTree.error.operationFailed'),
     })
     await refreshChangedFiles()
@@ -344,7 +475,7 @@ function ChangesTreeView({
     const nextPath = await createWorkspaceFileEntry({
       workspaceId,
       kind: input.kind,
-      parentPath: input.parentPath,
+      parentPath: resolveWorkspaceRelativePath(input.parentPath),
       name: input.name,
       operationFailedMessage: t('fileTree.error.operationFailed'),
     })
@@ -353,20 +484,23 @@ function ChangesTreeView({
     }
 
     await refreshChangedFiles()
-    model.focusPath(input.kind === 'folder' ? `${nextPath}/` : nextPath)
+    const repoPath = resolveRepoRelativePath(nextPath)
+    model.focusPath(input.kind === 'folder' ? `${repoPath}/` : repoPath)
     return nextPath
   }
   const copyRelativePath = async (path: string) => {
-    await navigator.clipboard.writeText(path)
+    await navigator.clipboard.writeText(resolveWorkspaceRelativePath(path))
   }
   const copyAbsolutePath = async (path: string) => {
-    await navigator.clipboard.writeText(workspacePath ? joinWorkspacePath(workspacePath, path) : path)
+    const relativePath = resolveWorkspaceRelativePath(path)
+    await navigator.clipboard.writeText(workspacePath ? joinWorkspacePath(workspacePath, relativePath) : relativePath)
   }
   const openWorkspaceFile = (path: string) => {
     if (!workspaceId) {
       return
     }
-    openWorkspaceFileTab({ workspaceId, path, view: getWorkspaceFileDefaultView(path) })
+    const relativePath = resolveWorkspaceRelativePath(path)
+    openWorkspaceFileTab({ workspaceId, path: relativePath, view: getWorkspaceFileDefaultView(relativePath) })
     setBrowserPanelOpen(true)
   }
   const openInDefaultApplication = async (path: string) => {
@@ -375,7 +509,7 @@ function ChangesTreeView({
     }
 
     try {
-      await nativeIpc.native.openPath(joinWorkspacePath(workspacePath, path))
+      await nativeIpc.native.openPath(joinWorkspacePath(workspacePath, resolveWorkspaceRelativePath(path)))
     }
     catch (error) {
       toastManager.add({
@@ -391,7 +525,7 @@ function ChangesTreeView({
     }
 
     try {
-      await nativeIpc.native.showItemInFolder(joinWorkspacePath(workspacePath, path))
+      await nativeIpc.native.showItemInFolder(joinWorkspacePath(workspacePath, resolveWorkspaceRelativePath(path)))
     }
     catch (error) {
       toastManager.add({
@@ -531,9 +665,10 @@ function ChangeFileRow({
     <button
       type="button"
       className="flex h-7 min-w-0 w-full items-center gap-2 border-b border-border/25 px-2 text-xs last:border-b-0 hover:bg-accent/35 text-left"
-      title={file.path}
+      title={file.workspacePath}
       data-testid="changes-file-row"
       data-path={file.path}
+      data-workspace-path={file.workspacePath}
       data-status={file.status}
       onClick={() => onClick(file.path)}
     >
@@ -570,6 +705,26 @@ function getFileDisplay(path: string): { directory: string | null, name: string 
     directory: path.slice(0, lastSlash),
     name: path.slice(lastSlash + 1),
   }
+}
+
+function joinRepositoryPath(repositoryPath: string, path: string): string {
+  if (repositoryPath === '.') {
+    return path
+  }
+  return path ? `${repositoryPath}/${path}` : repositoryPath
+}
+
+function stripRepositoryPath(repositoryPath: string, workspaceRelativePath: string): string {
+  if (repositoryPath === '.') {
+    return workspaceRelativePath
+  }
+  if (workspaceRelativePath === repositoryPath) {
+    return ''
+  }
+  const prefix = `${repositoryPath}/`
+  return workspaceRelativePath.startsWith(prefix)
+    ? workspaceRelativePath.slice(prefix.length)
+    : workspaceRelativePath
 }
 
 function getStatusLabel(status: GitFileStatus['status']): string {

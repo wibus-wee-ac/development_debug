@@ -213,6 +213,7 @@ import { register as registerWorkspaceGitCheckout } from './workspace/git/checko
 import { register as registerWorkspaceGitDiff } from './workspace/git/diff'
 import { register as registerWorkspaceGitFetch } from './workspace/git/fetch'
 import { register as registerWorkspaceGitGraph } from './workspace/git/graph'
+import { register as registerWorkspaceGitRepositories } from './workspace/git/repositories'
 import { register as registerWorkspaceGitStatus } from './workspace/git/status'
 import { register as registerWorkspaceImport } from './workspace/import'
 import { register as registerWorkspaceList } from './workspace/list'
@@ -435,6 +436,7 @@ export function registerGeneratedCommands(program: Command): void {
   registerWorkspaceGitDiff(program)
   registerWorkspaceGitFetch(program)
   registerWorkspaceGitGraph(program)
+  registerWorkspaceGitRepositories(program)
   registerWorkspaceGitStatus(program)
   registerWorkspaceImport(program)
   registerWorkspaceList(program)

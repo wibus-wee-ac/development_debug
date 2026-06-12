@@ -17,7 +17,14 @@ const spec = {
     "fetch"
   ],
   "description": "Fetch remote",
-  "flags": [],
+  "flags": [
+    {
+      "name": "repo",
+      "required": false,
+      "target": "body.repo",
+      "type": "string"
+    }
+  ],
   "method": "post",
   "path": "/workspaces/{id}/git/fetch"
 } satisfies CliOperationSpec

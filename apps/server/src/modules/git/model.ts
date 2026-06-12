@@ -1,6 +1,17 @@
 import { t } from 'elysia'
 
 const nullableString = t.Nullable(t.String())
+const fileStatusView = t.Object({
+  path: t.String(),
+  workspacePath: t.String(),
+  status: t.Union([
+    t.Literal('added'),
+    t.Literal('modified'),
+    t.Literal('deleted'),
+    t.Literal('renamed'),
+    t.Literal('untracked'),
+  ]),
+})
 
 export const GitModel = {
   idParams: t.Object({
@@ -8,42 +19,62 @@ export const GitModel = {
   }),
 
   graphQuery: t.Object({
+    repo: t.Optional(t.String({ minLength: 1 })),
     limit: t.Optional(t.Numeric({ minimum: 1 })),
   }),
 
   checkoutBody: t.Object({
+    repo: t.Optional(t.String({ minLength: 1 })),
     branch: t.String({ minLength: 1 }),
   }),
 
   createBranchBody: t.Object({
+    repo: t.Optional(t.String({ minLength: 1 })),
     name: t.String({ minLength: 1 }),
     from: t.Optional(t.String({ minLength: 1 })),
   }),
 
+  fetchBody: t.Optional(t.Object({
+    repo: t.Optional(t.String({ minLength: 1 })),
+  })),
+
+  repositoryQuery: t.Object({
+    repo: t.Optional(t.String({ minLength: 1 })),
+  }),
+
   diffQuery: t.Object({
+    repo: t.Optional(t.String({ minLength: 1 })),
     paths: t.Optional(t.String()),
   }),
 
   mergeBaseQuery: t.Object({
+    repo: t.Optional(t.String({ minLength: 1 })),
     baseBranch: t.String({ minLength: 1 }),
   }),
 
+  fileStatusView,
+
   statusView: t.Object({
+    repositoryPath: t.String(),
+    repositoryName: t.String(),
     branch: t.String(),
     tracking: nullableString,
     ahead: t.Number(),
     behind: t.Number(),
     isDetached: t.Boolean(),
-    files: t.Array(t.Object({
-      path: t.String(),
-      status: t.Union([
-        t.Literal('added'),
-        t.Literal('modified'),
-        t.Literal('deleted'),
-        t.Literal('renamed'),
-        t.Literal('untracked'),
-      ]),
-    })),
+    files: t.Array(fileStatusView),
+  }),
+
+  repositoryView: t.Object({
+    path: t.String(),
+    name: t.String(),
+    absolutePath: t.String(),
+    branch: t.String(),
+    tracking: nullableString,
+    ahead: t.Number(),
+    behind: t.Number(),
+    isDetached: t.Boolean(),
+    files: t.Array(fileStatusView),
   }),
 
   branchesView: t.Object({

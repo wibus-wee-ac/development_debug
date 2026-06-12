@@ -1,5 +1,5 @@
 import { execFileSync } from 'node:child_process'
-import { mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -10,6 +10,8 @@ import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 
 interface GitStatus {
+  repositoryPath: string
+  repositoryName: string
   branch: string
   tracking: string | null
   ahead: number
@@ -20,7 +22,20 @@ interface GitStatus {
 
 interface GitFileStatus {
   path: string
+  workspacePath: string
   status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked'
+}
+
+interface GitRepository {
+  path: string
+  name: string
+  absolutePath: string
+  branch: string
+  tracking: string | null
+  ahead: number
+  behind: number
+  isDetached: boolean
+  files: GitFileStatus[]
 }
 
 interface GitBranches {
@@ -148,9 +163,9 @@ describe('git capability', () => {
       const statusWithChanges = (await statusWithChangesRes.json()) as GitStatus
       expect(statusWithChanges.files).toEqual(
         expect.arrayContaining([
-          { path: 'main.txt', status: 'deleted' },
-          { path: 'notes.txt', status: 'modified' },
-          { path: 'src.test.ts', status: 'untracked' },
+          expect.objectContaining({ path: 'main.txt', workspacePath: 'main.txt', status: 'deleted' }),
+          expect.objectContaining({ path: 'notes.txt', workspacePath: 'notes.txt', status: 'modified' }),
+          expect.objectContaining({ path: 'src.test.ts', workspacePath: 'src.test.ts', status: 'untracked' }),
         ]),
       )
 
@@ -261,6 +276,116 @@ describe('git capability', () => {
       rmSync(workspaceRoot, { recursive: true, force: true })
     }
   })
+
+  it('discovers and scopes independent child repositories in one workspace', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-multi-git-workspace-')
+    const repoA = join(workspaceRoot, 'repo-a')
+    const repoB = join(workspaceRoot, 'repo-b')
+    const previousEnv = useIsolatedTestInfra(dataDir)
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      mkdirSync(repoA)
+      mkdirSync(repoB)
+      initGitRepository(repoA)
+      initGitRepository(repoB)
+      commitFile(repoA, 'alpha.txt', 'alpha original', 'repo-a: initial commit')
+      commitFile(repoB, 'beta.txt', 'beta original', 'repo-b: initial commit')
+      writeFileSync(join(repoA, 'alpha.txt'), 'alpha changed\n', 'utf8')
+      writeFileSync(join(repoB, 'beta.txt'), 'beta changed\n', 'utf8')
+      writeFileSync(join(repoB, 'scratch.txt'), 'scratch\n', 'utf8')
+
+      app = await createServerApp()
+      db()
+        .insert(workspaces)
+        .values({
+          id: 'workspace-multi-git',
+          name: 'Workspace Multi Git',
+          path: workspaceRoot,
+        })
+        .run()
+
+      const repositoriesRes = await app.handle(
+        new Request('http://localhost/workspaces/workspace-multi-git/git/repositories'),
+      )
+      expect(repositoriesRes.status).toBe(200)
+      const repositories = (await repositoriesRes.json()) as GitRepository[]
+      expect(repositories.map(repository => repository.path)).toEqual(['repo-a', 'repo-b'])
+      expect(repositories.find(repository => repository.path === 'repo-a')?.files).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: 'alpha.txt',
+            workspacePath: 'repo-a/alpha.txt',
+            status: 'modified',
+          }),
+        ]),
+      )
+      expect(repositories.find(repository => repository.path === 'repo-b')?.files).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: 'beta.txt',
+            workspacePath: 'repo-b/beta.txt',
+            status: 'modified',
+          }),
+          expect.objectContaining({
+            path: 'scratch.txt',
+            workspacePath: 'repo-b/scratch.txt',
+            status: 'untracked',
+          }),
+        ]),
+      )
+
+      const ambiguousStatusRes = await app.handle(
+        new Request('http://localhost/workspaces/workspace-multi-git/git/status'),
+      )
+      expect(ambiguousStatusRes.status).toBe(409)
+      expect((await ambiguousStatusRes.json()).code).toBe('git_repository_required')
+
+      const repoAStatusRes = await app.handle(
+        new Request('http://localhost/workspaces/workspace-multi-git/git/status?repo=repo-a'),
+      )
+      expect(repoAStatusRes.status).toBe(200)
+      const repoAStatus = (await repoAStatusRes.json()) as GitStatus
+      expect(repoAStatus.repositoryPath).toBe('repo-a')
+      expect(repoAStatus.files).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            path: 'alpha.txt',
+            workspacePath: 'repo-a/alpha.txt',
+            status: 'modified',
+          }),
+        ]),
+      )
+      expect(repoAStatus.files).not.toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ workspacePath: 'repo-b/beta.txt' }),
+        ]),
+      )
+
+      const repoADiffRes = await app.handle(
+        new Request('http://localhost/workspaces/workspace-multi-git/git/diff?repo=repo-a&paths=alpha.txt'),
+      )
+      expect(repoADiffRes.status).toBe(200)
+      const repoADiff = await repoADiffRes.text()
+      expect(repoADiff).toContain('diff --git a/alpha.txt b/alpha.txt')
+      expect(repoADiff).toContain('alpha changed')
+      expect(repoADiff).not.toContain('beta changed')
+
+      const missingRepoDiffRes = await app.handle(
+        new Request('http://localhost/workspaces/workspace-multi-git/git/diff?repo=repo-c'),
+      )
+      expect(missingRepoDiffRes.status).toBe(404)
+      expect((await missingRepoDiffRes.json()).code).toBe('git_repository_not_found')
+    }
+ finally {
+      restoreTestInfra(previousEnv)
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+    }
+  })
+
   it('returns structured errors for missing workspaces and non-git directories', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const plainWorkspaceRoot = makeTempDir('cradle-plain-workspace-')

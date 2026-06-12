@@ -6351,12 +6351,46 @@ export type PutWorkflowRulesByWorkspaceIdResponses = {
 
 export type PutWorkflowRulesByWorkspaceIdResponse = PutWorkflowRulesByWorkspaceIdResponses[keyof PutWorkflowRulesByWorkspaceIdResponses];
 
-export type GetWorkspacesByIdGitStatusData = {
+export type GetWorkspacesByIdGitRepositoriesData = {
     body?: never;
     path: {
         id: string;
     };
     query?: never;
+    url: '/workspaces/{id}/git/repositories';
+};
+
+export type GetWorkspacesByIdGitRepositoriesResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        path: string;
+        name: string;
+        absolutePath: string;
+        branch: string;
+        tracking: string | null;
+        ahead: number;
+        behind: number;
+        isDetached: boolean;
+        files: Array<{
+            path: string;
+            workspacePath: string;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+        }>;
+    }>;
+};
+
+export type GetWorkspacesByIdGitRepositoriesResponse = GetWorkspacesByIdGitRepositoriesResponses[keyof GetWorkspacesByIdGitRepositoriesResponses];
+
+export type GetWorkspacesByIdGitStatusData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: {
+        repo?: string;
+    };
     url: '/workspaces/{id}/git/status';
 };
 
@@ -6365,6 +6399,8 @@ export type GetWorkspacesByIdGitStatusResponses = {
      * Response for status 200
      */
     200: {
+        repositoryPath: string;
+        repositoryName: string;
         branch: string;
         tracking: string | null;
         ahead: number;
@@ -6372,6 +6408,7 @@ export type GetWorkspacesByIdGitStatusResponses = {
         isDetached: boolean;
         files: Array<{
             path: string;
+            workspacePath: string;
             status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
         }>;
     };
@@ -6384,7 +6421,9 @@ export type GetWorkspacesByIdGitBranchesData = {
     path: {
         id: string;
     };
-    query?: never;
+    query?: {
+        repo?: string;
+    };
     url: '/workspaces/{id}/git/branches';
 };
 
@@ -6408,6 +6447,7 @@ export type GetWorkspacesByIdGitBranchesResponse = GetWorkspacesByIdGitBranchesR
 
 export type PostWorkspacesByIdGitBranchesData = {
     body: {
+        repo?: string;
         name: string;
         from?: string;
     };
@@ -6434,7 +6474,9 @@ export type GetWorkspacesByIdGitRemotesData = {
     path: {
         id: string;
     };
-    query?: never;
+    query?: {
+        repo?: string;
+    };
     url: '/workspaces/{id}/git/remotes';
 };
 
@@ -6457,6 +6499,7 @@ export type GetWorkspacesByIdGitGraphData = {
         id: string;
     };
     query?: {
+        repo?: string;
         limit?: string | number;
     };
     url: '/workspaces/{id}/git/graph';
@@ -6484,6 +6527,7 @@ export type GetWorkspacesByIdGitGraphResponse = GetWorkspacesByIdGitGraphRespons
 
 export type PostWorkspacesByIdGitCheckoutData = {
     body: {
+        repo?: string;
         branch: string;
     };
     path: {
@@ -6505,7 +6549,9 @@ export type PostWorkspacesByIdGitCheckoutResponses = {
 export type PostWorkspacesByIdGitCheckoutResponse = PostWorkspacesByIdGitCheckoutResponses[keyof PostWorkspacesByIdGitCheckoutResponses];
 
 export type PostWorkspacesByIdGitFetchData = {
-    body?: never;
+    body: {
+        repo?: string;
+    };
     path: {
         id: string;
     };
@@ -6530,6 +6576,7 @@ export type GetWorkspacesByIdGitDiffData = {
         id: string;
     };
     query?: {
+        repo?: string;
         paths?: string;
     };
     url: '/workspaces/{id}/git/diff';
@@ -6550,6 +6597,7 @@ export type GetWorkspacesByIdGitMergeBaseData = {
         id: string;
     };
     query: {
+        repo?: string;
         baseBranch: string;
     };
     url: '/workspaces/{id}/git/merge-base';

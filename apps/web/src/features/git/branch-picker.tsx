@@ -29,6 +29,7 @@ import {
 
 interface BranchPickerProps {
   workspaceId: string
+  repositoryPath?: string | null
   currentBranch: string
   children: React.ReactNode
 }
@@ -304,6 +305,7 @@ function BranchPickerListPanel({
 
 export function BranchPicker({
   workspaceId,
+  repositoryPath,
   currentBranch,
   children,
 }: BranchPickerProps) {
@@ -313,13 +315,15 @@ export function BranchPicker({
   const searchInputRef = useRef<HTMLInputElement>(null)
 
   const queryClient = useQueryClient()
-  const { data: branches } = useGitBranches(workspaceId)
+  const { data: branches } = useGitBranches(workspaceId, repositoryPath)
+  const repositoryQuery = repositoryPath ? { query: { repo: repositoryPath } } : {}
+  const repositoryBody = repositoryPath ? { repo: repositoryPath } : {}
 
   const invalidateAll = () => {
-    void queryClient.invalidateQueries({ queryKey: gitStatusQueryKey({ path: { id: workspaceId } }) })
-    void queryClient.invalidateQueries({ queryKey: gitBranchesQueryKey({ path: { id: workspaceId } }) })
+    void queryClient.invalidateQueries({ queryKey: gitStatusQueryKey({ path: { id: workspaceId }, ...repositoryQuery }) })
+    void queryClient.invalidateQueries({ queryKey: gitBranchesQueryKey({ path: { id: workspaceId }, ...repositoryQuery }) })
     // Omit query.limit to fuzzy-match all limit variants for this workspace
-    void queryClient.invalidateQueries({ queryKey: gitGraphQueryKey({ path: { id: workspaceId } }) })
+    void queryClient.invalidateQueries({ queryKey: gitGraphQueryKey({ path: { id: workspaceId }, ...repositoryQuery }) })
   }
 
   const checkoutMutation = useMutation({
@@ -342,7 +346,7 @@ export function BranchPicker({
     try {
       await checkoutMutation.mutateAsync({
         path: { id: workspaceId },
-        body: { branch },
+        body: { ...repositoryBody, branch },
       })
     }
     catch (err) {
@@ -353,7 +357,7 @@ export function BranchPicker({
   const handleFetch = async () => {
     dispatch({ type: 'set-fetching', fetching: true })
     try {
-      await fetchMutation.mutateAsync({ path: { id: workspaceId } })
+      await fetchMutation.mutateAsync({ path: { id: workspaceId }, body: repositoryBody })
     }
     finally {
       dispatch({ type: 'set-fetching', fetching: false })
@@ -378,7 +382,7 @@ export function BranchPicker({
     try {
       await createBranchMutation.mutateAsync({
         path: { id: workspaceId },
-        body: { name },
+        body: { ...repositoryBody, name },
       })
       dispatch({ type: 'complete-create' })
     }

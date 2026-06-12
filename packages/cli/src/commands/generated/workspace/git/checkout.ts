@@ -19,6 +19,12 @@ const spec = {
   "description": "Checkout branch",
   "flags": [
     {
+      "name": "repo",
+      "required": false,
+      "target": "body.repo",
+      "type": "string"
+    },
+    {
       "name": "branch",
       "required": true,
       "target": "body.branch",

@@ -17,7 +17,14 @@ const spec = {
     "branches"
   ],
   "description": "Get git branches",
-  "flags": [],
+  "flags": [
+    {
+      "name": "repo",
+      "required": false,
+      "target": "query.repo",
+      "type": "string"
+    }
+  ],
   "method": "get",
   "path": "/workspaces/{id}/git/branches"
 } satisfies CliOperationSpec
