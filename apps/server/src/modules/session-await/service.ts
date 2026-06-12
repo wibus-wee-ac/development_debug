@@ -430,13 +430,14 @@ export function getSessionSummary(sessionId: string): SessionAwaitSummary {
     .all()
 
   if (pending.length === 0) {
-    return { awaiting: false, pendingCount: 0, primarySource: null, reason: null }
+    return { awaiting: false, pendingCount: 0, primaryAwaitId: null, primarySource: null, reason: null }
   }
 
   const first = pending[0]
   return {
     awaiting: true,
     pendingCount: pending.length,
+    primaryAwaitId: first.id,
     primarySource: first.source,
     reason: first.reason,
   }

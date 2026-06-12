@@ -4,10 +4,10 @@
 
 ## Files
 
-- **index.ts**: Elysia routes under `/session-awaits`, poller startup, live status dispatch for supported sources, and CLI metadata for create/list/get/cancel/trigger/retry/summary routes.
+- **index.ts**: Elysia routes under `/session-awaits`, poller startup, registration wake-up, live status dispatch for supported sources, and CLI metadata for create/list/get/cancel/trigger/retry/summary routes.
 - **model.ts**: TypeBox request/response schemas for create, list, get, cancel, trigger, delivery retry, and summary routes.
 - **service.ts**: Durable await writes, supported-source validation, GitHub target preflight validation, available-checks error normalization, pending queries, idempotent trigger handling, delivery failure marking, retry delivery, and chat runtime queue dispatch for resume messages.
-- **poller.ts**: Source registry, explicit single-cycle runner, interval tick, expiry handling, timer awaits, source checks, empty resume guard, permanent source failure handling, and bounded trigger concurrency.
+- **poller.ts**: Source registry, explicit single-cycle runner, immediate run requests, interval tick, expiry handling, timer awaits, source checks, empty resume guard, permanent source failure handling, and bounded trigger concurrency.
 - **types.ts**: Source adapter and await lifecycle TypeScript contracts; matched source results must carry non-empty resume text.
 - **../../lib/github-api.ts**: Shared GitHub REST API boundary, token resolution, ETag cache, rate-limit tracking, missing-target classification, PR/check/status/review/workflow-run/workflow-job fetch helpers. Session await and external issue source refresh both consume this host-owned GitHub access boundary.
 - **sources/github-ci.ts**: `github-ci` source. Supports `{ repo, pr }`, `{ repo, sha }`, and `{ repo, runs_id }` filters, validates target visibility during registration, resolves PR head SHAs or single check-run head SHAs, aggregates check runs plus legacy commit statuses, and exposes live CI status with optional GitHub Actions job steps.

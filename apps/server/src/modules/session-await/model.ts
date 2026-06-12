@@ -39,6 +39,7 @@ export const SessionAwaitModel = {
   summary: t.Object({
     awaiting: t.Boolean(),
     pendingCount: t.Number(),
+    primaryAwaitId: t.Nullable(t.String()),
     primarySource: t.Nullable(t.String()),
     reason: t.Nullable(t.String()),
   }),

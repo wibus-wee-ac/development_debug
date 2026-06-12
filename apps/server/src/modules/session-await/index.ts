@@ -18,7 +18,11 @@ export const sessionAwait = new Elysia({
     Poller.start()
   })
   .onStop(() => { Poller.stop() })
-  .post('/', async ({ body }) => SessionAwait.register(body), {
+  .post('/', async ({ body }) => {
+    const row = await SessionAwait.register(body)
+    Poller.requestRun()
+    return row
+  }, {
     detail: {
       'summary': 'Register a new session await',
       'x-cradle-cli': {

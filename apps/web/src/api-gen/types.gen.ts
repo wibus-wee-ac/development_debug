@@ -4624,6 +4624,7 @@ export type GetSessionAwaitsSummaryResponses = {
     200: {
         awaiting: boolean;
         pendingCount: number;
+        primaryAwaitId: string | null;
         primarySource: string | null;
         reason: string | null;
     };

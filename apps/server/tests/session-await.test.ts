@@ -13,7 +13,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { AppError } from '../src/errors/app-error'
 import { db, shutdownInfra } from '../src/infra'
 import { enqueueSessionQueueItem } from '../src/modules/chat-runtime/service'
-import { registerSource, runOnce, unregisterSource } from '../src/modules/session-await/poller'
+import { registerSource, requestRun, runOnce, unregisterSource } from '../src/modules/session-await/poller'
 import {
   fetchAvailableChecks,
   getSessionSummary,
@@ -229,6 +229,34 @@ describe('session-await trigger', () => {
     expect(mockedEnqueueSessionQueueItem).not.toHaveBeenCalled()
   })
 
+  it('checks pending awaits when a source run is explicitly requested', async () => {
+    const { workspaceId, sessionId } = seedSession()
+    const awaitId = randomUUID()
+
+    db().insert(sessionAwaits).values({
+      id: awaitId,
+      chatSessionId: sessionId,
+      workspaceId,
+      source: 'test-source',
+      status: 'pending',
+      filterJson: '{}',
+    }).run()
+
+    const checkPending = vi.fn(async () => [{ awaitId, matched: false as const }])
+    registerSource({
+      source: 'test-source',
+      checkPending,
+    })
+
+    requestRun()
+
+    await vi.waitFor(() => {
+      expect(checkPending).toHaveBeenCalledTimes(1)
+    })
+    const row = db().select().from(sessionAwaits).where(eq(sessionAwaits.id, awaitId)).get()
+    expect(row?.lastCheckedAt).toEqual(expect.any(Number))
+  })
+
   it('rejects unsupported await sources instead of creating pending records without a poller', async () => {
     const { workspaceId, sessionId } = seedSession()
 
@@ -334,6 +362,7 @@ describe('session-await trigger', () => {
     expect(getSessionSummary(sessionId)).toEqual(expect.objectContaining({
       awaiting: true,
       pendingCount: 2,
+      primaryAwaitId: 'await-older',
       reason: 'First wait',
     }))
     expect(listBySession(sessionId).map(row => row.id)).toEqual(['await-newer', 'await-older'])

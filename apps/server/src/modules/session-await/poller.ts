@@ -47,12 +47,15 @@ const EMPTY_RESUME_TEXT_ERROR = 'Source adapter matched without a resume message
 
 let timer: ReturnType<typeof setInterval> | null = null
 let running = false
+let runScheduled = false
+let rerunRequested = false
 
 export function start() {
   if (timer) {
     return
   }
   timer = setInterval(() => void tick(), DEFAULT_INTERVAL_MS)
+  requestRun()
 }
 
 export function stop() {
@@ -62,8 +65,25 @@ export function stop() {
   }
 }
 
+export function requestRun() {
+  if (running) {
+    rerunRequested = true
+    return
+  }
+  if (runScheduled) {
+    return
+  }
+
+  runScheduled = true
+  queueMicrotask(() => {
+    runScheduled = false
+    void runOnce()
+  })
+}
+
 export async function runOnce(): Promise<void> {
   if (running) {
+    rerunRequested = true
     return
   }
   running = true
@@ -141,6 +161,10 @@ export async function runOnce(): Promise<void> {
   }
   finally {
     running = false
+    if (rerunRequested) {
+      rerunRequested = false
+      requestRun()
+    }
   }
 }
 
