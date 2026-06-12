@@ -15,7 +15,6 @@ import type { FormEvent } from 'react'
 import { useEffect, useId, useRef, useState } from 'react'
 
 import {
-  getSessionAwaitsByIdLiveStatusOptions,
   getSessionAwaitsOptions,
   getSessionAwaitsQueryKey,
   getSessionAwaitsSummaryQueryKey,
@@ -30,10 +29,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~
 import { Spinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
+import type { GitFileStatus, GitRemote } from '~/features/git/types'
 import { useGitRemotes, useGitRepositories } from '~/features/git/use-git'
 import { cn } from '~/lib/cn'
-import { queryRefreshPolicies, queryRefreshPolicy } from '~/lib/query-refresh-policy'
-import type { GitFileStatus, GitRemote } from '~/features/git/types'
+import { queryRefreshPolicies } from '~/lib/query-refresh-policy'
 
 import {
   derivePullRequestNumberFromStatus,
@@ -42,12 +41,24 @@ import {
   parseGitHubRepositoryInput,
   selectGitHubRepository,
 } from './await-github'
+import type {
+  GitHubReviewMode,
+  LiveAwaitStatus,
+  LiveCheckRun,
+  LiveCIStatus,
+  LiveCommitStatus,
+  LiveReviewStatus,
+  LiveWorkflowJob,
+  LiveWorkflowJobStep,
+  LiveWorkflowRun,
+  UnsupportedLiveAwaitStatus,
+} from './use-live-await-status'
+import { prefetchLiveAwaitStatus, useLiveAwaitStatus } from './use-live-await-status'
 
 // ── Types ──
 
 type AwaitRow = GetSessionAwaitsResponse[number]
 type GitHubAwaitSourceKind = 'github-ci' | 'github-review'
-type GitHubReviewMode = 'approved' | 'changes-requested' | 'reviewed'
 
 function readNullableString(value: unknown): string | null {
   return typeof value === 'string' ? value : null
@@ -110,193 +121,13 @@ function normalizeGitStatus(value: unknown): NormalizedGitStatus | null {
   }
 }
 
-interface LiveCheckRun {
-  id: number | null
-  name: string
-  status: 'queued' | 'in_progress' | 'completed'
-  conclusion: string | null
-  required: boolean
-  htmlUrl: string | null
-  detailsUrl: string | null
-  workflowRunId: number | null
-  workflowJobId: number | null
-  steps: LiveWorkflowJobStep[]
-}
-
-interface LiveWorkflowJobStep {
-  name: string
-  status: 'queued' | 'in_progress' | 'completed' | 'pending'
-  conclusion: string | null
-  number: number
-  startedAt: string | null
-  completedAt: string | null
-}
-
-interface LiveWorkflowJob {
-  id: number
-  name: string
-  status: 'queued' | 'in_progress' | 'completed' | 'waiting' | 'requested' | 'pending'
-  conclusion: string | null
-  htmlUrl: string | null
-  checkRunId: number | null
-  startedAt: string | null
-  completedAt: string | null
-  runnerName: string | null
-  labels: string[]
-  steps: LiveWorkflowJobStep[]
-}
-
-interface LiveWorkflowRun {
-  id: number
-  name: string | null
-  displayTitle: string | null
-  runNumber: number
-  runAttempt: number
-  status: 'queued' | 'in_progress' | 'completed' | 'waiting' | 'requested' | 'pending'
-  conclusion: string | null
-  headSha: string
-  htmlUrl: string | null
-  createdAt: string
-  updatedAt: string
-  jobs: LiveWorkflowJob[]
-}
-
-interface LiveCommitStatus {
-  context: string
-  state: 'error' | 'failure' | 'pending' | 'success'
-  description: string | null
-  targetUrl: string | null
-}
-
-interface LiveCIStatus {
-  supported: true
-  kind: 'github-ci'
-  owner: string
-  repo: string
-  prNumber: number | null
-  prTitle: string | null
-  ref: string
-  checkRuns: LiveCheckRun[]
-  workflowRuns: LiveWorkflowRun[]
-  statuses: LiveCommitStatus[]
-  totalCount: number
-  pendingCount: number
-  failureCount: number
-  allCompleted: boolean
-  allPassed: boolean
-  noCIConfigured: boolean
-  hasToken: boolean
-}
-
-interface LiveReview {
-  id: number
-  reviewer: string | null
-  state: 'APPROVED' | 'CHANGES_REQUESTED' | 'COMMENTED' | 'DISMISSED' | 'PENDING'
-  commitId: string
-  submittedAt: string | null
-}
-
-interface LiveReviewStatus {
-  supported: true
-  kind: 'github-review'
-  owner: string
-  repo: string
-  prNumber: number
-  prTitle: string | null
-  mode: GitHubReviewMode
-  headSha: string | null
-  matched: boolean
-  approvedCount: number
-  changesRequestedCount: number
-  reviews: LiveReview[]
-  hasToken: boolean
-}
-
-type LiveAwaitStatus = LiveCIStatus | LiveReviewStatus
-
-interface UnsupportedLiveAwaitStatus {
-  supported: false
-  error?: {
-    code: string
-    message: string
-  }
-}
-
-interface LiveAwaitStatusCacheEntry {
-  version: 1
-  capturedAt: number
-  status: LiveAwaitStatus
-}
-
-const LIVE_AWAIT_STATUS_CACHE_PREFIX = 'cradle:session-await:live-status:'
-
-function isLiveAwaitStatus(value: unknown): value is LiveAwaitStatus {
-  if (!value || typeof value !== 'object') {
-    return false
-  }
-  const candidate = value as { supported?: unknown, kind?: unknown }
-  return candidate.supported === true && (candidate.kind === 'github-ci' || candidate.kind === 'github-review')
-}
-
-function readCachedLiveAwaitStatus(awaitId: string | null): LiveAwaitStatus | undefined {
-  if (!awaitId || typeof globalThis.localStorage === 'undefined') {
-    return undefined
-  }
-
-  try {
-    const raw = globalThis.localStorage.getItem(`${LIVE_AWAIT_STATUS_CACHE_PREFIX}${awaitId}`)
-    if (!raw) {
-      return undefined
-    }
-    const entry = JSON.parse(raw) as Partial<LiveAwaitStatusCacheEntry>
-    return entry.version === 1 && isLiveAwaitStatus(entry.status) ? entry.status : undefined
-  }
-  catch {
-    return undefined
-  }
-}
-
-function writeCachedLiveAwaitStatus(awaitId: string | null, status: LiveAwaitStatus | UnsupportedLiveAwaitStatus | undefined): void {
-  if (!awaitId || !isLiveAwaitStatus(status) || typeof globalThis.localStorage === 'undefined') {
-    return
-  }
-
-  try {
-    const entry: LiveAwaitStatusCacheEntry = {
-      version: 1,
-      capturedAt: Date.now(),
-      status,
-    }
-    globalThis.localStorage.setItem(`${LIVE_AWAIT_STATUS_CACHE_PREFIX}${awaitId}`, JSON.stringify(entry))
-  }
-  catch {
-    // Cache failure should never block live status rendering.
-  }
-}
-
-// ── Hooks ──
-
-function useLiveCIStatus(awaitId: string | null, active: boolean) {
-  const query = useQuery({
-    ...getSessionAwaitsByIdLiveStatusOptions({ path: { id: awaitId! } }),
-    ...queryRefreshPolicy(active ? 'active' : 'static', active ? { refetchInterval: 20_000 } : { staleTime: 60_000 }),
-    initialData: () => readCachedLiveAwaitStatus(awaitId),
-    enabled: !!awaitId,
-  })
-
-  useEffect(() => {
-    writeCachedLiveAwaitStatus(awaitId, query.data as LiveAwaitStatus | UnsupportedLiveAwaitStatus | undefined)
-  }, [awaitId, query.data])
-
-  return query
-}
-
 function useCreateGitHubAwait(sessionId: string | null, workspaceId: string | null) {
   const queryClient = useQueryClient()
 
   return useMutation({
     ...postSessionAwaitsMutation(),
-    onSuccess: () => {
+    onSuccess: (row) => {
+      void prefetchLiveAwaitStatus(queryClient, row.id)
       if (sessionId) {
         void queryClient.invalidateQueries({ queryKey: getSessionAwaitsQueryKey({ query: { sessionId } }) })
         void queryClient.invalidateQueries({ queryKey: getSessionAwaitsSummaryQueryKey({ query: { sessionId } }) })
@@ -917,7 +748,7 @@ function SourceCard({ awaitRow, sessionId }: { awaitRow: AwaitRow, sessionId: st
   const invalidatedRef = useRef(false)
   const supportsLiveStatus = awaitRow.source === 'github-ci' || awaitRow.source === 'github-review'
   const isPending = awaitRow.status === 'pending'
-  const { data: rawData } = useLiveCIStatus(supportsLiveStatus && isPending ? awaitRow.id : null, isPending)
+  const { data: rawData } = useLiveAwaitStatus(supportsLiveStatus && isPending ? awaitRow.id : null, isPending)
   const data = rawData as (LiveAwaitStatus | UnsupportedLiveAwaitStatus) | undefined
 
   useEffect(() => {

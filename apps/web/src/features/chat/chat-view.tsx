@@ -19,9 +19,11 @@ import {
 import { Textarea } from '~/components/ui/textarea'
 import { toastManager } from '~/components/ui/toast'
 import type { ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
+import type { LiveAwaitStatus, UnsupportedLiveAwaitStatus } from '~/features/session-await/use-live-await-status'
+import { describeLiveAwaitStatus, useLiveAwaitStatus } from '~/features/session-await/use-live-await-status'
 import { getServerUrl } from '~/lib/electron'
-import { useSurfaceActive } from '~/navigation/surface-activity-context'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
+import { useSurfaceActive } from '~/navigation/surface-activity-context'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 
@@ -250,19 +252,37 @@ function ChatAwaitBanner({
   awaitSummary: Awaited<ReturnType<typeof useSessionAwaitSummary>['data']>
 }) {
   const { t } = useTranslation('chat')
+  const primaryAwaitId = typeof awaitSummary?.primaryAwaitId === 'string' ? awaitSummary.primaryAwaitId : null
+  const primarySource = typeof awaitSummary?.primarySource === 'string' ? awaitSummary.primarySource : null
+  const supportsLiveStatus = primarySource === 'github-ci' || primarySource === 'github-review'
+  const { data: rawLiveStatus } = useLiveAwaitStatus(
+    awaitSummary?.awaiting && supportsLiveStatus ? primaryAwaitId : null,
+    awaitSummary?.awaiting ?? false,
+  )
 
   if (!awaitSummary?.awaiting) {
     return null
   }
 
+  const liveStatus = rawLiveStatus as LiveAwaitStatus | UnsupportedLiveAwaitStatus | undefined
+  const liveText = describeLiveAwaitStatus(liveStatus)
+  const sourceLabel = primarySource === 'github-ci'
+    ? 'GitHub checks'
+    : primarySource === 'github-review'
+      ? 'GitHub review'
+      : null
+  const bannerText = liveText && sourceLabel
+    ? `${sourceLabel}: ${liveText}`
+    : (awaitSummary.reason as string)
+      ?? t('await.waitingFor', {
+        source: primarySource ?? t('await.source.event'),
+      })
+
   return (
     <div className="mb-2 flex items-center gap-2 rounded-md bg-muted/50 backdrop-blur-3xl px-3 py-2 text-xs text-muted-foreground">
       <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin" />
       <span className="min-w-0 truncate">
-        {(awaitSummary.reason as string)
-          ?? t('await.waitingFor', {
-            source: (awaitSummary.primarySource as string) ?? t('await.source.event'),
-          })}
+        {bannerText}
       </span>
       <button
         type="button"
