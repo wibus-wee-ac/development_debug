@@ -1283,8 +1283,8 @@ importers:
   plugins/cc-switch:
     dependencies:
       better-sqlite3:
-        specifier: ^12.10.0
-        version: 12.10.0
+        specifier: ^12.10.1
+        version: 12.10.1
       smol-toml:
         specifier: ^1.6.1
         version: 1.6.1
