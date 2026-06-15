@@ -17,9 +17,6 @@ importers:
       '@ai-sdk/openai':
         specifier: ^3.0.53
         version: 3.0.53(zod@4.4.3)
-      '@anthropic-ai/claude-agent-sdk':
-        specifier: ^0.2.126
-        version: 0.2.126(zod@4.4.3)
       '@base-ui/react':
         specifier: ^1.4.0
         version: 1.4.0(@date-fns/tz@1.4.1)(@types/react@19.2.14)(date-fns@4.1.0)(react-dom@19.2.5(react@19.2.5))(react@19.2.5)
@@ -498,6 +495,9 @@ importers:
       '@ai-sdk/openai':
         specifier: ^3.0.53
         version: 3.0.53(zod@4.4.3)
+      '@anthropic-ai/claude-agent-sdk':
+        specifier: ^0.2.126
+        version: 0.2.126(zod@4.4.3)
       '@cradle/db':
         specifier: workspace:*
         version: link:../../packages/db
