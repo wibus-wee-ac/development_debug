@@ -54,7 +54,7 @@
 
 ## Desktop update ownership
 
-`update-manager.ts` owns the renderer-visible Desktop Updates workflow. The explicit user flow is Check, Download, then Restart. Check only reads the Electron Builder generic feed and updates status; it does not implicitly download.
+`update-manager.ts` owns the renderer-visible Desktop Updates workflow. The explicit user flow is Check, Download, then Restart. Check only reads the Electron Builder generic feed and updates status; it does not implicitly download in the manual flow. When desktop preferences enable automatic checks, the main process checks every 5 minutes in the background; when automatic download is also enabled, an available update starts downloading and broadcasts progress through `desktop-update:status-changed`.
 
 Updates are available only in packaged builds with `CRADLE_DESKTOP_UPDATE_URL` configured. Restart shuts down the desktop-owned server runtime first, then delegates installation and relaunch to `electron-updater`.
 

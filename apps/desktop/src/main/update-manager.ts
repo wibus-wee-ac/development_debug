@@ -42,9 +42,15 @@ export type DesktopUpdateManagerEvents = {
 type DesktopUpdateEventName = keyof DesktopUpdateManagerEvents
 type BeforeApplyUpdate = () => Promise<void> | void
 
+export type DesktopUpdatePreferences = {
+  autoCheckForUpdates: boolean
+  autoDownloadUpdates: boolean
+}
+
 export type DesktopUpdateManagerOptions = {
   updateFeedUrl?: string | null
   beforeApplyUpdate?: BeforeApplyUpdate
+  preferences?: Partial<DesktopUpdatePreferences>
 }
 
 type CheckForUpdatesOptions = {
@@ -124,14 +130,20 @@ export class DesktopUpdateManager {
   private readonly updateFeedUrl: string | null
   private readonly updater: AppUpdater | null
   private readonly beforeApplyUpdate: BeforeApplyUpdate
+  private preferences: DesktopUpdatePreferences
   private statusSnapshot: DesktopUpdateStatus
   private backgroundTimer: NodeJS.Timeout | null = null
+  private backgroundCheckRunning = false
 
   constructor(options: DesktopUpdateManagerOptions = {}) {
     const updateFeedUrl = options.updateFeedUrl ?? readUpdateFeedUrl()
     this.updateFeedUrl = updateFeedUrl
     this.updater = this.createUpdater(updateFeedUrl)
     this.beforeApplyUpdate = options.beforeApplyUpdate ?? (() => {})
+    this.preferences = {
+      autoCheckForUpdates: options.preferences?.autoCheckForUpdates ?? true,
+      autoDownloadUpdates: options.preferences?.autoDownloadUpdates ?? false,
+    }
     this.statusSnapshot = {
       unsupported: this.updater === null,
       currentVersion: app.getVersion(),
@@ -165,16 +177,28 @@ export class DesktopUpdateManager {
   }
 
   startBackgroundChecks(): void {
-    if (!this.updater || this.backgroundTimer) {
+    if (
+      !this.updater
+      || this.backgroundTimer
+      || this.backgroundCheckRunning
+      || !this.preferences.autoCheckForUpdates
+    ) {
       return
     }
 
     const check = async () => {
+      this.backgroundCheckRunning = true
       try {
-        await this.checkForUpdates({ autoDownload: false, quiet: true })
+        await this.checkForUpdates({
+          autoDownload: this.preferences.autoDownloadUpdates,
+          quiet: true,
+        })
       }
       finally {
-        this.backgroundTimer = setTimeout(check, BACKGROUND_CHECK_INTERVAL_MS)
+        this.backgroundCheckRunning = false
+        this.backgroundTimer = this.preferences.autoCheckForUpdates
+          ? setTimeout(check, BACKGROUND_CHECK_INTERVAL_MS)
+          : null
       }
     }
 
@@ -189,8 +213,28 @@ export class DesktopUpdateManager {
     this.backgroundTimer = null
   }
 
+  configurePreferences(preferences: DesktopUpdatePreferences): DesktopUpdateStatus {
+    this.preferences = preferences
+
+    if (!preferences.autoCheckForUpdates) {
+      this.stopBackgroundChecks()
+      return this.statusSnapshot
+    }
+
+    this.startBackgroundChecks()
+    if (
+      preferences.autoDownloadUpdates
+      && this.statusSnapshot.updateInfo
+      && !this.statusSnapshot.updateDownloaded
+      && !this.statusSnapshot.isDownloadingUpdate
+    ) {
+      void this.downloadUpdate()
+    }
+    return this.statusSnapshot
+  }
+
   async checkForUpdates(options: CheckForUpdatesOptions = {}): Promise<DesktopUpdateStatus> {
-    if (!this.updater || this.statusSnapshot.isCheckingForUpdates) {
+    if (!this.updater || this.statusSnapshot.isCheckingForUpdates || this.statusSnapshot.isDownloadingUpdate) {
       return this.statusSnapshot
     }
 

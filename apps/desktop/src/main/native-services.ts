@@ -299,6 +299,10 @@ class NativeService extends IpcService {
         enabled: preferences.appshotHotkeyEnabled,
       })
     }
+    getUpdateManager()?.configurePreferences({
+      autoCheckForUpdates: preferences.autoCheckForUpdates,
+      autoDownloadUpdates: preferences.autoDownloadUpdates,
+    })
     return preferences
   }
 

@@ -273,7 +273,7 @@ export function DesktopUpdateSettings() {
                 </div>
               </div>
 
-              {status.isDownloadingUpdate && (
+              {(status.isDownloadingUpdate || status.updateDownloaded) && (
                 <div className="flex items-center gap-3">
                   <Progress value={status.downloadingProgress} className="h-1.5 flex-1" />
                   <span className="w-10 text-right font-mono text-[11px] tabular-nums text-muted-foreground">

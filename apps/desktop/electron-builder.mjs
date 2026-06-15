@@ -61,6 +61,7 @@ async function removeUnusedMacFrameworkLocales(context) {
     return
   }
 
+  let removed = false
   await Promise.all(
     entries.map(async (entry) => {
       if (!entry.endsWith('.lproj')) {
@@ -73,8 +74,16 @@ async function removeUnusedMacFrameworkLocales(context) {
       }
 
       await fs.rm(path.join(frameworkResources, entry), { recursive: true, force: true })
+      removed = true
     }),
   )
+
+  if (removed) {
+    // Remove stale code signature so electron-builder regenerates it during re-signing.
+    // _CodeSignature lives at Electron Framework.framework/_CodeSignature (3 levels above Resources).
+    const frameworkRoot = path.resolve(frameworkResources, '..', '..', '..')
+    await fs.rm(path.join(frameworkRoot, '_CodeSignature'), { recursive: true, force: true }).catch(() => {})
+  }
 }
 
 async function afterPack(context) {

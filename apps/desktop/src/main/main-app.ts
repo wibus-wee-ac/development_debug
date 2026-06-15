@@ -114,6 +114,8 @@ interface DesktopRuntimePreferences {
   requireDoubleCommandQToQuit: boolean
   appshotHotkeyEnabled: boolean
   appshotHotkeyTrigger?: MacInputBareModifier
+  autoCheckForUpdates: boolean
+  autoDownloadUpdates: boolean
 }
 
 async function createMainWindow(serverUrl: string): Promise<BrowserWindow> {
@@ -430,6 +432,10 @@ async function syncDesktopPreferencesFromServer(serverUrl: string): Promise<void
     const response = await fetch(new URL('/preferences/desktop', serverUrl))
     if (!response.ok) {
       await applyAppshotHotkeyPreference(true)
+      updateManager?.configurePreferences({
+        autoCheckForUpdates: true,
+        autoDownloadUpdates: false,
+      })
       return
     }
     const preferences = await response.json() as DesktopRuntimePreferences
@@ -440,10 +446,18 @@ async function syncDesktopPreferencesFromServer(serverUrl: string): Promise<void
       preferences.appshotHotkeyEnabled,
       preferences.appshotHotkeyTrigger ?? 'DoubleCommand',
     )
+    updateManager?.configurePreferences({
+      autoCheckForUpdates: preferences.autoCheckForUpdates,
+      autoDownloadUpdates: preferences.autoDownloadUpdates,
+    })
   }
   catch (error) {
     console.warn('[preferences] failed to read desktop preferences:', error)
     await applyAppshotHotkeyPreference(true)
+    updateManager?.configurePreferences({
+      autoCheckForUpdates: true,
+      autoDownloadUpdates: false,
+    })
   }
 }
 
