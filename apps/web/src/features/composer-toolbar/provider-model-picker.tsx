@@ -38,7 +38,7 @@ interface ProviderModelPickerProps<TThinking extends string | null> {
     onSelect: () => void
   }
   getThinkingOptionsForModel?: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
-  onRequestProviderTargetModels?: (id: string) => void
+  onRequestProviderTargetModels?: (id: string, options?: { refresh?: boolean }) => void
   onSelectProviderTarget: (id: string) => void
   onSelectModel: (id: string | null, providerTargetId: string) => void
   onSelectThinking: (value: TThinking) => void
@@ -93,9 +93,15 @@ export function ProviderModelPicker<TThinking extends string | null>({
   const modelLabel = selectedModel?.label
     ?? selectedModelId
     ?? (isLoadingSelectedModels ? loadingLabel ?? t('status.loading') : emptySelectionLabel ?? t('model.emptySelection'))
+  const handleMenuOpenChange = (open: boolean) => {
+    if (!open || !selectedProviderTargetId) {
+      return
+    }
+    onRequestProviderTargetModels?.(selectedProviderTargetId, { refresh: true })
+  }
 
   return (
-    <Menu>
+    <Menu onOpenChange={handleMenuOpenChange}>
       <MenuTrigger render={<Button variant="ghost" size="xs" data-testid={triggerTestId} disabled={disabled} className="min-w-0 max-w-full shrink" />}>
         {selectedProviderTarget
           ? (

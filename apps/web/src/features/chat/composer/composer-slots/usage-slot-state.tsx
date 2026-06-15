@@ -4,12 +4,7 @@
  * Codex supplies ChatGPT account rate-limit windows through the provider-owned
  * usage slot state; this renderer keeps that account state near the composer.
  */
-import {
-  AlertTriangleIcon,
-  CoinsIcon,
-  GaugeIcon,
-  XIcon,
-} from 'lucide-react'
+import { AlertTriangleIcon, GaugeIcon, XIcon } from 'lucide-react'
 
 import { Progress } from '~/components/ui/progress'
 import { cn } from '~/lib/cn'
@@ -28,59 +23,22 @@ export function UsageSlotState({
   usage?: ComposerUsageSlotActions
   className?: string
 }) {
-  const usedPercent = state.usedPercent === null ? null : clampPercent(state.usedPercent)
-  const secondaryUsedPercent = state.secondaryUsedPercent === null ? null : clampPercent(state.secondaryUsedPercent)
-  const primaryWindowLabel = formatWindowDuration(state.primaryWindowDurationMins)
-  const secondaryWindowLabel = formatWindowDuration(state.secondaryWindowDurationMins)
-  const resetLabel = formatResetLabel(state.primaryResetsAt)
+  const rows = readUsageRows(state)
   const toneClassName = readUsageToneClassName(state)
   const Icon = state.rateLimitReachedType ? AlertTriangleIcon : GaugeIcon
 
   return (
     <ComposerSlotShell stateName="usage" className={className}>
-      <div className="flex min-h-6 min-w-0 items-center gap-2">
+      <div className="flex min-w-0 items-center gap-2">
         <Icon className={cn('size-3.5 shrink-0', toneClassName)} aria-hidden="true" />
-        <div className="grid min-w-0 flex-1 gap-1">
-          <div className="flex min-w-0 items-baseline gap-1.5">
-            <span className="shrink-0 font-medium text-foreground/75">
-              {state.rateLimitReachedType ? 'Usage limited' : 'Usage'}
-            </span>
-            <span className="min-w-0 truncate text-foreground/80">
-              {formatPrimaryUsageLabel(usedPercent, primaryWindowLabel, state.limitName)}
-            </span>
-            {resetLabel && (
-              <>
-                <span className="shrink-0 text-muted-foreground/70" aria-hidden="true">
-                  ·
-                </span>
-                <span className="shrink-0 text-muted-foreground">{resetLabel}</span>
-              </>
-            )}
-          </div>
-          {usedPercent !== null && (
-            <div className="flex items-center gap-2">
-              <Progress value={usedPercent} className="h-0.5 flex-1 bg-muted/60" />
-              <span className="shrink-0 font-mono text-[10px] tabular-nums text-muted-foreground">
-                {Math.round(usedPercent)}
-                %
-              </span>
-            </div>
-          )}
-        </div>
-        <div className="ml-auto hidden shrink-0 items-center gap-2 text-[10px] text-muted-foreground sm:flex">
-          {secondaryUsedPercent !== null && (
-            <span className="font-mono tabular-nums">
-              {secondaryWindowLabel ? `${secondaryWindowLabel} ` : 'secondary '}
-              {Math.round(secondaryUsedPercent)}
-              %
-            </span>
-          )}
-          {state.creditsBalance && (
-            <span className="inline-flex items-center gap-1 font-mono tabular-nums">
-              <CoinsIcon className="size-3" aria-hidden="true" />
-              {state.creditsBalance}
-            </span>
-          )}
+        <div className="grid min-w-0 flex-1 gap-1.5">
+          {rows.map((row, index) => (
+            <UsageWindowRow
+              key={row.key}
+              row={row}
+              title={index === 0 ? (state.rateLimitReachedType ? 'Usage limited' : 'Usage') : null}
+            />
+          ))}
         </div>
         {usage?.open && (
           <ComposerSlotIconAction label="Close usage" onClick={usage.onDismiss}>
@@ -92,23 +50,71 @@ export function UsageSlotState({
   )
 }
 
-function formatPrimaryUsageLabel(
-  usedPercent: number | null,
-  windowLabel: string | null,
-  limitName: string | null,
-): string {
-  if (usedPercent === null) {
-    return limitName ?? 'rate limit unavailable'
+interface UsageWindowRowState {
+  key: string
+  label: string
+  usedPercent: number | null
+  resetLabel: string | null
+}
+
+function UsageWindowRow({ row, title }: { row: UsageWindowRowState, title: string | null }) {
+  return (
+    <div className="grid min-w-0 grid-cols-[minmax(0,1fr)_minmax(5rem,9rem)] items-center gap-2">
+      <div className="flex min-w-0 items-baseline gap-1.5">
+        {title && <span className="shrink-0 font-medium text-foreground/75">{title}</span>}
+        <span className="shrink-0 text-foreground/80">{row.label}</span>
+        <span className="shrink-0 font-mono tabular-nums text-foreground/80">
+          {formatUsagePercent(row.usedPercent)}
+        </span>
+        {row.resetLabel && (
+          <>
+            <span className="shrink-0 text-muted-foreground/70" aria-hidden="true">
+              ·
+            </span>
+            <span className="min-w-0 truncate text-muted-foreground">{row.resetLabel}</span>
+          </>
+        )}
+      </div>
+      {row.usedPercent !== null && (
+        <Progress value={row.usedPercent} className="h-0.5 min-w-0 bg-muted/60" />
+      )}
+    </div>
+  )
+}
+
+function readUsageRows(state: ChatRuntimeUsageUiSlotState): UsageWindowRowState[] {
+  const hasSecondaryUsageWindow = [
+    state.secondaryUsedPercent,
+    state.secondaryWindowDurationMins,
+    state.secondaryResetsAt,
+  ].some(value => value !== null)
+  const rows: UsageWindowRowState[] = [
+    {
+      key: 'primary',
+      label: formatWindowDuration(state.primaryWindowDurationMins) ?? state.limitName ?? 'limit',
+      usedPercent: state.usedPercent === null ? null : clampPercent(state.usedPercent),
+      resetLabel: formatResetLabel(state.primaryResetsAt),
+    },
+  ]
+
+  if (hasSecondaryUsageWindow) {
+    rows.push({
+      key: 'secondary',
+      label: formatWindowDuration(state.secondaryWindowDurationMins) ?? 'secondary',
+      usedPercent:
+        state.secondaryUsedPercent === null ? null : clampPercent(state.secondaryUsedPercent),
+      resetLabel: formatResetLabel(state.secondaryResetsAt),
+    })
   }
 
-  const roundedPercent = Math.round(usedPercent)
-  if (windowLabel) {
-    return `${windowLabel} ${roundedPercent}% used`
+  return rows
+}
+
+function formatUsagePercent(usedPercent: number | null): string {
+  if (usedPercent === null) {
+    return 'unavailable'
   }
-  if (limitName) {
-    return `${limitName} ${roundedPercent}% used`
-  }
-  return `${roundedPercent}% used`
+  return `${Math.round(usedPercent)}% used`
 }
 
 function formatWindowDuration(durationMins: number | null): string | null {

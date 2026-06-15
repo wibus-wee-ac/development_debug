@@ -1,4 +1,4 @@
-import { useQueries, useQuery } from '@tanstack/react-query'
+import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { z } from 'zod'
 
@@ -246,6 +246,7 @@ export function useProviderTargetModelMap(
   providerTargets: Array<ProviderTarget & { enabled: boolean }>,
   initialProviderTargetIds: ReadonlyArray<string | null> = EMPTY_INITIAL_PROFILE_IDS,
 ) {
+  const queryClient = useQueryClient()
   const [requestedProviderTargetIds, setRequestedProviderTargetIds] = useState<Set<string>>(
     () => new Set(initialProviderTargetIds.flatMap(targetId => (targetId ? [targetId] : []))),
   )
@@ -278,7 +279,7 @@ export function useProviderTargetModelMap(
     })),
   })
 
-  const requestProviderTargetModels = useCallback((targetId: string) => {
+  const requestProviderTargetModels = useCallback((targetId: string, options?: { refresh?: boolean }) => {
     setRequestedProviderTargetIds((current) => {
       if (current.has(targetId)) {
         return current
@@ -287,7 +288,24 @@ export function useProviderTargetModelMap(
       next.add(targetId)
       return next
     })
-  }, [])
+
+    if (!options?.refresh) {
+      return
+    }
+
+    const target = providerTargets.find(candidate => candidate.id === targetId)
+    if (!target?.enabled) {
+      return
+    }
+
+    void queryClient.fetchQuery({
+      queryKey: providerTargetModelsQueryKey(target),
+      queryFn: () => fetchCachedVisibleModelsForProviderTarget(target),
+      staleTime: 0,
+      gcTime: MODEL_INVENTORY_GC_TIME_MS,
+      retry: false,
+    }).catch(() => undefined)
+  }, [providerTargets, queryClient])
 
   const modelsByProviderTargetId: Record<string, ModelDescriptor[]> = {}
   const loadingProviderTargetIds = new Set<string>()

@@ -38,7 +38,7 @@ interface ProviderModelMenuProps<TThinking extends string | null> {
     active: boolean
     onSelect: () => void
   }
-  onRequestProviderTargetModels?: (id: string) => void
+  onRequestProviderTargetModels?: (id: string, options?: { refresh?: boolean }) => void
   onSelectProviderTarget: (id: string) => void
   onSelectModel: (id: string | null, providerTargetId: string) => void
   onSelectThinking: (value: TThinking) => void
@@ -54,7 +54,7 @@ interface ProviderTargetGroupProps<TThinking extends string | null> {
   isLoadingModels: boolean
   isProviderTargetSelectionDisabled: boolean
   occludeNativeBrowserSurface?: boolean
-  onRequestProviderTargetModels?: (id: string) => void
+  onRequestProviderTargetModels?: (id: string, options?: { refresh?: boolean }) => void
   onSelectProviderTarget: (id: string) => void
   onSelectModel: (id: string | null, providerTargetId: string) => void
   onSelectThinking: (value: TThinking) => void
@@ -192,10 +192,10 @@ function ProviderTargetGroup<TThinking extends string | null>({
   const preset = presetForProviderKind(providerTarget.providerKind)
 
   return (
-    <MenuSub onOpenChange={open => open && onRequestProviderTargetModels?.(providerTarget.id)}>
+    <MenuSub onOpenChange={open => open && onRequestProviderTargetModels?.(providerTarget.id, { refresh: true })}>
       <MenuSubTrigger
         onClick={() => {
-          onRequestProviderTargetModels?.(providerTarget.id)
+          onRequestProviderTargetModels?.(providerTarget.id, { refresh: true })
           if (!isProviderTargetSelectionDisabled) {
             onSelectProviderTarget(providerTarget.id)
           }
