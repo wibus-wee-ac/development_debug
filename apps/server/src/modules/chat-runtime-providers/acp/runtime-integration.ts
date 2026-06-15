@@ -1,4 +1,5 @@
 import * as ChatRuntime from '../../chat-runtime/service'
+import { listChatSessionIdsByDurableProviderSession } from '../../provider-runtime/service'
 import type { AcpConnectionManager } from './connection-manager'
 
 export function wireAcpIntegration(runtime: AcpConnectionManager): void {
@@ -14,7 +15,7 @@ async function handlePermission(request: {
   toolTitle: string
   options: Array<{ optionId: string, name: string, kind: string }>
 }): Promise<{ outcome: 'selected' | 'cancelled', optionId?: string }> {
-  const chatSessionId = ChatRuntime.listChatSessionIdsByBackendSessionId(request.sessionId)[0] ?? null
+  const chatSessionId = listChatSessionIdsByDurableProviderSession(request.sessionId)[0] ?? null
   const rejectOption = request.options.find(option => option.kind === 'reject_once' || option.kind === 'reject_always')
   console.warn('[acp] permission request denied because legacy approval SSE is removed', {
     agentId: request.agentId,
@@ -27,7 +28,13 @@ async function handlePermission(request: {
 }
 
 function handleSessionTitle(acpSessionId: string, title: string): void {
-  for (const chatSessionId of ChatRuntime.listChatSessionIdsByBackendSessionId(acpSessionId)) {
-    ChatRuntime.reportRuntimeSessionTitle({ sessionId: chatSessionId, title })
+  for (const chatSessionId of listChatSessionIdsByDurableProviderSession(acpSessionId)) {
+    void ChatRuntime.reportRuntimeSessionTitle({ sessionId: chatSessionId, title }).catch(error => {
+      console.warn('[acp] session title persistence failed', {
+        acpSessionId,
+        chatSessionId,
+        error,
+      })
+    })
   }
 }

@@ -87,12 +87,16 @@ const ModelsDevDataJsonSchema = z.string()
 async function fetchFromNetwork(): Promise<ModelsDevData | null> {
   const controller = new AbortController()
   const timeout = setTimeout(() => controller.abort(), 8000)
-  const response = await fetch(MODELS_DEV_URL, { signal: controller.signal })
-  clearTimeout(timeout)
-  if (!response.ok) {
-    return null
+  try {
+    const response = await fetch(MODELS_DEV_URL, { signal: controller.signal })
+    if (!response.ok) {
+      return null
+    }
+    return ModelsDevDataSchema.parse(await response.json())
   }
-  return ModelsDevDataSchema.parse(await response.json())
+  finally {
+    clearTimeout(timeout)
+  }
 }
 
 function readDbCache(): ModelsDevData | null {
@@ -131,7 +135,13 @@ async function fetchModelsDevData(): Promise<ModelsDevData | null> {
   }
 
   // 3. Network fetch
-  const fresh = await fetchFromNetwork()
+  let fresh: ModelsDevData | null = null
+  try {
+    fresh = await fetchFromNetwork()
+  }
+  catch {
+    return memCache
+  }
   if (fresh) {
     memCache = fresh
     memCacheAt = Date.now()

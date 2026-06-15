@@ -17,9 +17,9 @@ import type {
   RuntimeToolActivityStatus,
 } from '../../chat-runtime/runtime-provider-types'
 import type { ProviderRuntimeLease } from '../../provider-runtime/host-manager'
-import type { CodexAppServerClientOptions, CodexAppServerMessage, CodexAppServerServerRequest } from './app-server-client'
+import type { CodexAppServerClientOptions, CodexAppServerMessage, CodexAppServerServerRequest } from './app-server/client'
 import type { ReasoningEffort } from './app-server-protocol/ReasoningEffort'
-import type { CodexNativeHistorySnapshot } from './state-projector'
+import type { CodexNativeHistorySnapshot } from './projection/state-projector'
 
 export interface CodexProviderConfig {
   createAppServerClient?: (options: CodexAppServerClientOptions) => CodexAppServerClientLike

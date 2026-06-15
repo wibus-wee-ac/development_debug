@@ -17,28 +17,17 @@ Codex UI slots are projected from the app-server capability manifest and declare
 
 ## Files
 
-- `provider.ts`: Codex `ChatRuntime` facade; acquires session-scoped app-server clients through `ProviderRuntimeHostManager`, starts/resumes app-server threads, forks ephemeral provider-native side threads for Chat Runtime side sessions, fetches full app-server turn history for resumed native threads, reports app-server thread display titles, generates missing titles through a background ephemeral Codex title thread, injects reconstructed Cradle history and side boundaries through `thread/inject_items`, starts normal turns, executes user shell commands through `thread/shellCommand`, exposes provider-native app-server capabilities/invoke/stream hooks through Chat Runtime, projects goal invoke results into the provider snapshot, activates provider-native goal continuations, streams notifications, and handles live steering/cancellation.
+- `provider.ts`: Codex `ChatRuntime` facade; delegates app-server host leases, stream-turn context preparation, and active-turn tracking to owner modules, then starts/resumes app-server threads, forks ephemeral provider-native side threads, fetches full app-server turn history, reports app-server thread display titles, generates missing titles, injects reconstructed Cradle history and side boundaries, executes user shell commands, exposes provider-native app-server capabilities/invoke/stream hooks, projects goal invoke results, streams notifications, and wires live steering/cancellation.
 - `provider.test.ts`: Regression tests for Codex thread startup, provider title projection, provider config, transcript reconstruction, UI slot state projection, streaming, steering, cancellation, and diagnostics.
 - `metadata.ts`: Codex runtime kind, catalog metadata, static capabilities, and app-server capability presentation projection.
 - `types.ts`: Codex provider-private client, dependency, and active-turn types shared by package modules.
-- `input-projector.ts`: Projects Cradle `UIMessage` text/file/skill input and Codex-native `/goal` and `/compact` control messages into app-server input semantics.
-- `state-projector.ts`: Projects Codex app-server notifications, thread reads, and provider-native invoke results into Cradle-owned provider snapshot state, including goal, status/model/reasoning, compact, plan, tool activity, MCP, diff, terminal, approvals, alerts, filesystem/search/usage, and restorable native history captured from app-server turn reads.
-- `stream-handler.ts`: Owns Codex turn notification iteration, active-goal continuation delay, and provider-thread live event fanout.
-- `stream-diagnostics.ts`: Owns Codex stream diagnostics, bounded event samples, short failure summaries, title normalization, and provider error payloads.
-- `app-server-client.ts`: Newline-delimited JSON-RPC client for Codex app-server processes; declares Cradle client identity and version during app-server initialization.
-- `app-server-client.test.ts`: Client path, transport, and initialization identity tests.
-- `chatgpt-auth.ts`: Parses Cradle-owned ChatGPT auth secrets, builds Codex external auth login params, refreshes OpenAI OAuth access tokens, and persists refreshed token material back to the encrypted secret store.
-- `event-to-chunk-mapper.ts`: Maps Codex app-server notifications into AI SDK `UIMessageChunk` events carrying Cradle-owned tool envelopes. Reasoning items are projected only when Codex provides displayable `content`, `summary`, or reasoning deltas; encrypted-only reasoning is not surfaced as an empty UI part.
-- `app-server-capabilities.ts`: Generated Cradle-owned manifest of the app-server client methods, server requests, and server notifications.
-- `app-server-host-resource.ts`: Provider-private shared app-server host resource helper used by normal turns, side turns, UI-slot reads, and provider-native app-server bridge calls so they share the same session-scoped `ProviderRuntimeHostManager` resource, request handler dispatch, and notification subscriber pump.
-- `app-server-bridge.ts`: Provider-private bridge for invoking generated app-server methods and streaming raw notifications as SSE from Codex provider-native app-server hooks.
-- `runtime-context.ts`: Resolves per-session Codex cwd, agent home, project workspace path, and app-server runtime workspace roots.
+- `app-server/`: Codex app-server boundary: JSON-RPC client, generated capability manifest, provider-native app-server bridge, host lease/resource/fingerprint helpers, ChatGPT auth/account helpers, and model listing.
+- `config/`: Runtime config projection: Codex config payloads, sandbox/access policy projection, per-session runtime context, and temporary system-prompt file creation.
+- `turn/`: Single-turn orchestration helpers: active-turn registry, stream-turn context preparation, input projection, notification-to-`UIMessageChunk` mapping, stream diagnostics, stream iteration, thread lifecycle/history injection, title generation, shell command execution, and transcript/native-history projection.
+- `projection/`: Cradle-owned provider projections: provider snapshot state, context usage, and runtime UI slot state.
 - `tools/`: Codex tool identifier and app-server item payload mapper.
-- `native-history-projector.ts`: Projects full Codex app-server `Turn` snapshots into Responses API items for best-effort restoration when a fresh Codex thread replaces a previous native thread.
-- `transcript-projector.ts`: Projects reconstructed Cradle transcript history into Codex Responses API items for native thread injection, unwrapping tool envelopes and Cradle bang-command result metadata back to provider-native function-call names, arguments, and outputs.
-- `ui-slot-projector.ts`: Projects generated Codex app-server capabilities into runtime UI slot descriptors and projects provider snapshots plus app-server config/list/native reads into `RuntimeUiSlotState[]`.
 - `app-server-protocol/`: Generated TypeScript bindings from `codex app-server generate-ts --experimental --out apps/server/src/modules/chat-runtime-providers/codex/app-server-protocol`. Do not edit generated files by hand.
 
 ## Regeneration
 
-After regenerating `app-server-protocol/`, run `pnpm --filter @cradle/server generate:codex-app-server-capabilities` to refresh `app-server-capabilities.ts`. The capability generator derives method names and params from the generated protocol files, and keeps only Cradle-owned runtime semantics such as stream-capable methods in the generator.
+After regenerating `app-server-protocol/`, run `pnpm --filter @cradle/server generate:codex-app-server-capabilities` to refresh `app-server/capabilities.ts`. The capability generator derives method names and params from the generated protocol files, and keeps only Cradle-owned runtime semantics such as stream-capable methods in the generator.

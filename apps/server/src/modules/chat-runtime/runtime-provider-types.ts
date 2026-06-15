@@ -519,6 +519,17 @@ export interface RuntimePresentationCapabilities {
   skills: string[]
 }
 
+export function createEmptyRuntimePresentation(
+  runtimeKind: RuntimeKind
+): RuntimePresentationCapabilities {
+  return {
+    runtimeKind,
+    slashCommands: [],
+    uiSlots: [],
+    skills: []
+  }
+}
+
 export interface ChatRuntimeCapabilities {
   readonly supportsSteerTurn: boolean
   readonly supportsShellExecution: boolean

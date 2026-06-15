@@ -92,7 +92,9 @@ async function bootstrap() {
     hostname: config.host,
   }, (server) => {
     runtimeServer = server
-    recoverPersistedRunProjections()
+    void recoverPersistedRunProjections().catch((error) => {
+      logger.warn('failed to recover persisted run projections', { error })
+    })
   })
 
   // Pre-warm models.dev cache so first model list request is fast

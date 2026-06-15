@@ -10,8 +10,8 @@ import type {
   RuntimePresentationCapabilities,
 } from '../../chat-runtime/runtime-provider-types'
 import type { RuntimeKind } from '../../provider-contracts/types'
-import { CODEX_APP_SERVER_CAPABILITIES } from './app-server-capabilities'
-import { projectCodexUiSlots } from './ui-slot-projector'
+import { CODEX_APP_SERVER_CAPABILITIES } from './app-server/capabilities'
+import { projectCodexUiSlots } from './projection/ui-slot-projector'
 
 export const CODEX_RUNTIME_KIND: RuntimeKind = 'codex'
 

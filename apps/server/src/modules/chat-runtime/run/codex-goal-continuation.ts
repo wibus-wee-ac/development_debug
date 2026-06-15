@@ -2,6 +2,7 @@ import type { BackendSessionBinding } from '@cradle/db'
 import type { UIMessageChunk } from 'ai'
 
 import { readProviderStateSnapshot } from '../../chat-runtime-providers/provider-state-snapshot'
+import { readObjectRecord } from '../../../helpers/json-record'
 import { createChildLogger } from '../../../logging/logger'
 
 const CODEX_GOAL_CONTINUATION_DELAY_MS = 250
@@ -32,7 +33,7 @@ export interface CodexGoalContinuationSchedulerDeps {
   hasActiveOrPendingRun(sessionId: string): boolean
   pendingQueueItemCount(sessionId: string): number
   scheduleQueueDrain(sessionId: string): void
-  getBinding(sessionId: string): BackendSessionBinding | undefined
+  readRuntimeBinding(sessionId: string): BackendSessionBinding | undefined
   isProviderTargetAvailable(providerTargetId: string | null | undefined): boolean
   createContinuationRun(input: {
     sessionId: string
@@ -50,8 +51,8 @@ export interface CodexGoalContinuationScheduleInput {
 export function hasActiveCodexGoal(rawProviderStateSnapshot: string | null | undefined): boolean {
   try {
     const snapshot = readProviderStateSnapshot(rawProviderStateSnapshot)
-    const codex = readUnknownRecord(snapshot.codex)
-    const goal = readUnknownRecord(codex.goal)
+    const codex = readObjectRecord(snapshot.codex)
+    const goal = readObjectRecord(codex.goal)
     return (
       goal.status === 'active' &&
       typeof goal.objective === 'string' &&
@@ -141,7 +142,7 @@ async function startScheduledCodexGoalContinuation(
     deps.scheduleQueueDrain(input.sessionId)
     return
   }
-  const binding = deps.getBinding(input.sessionId)
+  const binding = deps.readRuntimeBinding(input.sessionId)
   if (binding?.runtimeKind !== 'codex' || !hasActiveCodexGoal(binding.backendStateSnapshot)) {
     return
   }
@@ -161,7 +162,7 @@ async function startScheduledCodexGoalContinuation(
       error,
       sessionId: input.sessionId
     })
-    const latestBinding = deps.getBinding(input.sessionId)
+    const latestBinding = deps.readRuntimeBinding(input.sessionId)
     if (
       !deps.hasActiveOrPendingRun(input.sessionId) &&
       latestBinding?.runtimeKind === 'codex' &&
@@ -172,10 +173,4 @@ async function startScheduledCodexGoalContinuation(
       scheduleCodexGoalContinuation(input, deps)
     }
   }
-}
-
-function readUnknownRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
 }

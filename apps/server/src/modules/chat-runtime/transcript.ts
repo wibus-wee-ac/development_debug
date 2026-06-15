@@ -4,7 +4,7 @@ import { and, desc, eq, isNull, sql } from 'drizzle-orm'
 import { messages } from '@cradle/db'
 
 import { db } from '../../infra'
-import { parseStoredMessageSnapshot } from './message-snapshots'
+import { parseStoredMessageSnapshot } from './ui-message'
 
 export interface CradleTurnTranscript {
   history: UIMessage[]
@@ -57,6 +57,19 @@ export function resolveCradleTurnTranscript(input: ResolveCradleTurnTranscriptIn
     maxMessages: input.maxMessages,
     maxChars: input.maxChars,
   })
+}
+
+export async function readFullSessionTranscript(sessionId: string): Promise<UIMessage[]> {
+  const rows = db()
+    .select({
+      messageJson: messages.messageJson,
+    })
+    .from(messages)
+    .where(eq(messages.sessionId, sessionId))
+    .orderBy(messages.createdAt, messageInsertOrder)
+    .all()
+
+  return rows.map((row) => parseStoredMessageSnapshot(row.messageJson))
 }
 
 export function reconstructCradleTurnTranscript(input: {

@@ -7,7 +7,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import type { RuntimeProviderTargetProfile, RuntimeSession, RuntimeUserInputRequest, RuntimeUserInputResolution } from '../../chat-runtime/runtime-provider-types'
 import { providerRuntimeHostManager } from '../../provider-runtime/host-manager'
-import type { CodexAppServerClientOptions, CodexAppServerMessage, CodexAppServerServerRequest } from './app-server-client'
+import type { CodexAppServerClientOptions, CodexAppServerMessage, CodexAppServerServerRequest } from './app-server/client'
 import { CodexProvider } from './provider'
 
 afterEach(() => {

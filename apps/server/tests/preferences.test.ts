@@ -6,8 +6,8 @@ import { describe, expect, it, vi } from 'vitest'
 
 import { createServerApp } from '../src/app'
 import { shutdownInfra } from '../src/infra'
-import { setCodexChatgptCredentialLoginFetchForTests } from '../src/modules/chat-runtime-providers/codex/account-service'
-import { setCodexChatgptModelListClientFactoryForTests } from '../src/modules/chat-runtime-providers/codex/model-list'
+import { setCodexChatgptCredentialLoginFetchForTests } from '../src/modules/chat-runtime-providers/codex/app-server/account-service'
+import { setCodexChatgptModelListClientFactoryForTests } from '../src/modules/chat-runtime-providers/codex/app-server/model-list'
 import { readSecret, saveSecret } from '../src/modules/secrets/service'
 
 function makeTempDir(prefix: string): string {

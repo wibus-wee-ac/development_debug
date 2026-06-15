@@ -1,8 +1,11 @@
+import { JsonToSseTransformStream } from 'ai'
 import type { UIMessageChunk } from 'ai'
 
+import { serializeChatError } from '../run/errors'
 import { isTerminalUIMessageChunk, mergeBufferedStreamChunk } from '../run/stream-chunks'
+import type { ChunkSubscriber } from './subscriber-registry'
 
-export type ChunkSubscriber = (chunk: UIMessageChunk, terminal: boolean) => void
+export type { ChunkSubscriber } from './subscriber-registry'
 
 export interface BufferedChunkStreamInput {
   replayChunks: UIMessageChunk[]
@@ -12,8 +15,25 @@ export interface BufferedChunkStreamInput {
   subscribe(subscriber: ChunkSubscriber): () => void
 }
 
+const encoder = new TextEncoder()
+
+/**
+ * Shared SSE encoding tail used by every chunk stream: AI SDK JSON→SSE transform
+ * (which also emits the terminal `data: [DONE]` on flush) then UTF-8 encode.
+ */
+function encodeChunkStreamAsSse(stream: ReadableStream<UIMessageChunk>): ReadableStream<Uint8Array> {
+  return stream
+    .pipeThrough(new JsonToSseTransformStream())
+    .pipeThrough(
+      new TransformStream<string, Uint8Array>({
+        transform: (chunk, controller) => {
+          controller.enqueue(encoder.encode(chunk))
+        }
+      })
+    )
+}
+
 export function openBufferedChunkStream(input: BufferedChunkStreamInput): ReadableStream<Uint8Array> {
-  const encoder = new TextEncoder()
   let unsubscribe = () => {}
   let queuedChunk: UIMessageChunk | null = null
   let flushTimer: ReturnType<typeof setTimeout> | null = null
@@ -26,7 +46,7 @@ export function openBufferedChunkStream(input: BufferedChunkStreamInput): Readab
     queuedChunk = null
   }
 
-  return new ReadableStream<Uint8Array>({
+  const chunkStream = new ReadableStream<UIMessageChunk>({
     start: (controller) => {
       const clearFlushTimer = () => {
         if (flushTimer) {
@@ -49,13 +69,12 @@ export function openBufferedChunkStream(input: BufferedChunkStreamInput): Readab
         controller.close()
       }
 
-      const writeEncodedChunk = (chunk: UIMessageChunk, terminal: boolean) => {
+      const writeChunkToStream = (chunk: UIMessageChunk, terminal: boolean) => {
         if (closed) {
           return
         }
-        controller.enqueue(encoder.encode(`data: ${JSON.stringify(chunk)}\n\n`))
+        controller.enqueue(chunk)
         if (terminal) {
-          controller.enqueue(encoder.encode('data: [DONE]\n\n'))
           closeStream(false)
         }
       }
@@ -65,7 +84,7 @@ export function openBufferedChunkStream(input: BufferedChunkStreamInput): Readab
         const chunk = queuedChunk
         queuedChunk = null
         if (chunk) {
-          writeEncodedChunk(chunk, false)
+          writeChunkToStream(chunk, false)
         }
       }
 
@@ -80,7 +99,7 @@ export function openBufferedChunkStream(input: BufferedChunkStreamInput): Readab
         if (terminal) {
           clearFlushTimer()
           flushQueuedChunk()
-          writeEncodedChunk(chunk, true)
+          writeChunkToStream(chunk, true)
           return
         }
         if (!queuedChunk) {
@@ -120,4 +139,43 @@ export function openBufferedChunkStream(input: BufferedChunkStreamInput): Readab
       unsubscribe()
     }
   })
+
+  return encodeChunkStreamAsSse(chunkStream)
+}
+
+/**
+ * Stateless one-shot SSE stream for an async chunk iterable (e.g. quick-question).
+ * No replay buffer, no subscriber registry. Terminal `[DONE]` is emitted by the
+ * shared SSE transform on stream close.
+ */
+export function openDirectChunkStream(
+  chunks: AsyncIterable<UIMessageChunk>
+): ReadableStream<Uint8Array> {
+  const chunkStream = new ReadableStream<UIMessageChunk>({
+    async start(controller) {
+      let terminalPublished = false
+      const publish = (chunk: UIMessageChunk, terminal = isTerminalUIMessageChunk(chunk)) => {
+        if (terminalPublished) {
+          return
+        }
+        controller.enqueue(chunk)
+        if (terminal) {
+          terminalPublished = true
+        }
+      }
+      try {
+        for await (const chunk of chunks) {
+          publish(chunk)
+        }
+        if (!terminalPublished) {
+          publish({ type: 'finish', finishReason: 'stop' }, true)
+        }
+      } catch (error) {
+        publish({ type: 'error', errorText: serializeChatError(error).text }, true)
+      } finally {
+        controller.close()
+      }
+    }
+  })
+  return encodeChunkStreamAsSse(chunkStream)
 }

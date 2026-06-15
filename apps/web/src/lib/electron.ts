@@ -26,7 +26,7 @@ export function getServerUrl(): string {
   if (window.cradle?.env?.serverUrl) {
     return window.cradle.env.serverUrl
   }
-  return import.meta.env.VITE_SERVER_URL ?? 'http://127.0.0.1:21423'
+  return import.meta.env.VITE_SERVER_URL ?? 'http://100.76.118.70:21423'
 }
 
 /**

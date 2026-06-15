@@ -15,7 +15,7 @@ import type {
   RuntimeProviderTargetProfile,
   RuntimeSession
 } from '../runtime-provider-types'
-import { createAssistantMessage } from '../message-snapshots'
+import { createAssistantMessage } from '../ui-message'
 
 export interface LiveSideConversationStreamInput {
   runId: string

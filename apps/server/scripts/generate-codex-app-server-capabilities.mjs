@@ -6,7 +6,7 @@ const scriptDir = dirname(fileURLToPath(import.meta.url))
 const serverRoot = join(scriptDir, '..')
 const codexRoot = join(serverRoot, 'src/modules/chat-runtime-providers/codex')
 const protocolRoot = join(codexRoot, 'app-server-protocol')
-const outputPath = join(codexRoot, 'app-server-capabilities.ts')
+const outputPath = join(codexRoot, 'app-server', 'capabilities.ts')
 
 const streamClientMethods = new Set([
   'fs/watch',

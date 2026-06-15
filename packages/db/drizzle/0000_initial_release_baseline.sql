@@ -285,6 +285,19 @@ CREATE TABLE `messages` (
 CREATE INDEX `messages_session_id_idx` ON `messages` (`session_id`);--> statement-breakpoint
 CREATE INDEX `messages_session_created_at_idx` ON `messages` (`session_id`,`created_at`);--> statement-breakpoint
 CREATE INDEX `messages_parent_tool_call_id_idx` ON `messages` (`parent_tool_call_id`);--> statement-breakpoint
+CREATE TABLE `session_events` (
+	`sequence_id` integer PRIMARY KEY AUTOINCREMENT NOT NULL,
+	`aggregate_id` text NOT NULL,
+	`aggregate_type` text DEFAULT 'ChatSession' NOT NULL,
+	`version` integer NOT NULL,
+	`event_type` text NOT NULL,
+	`payload` text DEFAULT '{}' NOT NULL,
+	`occurred_at` integer NOT NULL
+);
+--> statement-breakpoint
+CREATE UNIQUE INDEX `session_events_aggregate_version_unique` ON `session_events` (`aggregate_id`,`version`);--> statement-breakpoint
+CREATE INDEX `session_events_aggregate_id_idx` ON `session_events` (`aggregate_id`);--> statement-breakpoint
+CREATE INDEX `session_events_event_type_idx` ON `session_events` (`event_type`);--> statement-breakpoint
 CREATE TABLE `sessions` (
 	`id` text PRIMARY KEY NOT NULL,
 	`parent_session_id` text,

@@ -5,6 +5,7 @@
  */
 
 import type { RuntimePlanStepStatus, RuntimePlanUiSlotState, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
+import { readObjectRecord as readRecord } from '../../../helpers/json-record'
 import type { ClaudeAgentCapturedPlan } from './event-to-chunk-mapper'
 import type { WorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
@@ -164,10 +165,4 @@ function projectPlanSteps(content: string): ClaudeAgentPlanSnapshot['steps'] {
 
 function isRuntimePlanStepStatus(value: unknown): value is RuntimePlanStepStatus {
   return value === 'pending' || value === 'inProgress' || value === 'completed'
-}
-
-function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {}
 }

@@ -2,10 +2,12 @@ import type { UIMessageChunk } from 'ai'
 
 import { AppError } from '../../errors/app-error'
 import { currentUnixSeconds } from '../../helpers/time'
+import type { RuntimeKind } from '../provider-contracts/types'
 import type {
   RuntimeUserInputRequest,
   RuntimeUserInputResolution,
-  RuntimeUserInputUiSlotState
+  RuntimeUserInputUiSlotState,
+  RuntimeUiSlotState
 } from './runtime-provider-types'
 
 interface PendingUserInputState {
@@ -109,6 +111,22 @@ export function listPendingRuntimeUserInputStates(input: {
     })
   }
   return states.sort((a, b) => a.createdAt - b.createdAt || a.requestId.localeCompare(b.requestId))
+}
+
+export function appendPendingRuntimeUserInputSlotStates(
+  states: RuntimeUiSlotState[],
+  input: {
+    sessionId: string
+    runtimeKind: RuntimeKind
+    threadId: string | null
+  }
+): RuntimeUiSlotState[] {
+  const pendingStates = listPendingRuntimeUserInputStates({
+    sessionId: input.sessionId,
+    slotId: `${input.runtimeKind}:user-input`,
+    threadId: input.threadId
+  })
+  return pendingStates.length > 0 ? [...states, ...pendingStates] : states
 }
 
 export function rejectPendingUserInputsForRun(runId: string, error: Error): void {

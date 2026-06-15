@@ -1,6 +1,7 @@
 import type { UIMessageChunk } from 'ai'
 
 export type TerminalChatMessageStatus = 'complete' | 'aborted' | 'failed'
+export type ChatMessageStatus = 'streaming' | TerminalChatMessageStatus
 
 export function isTerminalUIMessageChunk(chunk: UIMessageChunk): boolean {
   return chunk.type === 'finish' || chunk.type === 'abort' || chunk.type === 'error'

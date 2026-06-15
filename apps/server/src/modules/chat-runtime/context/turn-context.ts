@@ -4,6 +4,7 @@ import type { UIMessage } from 'ai'
 import { eq } from 'drizzle-orm'
 
 import { readTrustedAgentRuntimeConfig } from '../../../helpers/agent-runtime-config'
+import { readPositiveIntegerEnv } from '../../../helpers/env'
 import { getSystemWorkflow } from '../../../helpers/system-workflow'
 import { db } from '../../../infra'
 import { createChildLogger } from '../../../logging/logger'
@@ -99,13 +100,4 @@ function resolveChronicleTurnContext(query: string): string | null {
     })
     return null
   }
-}
-
-function readPositiveIntegerEnv(name: string, fallback: number): number {
-  const raw = process.env[name]
-  if (!raw) {
-    return fallback
-  }
-  const value = Number.parseInt(raw, 10)
-  return Number.isFinite(value) && value > 0 ? value : fallback
 }

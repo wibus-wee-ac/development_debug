@@ -1,5 +1,5 @@
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
-import { index, int, real, sqliteTable, text } from 'drizzle-orm/sqlite-core'
+import { index, int, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 import { agents } from './identity'
 import { issues } from './issue'
@@ -139,6 +139,28 @@ export const chatSessionQueueItems = sqliteTable('chat_session_queue_items', {
   byStartedRun: index('chat_session_queue_items_started_run_id_idx').on(table.startedRunId),
 }))
 
+// Event Sourcing: append-only log for chat-runtime-owned session lifecycle facts.
+// `messages`, `backend_runs`, `chat_session_queue_items`, and runtime-owned session fields
+// are same-transaction projections. Session metadata creation, archive, and deletion remain
+// owned by the session module. Payloads carry existing AI SDK / snapshot shapes (UIMessage,
+// queue DTOs, lifecycle facts) — no parallel projection type universe.
+export const sessionEvents = sqliteTable('session_events', {
+  sequenceId: int('sequence_id').primaryKey({ autoIncrement: true }),
+  aggregateId: text('aggregate_id').notNull(),
+  aggregateType: text('aggregate_type').notNull().default('ChatSession'),
+  version: int('version').notNull(),
+  eventType: text('event_type').notNull(),
+  payload: text('payload').notNull().default('{}'),
+  occurredAt: int('occurred_at').notNull(),
+}, table => ({
+  byAggregateVersion: uniqueIndex('session_events_aggregate_version_unique').on(
+    table.aggregateId,
+    table.version,
+  ),
+  byAggregate: index('session_events_aggregate_id_idx').on(table.aggregateId),
+  byEventType: index('session_events_event_type_idx').on(table.eventType),
+}))
+
 export type Session = typeof sessions.$inferSelect
 export type NewSession = typeof sessions.$inferInsert
 export type Message = typeof messages.$inferSelect
@@ -149,3 +171,5 @@ export type StepUsageRow = typeof stepUsage.$inferSelect
 export type NewStepUsageRow = typeof stepUsage.$inferInsert
 export type ChatSessionQueueItem = typeof chatSessionQueueItems.$inferSelect
 export type NewChatSessionQueueItem = typeof chatSessionQueueItems.$inferInsert
+export type SessionEvent = typeof sessionEvents.$inferSelect
+export type NewSessionEvent = typeof sessionEvents.$inferInsert

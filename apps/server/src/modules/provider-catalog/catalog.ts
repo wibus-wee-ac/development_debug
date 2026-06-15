@@ -1,9 +1,9 @@
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
-import { CodexChatgptAuthReauthRequiredError, readCodexChatgptAuthCredential } from '../chat-runtime-providers/codex/chatgpt-auth'
-import { listCodexChatgptModels } from '../chat-runtime-providers/codex/model-list'
-import { buildCodexExternalModelProviderConfig } from '../chat-runtime-providers/codex/runtime-config'
+import { CodexChatgptAuthReauthRequiredError, readCodexChatgptAuthCredential } from '../chat-runtime-providers/codex/app-server/chatgpt-auth'
+import { listCodexChatgptModels } from '../chat-runtime-providers/codex/app-server/model-list'
+import { buildCodexExternalModelProviderConfig } from '../chat-runtime-providers/codex/config/runtime-config'
 import { normalizeBaseUrl, OpenAICompatibleConfigJsonSchema, UniversalProviderConfigJsonSchema } from '../provider-contracts/provider-base'
 import type { ModelDescriptor, ProviderKind, ProviderRequest } from '../provider-contracts/types'
 import { readProviderDefaultModelCapabilities } from './model-capabilities'

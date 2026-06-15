@@ -1,18 +1,13 @@
 import { randomUUID } from 'node:crypto'
 
-import type { BackendRun, BackendSessionBinding, Message, Session } from '@cradle/db'
-import {
-  agents,
-  backendRuns,
-  chatSessionQueueItems,
-  messages,
-  sessions,
-  workspaces
-} from '@cradle/db'
+import type { BackendRun, Session } from '@cradle/db'
+import { backendRuns, chatSessionQueueItems, messages, sessions } from '@cradle/db'
 import type { FileUIPart, UIMessage, UIMessageChunk } from 'ai'
 import { and, desc, eq, isNull, or, sql } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
+import { readPositiveIntegerEnv } from '../../helpers/env'
+import { readObjectRecord } from '../../helpers/json-record'
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
 import { createChildLogger } from '../../logging/logger'
@@ -21,31 +16,20 @@ import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-st
 import * as ModelRegistry from '../model-registry/service'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../observability/contract'
 import * as Observability from '../observability/service'
-import { runtimeSupportsProviderKind } from '../provider-contracts/runtime-compatibility'
 import type { RuntimeKind } from '../provider-contracts/types'
 import {
-  listChatSessionIdsByDurableProviderSession,
-  persistProviderRuntimeResolution,
   readDurableProviderRuntimeBinding,
-  readReusableDurableProviderRuntimeBinding,
-  resolveExistingProviderRuntimeSession,
-  resolveProviderRuntimeSession
+  readReusableDurableProviderRuntimeBinding
 } from '../provider-runtime/service'
 import {
   appendSideConversationHistory,
   readSideConversation,
-  releaseSideConversation,
   releaseSideConversationsByParentSessionId
 } from '../provider-runtime/side-conversation-registry'
-import { getProviderTarget, resolveProviderTarget } from '../provider-targets/service'
 import * as SessionService from '../session/service'
 import type { BangCommandExecutionResult } from './bang-command'
 import { executeLocalBangCommand, persistBangCommandMessages } from './bang-command'
-import {
-  getRuntimeRegistry,
-  listRuntimeCatalog,
-  listRuntimeHealth
-} from './chat-runtime-provider-registry'
+import { getRuntimeRegistry } from './chat-runtime-provider-registry'
 import type { ChatTurnContext } from './context/turn-context'
 import { resolveSessionSystemPrompt, resolveTurnContext } from './context/turn-context'
 import type { ChatContextPart } from './context-parts'
@@ -59,24 +43,20 @@ import {
   normalizeMessageSnapshot,
   parseStoredMessageSnapshot as parseTrustedStoredMessageSnapshot,
   readGoalMessageObjective
-} from './message-snapshots'
+} from './ui-message'
 import {
-  listPendingRuntimeUserInputStates,
+  appendPendingRuntimeUserInputSlotStates,
   rejectPendingUserInputsForRun,
   setRuntimeUserInputPublisher
 } from './pending-user-input'
-import type { ProviderThreadSubscriber } from './provider-threads/live-streams'
 import {
   createProviderThreadStreamStore,
   providerThreadStreamKey,
   publishProviderThreadEvent
 } from './provider-threads/live-streams'
-import type { ChatRunSnapshot } from './run-snapshot'
 import {
   appendRunSnapshotEvent,
   finalizeRunSnapshot,
-  getRunSnapshot,
-  getRunSnapshots,
   startRunSnapshot
 } from './run-snapshot'
 import type {
@@ -102,16 +82,9 @@ import {
   resolveTerminalChunkWithDiagnostics
 } from './run/output-diagnostics'
 import type { TurnOutputDiagnostics } from './run/output-diagnostics'
-import {
-  recordChatRuntimeProfile,
-  startChatRuntimeProfile
-} from './run/profile'
+import { recordChatRuntimeProfile, startChatRuntimeProfile } from './run/profile'
 import type { ChatRuntimeProfile } from './run/profile'
-import {
-  estimateRunUsageCost,
-  insertRunUsage,
-  insertRuntimeStepUsages
-} from './run/usage'
+import { estimateRunUsageCost, insertRunUsage, insertRuntimeStepUsages } from './run/usage'
 import type { RuntimeStepUsageInput } from './run/usage'
 import {
   createFinalMessageProjectionState,
@@ -120,6 +93,7 @@ import {
   projectFinalMessageChunk
 } from './run/final-message-projection'
 import {
+  type ChatMessageStatus,
   isTerminalUIMessageChunk,
   mergeBufferedStreamChunk,
   mergeRuntimeDeltaChunk,
@@ -136,25 +110,15 @@ import {
   shouldRecordHarnessSnapshotChunk,
   summarizeSnapshotChunk
 } from './run/snapshot-events'
-import {
-  abortPersistedRun,
-  abortPersistedStreamingSession,
-  failOrphanedPersistedRun,
-  failOrphanedPersistedStreamingSession,
-  readTerminalRunProjectionStatus,
-  repairTerminalRunProjection,
-  repairTerminalRunProjections
-} from './run/recovery'
-import { finalizeBackendRun } from './run/lifecycle'
-import type { ChunkSubscriber } from './stream/sse'
-import { openBufferedChunkStream } from './stream/sse'
+import type { ChunkSubscriber } from './stream/subscriber-registry'
+import { createSubscriberRegistry } from './stream/subscriber-registry'
+import { openBufferedChunkStream, openDirectChunkStream } from './stream/sse'
 import type {
   ChatRuntime,
   ChatRuntimeSettings,
   ChatRuntimeSettingsPatch,
   ChatThinkingEffort,
   GenerateSessionTitleInput,
-  ProviderNativeAppServerCapabilityManifest,
   ProviderNativeAppServerInvokeResponse,
   ProviderThreadEvent,
   ProviderThreadListInput,
@@ -169,7 +133,7 @@ import type {
   RuntimeUiSlotState,
   TokenUsage
 } from './runtime-provider-types'
-import { ProviderRuntimeError } from './runtime-provider-types'
+import { ProviderRuntimeError, createEmptyRuntimePresentation } from './runtime-provider-types'
 import {
   areRuntimeSettingsEqual,
   DEFAULT_RUNTIME_SETTINGS,
@@ -195,7 +159,6 @@ import type { QueueDrainDeps } from './queue/drain'
 import {
   compareQueueRows,
   listPendingQueueRows,
-  normalizePendingQueuePositions,
   readPersistedThinkingEffort,
   serializeQueueContextParts,
   serializeQueueFiles,
@@ -207,8 +170,7 @@ import {
   resolveTurnFailureObservabilityCode,
   serializeChatError
 } from './run/errors'
-import type { ChatStreamTraceRecord } from './stream-trace'
-import { isChatStreamTraceEnabled, readChatRunTrace, recordChatStreamTrace } from './stream-trace'
+import { isChatStreamTraceEnabled, recordChatStreamTrace } from './stream-trace'
 import { createSideChat as createSideChatSession } from './side-chat/create'
 import type {
   ActiveParentRuntimeSession,
@@ -217,10 +179,67 @@ import type {
   SideChatSessionDto
 } from './side-chat/create'
 import { createLiveSideConversationStream } from './side-chat/live-stream'
-import { openDirectChunkStream } from './stream/direct'
 import type { CradleTurnTranscript } from './transcript'
+import { readFullSessionTranscript } from './transcript'
+import {
+  abortProjectedStreamingRun,
+  cancelQueuedSessionItem,
+  commitSessionEvents,
+  finalizeInterruptedSessionEventStream,
+  finalizeInterruptedSessionEventStreams,
+  normalizeSessionQueuePositions,
+  projectTerminalRunFact,
+  projectTerminalRunFactsForSession,
+  recordQueuePositions,
+  readRunStopReason,
+  readRunTerminalEventType
+} from './es/commands'
+import type { ResolvedRuntimeSessionContext, SessionRunContext } from './runtime-session-context'
+import {
+  assertRunnableSession,
+  assertRuntimeCompatibleTarget,
+  assertStoredSession,
+  attachBinding,
+  buildRuntimeProviderInput,
+  getSessionRunContext,
+  isProviderTargetAvailable,
+  readSessionRequestedModelId,
+  resolveExistingRuntimeSessionForContext,
+  resolveRuntimeSessionContext,
+  resolveRuntimeSessionForContext
+} from './runtime-session-context'
+import { runRegistry } from './run-registry'
+import type { PendingRunState } from './run-registry'
+import {
+  normalizeRuntimeSessionTitle,
+  regenerateSessionTitle,
+  reportRuntimeSessionTitle
+} from './title-service'
+export { regenerateSessionTitle, reportRuntimeSessionTitle }
+import {
+  getSessionRuntimeSettings,
+  updateSessionRuntimeSettings
+} from './runtime-settings-api'
+export { getSessionRuntimeSettings, updateSessionRuntimeSettings }
+export type { ChatRuntimeSettingsDto } from './runtime-settings-api'
+import {
+  getCapabilities,
+  getUiSlotStates,
+  listProviderThreadTurns,
+  listProviderThreads,
+  readContextUsage,
+  readProviderThread
+} from './capabilities-api'
+export {
+  getCapabilities,
+  getUiSlotStates,
+  listProviderThreadTurns,
+  listProviderThreads,
+  readContextUsage,
+  readProviderThread
+}
+export type { ChatSessionContextUsageDto } from './capabilities-api'
 
-export { submitRuntimeUserInput } from './pending-user-input'
 export type { CreateSideChatInput, SideChatSessionDto } from './side-chat/create'
 export type {
   ChatSessionContinuationMode,
@@ -246,21 +265,8 @@ const CODEX_GOAL_CONTINUATION_PROMPT = '[internal] Continue the active Codex goa
 SessionService.onSessionArchived(releaseSideConversationsByParentSessionId)
 SessionService.onSessionCleanup(releaseSideConversationsByParentSessionId)
 
-function parseTrustedJsonObject(json: string): Record<string, unknown> {
-  const parsed: unknown = JSON.parse(json)
-  return typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)
-    ? (parsed as Record<string, unknown>)
-    : {}
-}
-
-function readUnknownRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
-}
-
 function publishRunChunk(runId: string, chunk: UIMessageChunk): void {
-  const activeRun = activeRuns.get(runId)
+  const activeRun = runRegistry.getActiveRun(runId)
   if (!activeRun || activeRun.terminalStatus) {
     return
   }
@@ -273,31 +279,8 @@ function publishRunChunk(runId: string, chunk: UIMessageChunk): void {
 
 setRuntimeUserInputPublisher(publishRunChunk)
 
-function replaceLastRequestMessage(
-  messagesInput: UIMessage[] | undefined,
-  message: UIMessage | undefined
-): UIMessage[] | undefined {
-  if (!messagesInput || !message) {
-    return messagesInput
-  }
-  return [...messagesInput.slice(0, -1), message]
-}
-
-function readRuntimeSettingsApplied(
-  sessionId: string,
-  runtimeSettings: ChatRuntimeSettings
-): boolean {
-  if (pendingRunSessions.has(sessionId)) {
-    return false
-  }
-  const activeRunId = activeRunIdsBySession.get(sessionId)
-  const activeRun = activeRunId ? activeRuns.get(activeRunId) : null
-  return !activeRun || areRuntimeSettingsEqual(activeRun.runtimeSettings, runtimeSettings)
-}
-
 // ── types ──
 
-export type ChatMessageStatus = 'streaming' | 'complete' | 'aborted' | 'failed'
 type TerminalChatMessageStatus = Exclude<ChatMessageStatus, 'streaming'>
 export interface ChatMessageSnapshotRow {
   messageId: string
@@ -312,14 +295,7 @@ export interface ChatMessageSnapshotRow {
   depth: number
 }
 
-interface SessionRunContext {
-  session: Session
-  workspacePath: string
-  profile: RuntimeProviderTargetProfile
-  providerTarget: { id: string; kind: 'manual' | 'external' }
-}
-
-interface ActiveRun {
+export interface ActiveRun {
   runId: string
   sessionId: string
   messageId: string
@@ -332,10 +308,6 @@ interface ActiveRun {
   chunkBufferIndexByKey: Map<string, number>
   pendingDeltaChunk: UIMessageChunk | null
   pendingDeltaFlushTimer: StreamFlushTimer | null
-  activeTextPartIds: Set<string>
-  activeReasoningPartIds: Set<string>
-  streamedToolInputStartIds: Set<string>
-  streamedToolInvocationIds: Set<string>
   snapshotTimer: ReturnType<typeof setInterval> | null
   finalMessage: UIMessage
   finalProjection: FinalMessageProjectionState
@@ -347,14 +319,6 @@ interface ActiveRun {
   internalContinuation?: 'codexGoal'
   runSnapshotId?: string | null
   runSnapshotSeq: number
-}
-
-interface ResolvedRuntimeSessionContext {
-  context: SessionRunContext
-  runtimeKind: RuntimeKind
-  runtime: ChatRuntime
-  runtimeSession: RuntimeSession
-  modelId: string | undefined
 }
 
 type MutableToolPart = Extract<UIMessage['parts'][number], { toolCallId: string }>
@@ -387,30 +351,6 @@ export interface ActiveRunReplayBufferSummary {
   toolInputDeltaCount: number
   toolOutputCount: number
   maxDeltaChars: number
-}
-
-export interface ChatRunTraceDto {
-  runId: string
-  sessionId: string
-  messageId: string | null
-  status: ChatMessageStatus
-  startedAt: number
-  finishedAt: number | null
-  path: string
-  recordCount: number
-  records: ChatStreamTraceRecord[]
-}
-
-export interface ChatSessionTraceDto {
-  sessionId: string
-  traces: ChatRunTraceDto[]
-}
-
-export type ChatRunSnapshotDto = ChatRunSnapshot
-
-export interface ChatSessionRunSnapshotsDto {
-  sessionId: string
-  snapshots: ChatRunSnapshotDto[]
 }
 
 export interface CompletedChatRunDto {
@@ -460,50 +400,16 @@ export interface ChatRuntimeSessionStatusDto {
   }
 }
 
-export interface ChatRuntimeSettingsDto {
-  sessionId: string
-  runtimeSettings: ChatRuntimeSettings
-  applied: boolean
-}
-
-type RunSubscriber = (chunk: UIMessageChunk, terminal: boolean) => void
 type StreamFlushTimer = ReturnType<typeof setTimeout>
-
-export interface CodexAppServerInvokeInput {
-  sessionId: string
-  method: string
-  params?: unknown
-  providerTargetId?: string
-  modelId?: string
-}
-
-export interface CodexAppServerStreamInput extends CodexAppServerInvokeInput {
-  closeOnMethods?: string[]
-}
 
 export interface QuickQuestionInput {
   sessionId: string
   question: string
 }
 
-export interface ChatSessionContextUsageDto {
-  sessionId: string
-  runtimeKind: RuntimeKind
-  providerSessionId: string | null
-  usage: RuntimeContextUsage | null
-}
-
 // ── in-memory run state ──
 
-interface PendingRunState {
-  cancelled: boolean
-  queueItemId?: string
-}
-
-const activeRuns = new Map<string, ActiveRun>()
-const activeRunIdsBySession = new Map<string, string>()
-const pendingRunSessions = new Map<string, PendingRunState>()
-const runSubscribers = new Map<string, Set<RunSubscriber>>()
+const runSubscribers = createSubscriberRegistry()
 const providerThreadStreamStore = createProviderThreadStreamStore()
 const messageInsertOrder = sql`messages.rowid`
 const sideChatDeps: CreateSideChatDeps = {
@@ -512,8 +418,8 @@ const sideChatDeps: CreateSideChatDeps = {
     assertRuntimeCompatibleTarget(assertRunnableSession(parentSessionId), providerTargetId),
   getRuntime: (runtimeKind) => getRuntimeRegistry().get(runtimeKind),
   getActiveParentRuntimeSession: (parentSessionId): ActiveParentRuntimeSession | undefined => {
-    const activeRunId = activeRunIdsBySession.get(parentSessionId)
-    const activeRun = activeRunId ? activeRuns.get(activeRunId) : undefined
+    const activeRunId = runRegistry.getActiveRunIdForSession(parentSessionId)
+    const activeRun = activeRunId ? runRegistry.getActiveRun(activeRunId) : undefined
     return activeRun
       ? {
           providerTargetId: activeRun.providerTargetId,
@@ -528,13 +434,13 @@ const sideChatDeps: CreateSideChatDeps = {
       providerTargetId: input.providerTargetId,
       runtimeKind: input.runtimeKind
     }),
-  readTranscript: (parentSessionId) => readSessionTranscript(parentSessionId),
+  readTranscript: (parentSessionId) => readFullSessionTranscript(parentSessionId),
   resolveSystemPrompt: (session) => resolveSessionSystemPrompt(session),
   normalizeTitle: (title) => normalizeRuntimeSessionTitle(title)
 }
 const queueDrainDeps: QueueDrainDeps = {
   hasActiveOrPendingRun: (sessionId) =>
-    activeRunIdsBySession.has(sessionId) || pendingRunSessions.has(sessionId),
+    runRegistry.hasActiveRunForSession(sessionId) || runRegistry.hasPendingRun(sessionId),
   readSessionRuntimeSettings: (sessionId) => {
     const session = assertStoredSession(sessionId)
     return readSessionRuntimeSettings(session.configJson)
@@ -558,10 +464,10 @@ const queueDrainDeps: QueueDrainDeps = {
 }
 const codexGoalContinuationDeps: CodexGoalContinuationSchedulerDeps = {
   hasActiveOrPendingRun: (sessionId) =>
-    activeRunIdsBySession.has(sessionId) || pendingRunSessions.has(sessionId),
+    runRegistry.hasActiveRunForSession(sessionId) || runRegistry.hasPendingRun(sessionId),
   pendingQueueItemCount: (sessionId) => listPendingQueueRows(sessionId).length,
   scheduleQueueDrain: (sessionId) => scheduleSessionQueueDrain(sessionId, queueDrainDeps),
-  getBinding: (sessionId) => getBinding(sessionId),
+  readRuntimeBinding: readDurableProviderRuntimeBinding,
   isProviderTargetAvailable: (providerTargetId) => isProviderTargetAvailable(providerTargetId),
   createContinuationRun: async (input) => {
     await createRun({
@@ -571,406 +477,6 @@ const codexGoalContinuationDeps: CodexGoalContinuationSchedulerDeps = {
       internalContinuation: 'codexGoal'
     })
   }
-}
-
-// ── store helpers (merged from chat-runtime.store.ts) ──
-
-function getSessionRunContext(
-  sessionId: string,
-  input: { providerTargetId?: string } = {}
-): SessionRunContext | null {
-  const session = db().select().from(sessions).where(eq(sessions.id, sessionId)).get()
-  if (!session) {
-    return null
-  }
-  const providerTargetId = input.providerTargetId ?? session.providerTargetId
-  const providerTarget = providerTargetId ? { id: providerTargetId } : null
-  if (!providerTarget) {
-    return null
-  }
-  const workspace = session.workspaceId
-    ? db().select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).get()
-    : null
-  if (session.workspaceId && !workspace) {
-    return null
-  }
-
-  const resolvedTarget = resolveProviderTarget(providerTarget)
-  const profileConfig = parseTrustedJsonObject(resolvedTarget.configJson)
-  const targetModelRegistryConfig = {
-    modelRegistryMappings: ModelRegistry.listMappingEntries()
-  }
-  const agent = session.agentId
-    ? db().select().from(agents).where(eq(agents.id, session.agentId)).get()
-    : null
-  const agentConfig = agent ? parseTrustedJsonObject(agent.configJson) : {}
-  const sessionConfig = parseTrustedJsonObject(session.configJson)
-  const effectiveProfile = {
-    id: resolvedTarget.target.id,
-    name: resolvedTarget.label,
-    providerKind: resolvedTarget.providerKind,
-    enabled: resolvedTarget.enabled,
-    configJson: JSON.stringify({
-      ...profileConfig,
-      ...targetModelRegistryConfig,
-      ...agentConfig,
-      ...sessionConfig
-    }),
-    credentialRef: resolvedTarget.credentialRef,
-    customModels: resolvedTarget.customModelsJson,
-    iconSlug: resolvedTarget.iconSlug,
-    providerTargetKind: resolvedTarget.target.kind,
-    providerTargetId: resolvedTarget.target.id
-  }
-
-  return {
-    session,
-    workspacePath: workspace?.path ?? '',
-    profile: effectiveProfile,
-    providerTarget: resolvedTarget.target
-  }
-}
-
-function getBinding(sessionId: string): BackendSessionBinding | undefined {
-  return readDurableProviderRuntimeBinding(sessionId)
-}
-
-function isProviderTargetAvailable(providerTargetId: string | null | undefined): boolean {
-  if (!providerTargetId) {
-    return false
-  }
-  return getProviderTarget(providerTargetId)?.enabled === true
-}
-
-function canPersistRuntimeSessionForProviderTarget(input: {
-  sessionId: string
-  providerTargetId: string
-}): boolean {
-  const session = db()
-    .select({ providerTargetId: sessions.providerTargetId })
-    .from(sessions)
-    .where(eq(sessions.id, input.sessionId))
-    .get()
-  return (
-    session?.providerTargetId === input.providerTargetId &&
-    isProviderTargetAvailable(input.providerTargetId)
-  )
-}
-
-export function listChatSessionIdsByBackendSessionId(backendSessionId: string): string[] {
-  return listChatSessionIdsByDurableProviderSession(backendSessionId)
-}
-
-function attachBinding(input: {
-  sessionId: string
-  providerTargetId: string
-  runtimeKind: RuntimeKind
-  runtimeSession: RuntimeSession
-  requestedModelId: string | null
-}): BackendSessionBinding | undefined {
-  return persistProviderRuntimeResolution({
-    chatSessionId: input.sessionId,
-    providerTargetId: input.providerTargetId,
-    runtimeKind: input.runtimeKind,
-    runtimeSession: input.runtimeSession,
-    requestedModelId: input.requestedModelId,
-    durable: true
-  })
-}
-
-function linkRunToRuntimeBinding(input: {
-  runId: string
-  binding: BackendSessionBinding | undefined
-}): void {
-  if (!input.binding) {
-    return
-  }
-  db()
-    .update(backendRuns)
-    .set({ bindingId: input.binding.id })
-    .where(eq(backendRuns.id, input.runId))
-    .run()
-}
-
-async function resolveExistingRuntimeSessionForContext(input: {
-  sessionId: string
-  context: SessionRunContext
-  runtimeKind: RuntimeKind
-  runtime: ChatRuntime
-  modelId?: string
-}): Promise<{
-  runtimeSession: RuntimeSession
-  requestedModelId: string | null
-} | null> {
-  const resolution = await resolveExistingProviderRuntimeSession({
-    chatSessionId: input.sessionId,
-    providerTargetId: input.context.providerTarget.id,
-    runtimeKind: input.runtimeKind,
-    runtime: input.runtime,
-    profile: input.context.profile,
-    workspacePath: input.context.workspacePath,
-    agentId: input.context.session.agentId,
-    modelId: input.modelId
-  })
-  return resolution
-    ? {
-        runtimeSession: resolution.runtimeSession,
-        requestedModelId: resolution.requestedModelId
-      }
-    : null
-}
-
-async function resolveRuntimeSessionForContext(input: {
-  sessionId: string
-  context: SessionRunContext
-  runtimeKind: RuntimeKind
-  runtime: ChatRuntime
-  modelId?: string
-  requestedProviderTargetId?: string
-}): Promise<{
-  runtimeSession: RuntimeSession
-  requestedModelId: string | null
-}> {
-  const resolution = await resolveProviderRuntimeSession({
-    chatSessionId: input.sessionId,
-    providerTargetId: input.context.providerTarget.id,
-    runtimeKind: input.runtimeKind,
-    runtime: input.runtime,
-    profile: input.context.profile,
-    workspacePath: input.context.workspacePath,
-    agentId: input.context.session.agentId,
-    modelId: input.modelId
-  })
-  try {
-    validateResolvedRuntimeSessionContext({
-      sessionId: input.sessionId,
-      originalContext: input.context,
-      requestedProviderTargetId: input.requestedProviderTargetId,
-      runtimeKind: input.runtimeKind
-    })
-  } catch (error) {
-    try {
-      await input.runtime.cancelTurn({
-        runtimeSession: resolution.runtimeSession,
-        profile: input.context.profile
-      })
-    } catch (cancelError) {
-      chatLogger.warn('runtime session cancellation failed after context invalidation', {
-        error: cancelError,
-        sessionId: input.sessionId,
-        providerTargetId: input.context.providerTarget.id
-      })
-    }
-    throw error
-  }
-  return {
-    runtimeSession: resolution.runtimeSession,
-    requestedModelId: resolution.requestedModelId
-  }
-}
-
-function validateResolvedRuntimeSessionContext(input: {
-  sessionId: string
-  originalContext: SessionRunContext
-  requestedProviderTargetId?: string
-  runtimeKind: RuntimeKind
-}): void {
-  const latestSession = db().select().from(sessions).where(eq(sessions.id, input.sessionId)).get()
-  if (!latestSession) {
-    throw new AppError({
-      code: 'chat_session_not_found',
-      status: 404,
-      message: 'Chat session not found',
-      details: { sessionId: input.sessionId }
-    })
-  }
-  const latestContext = getSessionRunContext(input.sessionId, {
-    providerTargetId: input.requestedProviderTargetId
-  })
-  if (!latestContext) {
-    throw new AppError({
-      code: 'chat_provider_target_not_available',
-      status: 409,
-      message: 'Provider target is no longer available',
-      details: {
-        sessionId: input.sessionId,
-        providerTargetId: input.requestedProviderTargetId ?? input.originalContext.providerTarget.id
-      }
-    })
-  }
-  assertRuntimeCompatibleTarget(latestContext, input.requestedProviderTargetId)
-  if (!latestContext.profile.enabled) {
-    throw new AppError({
-      code: 'chat_provider_target_not_available',
-      status: 409,
-      message: 'Provider target is disabled',
-      details: {
-        providerTargetId: latestContext.providerTarget.id
-      }
-    })
-  }
-  if (
-    input.requestedProviderTargetId === undefined &&
-    latestContext.session.providerTargetId !== input.originalContext.providerTarget.id
-  ) {
-    throw new AppError({
-      code: 'chat_provider_target_changed',
-      status: 409,
-      message: 'Chat session provider target changed before the run started',
-      details: {
-        sessionId: input.sessionId,
-        previousProviderTargetId: input.originalContext.providerTarget.id,
-        providerTargetId: latestContext.session.providerTargetId
-      }
-    })
-  }
-}
-
-export function reportRuntimeSessionTitle(input: {
-  sessionId: string
-  title: string
-  overwriteUserTitle?: boolean
-}): void {
-  const title = normalizeRuntimeSessionTitle(input.title)
-  if (!title) {
-    return
-  }
-
-  const session = db()
-    .select({ title: sessions.title, titleSource: sessions.titleSource })
-    .from(sessions)
-    .where(eq(sessions.id, input.sessionId))
-    .get()
-  if (!session) {
-    return
-  }
-  if (
-    session.title === title &&
-    (!input.overwriteUserTitle || session.titleSource === 'provider')
-  ) {
-    return
-  }
-
-  // Don't overwrite user-set titles
-  if (session.titleSource === 'user' && !input.overwriteUserTitle) {
-    return
-  }
-  if (!input.overwriteUserTitle && isTrivialContinuationTitle(title)) {
-    return
-  }
-
-  db()
-    .update(sessions)
-    .set({
-      title,
-      titleSource: 'provider',
-      updatedAt: currentUnixSeconds()
-    })
-    .where(eq(sessions.id, input.sessionId))
-    .run()
-}
-
-function normalizeRuntimeSessionTitle(title: string): string | null {
-  const normalized = title.replace(/\s+/g, ' ').trim()
-  return normalized.length > 0 ? normalized : null
-}
-
-function isTrivialContinuationTitle(title: string): boolean {
-  const normalized = title
-    .toLocaleLowerCase()
-    .replace(/[.!?。！？]+$/g, '')
-    .trim()
-  return (
-    normalized === 'continue' ||
-    normalized === '继续' ||
-    normalized === '接着' ||
-    normalized === '继续执行' ||
-    normalized === '继续吧'
-  )
-}
-
-function readFirstUserPromptText(sessionId: string): string | null {
-  const rows = db()
-    .select({
-      messageJson: messages.messageJson,
-      content: messages.content
-    })
-    .from(messages)
-    .where(
-      and(
-        eq(messages.sessionId, sessionId),
-        eq(messages.role, 'user'),
-        or(
-          eq(messages.status, 'complete'),
-          eq(messages.status, 'aborted'),
-          eq(messages.status, 'failed')
-        ),
-        isNull(messages.parentMessageId)
-      )
-    )
-    .orderBy(messages.createdAt, messageInsertOrder)
-    .all()
-
-  for (const row of rows) {
-    try {
-      const text = extractMessageText(parseTrustedStoredMessageSnapshot(row.messageJson)).trim()
-      if (text && !isTrivialContinuationTitle(text)) {
-        return text
-      }
-    } catch {
-      // Fall back to the denormalized content column for old or malformed snapshots.
-    }
-
-    const fallback = row.content.trim()
-    if (fallback && !isTrivialContinuationTitle(fallback)) {
-      return fallback
-    }
-  }
-
-  return null
-}
-
-function readSessionRequestedModelId(input: {
-  session: Session
-  requestedProviderTargetId?: string
-}): string | undefined {
-  if (
-    input.requestedProviderTargetId &&
-    input.requestedProviderTargetId !== input.session.providerTargetId
-  ) {
-    return undefined
-  }
-  return SessionService.readSessionModelPreference(input.session.configJson) ?? undefined
-}
-
-function readRecord(value: unknown): Record<string, unknown> {
-  return typeof value === 'object' && value !== null && !Array.isArray(value)
-    ? (value as Record<string, unknown>)
-    : {}
-}
-
-function readPositiveIntegerEnv(name: string, fallback: number): number {
-  const value = process.env[name]
-  if (!value) {
-    return fallback
-  }
-
-  const parsed = Number.parseInt(value, 10)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
-}
-
-function readStoredToolPayloadLimit(): number {
-  return readPositiveIntegerEnv(
-    'CRADLE_CHAT_STORED_TOOL_PAYLOAD_MAX_CHARS',
-    DEFAULT_STORED_TOOL_PAYLOAD_MAX_CHARS
-  )
-}
-
-function truncateText(value: string, maxChars: number): string {
-  if (value.length <= maxChars) {
-    return value
-  }
-  return value.slice(0, maxChars)
 }
 
 function truncateJsonPayload(value: unknown, maxChars: number): unknown {
@@ -1002,19 +508,13 @@ function truncateJsonPayload(value: unknown, maxChars: number): unknown {
 }
 
 function truncateSnapshotPayload(value: unknown): unknown {
-  return truncateJsonPayload(value, readStoredToolPayloadLimit())
-}
-
-function parsePartialToolInputText(text: string): unknown {
-  try {
-    return JSON.parse(text)
-  } catch {
-    return text
-  }
-}
-
-function cloneUiMessageParts(parts: UIMessage['parts']): UIMessage['parts'] {
-  return JSON.parse(JSON.stringify(parts)) as UIMessage['parts']
+  return truncateJsonPayload(
+    value,
+    readPositiveIntegerEnv(
+      'CRADLE_CHAT_STORED_TOOL_PAYLOAD_MAX_CHARS',
+      DEFAULT_STORED_TOOL_PAYLOAD_MAX_CHARS
+    )
+  )
 }
 
 function annotateContinuationMessage(
@@ -1030,8 +530,8 @@ function annotateContinuationMessage(
     return message
   }
 
-  const currentMetadata = readRecord((message as { metadata?: unknown }).metadata)
-  const currentCradleMetadata = readRecord(currentMetadata.cradle)
+  const currentMetadata = readObjectRecord((message as { metadata?: unknown }).metadata)
+  const currentCradleMetadata = readObjectRecord(currentMetadata.cradle)
 
   return {
     ...message,
@@ -1052,18 +552,18 @@ function annotateContinuationMessage(
   } as UIMessage
 }
 
-function createDraftTurn(input: {
+async function createDraftTurn(input: {
   sessionId: string
   runtimeKind: RuntimeKind
   userText: string
   files: FileUIPart[]
   contextParts: ChatContextPart[]
   continuation?: { mode: ChatSessionContinuationMode; queueItemId?: string }
-}): {
+}): Promise<{
   userMessageId: string
   assistantMessageId: string
   userMessage: UIMessage
-} {
+}> {
   const userMessageId = randomUUID()
   const assistantMessageId = randomUUID()
   const now = currentUnixSeconds()
@@ -1079,282 +579,152 @@ function createDraftTurn(input: {
       : createUserMessage(userMessageId, userText, input.files, input.contextParts),
     input.continuation ?? null
   )
-  const assistantMessage = createAssistantMessage(assistantMessageId)
   const userContent = extractMessageText(userMessage)
 
-  db().transaction((tx) => {
-    tx.insert(messages)
-      .values({
-        id: userMessageId,
-        sessionId: input.sessionId,
-        parentMessageId: null,
-        parentToolCallId: null,
-        taskId: null,
-        depth: 0,
-        role: 'user',
-        status: 'complete',
-        content: userContent,
-        messageJson: JSON.stringify(userMessage),
-        createdAt: now,
-        updatedAt: now
-      })
-      .run()
-    tx.insert(messages)
-      .values({
-        id: assistantMessageId,
-        sessionId: input.sessionId,
-        parentMessageId: null,
-        parentToolCallId: null,
-        taskId: null,
-        depth: 0,
-        role: 'assistant',
-        status: 'streaming',
-        content: '',
-        messageJson: JSON.stringify(assistantMessage),
-        createdAt: now,
-        updatedAt: now
-      })
-      .run()
-    tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
-  })
+  await commitSessionEvents(input.sessionId, [
+    {
+      type: 'UserMessageAppended',
+      payload: {
+        message: {
+          id: userMessageId,
+          sessionId: input.sessionId,
+          parentMessageId: null,
+          parentToolCallId: null,
+          taskId: null,
+          depth: 0,
+          role: 'user',
+          status: 'complete',
+          content: userContent,
+          messageJson: JSON.stringify(userMessage),
+          createdAt: now,
+          updatedAt: now
+        }
+      }
+    }
+  ])
 
   return { userMessageId, assistantMessageId, userMessage }
 }
 
-function createDraftTurnFromUserMessage(input: {
+async function createDraftTurnFromUserMessage(input: {
   sessionId: string
   userMessage: UIMessage
   continuation?: { mode: ChatSessionContinuationMode; queueItemId?: string }
-}): {
+}): Promise<{
   userMessageId: string
   assistantMessageId: string
   userMessage: UIMessage
-} {
+}> {
   const assistantMessageId = randomUUID()
   const now = currentUnixSeconds()
   const userMessage = annotateContinuationMessage(input.userMessage, input.continuation ?? null)
-  const assistantMessage = createAssistantMessage(assistantMessageId)
 
-  db().transaction((tx) => {
-    tx.insert(messages)
-      .values({
-        id: userMessage.id,
-        sessionId: input.sessionId,
-        parentMessageId: null,
-        parentToolCallId: null,
-        taskId: null,
-        depth: 0,
-        role: 'user',
-        status: 'complete',
-        content: extractMessageText(userMessage),
-        messageJson: JSON.stringify(userMessage),
-        createdAt: now,
-        updatedAt: now
-      })
-      .run()
-    tx.insert(messages)
-      .values({
-        id: assistantMessageId,
-        sessionId: input.sessionId,
-        parentMessageId: null,
-        parentToolCallId: null,
-        taskId: null,
-        depth: 0,
-        role: 'assistant',
-        status: 'streaming',
-        content: '',
-        messageJson: JSON.stringify(assistantMessage),
-        createdAt: now,
-        updatedAt: now
-      })
-      .run()
-    tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
-  })
+  await commitSessionEvents(input.sessionId, [
+    {
+      type: 'UserMessageAppended',
+      payload: {
+        message: {
+          id: userMessage.id,
+          sessionId: input.sessionId,
+          parentMessageId: null,
+          parentToolCallId: null,
+          taskId: null,
+          depth: 0,
+          role: 'user',
+          status: 'complete',
+          content: extractMessageText(userMessage),
+          messageJson: JSON.stringify(userMessage),
+          createdAt: now,
+          updatedAt: now
+        }
+      }
+    }
+  ])
 
   return { userMessageId: userMessage.id, assistantMessageId, userMessage }
 }
 
-function createCodexGoalContinuationDraft(input: { sessionId: string }): {
-  userMessageId: string
-  assistantMessageId: string
-  userMessage: UIMessage
-} {
-  const assistantMessageId = randomUUID()
-  const now = currentUnixSeconds()
-  const userMessage = annotateCodexGoalContinuationMessage(
-    createUserMessage(randomUUID(), CODEX_GOAL_CONTINUATION_PROMPT)
-  )
-  const assistantMessage = createAssistantMessage(assistantMessageId)
-
-  db().transaction((tx) => {
-    tx.insert(messages)
-      .values({
-        id: assistantMessageId,
-        sessionId: input.sessionId,
-        parentMessageId: null,
-        parentToolCallId: null,
-        taskId: null,
-        depth: 0,
-        role: 'assistant',
-        status: 'streaming',
-        content: '',
-        messageJson: JSON.stringify(assistantMessage),
-        createdAt: now,
-        updatedAt: now
-      })
-      .run()
-    tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
-  })
-
-  return { userMessageId: '', assistantMessageId, userMessage }
-}
-
-function startAssistantContinuation(input: { sessionId: string; message: UIMessage }): void {
-  const now = currentUnixSeconds()
-  const updated = db().transaction((tx) => {
-    const result = tx
-      .update(messages)
-      .set({
-        status: 'streaming',
-        errorText: null,
-        content: extractMessageText(input.message),
-        messageJson: JSON.stringify(input.message),
-        updatedAt: now
-      })
-      .where(
-        and(
-          eq(messages.id, input.message.id),
-          eq(messages.sessionId, input.sessionId),
-          eq(messages.role, 'assistant')
-        )
-      )
-      .run()
-    tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
-    return result.changes
-  })
-
-  if (updated === 0) {
-    throw new AppError({
-      code: 'chat_assistant_message_not_found',
-      status: 404,
-      message: 'Assistant message for continuation was not found',
-      details: {
-        sessionId: input.sessionId,
-        messageId: input.message.id
-      }
-    })
-  }
-}
-
-function insertCompletedUserMessage(input: {
+async function insertCompletedUserMessage(input: {
   sessionId: string
   message: UIMessage
   parentMessageId?: string | null
-}): void {
+}): Promise<void> {
   const now = currentUnixSeconds()
-  db().transaction((tx) => {
-    tx.insert(messages)
-      .values({
-        id: input.message.id,
-        sessionId: input.sessionId,
-        parentMessageId: input.parentMessageId ?? null,
-        parentToolCallId: null,
-        taskId: null,
-        depth: 0,
-        role: 'user',
-        status: 'complete',
-        content: extractMessageText(input.message),
-        messageJson: JSON.stringify(input.message),
-        createdAt: now,
-        updatedAt: now
-      })
-      .run()
-    tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
-  })
+  await commitSessionEvents(input.sessionId, [
+    {
+      type: 'SteerApplied',
+      payload: {
+        message: {
+          id: input.message.id,
+          sessionId: input.sessionId,
+          parentMessageId: input.parentMessageId ?? null,
+          parentToolCallId: null,
+          taskId: null,
+          depth: 0,
+          role: 'user',
+          status: 'complete',
+          content: extractMessageText(input.message),
+          messageJson: JSON.stringify(input.message),
+          createdAt: now,
+          updatedAt: now
+        }
+      }
+    }
+  ])
 }
 
-function startRun(input: {
+async function startRun(input: {
   sessionId: string
   messageId: string
   origin: 'user' | 'issue-agent' | 'system'
-}): BackendRun {
-  const binding = getBinding(input.sessionId)
-  return db()
-    .insert(backendRuns)
-    .values({
-      id: randomUUID(),
-      bindingId: binding?.id ?? null,
-      chatSessionId: input.sessionId,
-      messageId: input.messageId,
-      origin: input.origin,
-      status: 'streaming',
-      stopReason: null,
-      errorText: null,
-      startedAt: currentUnixSeconds(),
-      finishedAt: null
-    })
-    .returning()
-    .get()
+  assistantMessage: UIMessage
+  assistantMessageProjection?: 'insert' | 'update'
+  queueItemId?: string | null
+}): Promise<BackendRun> {
+  const binding = readDurableProviderRuntimeBinding(input.sessionId)
+  const now = currentUnixSeconds()
+  const run: BackendRun = {
+    id: randomUUID(),
+    bindingId: binding?.id ?? null,
+    chatSessionId: input.sessionId,
+    messageId: input.messageId,
+    origin: input.origin,
+    status: 'streaming',
+    stopReason: null,
+    errorText: null,
+    startedAt: now,
+    finishedAt: null
+  }
+  await commitSessionEvents(input.sessionId, [
+    {
+      type: 'RunStarted',
+      payload: {
+        run,
+        assistantMessage: {
+          id: input.messageId,
+          sessionId: input.sessionId,
+          parentMessageId: null,
+          parentToolCallId: null,
+          taskId: null,
+          depth: 0,
+          role: 'assistant',
+          status: 'streaming',
+          content: extractMessageText(input.assistantMessage),
+          messageJson: JSON.stringify(input.assistantMessage),
+          errorText: null,
+          createdAt: now,
+          updatedAt: now
+        },
+        assistantMessageProjection: input.assistantMessageProjection ?? 'insert',
+        queueItemId: input.queueItemId ?? null
+      }
+    }
+  ])
+  return run
 }
 
-export function getRun(runId: string): BackendRun | undefined {
+function getRun(runId: string): BackendRun | undefined {
   return db().select().from(backendRuns).where(eq(backendRuns.id, runId)).get()
-}
-
-export function getRunTrace(runId: string): ChatRunTraceDto {
-  const run = getRun(runId)
-  if (!run) {
-    throw new AppError({
-      code: 'chat_run_not_found',
-      status: 404,
-      message: 'Chat run not found',
-      details: { runId }
-    })
-  }
-  return toRunTraceDto(run)
-}
-
-export function getRunSnapshotDto(runId: string): ChatRunSnapshotDto {
-  const run = getRun(runId)
-  if (!run) {
-    throw new AppError({
-      code: 'chat_run_not_found',
-      status: 404,
-      message: 'Chat run not found',
-      details: { runId }
-    })
-  }
-  const snapshot = getRunSnapshot(runId)
-  if (!snapshot) {
-    throw new AppError({
-      code: 'chat_run_snapshot_not_found',
-      status: 404,
-      message: 'Chat run snapshot not found',
-      details: { runId }
-    })
-  }
-  return snapshot
-}
-
-export function getSessionTraces(sessionId: string): ChatSessionTraceDto {
-  const rows = db()
-    .select()
-    .from(backendRuns)
-    .where(eq(backendRuns.chatSessionId, sessionId))
-    .orderBy(desc(backendRuns.startedAt))
-    .all()
-
-  return {
-    sessionId,
-    traces: rows.map(toRunTraceDto)
-  }
-}
-
-export function getSessionRunSnapshots(sessionId: string): ChatSessionRunSnapshotsDto {
-  return {
-    sessionId,
-    snapshots: getRunSnapshots({ chatSessionId: sessionId, limit: 200 })
-  }
 }
 
 export function listCompletedRuns(input: {
@@ -1403,17 +773,8 @@ export function listCompletedRuns(input: {
   }
 }
 
-export function listRunSnapshotsForObservability(filter: {
-  chatSessionId?: string
-  runId?: string
-  since?: number
-  limit?: number
-}): ChatRunSnapshotDto[] {
-  return getRunSnapshots(filter)
-}
-
 export function listActiveRunSummaries(): ActiveRunSummary[] {
-  return Array.from(activeRuns.values(), (run) => ({
+  return runRegistry.listActiveRuns().map((run) => ({
     runId: run.runId,
     sessionId: run.sessionId,
     messageId: run.messageId,
@@ -1426,7 +787,7 @@ export function listActiveRunSummaries(): ActiveRunSummary[] {
 export function getActiveRunReplayBufferSummary(
   runId: string
 ): ActiveRunReplayBufferSummary | null {
-  const run = activeRuns.get(runId)
+  const run = runRegistry.getActiveRun(runId)
   if (!run) {
     return null
   }
@@ -1447,11 +808,11 @@ export function getActiveRunReplayBufferSummary(
 }
 
 export function getActiveSessionRun(sessionId: string): ActiveRunSummary | null {
-  const runId = activeRunIdsBySession.get(sessionId)
+  const runId = runRegistry.getActiveRunIdForSession(sessionId)
   if (!runId) {
     return null
   }
-  const run = activeRuns.get(runId)
+  const run = runRegistry.getActiveRun(runId)
   return run
     ? {
         runId: run.runId,
@@ -1464,7 +825,9 @@ export function getActiveSessionRun(sessionId: string): ActiveRunSummary | null 
     : null
 }
 
-export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionStatusDto {
+export async function getRuntimeSessionStatus(
+  sessionId: string
+): Promise<ChatRuntimeSessionStatusDto> {
   const session = db().select().from(sessions).where(eq(sessions.id, sessionId)).get()
   if (!session) {
     throw new AppError({
@@ -1475,9 +838,10 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
     })
   }
 
-  releaseTerminalPersistedActiveRunForSession(sessionId)
-  if (!activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId)) {
-    failOrphanedPersistedStreamingSession(sessionId)
+  await releaseTerminalPersistedActiveRunForSession(sessionId)
+  if (!runRegistry.hasActiveRunForSession(sessionId) && !runRegistry.hasPendingRun(sessionId)) {
+    await finalizeInterruptedSessionEventStream(sessionId)
+    await projectTerminalRunFactsForSession(sessionId)
   }
 
   const binding = session.providerTargetId
@@ -1487,9 +851,9 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
         runtimeKind: session.runtimeKind as RuntimeKind
       })
     : undefined
-  const activeRunId = activeRunIdsBySession.get(sessionId)
-  const activeRun = activeRunId ? activeRuns.get(activeRunId) : undefined
-  const pendingState = pendingRunSessions.get(sessionId)
+  const activeRunId = runRegistry.getActiveRunIdForSession(sessionId)
+  const activeRun = activeRunId ? runRegistry.getActiveRun(activeRunId) : undefined
+  const pendingState = runRegistry.getPendingRun(sessionId)
   const latestRun = db()
     .select()
     .from(backendRuns)
@@ -1542,11 +906,14 @@ export function getRuntimeSessionStatus(sessionId: string): ChatRuntimeSessionSt
       ? 'pending'
       : 'idle'
   if (status === 'idle' && hasActiveGoal && binding && queue.pending === 0 && queue.running === 0) {
-    scheduleCodexGoalContinuation({
-      sessionId,
-      providerTargetId: providerTargetId ?? undefined,
-      modelId: modelId ?? undefined
-    }, codexGoalContinuationDeps)
+    scheduleCodexGoalContinuation(
+      {
+        sessionId,
+        providerTargetId: providerTargetId ?? undefined,
+        modelId: modelId ?? undefined
+      },
+      codexGoalContinuationDeps
+    )
   }
 
   return {
@@ -1598,21 +965,6 @@ function toRuntimeSessionRunDto(
   }
 }
 
-function toRunTraceDto(run: BackendRun): ChatRunTraceDto {
-  const trace = readChatRunTrace(run.id)
-  return {
-    runId: run.id,
-    sessionId: run.chatSessionId,
-    messageId: run.messageId,
-    status: run.status,
-    startedAt: run.startedAt,
-    finishedAt: run.finishedAt,
-    path: trace.path,
-    recordCount: trace.recordCount,
-    records: trace.records
-  }
-}
-
 function persistMessageSnapshot(input: {
   sessionId: string
   messageId: string
@@ -1640,7 +992,7 @@ function persistMessageSnapshot(input: {
   return { messageJsonBytes: Buffer.byteLength(messageJson) }
 }
 
-function repairStoredMessageSnapshotIfOversized(input: {
+function compactStoredMessageSnapshotForRead(input: {
   row: typeof messages.$inferSelect
   message: ChatMessageSnapshotRow['message']
 }): ChatMessageSnapshotRow['message'] {
@@ -1662,16 +1014,6 @@ function repairStoredMessageSnapshotIfOversized(input: {
     return input.message
   }
 
-  const now = currentUnixSeconds()
-  db()
-    .update(messages)
-    .set({
-      content: extractMessageText(compactedMessage),
-      messageJson: compactedJson,
-      updatedAt: now
-    })
-    .where(eq(messages.id, input.row.id))
-    .run()
   return compactedMessage as ChatMessageSnapshotRow['message']
 }
 
@@ -1694,7 +1036,8 @@ function compactStoredMessageSnapshot(message: UIMessage): UIMessage {
 
   const parts = message.parts.map((part) => {
     if (part.type === 'text') {
-      const nextText = truncateText(part.text, remainingText)
+      const nextText =
+        part.text.length <= remainingText ? part.text : part.text.slice(0, remainingText)
       remainingText = Math.max(0, remainingText - nextText.length)
       if (nextText !== part.text) {
         changed = true
@@ -1702,10 +1045,10 @@ function compactStoredMessageSnapshot(message: UIMessage): UIMessage {
           ...part,
           text: nextText,
           providerMetadata: {
-            ...readRecord((part as { providerMetadata?: unknown }).providerMetadata),
+            ...readObjectRecord((part as { providerMetadata?: unknown }).providerMetadata),
             cradle: {
-              ...readRecord(
-                readRecord((part as { providerMetadata?: unknown }).providerMetadata).cradle
+              ...readObjectRecord(
+                readObjectRecord((part as { providerMetadata?: unknown }).providerMetadata).cradle
               ),
               truncated: true,
               originalChars: part.text.length
@@ -1717,7 +1060,10 @@ function compactStoredMessageSnapshot(message: UIMessage): UIMessage {
     }
 
     if (part.type === 'reasoning') {
-      const nextText = truncateText(part.text, remainingReasoning)
+      const nextText =
+        part.text.length <= remainingReasoning
+          ? part.text
+          : part.text.slice(0, remainingReasoning)
       remainingReasoning = Math.max(0, remainingReasoning - nextText.length)
       if (nextText !== part.text) {
         changed = true
@@ -1725,10 +1071,10 @@ function compactStoredMessageSnapshot(message: UIMessage): UIMessage {
           ...part,
           text: nextText,
           providerMetadata: {
-            ...readRecord((part as { providerMetadata?: unknown }).providerMetadata),
+            ...readObjectRecord((part as { providerMetadata?: unknown }).providerMetadata),
             cradle: {
-              ...readRecord(
-                readRecord((part as { providerMetadata?: unknown }).providerMetadata).cradle
+              ...readObjectRecord(
+                readObjectRecord((part as { providerMetadata?: unknown }).providerMetadata).cradle
               ),
               truncated: true,
               originalChars: part.text.length
@@ -1764,60 +1110,6 @@ function compactStoredMessageSnapshot(message: UIMessage): UIMessage {
   return changed ? { ...message, parts } : message
 }
 
-function canApplyLiveSteerWithRequest(input: {
-  activeRun: ActiveRun
-  providerTargetId: string | null
-}): boolean {
-  return !input.providerTargetId || input.providerTargetId === input.activeRun.providerTargetId
-}
-
-function assertRunnableSession(sessionId: string): SessionRunContext {
-  const context = getSessionRunContext(sessionId)
-  if (!context) {
-    throw new AppError({
-      code: 'chat_session_not_found',
-      status: 404,
-      message: 'Chat session not found',
-      details: { sessionId }
-    })
-  }
-  return context
-}
-
-function assertStoredSession(sessionId: string): Session {
-  const session = db().select().from(sessions).where(eq(sessions.id, sessionId)).get()
-  if (!session) {
-    throw new AppError({
-      code: 'chat_session_not_found',
-      status: 404,
-      message: 'Chat session not found',
-      details: { sessionId }
-    })
-  }
-  return session
-}
-
-function assertRuntimeCompatibleTarget(
-  context: SessionRunContext,
-  requestedProviderTargetId?: string
-): SessionRunContext {
-  const runtimeKind = context.session.runtimeKind ?? 'standard'
-  if (runtimeSupportsProviderKind(runtimeKind, context.profile.providerKind)) {
-    return context
-  }
-
-  throw new AppError({
-    code: 'chat_profile_runtime_incompatible',
-    status: 400,
-    message: 'Agent profile is not compatible with the chat runtime',
-    details: {
-      runtimeKind,
-      providerKind: context.profile.providerKind,
-      providerTargetId: requestedProviderTargetId ?? context.providerTarget.id
-    }
-  })
-}
-
 function normalizeBangCommandOrThrow(commandText: string): string {
   const command = commandText.trim()
   if (!command) {
@@ -1835,18 +1127,6 @@ function normalizeBangCommandOrThrow(commandText: string): string {
     })
   }
   return command
-}
-
-async function resolveRuntimeSessionForBangCommand(input: {
-  sessionId: string
-  context: SessionRunContext
-  runtimeKind: RuntimeKind
-  runtime: ChatRuntime
-}): Promise<{
-  runtimeSession: RuntimeSession
-  requestedModelId: string | null
-}> {
-  return await resolveRuntimeSessionForContext(input)
 }
 
 export async function createSideChat(input: CreateSideChatInput): Promise<SideChatSessionDto> {
@@ -1878,8 +1158,8 @@ export async function executeBangCommand(input: {
     })
   }
 
-  const activeRunId = activeRunIdsBySession.get(input.sessionId)
-  if (activeRunId && activeRuns.get(activeRunId)?.runtimeSession.runtimeKind === 'codex') {
+  const activeRunId = runRegistry.getActiveRunIdForSession(input.sessionId)
+  if (activeRunId && runRegistry.getActiveRun(activeRunId)?.runtimeSession.runtimeKind === 'codex') {
     throw new AppError({
       code: 'chat_bang_command_runtime_busy',
       status: 409,
@@ -1897,7 +1177,7 @@ export async function executeBangCommand(input: {
     })
   }
 
-  const { runtimeSession, requestedModelId } = await resolveRuntimeSessionForBangCommand({
+  const { runtimeSession, requestedModelId } = await resolveRuntimeSessionForContext({
     sessionId: input.sessionId,
     context,
     runtimeKind,
@@ -1925,24 +1205,21 @@ export async function executeBangCommand(input: {
 
   return {
     ...output,
-    ...persistBangCommandMessages({
+    ...(await persistBangCommandMessages({
       sessionId: input.sessionId,
       ...output
-    })
+    }))
   }
-}
-
-function getSourceRunId(sessionId: string): string | null {
-  return activeRunIdsBySession.get(sessionId) ?? null
 }
 
 // ── public service functions ──
 
-export function getMessageGroups(sessionId: string): ChatMessageSnapshotRow[] {
+export async function getMessageGroups(sessionId: string): Promise<ChatMessageSnapshotRow[]> {
   assertStoredSession(sessionId)
 
-  if (!activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId)) {
-    failOrphanedPersistedStreamingSession(sessionId)
+  if (!runRegistry.hasActiveRunForSession(sessionId) && !runRegistry.hasPendingRun(sessionId)) {
+    await finalizeInterruptedSessionEventStream(sessionId)
+    await projectTerminalRunFactsForSession(sessionId)
   }
 
   const rows = db()
@@ -1955,7 +1232,7 @@ export function getMessageGroups(sessionId: string): ChatMessageSnapshotRow[] {
   return rows.map((row) => {
     const role = row.role as 'user' | 'assistant'
     const parsedMessage = parseStoredMessageSnapshot(row, role)
-    const message = repairStoredMessageSnapshotIfOversized({
+    const message = compactStoredMessageSnapshotForRead({
       row,
       message: parsedMessage
     })
@@ -1980,7 +1257,7 @@ export function getMessageGroups(sessionId: string): ChatMessageSnapshotRow[] {
       role,
       status: row.status as ChatMessageStatus,
       errorText: row.errorText ?? undefined,
-      content: row.content,
+      content: extractMessageText(message),
       message,
       parentMessageId: row.parentMessageId,
       parentToolCallId: row.parentToolCallId,
@@ -2138,745 +1415,9 @@ function readToolPartApiName(part: MutableApprovalToolPart): string | null {
 
 function readPlanImplementationContent(part: MutableApprovalToolPart): string | null {
   const inputPayload = readBuiltinToolCallInputPayload(part.input)
-  const args = readUnknownRecord(inputPayload?.args ?? part.input)
+  const args = readObjectRecord(inputPayload?.args ?? part.input)
   const planContent = args.planContent
   return typeof planContent === 'string' && planContent.trim().length > 0 ? planContent : null
-}
-
-function emptyRuntimePresentation(runtimeKind: RuntimeKind): RuntimePresentationCapabilities {
-  return {
-    runtimeKind,
-    slashCommands: [],
-    uiSlots: [],
-    skills: []
-  }
-}
-
-export async function getCapabilities(sessionId: string): Promise<RuntimePresentationCapabilities> {
-  const context = getSessionRunContext(sessionId)
-  if (!context) {
-    const session = assertStoredSession(sessionId)
-    return emptyRuntimePresentation(session.runtimeKind ?? 'standard')
-  }
-
-  const registry = getRuntimeRegistry()
-  const runtimeKind = context.session.runtimeKind ?? 'standard'
-  const runtime = registry.get(runtimeKind)
-  if (!runtime) {
-    throw new AppError({
-      code: 'chat_runtime_not_available',
-      status: 501,
-      message: `Runtime is not available: ${runtimeKind}`
-    })
-  }
-
-  if (!runtime.getPresentation) {
-    return emptyRuntimePresentation(runtimeKind)
-  }
-
-  const activeRunId = activeRunIdsBySession.get(sessionId)
-  const activeRun = activeRunId ? activeRuns.get(activeRunId) : undefined
-  if (activeRun?.runtimeSession.runtimeKind === runtimeKind) {
-    return runtime.getPresentation({
-      runtimeSession: activeRun.runtimeSession,
-      profile: context.profile,
-      workspaceId: context.session.workspaceId,
-      workspacePath: context.workspacePath,
-      agentId: context.session.agentId,
-      modelId:
-        activeRun.modelId ??
-        readProviderStateSnapshot(activeRun.runtimeSession.providerStateSnapshot).models
-          .currentModelId ??
-        undefined,
-      systemPrompt: resolveSessionSystemPrompt(context.session)
-    })
-  }
-
-  const resolved = await resolveExistingRuntimeSessionForContext({
-    sessionId,
-    context,
-    runtimeKind,
-    runtime
-  })
-  if (!resolved) {
-    return emptyRuntimePresentation(runtimeKind)
-  }
-
-  return runtime.getPresentation({
-    runtimeSession: resolved.runtimeSession,
-    profile: context.profile,
-    workspaceId: context.session.workspaceId,
-    workspacePath: context.workspacePath,
-    agentId: context.session.agentId,
-    modelId:
-      resolved.requestedModelId ??
-      readProviderStateSnapshot(resolved.runtimeSession.providerStateSnapshot).models
-        .currentModelId ??
-      undefined,
-    systemPrompt: resolveSessionSystemPrompt(context.session)
-  })
-}
-
-export async function getDraftRuntimeCapabilities(
-  runtimeKind: RuntimeKind
-): Promise<RuntimePresentationCapabilities> {
-  const registry = getRuntimeRegistry()
-  const runtime = registry.get(runtimeKind)
-  if (!runtime) {
-    throw new AppError({
-      code: 'chat_runtime_not_available',
-      status: 501,
-      message: `Runtime is not available: ${runtimeKind}`
-    })
-  }
-
-  if (!runtime.getDraftPresentation) {
-    return emptyRuntimePresentation(runtimeKind)
-  }
-
-  return await runtime.getDraftPresentation()
-}
-
-export function listRuntimes() {
-  return { items: listRuntimeCatalog() }
-}
-
-export async function listRuntimeHealthStatuses() {
-  return { items: await listRuntimeHealth() }
-}
-
-export async function getUiSlotStates(
-  sessionId: string
-): Promise<{ runtimeKind: RuntimeKind; states: RuntimeUiSlotState[] }> {
-  const context = getSessionRunContext(sessionId)
-  if (!context) {
-    const session = assertStoredSession(sessionId)
-    return {
-      runtimeKind: session.runtimeKind ?? 'standard',
-      states: []
-    }
-  }
-
-  const registry = getRuntimeRegistry()
-  const runtimeKind = context.session.runtimeKind ?? 'standard'
-  const runtime = registry.get(runtimeKind)
-  if (!runtime) {
-    throw new AppError({
-      code: 'chat_runtime_not_available',
-      status: 501,
-      message: `Runtime is not available: ${runtimeKind}`
-    })
-  }
-
-  const activeRunId = activeRunIdsBySession.get(sessionId)
-  const activeRun = activeRunId ? activeRuns.get(activeRunId) : undefined
-  if (activeRun?.runtimeSession.runtimeKind === runtimeKind) {
-    const providerStates =
-      runtime.capabilities.supportsUiSlotStates && runtime.getUiSlotStates
-        ? await runtime.getUiSlotStates({
-            runtimeSession: activeRun.runtimeSession,
-            profile: context.profile,
-            workspaceId: context.session.workspaceId,
-            workspacePath: context.workspacePath,
-            agentId: context.session.agentId,
-            modelId:
-              readProviderStateSnapshot(activeRun.runtimeSession.providerStateSnapshot).models
-                .currentModelId ?? undefined,
-            systemPrompt: resolveSessionSystemPrompt(context.session)
-          })
-        : []
-    return {
-      runtimeKind,
-      states: appendPendingUserInputSlotStates(providerStates, {
-        sessionId,
-        runtimeKind,
-        threadId: activeRun.runtimeSession.providerSessionId
-      })
-    }
-  }
-
-  if (!runtime.capabilities.supportsUiSlotStates || !runtime.getUiSlotStates) {
-    return {
-      runtimeKind,
-      states: appendPendingUserInputSlotStates([], {
-        sessionId,
-        runtimeKind,
-        threadId: null
-      })
-    }
-  }
-
-  const resolved = await resolveExistingRuntimeSessionForContext({
-    sessionId,
-    context,
-    runtimeKind,
-    runtime
-  })
-  if (!resolved) {
-    return {
-      runtimeKind,
-      states: appendPendingUserInputSlotStates([], {
-        sessionId,
-        runtimeKind,
-        threadId: null
-      })
-    }
-  }
-
-  const states = await runtime.getUiSlotStates({
-    runtimeSession: resolved.runtimeSession,
-    profile: context.profile,
-    workspaceId: context.session.workspaceId,
-    workspacePath: context.workspacePath,
-    agentId: context.session.agentId,
-    modelId:
-      resolved.requestedModelId ??
-      readProviderStateSnapshot(resolved.runtimeSession.providerStateSnapshot).models
-        .currentModelId ??
-      undefined,
-    systemPrompt: resolveSessionSystemPrompt(context.session)
-  })
-  return {
-    runtimeKind,
-    states: appendPendingUserInputSlotStates(states, {
-      sessionId,
-      runtimeKind,
-      threadId: resolved.runtimeSession.providerSessionId
-    })
-  }
-}
-
-function appendPendingUserInputSlotStates(
-  states: RuntimeUiSlotState[],
-  input: {
-    sessionId: string
-    runtimeKind: RuntimeKind
-    threadId: string | null
-  }
-): RuntimeUiSlotState[] {
-  const pendingStates = listPendingRuntimeUserInputStates({
-    sessionId: input.sessionId,
-    slotId: `${input.runtimeKind}:user-input`,
-    threadId: input.threadId
-  })
-  return pendingStates.length > 0 ? [...states, ...pendingStates] : states
-}
-
-export async function regenerateSessionTitle(
-  sessionId: string
-): Promise<SessionService.SessionView> {
-  const context = assertRuntimeCompatibleTarget(assertRunnableSession(sessionId))
-  const promptText = readFirstUserPromptText(sessionId)
-  if (!promptText) {
-    throw new AppError({
-      code: 'chat_session_title_prompt_not_found',
-      status: 400,
-      message: 'Chat session does not have a user prompt to name',
-      details: { sessionId }
-    })
-  }
-
-  const registry = getRuntimeRegistry()
-  const runtimeKind = context.session.runtimeKind ?? 'standard'
-  const runtime = registry.get(runtimeKind)
-  if (!runtime) {
-    throw new AppError({
-      code: 'chat_runtime_not_available',
-      status: 501,
-      message: `Runtime is not available: ${runtimeKind}`
-    })
-  }
-  if (!runtime.generateSessionTitle) {
-    throw new AppError({
-      code: 'chat_runtime_title_generation_not_supported',
-      status: 501,
-      message: 'Runtime does not support session title generation',
-      details: { sessionId, runtimeKind }
-    })
-  }
-
-  let resolved: ResolvedRuntimeSessionContext
-  const activeRunId = activeRunIdsBySession.get(sessionId)
-  const activeRun = activeRunId ? activeRuns.get(activeRunId) : undefined
-  if (activeRun?.runtimeSession.runtimeKind === runtimeKind) {
-    resolved = {
-      context,
-      runtimeKind,
-      runtime: activeRun.runtime,
-      runtimeSession: activeRun.runtimeSession,
-      modelId:
-        activeRun.modelId ??
-        readProviderStateSnapshot(activeRun.runtimeSession.providerStateSnapshot).models
-          .currentModelId ??
-        undefined
-    }
-  } else {
-    const runtimeResolution = await resolveRuntimeSessionForContext({
-      sessionId,
-      context,
-      runtimeKind,
-      runtime
-    })
-    resolved = {
-      context,
-      runtimeKind,
-      runtime,
-      runtimeSession: runtimeResolution.runtimeSession,
-      modelId:
-        runtimeResolution.requestedModelId ??
-        readProviderStateSnapshot(runtimeResolution.runtimeSession.providerStateSnapshot).models
-          .currentModelId ??
-        undefined
-    }
-  }
-
-  let title: string | null
-  try {
-    title = await runtime.generateSessionTitle({
-      ...buildRuntimeProviderInput(resolved),
-      promptText
-    } satisfies GenerateSessionTitleInput)
-  } catch (error) {
-    throw createSessionTitleGenerationError({
-      sessionId,
-      runtimeKind: resolved.runtimeKind,
-      providerTargetId: resolved.context.providerTarget.id,
-      error
-    })
-  }
-  if (!title) {
-    throw createSessionTitleGenerationError({
-      sessionId,
-      runtimeKind: resolved.runtimeKind,
-      providerTargetId: resolved.context.providerTarget.id,
-      reason: 'empty_title'
-    })
-  }
-
-  reportRuntimeSessionTitle({
-    sessionId,
-    title,
-    overwriteUserTitle: true
-  })
-  attachBinding({
-    sessionId,
-    providerTargetId: resolved.context.providerTarget.id,
-    runtimeKind: resolved.runtimeSession.runtimeKind,
-    runtimeSession: resolved.runtimeSession,
-    requestedModelId: resolved.modelId ?? null
-  })
-
-  const updated = SessionService.get(sessionId)
-  if (!updated) {
-    throw new AppError({
-      code: 'chat_session_not_found',
-      status: 404,
-      message: 'Chat session not found',
-      details: { sessionId }
-    })
-  }
-  return updated
-}
-
-export async function listProviderThreads(
-  sessionId: string,
-  query: {
-    cursor?: string | null
-    limit?: number | null
-    sortKey?: 'created_at' | 'updated_at' | null
-    sortDirection?: 'asc' | 'desc' | null
-    sourceKinds?: ProviderThreadSourceKind[] | null
-    archived?: boolean | null
-    searchTerm?: string | null
-  } = {}
-): Promise<ProviderThreadListResult> {
-  const resolved = await resolveRuntimeSessionContext(sessionId)
-  if (!resolved.runtime.listProviderThreads) {
-    return {
-      runtimeKind: resolved.runtimeKind,
-      providerSessionId: resolved.runtimeSession.providerSessionId,
-      threads: [],
-      nextCursor: null,
-      backwardsCursor: null
-    }
-  }
-  return await resolved.runtime.listProviderThreads({
-    ...buildRuntimeProviderInput(resolved),
-    ...query
-  } satisfies ProviderThreadListInput)
-}
-
-export async function readProviderThread(
-  sessionId: string,
-  threadId: string
-): Promise<ProviderThreadReadResult> {
-  const resolved = await resolveRuntimeSessionContext(sessionId)
-  if (!resolved.runtime.readProviderThread) {
-    throw new AppError({
-      code: 'chat_provider_threads_not_supported',
-      status: 501,
-      message: 'Runtime does not support provider thread reads',
-      details: { sessionId, runtimeKind: resolved.runtimeKind }
-    })
-  }
-  return await resolved.runtime.readProviderThread({
-    ...buildRuntimeProviderInput(resolved),
-    threadId,
-    includeTurns: false
-  })
-}
-
-export async function listProviderThreadTurns(
-  sessionId: string,
-  threadId: string,
-  query: {
-    cursor?: string | null
-    limit?: number | null
-    sortDirection?: 'asc' | 'desc' | null
-  } = {}
-): Promise<ProviderThreadTurnsResult> {
-  const resolved = await resolveRuntimeSessionContext(sessionId)
-  if (!resolved.runtime.listProviderThreadTurns) {
-    throw new AppError({
-      code: 'chat_provider_threads_not_supported',
-      status: 501,
-      message: 'Runtime does not support provider thread turns',
-      details: { sessionId, runtimeKind: resolved.runtimeKind }
-    })
-  }
-  return await resolved.runtime.listProviderThreadTurns({
-    ...buildRuntimeProviderInput(resolved),
-    threadId,
-    ...query
-  })
-}
-
-export async function readContextUsage(sessionId: string): Promise<ChatSessionContextUsageDto> {
-  const resolved = await resolveRuntimeSessionContext(sessionId)
-  if (!resolved.runtime.getContextUsage) {
-    return {
-      sessionId,
-      runtimeKind: resolved.runtimeKind,
-      providerSessionId: resolved.runtimeSession.providerSessionId,
-      usage: null
-    }
-  }
-
-  return {
-    sessionId,
-    runtimeKind: resolved.runtimeKind,
-    providerSessionId: resolved.runtimeSession.providerSessionId,
-    usage: await resolved.runtime.getContextUsage(buildRuntimeProviderInput(resolved))
-  }
-}
-
-async function resolveRuntimeSessionContext(
-  sessionId: string
-): Promise<ResolvedRuntimeSessionContext> {
-  const context = getSessionRunContext(sessionId)
-  if (!context) {
-    assertStoredSession(sessionId)
-    throw new AppError({
-      code: 'chat_session_not_runnable',
-      status: 404,
-      message: 'Chat session runtime context was not found',
-      details: { sessionId }
-    })
-  }
-
-  const registry = getRuntimeRegistry()
-  const runtimeKind = context.session.runtimeKind ?? 'standard'
-  const runtime = registry.get(runtimeKind)
-  if (!runtime) {
-    throw new AppError({
-      code: 'chat_runtime_not_available',
-      status: 501,
-      message: `Runtime is not available: ${runtimeKind}`
-    })
-  }
-
-  const activeRunId = activeRunIdsBySession.get(sessionId)
-  const activeRun = activeRunId ? activeRuns.get(activeRunId) : undefined
-  if (activeRun?.runtimeSession.runtimeKind === runtimeKind) {
-    return {
-      context,
-      runtimeKind,
-      runtime: activeRun.runtime,
-      runtimeSession: activeRun.runtimeSession,
-      modelId:
-        readProviderStateSnapshot(activeRun.runtimeSession.providerStateSnapshot).models
-          .currentModelId ?? undefined
-    }
-  }
-
-  const resolved = await resolveExistingRuntimeSessionForContext({
-    sessionId,
-    context,
-    runtimeKind,
-    runtime
-  })
-  if (!resolved) {
-    throw new AppError({
-      code: 'chat_runtime_session_not_started',
-      status: 404,
-      message: 'Chat session has no provider runtime session',
-      details: { sessionId, runtimeKind }
-    })
-  }
-
-  const modelId =
-    resolved.requestedModelId ??
-    readProviderStateSnapshot(resolved.runtimeSession.providerStateSnapshot).models
-      .currentModelId ??
-    undefined
-
-  return {
-    context,
-    runtimeKind,
-    runtime,
-    runtimeSession: resolved.runtimeSession,
-    modelId
-  }
-}
-
-function buildRuntimeProviderInput(resolved: ResolvedRuntimeSessionContext) {
-  return {
-    runtimeSession: resolved.runtimeSession,
-    profile: resolved.context.profile,
-    workspaceId: resolved.context.session.workspaceId,
-    workspacePath: resolved.context.workspacePath,
-    agentId: resolved.context.session.agentId,
-    modelId: resolved.modelId,
-    systemPrompt: resolveSessionSystemPrompt(resolved.context.session)
-  }
-}
-
-export function getCodexAppServerCapabilityManifest(): ProviderNativeAppServerCapabilityManifest {
-  const runtime = getRuntimeRegistry().get('codex')
-  if (!runtime?.getProviderNativeAppServerCapabilities) {
-    throw new AppError({
-      code: 'chat_runtime_not_available',
-      status: 501,
-      message: 'Codex app-server capabilities are not available'
-    })
-  }
-  return runtime.getProviderNativeAppServerCapabilities()
-}
-
-export async function invokeCodexAppServer(
-  input: CodexAppServerInvokeInput
-): Promise<ProviderNativeAppServerInvokeResponse> {
-  const context = await resolveCodexProviderNativeAppServerContext(input)
-  if (!context.runtime.invokeProviderNativeAppServer) {
-    throw new AppError({
-      code: 'chat_runtime_not_available',
-      status: 501,
-      message: 'Codex app-server invoke is not available'
-    })
-  }
-  const response = await context.runtime.invokeProviderNativeAppServer({
-    ...context,
-    method: input.method,
-    params: input.params
-  })
-  persistProviderNativeAppServerRuntimeSession({
-    sessionId: input.sessionId,
-    runtimeSession: context.runtimeSession,
-    providerTargetId: context.runtimeSession.providerTargetId,
-    requestedModelId:
-      input.modelId ??
-      readProviderStateSnapshot(context.runtimeSession.providerStateSnapshot).models.currentModelId
-  })
-  return response
-}
-
-function persistProviderNativeAppServerRuntimeSession(input: {
-  sessionId: string
-  runtimeSession: RuntimeSession
-  providerTargetId: string
-  requestedModelId: string | null
-}): void {
-  if (!canPersistRuntimeSessionForProviderTarget(input)) {
-    chatLogger.warn(
-      'skipped app-server runtime session persistence after provider target changed',
-      {
-        sessionId: input.sessionId,
-        providerTargetId: input.providerTargetId
-      }
-    )
-    return
-  }
-  attachBinding({
-    sessionId: input.sessionId,
-    providerTargetId: input.providerTargetId,
-    runtimeKind: input.runtimeSession.runtimeKind,
-    runtimeSession: input.runtimeSession,
-    requestedModelId: input.requestedModelId
-  })
-}
-
-export async function openCodexAppServerStream(
-  input: CodexAppServerStreamInput
-): Promise<ReadableStream<Uint8Array>> {
-  const context = await resolveCodexProviderNativeAppServerContext(input)
-  if (!context.runtime.openProviderNativeAppServerStream) {
-    throw new AppError({
-      code: 'chat_runtime_not_available',
-      status: 501,
-      message: 'Codex app-server streaming is not available'
-    })
-  }
-  const stream = context.runtime.openProviderNativeAppServerStream({
-    ...context,
-    method: input.method,
-    params: input.params,
-    closeOnMethods: input.closeOnMethods
-  })
-  return persistCodexAppServerRuntimeSessionAfterStream({
-    stream,
-    sessionId: input.sessionId,
-    runtimeSession: context.runtimeSession,
-    providerTargetId: context.runtimeSession.providerTargetId,
-    modelId: input.modelId
-  })
-}
-
-function persistCodexAppServerRuntimeSessionAfterStream(input: {
-  stream: ReadableStream<Uint8Array>
-  sessionId: string
-  runtimeSession: RuntimeSession
-  providerTargetId: string
-  modelId?: string
-}): ReadableStream<Uint8Array> {
-  const reader = input.stream.getReader()
-  let persisted = false
-  let released = false
-
-  const releaseReader = () => {
-    if (released) {
-      return
-    }
-    released = true
-    reader.releaseLock()
-  }
-
-  const persist = () => {
-    if (persisted) {
-      return
-    }
-    persisted = true
-    persistProviderNativeAppServerRuntimeSession({
-      sessionId: input.sessionId,
-      runtimeSession: input.runtimeSession,
-      providerTargetId: input.providerTargetId,
-      requestedModelId:
-        input.modelId ??
-        readProviderStateSnapshot(input.runtimeSession.providerStateSnapshot).models.currentModelId
-    })
-  }
-
-  return new ReadableStream<Uint8Array>({
-    async pull(controller) {
-      try {
-        const chunk = await reader.read()
-        if (chunk.done) {
-          persist()
-          releaseReader()
-          controller.close()
-          return
-        }
-        controller.enqueue(chunk.value)
-      } catch (error) {
-        persist()
-        releaseReader()
-        controller.error(error)
-      }
-    },
-    async cancel(reason) {
-      try {
-        await reader.cancel(reason)
-      } finally {
-        persist()
-        releaseReader()
-      }
-    }
-  })
-}
-
-async function resolveCodexProviderNativeAppServerContext(input: {
-  sessionId: string
-  providerTargetId?: string
-  modelId?: string
-}) {
-  const context = getSessionRunContext(input.sessionId, {
-    providerTargetId: input.providerTargetId
-  })
-  if (!context) {
-    throw new AppError({
-      code: 'chat_session_not_found',
-      status: 404,
-      message: 'Chat session not found',
-      details: { sessionId: input.sessionId }
-    })
-  }
-  if ((context.session.runtimeKind ?? 'standard') !== 'codex') {
-    throw new AppError({
-      code: 'chat_runtime_not_codex',
-      status: 400,
-      message: 'Codex app-server calls require a Codex chat runtime session',
-      details: {
-        sessionId: input.sessionId,
-        runtimeKind: context.session.runtimeKind ?? 'standard'
-      }
-    })
-  }
-  assertRuntimeCompatibleTarget(context, input.providerTargetId)
-
-  const runtime = getRuntimeRegistry().get('codex')
-  if (!runtime) {
-    throw new AppError({
-      code: 'chat_runtime_not_available',
-      status: 501,
-      message: 'Runtime is not available: codex'
-    })
-  }
-
-  const requestedModelId =
-    input.modelId ??
-    readSessionRequestedModelId({
-      session: context.session,
-      requestedProviderTargetId: input.providerTargetId
-    })
-  const { runtimeSession, requestedModelId: resolvedModelId } =
-    await resolveRuntimeSessionForContext({
-      sessionId: input.sessionId,
-      context,
-      runtimeKind: 'codex',
-      runtime,
-      modelId: requestedModelId,
-      requestedProviderTargetId: input.providerTargetId
-    })
-
-  attachBinding({
-    sessionId: input.sessionId,
-    providerTargetId: context.providerTarget.id,
-    runtimeKind: runtimeSession.runtimeKind,
-    runtimeSession,
-    requestedModelId:
-      requestedModelId ??
-      resolvedModelId ??
-      readProviderStateSnapshot(runtimeSession.providerStateSnapshot).models.currentModelId
-  })
-
-  return {
-    runtime,
-    runtimeSession,
-    profile: context.profile,
-    workspaceId: context.session.workspaceId,
-    workspacePath: context.workspacePath,
-    agentId: context.session.agentId,
-    modelId: requestedModelId ?? resolvedModelId ?? undefined
-  }
 }
 
 export async function createRun(input: {
@@ -2893,8 +1434,8 @@ export async function createRun(input: {
   queueItemId?: string
   internalContinuation?: 'codexGoal'
 }) {
-  failOrphanedPersistedStreamingSessionIfIdle(input.sessionId)
-  if (activeRunIdsBySession.has(input.sessionId) || pendingRunSessions.has(input.sessionId)) {
+  await finalizeInterruptedPersistedStreamingSessionIfIdle(input.sessionId)
+  if (runRegistry.hasActiveRunForSession(input.sessionId) || runRegistry.hasPendingRun(input.sessionId)) {
     throw new AppError({
       code: 'chat_run_in_progress',
       status: 409,
@@ -2906,7 +1447,7 @@ export async function createRun(input: {
     cancelPendingCodexGoalContinuation(input.sessionId)
   }
   const pendingState: PendingRunState = { cancelled: false, queueItemId: input.queueItemId }
-  pendingRunSessions.set(input.sessionId, pendingState)
+  runRegistry.setPendingRun(input.sessionId, pendingState)
 
   try {
     const userText = input.text ?? ''
@@ -2986,10 +1527,7 @@ export async function createRun(input: {
         message: `Runtime is not available: ${runtimeKind}`
       })
     }
-    const runtimeRequestMessages = replaceLastRequestMessage(
-      requestMessages,
-      lastRequestMessage
-    )
+    const runtimeRequestMessages = requestMessages
 
     const sessionRuntimeSettings = readSessionRuntimeSettings(context.session.configJson)
     const runtimeSettings = mergeRuntimeSettings(
@@ -3014,20 +1552,7 @@ export async function createRun(input: {
 
     if (pendingState.cancelled) {
       if (input.queueItemId) {
-        db()
-          .update(chatSessionQueueItems)
-          .set({
-            status: 'cancelled',
-            errorText: null,
-            updatedAt: currentUnixSeconds()
-          })
-          .where(
-            and(
-              eq(chatSessionQueueItems.id, input.queueItemId),
-              eq(chatSessionQueueItems.sessionId, input.sessionId)
-            )
-          )
-          .run()
+        await cancelQueuedSessionItem(input.sessionId, input.queueItemId)
       }
       try {
         await runtime.cancelTurn({ runtimeSession, profile: context.profile })
@@ -3056,7 +1581,13 @@ export async function createRun(input: {
 
     const draft =
       input.internalContinuation === 'codexGoal'
-        ? createCodexGoalContinuationDraft({ sessionId: input.sessionId })
+        ? {
+            userMessageId: '',
+            assistantMessageId: randomUUID(),
+            userMessage: annotateCodexGoalContinuationMessage(
+              createUserMessage(randomUUID(), CODEX_GOAL_CONTINUATION_PROMPT)
+            )
+          }
         : lastRequestMessage?.role === 'assistant'
           ? {
               userMessageId: '',
@@ -3064,14 +1595,14 @@ export async function createRun(input: {
               userMessage: lastRequestMessage
             }
           : lastRequestMessage?.role === 'user'
-            ? createDraftTurnFromUserMessage({
+            ? await createDraftTurnFromUserMessage({
                 sessionId: input.sessionId,
                 userMessage: lastRequestMessage,
                 continuation: input.continuationMode
                   ? { mode: input.continuationMode, queueItemId: input.queueItemId }
                   : undefined
               })
-            : createDraftTurn({
+            : await createDraftTurn({
                 sessionId: input.sessionId,
                 runtimeKind,
                 userText,
@@ -3082,17 +1613,16 @@ export async function createRun(input: {
                   : undefined
               })
 
-    if (lastRequestMessage?.role === 'assistant') {
-      startAssistantContinuation({
-        sessionId: input.sessionId,
-        message: lastRequestMessage
-      })
-    }
-
-    const run = startRun({
+    const run = await startRun({
       sessionId: input.sessionId,
       messageId: draft.assistantMessageId,
-      origin: input.internalContinuation ? 'system' : 'user'
+      origin: input.internalContinuation ? 'system' : 'user',
+      assistantMessage:
+        lastRequestMessage?.role === 'assistant'
+          ? lastRequestMessage
+          : createAssistantMessage(draft.assistantMessageId),
+      assistantMessageProjection: lastRequestMessage?.role === 'assistant' ? 'update' : 'insert',
+      queueItemId: input.queueItemId ?? null
     })
     const activeRun: ActiveRun = {
       runId: run.id,
@@ -3107,10 +1637,6 @@ export async function createRun(input: {
       chunkBufferIndexByKey: new Map(),
       pendingDeltaChunk: null,
       pendingDeltaFlushTimer: null,
-      activeTextPartIds: new Set(),
-      activeReasoningPartIds: new Set(),
-      streamedToolInputStartIds: new Set(),
-      streamedToolInvocationIds: new Set(),
       snapshotTimer: null,
       finalMessage:
         lastRequestMessage?.role === 'assistant'
@@ -3123,13 +1649,13 @@ export async function createRun(input: {
       runSnapshotId: null,
       runSnapshotSeq: 0
     }
-    activeRuns.set(run.id, activeRun)
+    runRegistry.setActiveRun(run.id, activeRun)
     startActiveRunSnapshot(activeRun, {
       workspaceId: context.session.workspaceId,
       agentId: context.session.agentId
     })
     startSnapshotTimer(activeRun)
-    activeRunIdsBySession.set(input.sessionId, run.id)
+    runRegistry.setActiveRunIdForSession(input.sessionId, run.id)
     if (isChatStreamTraceEnabled()) {
       recordChatStreamTrace({
         chatSessionId: activeRun.sessionId,
@@ -3146,24 +1672,7 @@ export async function createRun(input: {
         }
       })
     }
-    if (input.queueItemId) {
-      db()
-        .update(chatSessionQueueItems)
-        .set({
-          status: 'running',
-          startedRunId: run.id,
-          errorText: null,
-          updatedAt: currentUnixSeconds()
-        })
-        .where(
-          and(
-            eq(chatSessionQueueItems.id, input.queueItemId),
-            eq(chatSessionQueueItems.sessionId, input.sessionId)
-          )
-        )
-        .run()
-    }
-    pendingRunSessions.delete(input.sessionId)
+    runRegistry.deletePendingRun(input.sessionId)
 
     const turnContext = requestMessages
       ? {
@@ -3197,8 +1706,8 @@ export async function createRun(input: {
       userMessageId: draft.userMessageId
     }
   } catch (error) {
-    const pending = pendingRunSessions.get(input.sessionId)
-    pendingRunSessions.delete(input.sessionId)
+    const pending = runRegistry.getPendingRun(input.sessionId)
+    runRegistry.deletePendingRun(input.sessionId)
     const cancelledClaimedQueueItem = Boolean(
       input.queueItemId &&
       pending?.cancelled &&
@@ -3235,7 +1744,7 @@ export async function streamResponse(input: {
   const result = await createRun(input)
   return {
     ...result,
-    stream: openRunStream(result.runId)
+    stream: openRunEventStream(result.runId)
   }
 }
 
@@ -3336,10 +1845,6 @@ export async function streamSideConversationResponse(input: {
   }
 }
 
-export function releaseSideConversationById(sideConversationId: string): void {
-  releaseSideConversation(sideConversationId)
-}
-
 export async function streamQuickQuestion(
   input: QuickQuestionInput
 ): Promise<ReadableStream<Uint8Array>> {
@@ -3381,7 +1886,7 @@ export async function streamQuickQuestion(
   })
 
   // Read the full session transcript so the provider can reuse prompt cache.
-  const transcript = await readSessionTranscript(input.sessionId)
+  const transcript = await readFullSessionTranscript(input.sessionId)
 
   return openDirectChunkStream(
     runtime.quickQuestion({
@@ -3395,41 +1900,24 @@ export async function streamQuickQuestion(
   )
 }
 
-async function readSessionTranscript(sessionId: string): Promise<UIMessage[]> {
-  const rows = db()
-    .select()
-    .from(messages)
-    .where(eq(messages.sessionId, sessionId))
-    .orderBy(messages.createdAt)
-    .all()
-
-  return rows
-    .map((row) => parseTrustedStoredMessageSnapshot(row.messageJson))
-    .filter((msg): msg is UIMessage => msg !== null)
-}
-
-export function openSessionRunStream(sessionId: string): ReadableStream<Uint8Array> {
+export async function openSessionRunStream(sessionId: string): Promise<ReadableStream<Uint8Array>> {
   assertStoredSession(sessionId)
-  releaseTerminalPersistedActiveRunForSession(sessionId)
+  await releaseTerminalPersistedActiveRunForSession(sessionId)
 
-  const runId = activeRunIdsBySession.get(sessionId)
+  const runId = runRegistry.getActiveRunIdForSession(sessionId)
   if (!runId) {
-    return openIdleRunStream()
+    return new ReadableStream<Uint8Array>({
+      start: (controller) => {
+        controller.close()
+      }
+    })
   }
 
   return openRunEventStream(runId)
 }
 
-export function openProviderThreadStream(
-  sessionId: string,
-  threadId: string
-): ReadableStream<Uint8Array> {
-  assertStoredSession(sessionId)
-  return openProviderThreadEventStream(sessionId, threadId)
-}
-
 export async function abortRun(runId: string): Promise<void> {
-  const active = activeRuns.get(runId)
+  const active = runRegistry.getActiveRun(runId)
   if (!active) {
     const persistedRun = getRun(runId)
     if (!persistedRun) {
@@ -3440,7 +1928,7 @@ export async function abortRun(runId: string): Promise<void> {
         details: { runId }
       })
     }
-    abortPersistedRun(persistedRun)
+    await abortProjectedStreamingRun(persistedRun)
     return
   }
 
@@ -3457,43 +1945,37 @@ export async function abortRun(runId: string): Promise<void> {
  * POST /chat/sessions/:sessionId/cancel
  */
 export async function cancelSession(sessionId: string): Promise<void> {
-  if (releaseTerminalPersistedActiveRunForSession(sessionId)) {
+  if (await releaseTerminalPersistedActiveRunForSession(sessionId)) {
     return
   }
-  const runId = activeRunIdsBySession.get(sessionId)
+  const runId = runRegistry.getActiveRunIdForSession(sessionId)
   if (!runId) {
-    const pendingState = pendingRunSessions.get(sessionId)
+    const pendingState = runRegistry.getPendingRun(sessionId)
     if (pendingState) {
       pendingState.cancelled = true
       if (pendingState.queueItemId) {
-        db()
-          .update(chatSessionQueueItems)
-          .set({
-            status: 'cancelled',
-            errorText: null,
-            updatedAt: currentUnixSeconds()
-          })
-          .where(
-            and(
-              eq(chatSessionQueueItems.id, pendingState.queueItemId),
-              eq(chatSessionQueueItems.sessionId, sessionId)
-            )
-          )
-          .run()
-        normalizePendingQueuePositions(sessionId)
+        await cancelQueuedSessionItem(sessionId, pendingState.queueItemId)
+        await normalizeSessionQueuePositions(sessionId)
       }
       return
     }
-    abortPersistedStreamingSession(sessionId)
+    const streamingRuns = db()
+      .select()
+      .from(backendRuns)
+      .where(and(eq(backendRuns.chatSessionId, sessionId), eq(backendRuns.status, 'streaming')))
+      .all()
+    for (const run of streamingRuns) {
+      await abortProjectedStreamingRun(run)
+    }
     return
   }
   await abortRun(runId)
 }
 
 export async function abortAllRuns(): Promise<void> {
-  const runIds = [...activeRuns.keys()]
+  const runIds = runRegistry.listActiveRunIds()
   for (const runId of runIds) {
-    const active = activeRuns.get(runId)
+    const active = runRegistry.getActiveRun(runId)
     if (!active) {
       continue
     }
@@ -3506,12 +1988,7 @@ export async function abortAllRuns(): Promise<void> {
       releaseActiveRun(active)
     }
   }
-  activeRuns.clear()
-  activeRunIdsBySession.clear()
-}
-
-export function openRunStream(runId: string): ReadableStream<Uint8Array> {
-  return openRunEventStream(runId)
+  runRegistry.clearAll()
 }
 
 function openRunEventStream(runId: string): ReadableStream<Uint8Array> {
@@ -3524,67 +2001,36 @@ function openRunEventStream(runId: string): ReadableStream<Uint8Array> {
       details: { runId }
     })
   }
-  const active = activeRuns.get(runId)
+  const active = runRegistry.getActiveRun(runId)
 
   return openBufferedChunkStream({
     replayChunks: active?.chunkBuffer ?? [],
     terminal: run.status !== 'streaming' || !active,
-    coalesceMaxChars: runDeltaFlushChars(),
-    subscribe: (subscriber: ChunkSubscriber) => {
-      const subscribers = runSubscribers.get(runId) ?? new Set<RunSubscriber>()
-      subscribers.add(subscriber as RunSubscriber)
-      runSubscribers.set(runId, subscribers)
-
-      return () => {
-        const current = runSubscribers.get(runId)
-        if (!current) {
-          return
-        }
-        current.delete(subscriber as RunSubscriber)
-        if (current.size === 0) {
-          runSubscribers.delete(runId)
-        }
-      }
-    }
+    coalesceMaxChars: readPositiveIntegerEnv(
+      'CRADLE_CHAT_RUN_DELTA_FLUSH_CHARS',
+      DEFAULT_RUN_DELTA_FLUSH_CHARS
+    ),
+    subscribe: (subscriber: ChunkSubscriber) => runSubscribers.subscribe(runId, subscriber)
   })
 }
 
-function openProviderThreadEventStream(
+export function openProviderThreadStream(
   sessionId: string,
   threadId: string
 ): ReadableStream<Uint8Array> {
+  assertStoredSession(sessionId)
   const key = providerThreadStreamKey(sessionId, threadId)
   const state = providerThreadStreamStore.streams.get(key)
   return openBufferedChunkStream({
     replayChunks: state?.chunks ?? [],
     terminal: state?.terminal,
-    shouldCloseWithoutSubscriber: !state && !activeRunIdsBySession.has(sessionId),
-    coalesceMaxChars: runDeltaFlushChars(),
-    subscribe: (subscriber: ChunkSubscriber) => {
-      const subscribers =
-        providerThreadStreamStore.subscribers.get(key) ?? new Set<ProviderThreadSubscriber>()
-      subscribers.add(subscriber as ProviderThreadSubscriber)
-      providerThreadStreamStore.subscribers.set(key, subscribers)
-
-      return () => {
-        const current = providerThreadStreamStore.subscribers.get(key)
-        if (!current) {
-          return
-        }
-        current.delete(subscriber as ProviderThreadSubscriber)
-        if (current.size === 0) {
-          providerThreadStreamStore.subscribers.delete(key)
-        }
-      }
-    }
-  })
-}
-
-function openIdleRunStream(): ReadableStream<Uint8Array> {
-  return new ReadableStream<Uint8Array>({
-    start: (controller) => {
-      controller.close()
-    }
+    shouldCloseWithoutSubscriber: !state && !runRegistry.hasActiveRunForSession(sessionId),
+    coalesceMaxChars: readPositiveIntegerEnv(
+      'CRADLE_CHAT_RUN_DELTA_FLUSH_CHARS',
+      DEFAULT_RUN_DELTA_FLUSH_CHARS
+    ),
+    subscribe: (subscriber: ChunkSubscriber) =>
+      providerThreadStreamStore.subscribers.subscribe(key, subscriber)
   })
 }
 
@@ -3603,40 +2049,19 @@ export function waitForRunCompletion(runId: string): Promise<BackendRun> {
   }
 
   return new Promise((resolve) => {
-    const subscribers = runSubscribers.get(runId) ?? new Set<RunSubscriber>()
-    const subscriber: RunSubscriber = (_event, terminal) => {
+    const unsubscribe = runSubscribers.subscribe(runId, (_event, terminal) => {
       if (!terminal) {
         return
       }
-      const current = runSubscribers.get(runId)
-      current?.delete(subscriber)
-      if (current?.size === 0) {
-        runSubscribers.delete(runId)
-      }
       resolve(getRun(runId) ?? run)
-    }
-    subscribers.add(subscriber)
-    runSubscribers.set(runId, subscribers)
+    })
 
     const latest = getRun(runId)
     if (latest && latest.status !== 'streaming') {
-      const current = runSubscribers.get(runId)
-      current?.delete(subscriber)
-      if (current?.size === 0) {
-        runSubscribers.delete(runId)
-      }
+      unsubscribe()
       resolve(latest)
     }
   })
-}
-
-export function getMessages(sessionId: string): Message[] {
-  return db()
-    .select()
-    .from(messages)
-    .where(eq(messages.sessionId, sessionId))
-    .orderBy(messages.createdAt, messageInsertOrder)
-    .all()
 }
 
 export function listSessionQueueItems(sessionId: string): ChatSessionQueueItemDto[] {
@@ -3656,7 +2081,7 @@ export function listSessionQueueItems(sessionId: string): ChatSessionQueueItemDt
 export async function enqueueSessionQueueItem(
   input: EnqueueSessionQueueItemInput
 ): Promise<ChatSessionQueueItemDto> {
-  failOrphanedPersistedStreamingSessionIfIdle(input.sessionId)
+  await finalizeInterruptedPersistedStreamingSessionIfIdle(input.sessionId)
   const context = getSessionRunContext(input.sessionId, {
     providerTargetId: input.providerTargetId
   })
@@ -3691,31 +2116,33 @@ export async function enqueueSessionQueueItem(
     baseRuntimeSettings,
     normalizeRuntimeSettingsPatch(input.runtimeSettings)
   )
-  const row = db()
-    .insert(chatSessionQueueItems)
-    .values({
-      id: randomUUID(),
-      sessionId: input.sessionId,
-      mode: 'queue',
-      status: 'pending',
-      text,
-      filesJson: serializeQueueFiles(files),
-      contextPartsJson: serializeQueueContextParts(contextParts),
-      providerTargetId: input.providerTargetId?.trim() || null,
-      modelId: input.modelId?.trim() || null,
-      thinkingEffort: readPersistedThinkingEffort(input.thinkingEffort),
-      permissionMode: null,
-      runtimeAccessMode: runtimeSettings.accessMode,
-      runtimeInteractionMode: runtimeSettings.interactionMode,
-      position,
-      sourceRunId: getSourceRunId(input.sessionId),
-      startedRunId: null,
-      errorText: null,
-      createdAt: now,
-      updatedAt: now
-    })
-    .returning()
-    .get()
+  const row = {
+    id: randomUUID(),
+    sessionId: input.sessionId,
+    mode: 'queue' as const,
+    status: 'pending' as const,
+    text,
+    filesJson: serializeQueueFiles(files),
+    contextPartsJson: serializeQueueContextParts(contextParts),
+    providerTargetId: input.providerTargetId?.trim() || null,
+    modelId: input.modelId?.trim() || null,
+    thinkingEffort: readPersistedThinkingEffort(input.thinkingEffort),
+    permissionMode: null,
+    runtimeAccessMode: runtimeSettings.accessMode,
+    runtimeInteractionMode: runtimeSettings.interactionMode,
+    position,
+    sourceRunId: runRegistry.getActiveRunIdForSession(input.sessionId) ?? null,
+    startedRunId: null,
+    errorText: null,
+    createdAt: now,
+    updatedAt: now
+  }
+  await commitSessionEvents(input.sessionId, [
+    {
+      type: 'QueueItemEnqueued',
+      payload: { item: row }
+    }
+  ])
 
   scheduleSessionQueueDrain(input.sessionId, queueDrainDeps)
   return toQueueItemDto(row, runtimeSettings)
@@ -3736,8 +2163,8 @@ export async function submitSessionSteerTurn(
     })
   }
 
-  failOrphanedPersistedStreamingSessionIfIdle(input.sessionId)
-  const runId = activeRunIdsBySession.get(input.sessionId)
+  await finalizeInterruptedPersistedStreamingSessionIfIdle(input.sessionId)
+  const runId = runRegistry.getActiveRunIdForSession(input.sessionId)
   if (!runId) {
     throw new AppError({
       code: 'chat_steer_no_active_run',
@@ -3747,7 +2174,7 @@ export async function submitSessionSteerTurn(
     })
   }
 
-  const activeRun = activeRuns.get(runId)
+  const activeRun = runRegistry.getActiveRun(runId)
   if (
     !activeRun?.runtime.capabilities.supportsSteerTurn ||
     !activeRun.runtime.steerTurn ||
@@ -3774,12 +2201,8 @@ export async function submitSessionSteerTurn(
   }
   assertRuntimeCompatibleTarget(context, input.providerTargetId)
 
-  if (
-    !canApplyLiveSteerWithRequest({
-      activeRun,
-      providerTargetId: input.providerTargetId?.trim() || null
-    })
-  ) {
+  const requestedProviderTargetId = input.providerTargetId?.trim() || null
+  if (requestedProviderTargetId && requestedProviderTargetId !== activeRun.providerTargetId) {
     throw new AppError({
       code: 'chat_steer_context_mismatch',
       status: 409,
@@ -3789,7 +2212,7 @@ export async function submitSessionSteerTurn(
   }
 
   const sourceMessageId = activeRun.messageId
-  const splitParts = cloneUiMessageParts(activeRun.finalMessage.parts)
+  const splitParts = structuredClone(activeRun.finalMessage.parts) as UIMessage['parts']
   const steerMessage = annotateContinuationMessage(
     createUserMessage(`steer-${randomUUID()}`, text, files, contextParts),
     { mode: 'steer', sourceMessageId, splitParts }
@@ -3816,7 +2239,7 @@ export async function submitSessionSteerTurn(
   }
 
   try {
-    insertCompletedUserMessage({
+    await insertCompletedUserMessage({
       sessionId: input.sessionId,
       message: steerMessage,
       parentMessageId: sourceMessageId
@@ -3840,83 +2263,10 @@ export async function submitSessionSteerTurn(
   }
 }
 
-export function getSessionRuntimeSettings(sessionId: string): ChatRuntimeSettingsDto {
-  const session = assertStoredSession(sessionId)
-  const runtimeSettings = readSessionRuntimeSettings(session.configJson)
-  return {
-    sessionId,
-    runtimeSettings,
-    applied: readRuntimeSettingsApplied(sessionId, runtimeSettings)
-  }
-}
-
-export async function updateSessionRuntimeSettings(input: {
-  sessionId: string
-  patch: ChatRuntimeSettingsPatch
-}): Promise<ChatRuntimeSettingsDto> {
-  const session = assertStoredSession(input.sessionId)
-  const runtimeSettings = mergeRuntimeSettings(
-    readSessionRuntimeSettings(session.configJson),
-    normalizeRuntimeSettingsPatch(input.patch)
-  )
-  db()
-    .update(sessions)
-    .set({
-      configJson: writeSessionRuntimeSettingsConfigJson(session.configJson, runtimeSettings),
-      updatedAt: currentUnixSeconds()
-    })
-    .where(eq(sessions.id, input.sessionId))
-    .run()
-
-  const runId = activeRunIdsBySession.get(input.sessionId)
-  let applied = true
-  if (!runId) {
-    return {
-      sessionId: input.sessionId,
-      runtimeSettings,
-      applied: readRuntimeSettingsApplied(input.sessionId, runtimeSettings)
-    }
-  }
-  const activeRun = activeRuns.get(runId)
-  applied = readRuntimeSettingsApplied(input.sessionId, runtimeSettings)
-  if (
-    !applied &&
-    activeRun?.runtime.capabilities.supportsRuntimeSettings &&
-    activeRun.runtime.updateRuntimeSettings &&
-    !activeRun.terminalStatus
-  ) {
-    const context = getSessionRunContext(input.sessionId)
-    if (context) {
-      try {
-        await activeRun.runtime.updateRuntimeSettings({
-          runtimeSession: activeRun.runtimeSession,
-          profile: context.profile,
-          settings: runtimeSettings
-        })
-        activeRun.runtimeSettings = runtimeSettings
-        applied = true
-      } catch (error) {
-        chatLogger.warn('update runtime settings failed', {
-          error,
-          sessionId: input.sessionId,
-          runId,
-          runtimeSettings
-        })
-      }
-    }
-  }
-
-  return {
-    sessionId: input.sessionId,
-    runtimeSettings,
-    applied
-  }
-}
-
-export function cancelSessionQueueItem(
+export async function cancelSessionQueueItem(
   sessionId: string,
   queueItemId: string
-): ChatSessionQueueItemDto {
+): Promise<ChatSessionQueueItemDto> {
   assertRunnableSession(sessionId)
   const row = db()
     .select()
@@ -3946,21 +2296,8 @@ export function cancelSessionQueueItem(
     })
   }
 
-  const now = currentUnixSeconds()
-  const updated = db()
-    .update(chatSessionQueueItems)
-    .set({ status: 'cancelled', updatedAt: now })
-    .where(
-      and(
-        eq(chatSessionQueueItems.id, queueItemId),
-        eq(chatSessionQueueItems.sessionId, sessionId),
-        eq(chatSessionQueueItems.mode, 'queue'),
-        eq(chatSessionQueueItems.status, 'pending')
-      )
-    )
-    .returning()
-    .get()
-  if (!updated) {
+  const updated = await cancelQueuedSessionItem(sessionId, queueItemId)
+  if (!updated || updated.status !== 'cancelled') {
     const current = db()
       .select()
       .from(chatSessionQueueItems)
@@ -3979,14 +2316,14 @@ export function cancelSessionQueueItem(
       details: { sessionId, queueItemId, status: current?.status ?? 'missing' }
     })
   }
-  normalizePendingQueuePositions(sessionId)
+  await normalizeSessionQueuePositions(sessionId)
   return toQueueItemDto(updated)
 }
 
-export function reorderSessionQueueItems(
+export async function reorderSessionQueueItems(
   sessionId: string,
   queueItemIds: string[]
-): ChatSessionQueueItemDto[] {
+): Promise<ChatSessionQueueItemDto[]> {
   assertRunnableSession(sessionId)
   const pendingRows = listPendingQueueRows(sessionId)
   const pendingIds = pendingRows.map((row) => row.id)
@@ -4005,22 +2342,13 @@ export function reorderSessionQueueItems(
     })
   }
 
-  const now = currentUnixSeconds()
-  db().transaction((tx) => {
-    queueItemIds.forEach((queueItemId, index) => {
-      tx.update(chatSessionQueueItems)
-        .set({ position: index + 1, updatedAt: now })
-        .where(
-          and(
-            eq(chatSessionQueueItems.id, queueItemId),
-            eq(chatSessionQueueItems.sessionId, sessionId),
-            eq(chatSessionQueueItems.mode, 'queue'),
-            eq(chatSessionQueueItems.status, 'pending')
-          )
-        )
-        .run()
-    })
-  })
+  const rowsById = new Map(pendingRows.map((row) => [row.id, row]))
+  await recordQueuePositions(
+    sessionId,
+    queueItemIds
+      .map((queueItemId) => rowsById.get(queueItemId))
+      .filter((row): row is (typeof pendingRows)[number] => Boolean(row))
+  )
 
   const session = assertStoredSession(sessionId)
   const runtimeSettings = readSessionRuntimeSettings(session.configJson)
@@ -4062,28 +2390,49 @@ function startActiveRunSnapshot(
 
 // ── run execution (private) ──
 
-async function executeRun(
-  activeRun: ActiveRun,
-  input: {
-    message: UIMessage
-    profile: RuntimeProviderTargetProfile
-    modelId?: string
-    thinkingEffort?: ChatThinkingEffort
-    runtimeSettings?: ChatRuntimeSettings
-    systemPrompt?: string
-    transcript?: CradleTurnTranscript
-    history?: UIMessage[]
-    originalMessages?: UIMessage[]
-    workspaceId?: string | null
-    workspacePath?: string
-    agentId?: string | null
-  }
-): Promise<void> {
+interface ExecuteRunInput {
+  message: UIMessage
+  profile: RuntimeProviderTargetProfile
+  modelId?: string
+  thinkingEffort?: ChatThinkingEffort
+  runtimeSettings?: ChatRuntimeSettings
+  systemPrompt?: string
+  transcript?: CradleTurnTranscript
+  history?: UIMessage[]
+  originalMessages?: UIMessage[]
+  workspaceId?: string | null
+  workspacePath?: string
+  agentId?: string | null
+}
+
+interface RunStreamPumpResult {
+  finalChunk: UIMessageChunk
+  failurePayload: SerializedChatError['payload'] | undefined
+}
+
+async function executeRun(activeRun: ActiveRun, input: ExecuteRunInput): Promise<void> {
   const diagnostics = createTurnOutputDiagnostics()
-  let failurePayload: SerializedChatError['payload'] | undefined
-  let finalChunk: UIMessageChunk = { type: 'finish', finishReason: 'stop' }
-  let actualModelId = activeRun.modelId
   const profile = startChatRuntimeProfile()
+
+  const { finalChunk, failurePayload } = await pumpRuntimeStream(activeRun, input, diagnostics, profile)
+  const actualModelId = await persistRunTerminalAndUsage(
+    activeRun,
+    finalChunk,
+    failurePayload,
+    diagnostics,
+    profile
+  )
+  completeRun(activeRun, finalChunk, diagnostics, profile, actualModelId)
+}
+
+async function pumpRuntimeStream(
+  activeRun: ActiveRun,
+  input: ExecuteRunInput,
+  diagnostics: TurnOutputDiagnostics,
+  profile: ChatRuntimeProfile
+): Promise<RunStreamPumpResult> {
+  let finalChunk: UIMessageChunk = { type: 'finish', finishReason: 'stop' }
+  let failurePayload: SerializedChatError['payload'] | undefined
 
   try {
     for await (const chunk of activeRun.runtime.streamTurn({
@@ -4107,8 +2456,14 @@ async function executeRun(
       systemPrompt: input.systemPrompt,
       history: input.history,
       originalMessages: input.originalMessages,
-      reportSessionTitle: (title) =>
-        reportRuntimeSessionTitle({ sessionId: activeRun.sessionId, title }),
+      reportSessionTitle: (title) => {
+        void reportRuntimeSessionTitle({ sessionId: activeRun.sessionId, title }).catch((error) => {
+          chatLogger.warn('failed to persist runtime session title event', {
+            error,
+            sessionId: activeRun.sessionId
+          })
+        })
+      },
       onProviderThreadEvent: (event) =>
         publishProviderThreadEvent({
           store: providerThreadStreamStore,
@@ -4186,6 +2541,17 @@ async function executeRun(
     })
   }
 
+  return { finalChunk, failurePayload }
+}
+
+async function persistRunTerminalAndUsage(
+  activeRun: ActiveRun,
+  finalChunk: UIMessageChunk,
+  failurePayload: SerializedChatError['payload'] | undefined,
+  diagnostics: TurnOutputDiagnostics,
+  profile: ChatRuntimeProfile
+): Promise<string | null> {
+  let actualModelId = activeRun.modelId
   try {
     if (!activeRun.cancelRequested) {
       await publishTerminalChunk(activeRun, finalChunk, profile)
@@ -4273,84 +2639,83 @@ async function executeRun(
     chatLogger.error('failed to persist run finalization (session may have been deleted)', {
       error
     })
-  } finally {
-    // Persist updated providerSessionId/state obtained during the run
-    try {
-      const binding = attachBinding({
-        sessionId: activeRun.sessionId,
-        providerTargetId: activeRun.providerTargetId,
-        runtimeKind: activeRun.runtimeSession.runtimeKind,
-        runtimeSession: activeRun.runtimeSession,
-        requestedModelId: actualModelId
-      })
-      linkRunToRuntimeBinding({ runId: activeRun.runId, binding })
-    } catch {
-      // session may have been deleted during the run
-    }
-    updateCodexGoalContinuationBackoff(
+  }
+  return actualModelId
+}
+
+function completeRun(
+  activeRun: ActiveRun,
+  finalChunk: UIMessageChunk,
+  diagnostics: TurnOutputDiagnostics,
+  profile: ChatRuntimeProfile,
+  actualModelId: string | null
+): void {
+  // Persist updated providerSessionId/state obtained during the run
+  try {
+    attachBinding({
+      sessionId: activeRun.sessionId,
+      providerTargetId: activeRun.providerTargetId,
+      runtimeKind: activeRun.runtimeSession.runtimeKind,
+      runtimeSession: activeRun.runtimeSession,
+      requestedModelId: actualModelId
+    })
+  } catch {
+    // session may have been deleted during the run
+  }
+  updateCodexGoalContinuationBackoff(
+    {
+      sessionId: activeRun.sessionId,
+      runtimeKind: activeRun.runtimeSession.runtimeKind,
+      cancelRequested: activeRun.cancelRequested === true,
+      internalContinuation: activeRun.internalContinuation
+    },
+    finalChunk
+  )
+  const binding = readDurableProviderRuntimeBinding(activeRun.sessionId)
+  const shouldContinueCodexGoal = shouldScheduleCodexGoalContinuation({
+    run: {
+      sessionId: activeRun.sessionId,
+      runtimeKind: activeRun.runtimeSession.runtimeKind,
+      cancelRequested: activeRun.cancelRequested === true,
+      internalContinuation: activeRun.internalContinuation
+    },
+    finalChunk,
+    binding,
+    providerTargetAvailable: Boolean(binding && isProviderTargetAvailable(binding.providerTargetId)),
+    pendingQueueItemCount: listPendingQueueRows(activeRun.sessionId).length
+  })
+  finalizeActiveRunSnapshot(activeRun, finalChunk, {
+    modelId: actualModelId,
+    diagnostics,
+    profile
+  })
+  recordChatRuntimeProfile({
+    run: {
+      sessionId: activeRun.sessionId,
+      runId: activeRun.runId,
+      messageId: activeRun.messageId,
+      runtimeKind: activeRun.runtimeSession.runtimeKind,
+      providerTargetId: activeRun.providerTargetId,
+      modelId: activeRun.modelId,
+      terminalStatus: activeRun.terminalStatus,
+      replayChunkCount: activeRun.chunkBuffer.length,
+      finalPartCount: activeRun.finalMessage.parts.length
+    },
+    diagnostics,
+    profile
+  })
+  releaseActiveRun(activeRun)
+  scheduleSessionQueueDrain(activeRun.sessionId, queueDrainDeps)
+  if (shouldContinueCodexGoal) {
+    scheduleCodexGoalContinuation(
       {
-        sessionId: activeRun.sessionId,
-        runtimeKind: activeRun.runtimeSession.runtimeKind,
-        cancelRequested: activeRun.cancelRequested === true,
-        internalContinuation: activeRun.internalContinuation
-      },
-      finalChunk
-    )
-    const binding = getBinding(activeRun.sessionId)
-    const shouldContinueCodexGoal = shouldScheduleCodexGoalContinuation({
-      run: {
-        sessionId: activeRun.sessionId,
-        runtimeKind: activeRun.runtimeSession.runtimeKind,
-        cancelRequested: activeRun.cancelRequested === true,
-        internalContinuation: activeRun.internalContinuation
-      },
-      finalChunk,
-      binding,
-      providerTargetAvailable: Boolean(binding && isProviderTargetAvailable(binding.providerTargetId)),
-      pendingQueueItemCount: listPendingQueueRows(activeRun.sessionId).length
-    })
-    finalizeActiveRunSnapshot(activeRun, finalChunk, {
-      modelId: actualModelId,
-      diagnostics,
-      profile
-    })
-    recordChatRuntimeProfile({
-      run: {
-        sessionId: activeRun.sessionId,
-        runId: activeRun.runId,
-        messageId: activeRun.messageId,
-        runtimeKind: activeRun.runtimeSession.runtimeKind,
-        providerTargetId: activeRun.providerTargetId,
-        modelId: activeRun.modelId,
-        terminalStatus: activeRun.terminalStatus,
-        replayChunkCount: activeRun.chunkBuffer.length,
-        finalPartCount: activeRun.finalMessage.parts.length
-      },
-      diagnostics,
-      profile
-    })
-    releaseActiveRun(activeRun)
-    scheduleSessionQueueDrain(activeRun.sessionId, queueDrainDeps)
-    if (shouldContinueCodexGoal) {
-      scheduleCodexGoalContinuation({
         sessionId: activeRun.sessionId,
         providerTargetId: activeRun.providerTargetId,
         modelId: actualModelId ?? undefined
-      }, codexGoalContinuationDeps)
-    }
+      },
+      codexGoalContinuationDeps
+    )
   }
-}
-
-function runDeltaFlushMs(): number {
-  return readPositiveIntegerEnv('CRADLE_CHAT_RUN_DELTA_FLUSH_MS', DEFAULT_RUN_DELTA_FLUSH_MS)
-}
-
-function runDeltaFlushChars(): number {
-  return readPositiveIntegerEnv('CRADLE_CHAT_RUN_DELTA_FLUSH_CHARS', DEFAULT_RUN_DELTA_FLUSH_CHARS)
-}
-
-function snapshotIntervalMs(): number {
-  return readPositiveIntegerEnv('CRADLE_CHAT_SNAPSHOT_INTERVAL_MS', DEFAULT_SNAPSHOT_INTERVAL_MS)
 }
 
 function snapshotActiveRun(activeRun: ActiveRun): void {
@@ -4369,7 +2734,11 @@ function snapshotActiveRun(activeRun: ActiveRun): void {
 
 function startSnapshotTimer(activeRun: ActiveRun): void {
   stopSnapshotTimer(activeRun)
-  activeRun.snapshotTimer = setInterval(snapshotActiveRun, snapshotIntervalMs(), activeRun)
+  activeRun.snapshotTimer = setInterval(
+    snapshotActiveRun,
+    readPositiveIntegerEnv('CRADLE_CHAT_SNAPSHOT_INTERVAL_MS', DEFAULT_SNAPSHOT_INTERVAL_MS),
+    activeRun
+  )
 }
 
 function stopSnapshotTimer(activeRun: ActiveRun): void {
@@ -4387,7 +2756,7 @@ function stopPendingRunDeltaFlush(activeRun: ActiveRun): void {
 }
 
 export function flushAllActiveRunSnapshots(): void {
-  for (const activeRun of activeRuns.values()) {
+  for (const activeRun of runRegistry.listActiveRuns()) {
     try {
       snapshotActiveRun(activeRun)
     } catch {
@@ -4396,26 +2765,8 @@ export function flushAllActiveRunSnapshots(): void {
   }
 }
 
-export function recoverPersistedRunProjections(): number {
-  const streamingRuns = db()
-    .select()
-    .from(backendRuns)
-    .where(eq(backendRuns.status, 'streaming'))
-    .all()
-
-  let recovered = 0
-  for (const run of streamingRuns) {
-    if (
-      activeRuns.has(run.id) ||
-      activeRunIdsBySession.has(run.chatSessionId) ||
-      pendingRunSessions.has(run.chatSessionId)
-    ) {
-      continue
-    }
-    failOrphanedPersistedRun(run)
-    recovered += 1
-  }
-  recovered += repairTerminalRunProjections()
+export async function recoverPersistedRunProjections(): Promise<number> {
+  const recovered = await finalizeInterruptedSessionEventStreams()
 
   if (recovered > 0) {
     chatLogger.warn('recovered persisted run projections', { recovered })
@@ -4454,7 +2805,10 @@ function finalizeActiveRunSnapshot(
   finalizeRunSnapshotEvent(activeRun, finalChunk, {
     ...input,
     diagnostics: input.diagnostics as unknown as Record<string, unknown>,
-    replayBuffer: getActiveRunReplayBufferSummary(activeRun.runId) as unknown as Record<string, unknown>,
+    replayBuffer: getActiveRunReplayBufferSummary(activeRun.runId) as unknown as Record<
+      string,
+      unknown
+    >,
     truncatePayload: truncateSnapshotPayload
   })
 }
@@ -4474,7 +2828,13 @@ function publishRuntimeChunk(activeRun: ActiveRun, chunk: UIMessageChunk): void 
   const merged = mergeRuntimeDeltaChunk(pending, chunk)
   if (merged) {
     activeRun.pendingDeltaChunk = merged
-    if (readDeltaChunkTextLength(merged) >= runDeltaFlushChars()) {
+    if (
+      readDeltaChunkTextLength(merged) >=
+      readPositiveIntegerEnv(
+        'CRADLE_CHAT_RUN_DELTA_FLUSH_CHARS',
+        DEFAULT_RUN_DELTA_FLUSH_CHARS
+      )
+    ) {
       flushPendingRunDelta(activeRun)
       return
     }
@@ -4498,7 +2858,7 @@ function schedulePendingRunDeltaFlush(activeRun: ActiveRun): void {
   activeRun.pendingDeltaFlushTimer = setTimeout(() => {
     activeRun.pendingDeltaFlushTimer = null
     flushPendingRunDelta(activeRun)
-  }, runDeltaFlushMs())
+  }, readPositiveIntegerEnv('CRADLE_CHAT_RUN_DELTA_FLUSH_MS', DEFAULT_RUN_DELTA_FLUSH_MS))
 }
 
 function flushPendingRunDelta(activeRun: ActiveRun): void {
@@ -4513,113 +2873,14 @@ function flushPendingRunDelta(activeRun: ActiveRun): void {
   }
 }
 
-function normalizeToolInputStreamChunk(
-  activeRun: ActiveRun,
-  chunk: UIMessageChunk,
-  terminal: boolean
-): UIMessageChunk | null {
-  if (terminal) {
-    return chunk
-  }
-
-  if (chunk.type === 'tool-input-start') {
-    if (activeRun.streamedToolInputStartIds.has(chunk.toolCallId)) {
-      return null
-    }
-    return chunk
-  }
-
-  if (requiresToolInvocationChunk(chunk) && !activeRun.streamedToolInvocationIds.has(chunk.toolCallId)) {
-    publishUIMessageChunk(
-      activeRun,
-      {
-        type: 'tool-input-start',
-        toolCallId: chunk.toolCallId,
-        toolName: 'unknown_tool'
-      },
-      false
-    )
-  }
-
-  if (chunk.type !== 'tool-input-delta') {
-    return chunk
-  }
-
-  if (activeRun.streamedToolInputStartIds.has(chunk.toolCallId)) {
-    return chunk
-  }
-
-  // Providers occasionally surface progress deltas before the matching
-  // tool-input-start reaches the runtime, especially during reconnects or
-  // live stream replay. AI SDK treats that ordering as a hard protocol error,
-  // so synthesize the minimal start chunk here to keep the stream renderable.
-  // Provider mappers should still emit the real tool metadata when they have
-  // it; this is the runtime-level last line of defense against a broken UI.
-  publishUIMessageChunk(
-    activeRun,
-    {
-      type: 'tool-input-start',
-      toolCallId: chunk.toolCallId,
-      toolName: 'unknown_tool'
-    },
-    false
-  )
-  return chunk
-}
-
-function normalizeTextStreamChunk(
-  activeRun: ActiveRun,
-  chunk: UIMessageChunk,
-  terminal: boolean
-): UIMessageChunk {
-  if (terminal) {
-    return chunk
-  }
-
-  if (
-    (chunk.type === 'text-delta' || chunk.type === 'text-end') &&
-    !activeRun.activeTextPartIds.has(chunk.id)
-  ) {
-    publishUIMessageChunk(activeRun, { type: 'text-start', id: chunk.id }, false)
-  }
-
-  if (
-    (chunk.type === 'reasoning-delta' || chunk.type === 'reasoning-end') &&
-    !activeRun.activeReasoningPartIds.has(chunk.id)
-  ) {
-    publishUIMessageChunk(activeRun, { type: 'reasoning-start', id: chunk.id }, false)
-  }
-
-  return chunk
-}
-
-function requiresToolInvocationChunk(
-  chunk: UIMessageChunk
-): chunk is UIMessageChunk & { toolCallId: string } {
-  return (
-    chunk.type === 'tool-input-delta' ||
-    chunk.type === 'tool-approval-request' ||
-    chunk.type === 'tool-output-available' ||
-    chunk.type === 'tool-output-error' ||
-    chunk.type === 'tool-output-denied'
-  )
-}
-
 function publishUIMessageChunk(
   activeRun: ActiveRun,
   chunk: UIMessageChunk,
   terminal: boolean
 ): void {
-  const normalizedChunk = normalizeToolInputStreamChunk(activeRun, chunk, terminal)
-  if (!normalizedChunk) {
-    return
-  }
-  chunk = normalizeTextStreamChunk(activeRun, normalizedChunk, terminal)
-
   if (chunk.type === 'start') {
     activeRun.startChunkPublished = true
   }
-  recordPublishedProtocolChunk(activeRun, chunk, terminal)
 
   if (isChatStreamTraceEnabled()) {
     recordChatStreamTrace({
@@ -4633,7 +2894,7 @@ function publishUIMessageChunk(
       payload: {
         chunk,
         terminal,
-        subscriberCount: runSubscribers.get(activeRun.runId)?.size ?? 0
+        subscriberCount: runSubscribers.size(activeRun.runId)
       }
     })
   }
@@ -4643,58 +2904,7 @@ function publishUIMessageChunk(
   }
   bufferReplayChunk(activeRun, chunk)
 
-  const subscribers = runSubscribers.get(activeRun.runId)
-  if (!subscribers) {
-    return
-  }
-
-  const dead: RunSubscriber[] = []
-  for (const subscriber of subscribers) {
-    try {
-      subscriber(chunk, terminal)
-    } catch {
-      dead.push(subscriber)
-    }
-  }
-  for (const subscriber of dead) {
-    subscribers.delete(subscriber)
-  }
-  if (terminal || subscribers.size === 0) {
-    runSubscribers.delete(activeRun.runId)
-  }
-}
-
-function recordPublishedProtocolChunk(
-  activeRun: ActiveRun,
-  chunk: UIMessageChunk,
-  terminal: boolean
-): void {
-  if (terminal) {
-    return
-  }
-
-  switch (chunk.type) {
-    case 'text-start':
-      activeRun.activeTextPartIds.add(chunk.id)
-      break
-    case 'text-end':
-      activeRun.activeTextPartIds.delete(chunk.id)
-      break
-    case 'reasoning-start':
-      activeRun.activeReasoningPartIds.add(chunk.id)
-      break
-    case 'reasoning-end':
-      activeRun.activeReasoningPartIds.delete(chunk.id)
-      break
-    case 'tool-input-start':
-      activeRun.streamedToolInputStartIds.add(chunk.toolCallId)
-      activeRun.streamedToolInvocationIds.add(chunk.toolCallId)
-      break
-    case 'tool-input-available':
-    case 'tool-input-error':
-      activeRun.streamedToolInvocationIds.add(chunk.toolCallId)
-      break
-  }
+  runSubscribers.publish(activeRun.runId, chunk, terminal)
 }
 
 function bufferReplayChunk(activeRun: ActiveRun, chunk: UIMessageChunk): void {
@@ -4719,7 +2929,14 @@ function coalesceReplayChunk(activeRun: ActiveRun, chunk: UIMessageChunk): boole
   }
 
   const existing = activeRun.chunkBuffer[existingIndex]
-  const merged = mergeBufferedStreamChunk(existing, chunk, runDeltaFlushChars())
+  const merged = mergeBufferedStreamChunk(
+    existing,
+    chunk,
+    readPositiveIntegerEnv(
+      'CRADLE_CHAT_RUN_DELTA_FLUSH_CHARS',
+      DEFAULT_RUN_DELTA_FLUSH_CHARS
+    )
+  )
   if (!merged) {
     activeRun.chunkBufferIndexByKey.set(key, activeRun.chunkBuffer.length)
     return false
@@ -4765,20 +2982,13 @@ async function finalizeActiveRun(
     profile.finalizeStartedAtMs = performance.now()
   }
   flushFinalMessageProjection(activeRun)
-    flushProjectedToolInputs(activeRun, parsePartialToolInputText)
+  await flushProjectedToolInputs(activeRun)
 
-  const snapshotResult = persistTerminalMessageSnapshot(activeRun, status, errorText)
+  const bindingId = recordTerminalRunBindingId(activeRun)
+  const snapshotResult = await persistTerminalMessageSnapshot(activeRun, status, errorText, bindingId)
   if (profile) {
     profile.finalMessageJsonBytes = snapshotResult?.messageJsonBytes ?? null
   }
-
-  finalizeBackendRun({
-    runId: activeRun.runId,
-    sessionId: activeRun.sessionId,
-    queueItemId: activeRun.queueItemId,
-    status,
-    errorText
-  })
   if (profile) {
     profile.finalizeFinishedAtMs = performance.now()
     profile.memoryFinished = profile.enabled ? process.memoryUsage() : null
@@ -4805,19 +3015,46 @@ async function finalizeActiveRun(
   }
 }
 
-function persistTerminalMessageSnapshot(
+async function persistTerminalMessageSnapshot(
   activeRun: ActiveRun,
-  status: ChatMessageStatus,
-  errorText: string | null
-): { messageJsonBytes: number } | null {
+  status: TerminalChatMessageStatus,
+  errorText: string | null,
+  bindingId?: string | null
+): Promise<{ messageJsonBytes: number } | null> {
   try {
-    return persistMessageSnapshot({
-      sessionId: activeRun.sessionId,
-      messageId: activeRun.messageId,
-      message: activeRun.finalMessage,
-      messageStatus: status,
-      errorText
-    })
+    const now = currentUnixSeconds()
+    const message = compactStoredMessageSnapshot(normalizeMessageSnapshot(activeRun.finalMessage))
+    const messageJson = JSON.stringify(message)
+    await commitSessionEvents(activeRun.sessionId, [
+      {
+        type: 'AssistantMessageCompleted',
+        payload: {
+          message: {
+            id: activeRun.messageId,
+            sessionId: activeRun.sessionId,
+            content: extractMessageText(message),
+            messageJson,
+            status,
+            errorText,
+            updatedAt: now
+          }
+        }
+      },
+      {
+        type: readRunTerminalEventType(status),
+        payload: {
+          runId: activeRun.runId,
+          sessionId: activeRun.sessionId,
+          queueItemId: activeRun.queueItemId ?? null,
+          ...(bindingId !== undefined ? { bindingId } : {}),
+          status,
+          stopReason: readRunStopReason(status),
+          errorText,
+          finishedAt: now
+        }
+      }
+    ])
+    return { messageJsonBytes: Buffer.byteLength(messageJson) }
   } catch (error) {
     chatLogger.error('failed to persist final message snapshot', {
       error,
@@ -4873,14 +3110,13 @@ async function requestRuntimeCancel(activeRun: ActiveRun): Promise<void> {
     })
   } finally {
     try {
-      const binding = attachBinding({
+      attachBinding({
         sessionId: activeRun.sessionId,
         providerTargetId: activeRun.providerTargetId,
         runtimeKind: activeRun.runtimeSession.runtimeKind,
         runtimeSession: activeRun.runtimeSession,
         requestedModelId: activeRun.modelId
       })
-      linkRunToRuntimeBinding({ runId: activeRun.runId, binding })
     } catch (error) {
       chatLogger.warn('failed to persist runtime session after cancellation', {
         error,
@@ -4891,8 +3127,22 @@ async function requestRuntimeCancel(activeRun: ActiveRun): Promise<void> {
   }
 }
 
-function releaseTerminalPersistedActiveRunForSession(sessionId: string): boolean {
-  const runId = activeRunIdsBySession.get(sessionId)
+function recordTerminalRunBindingId(activeRun: ActiveRun): string | undefined {
+  try {
+    return attachBinding({
+      sessionId: activeRun.sessionId,
+      providerTargetId: activeRun.providerTargetId,
+      runtimeKind: activeRun.runtimeSession.runtimeKind,
+      runtimeSession: activeRun.runtimeSession,
+      requestedModelId: activeRun.modelId
+    })?.id
+  } catch {
+    return undefined
+  }
+}
+
+async function releaseTerminalPersistedActiveRunForSession(sessionId: string): Promise<boolean> {
+  const runId = runRegistry.getActiveRunIdForSession(sessionId)
   if (!runId) {
     return false
   }
@@ -4901,26 +3151,26 @@ function releaseTerminalPersistedActiveRunForSession(sessionId: string): boolean
   if (!run) {
     return false
   }
-  const status = readTerminalRunProjectionStatus(run.status)
-  if (!status) {
+  if (run.status === 'streaming') {
     return false
   }
 
-  const activeRun = activeRuns.get(runId)
+  const activeRun = runRegistry.getActiveRun(runId)
   if (activeRun) {
-    activeRun.terminalStatus ??= status
+    activeRun.terminalStatus ??= run.status
     releaseActiveRun(activeRun)
   } else {
-    activeRunIdsBySession.delete(sessionId)
+    runRegistry.deleteActiveRunIdForSession(sessionId)
   }
-  repairTerminalRunProjection(run)
+  await projectTerminalRunFact(run)
   return true
 }
 
-function failOrphanedPersistedStreamingSessionIfIdle(sessionId: string): void {
-  releaseTerminalPersistedActiveRunForSession(sessionId)
-  if (!activeRunIdsBySession.has(sessionId) && !pendingRunSessions.has(sessionId)) {
-    failOrphanedPersistedStreamingSession(sessionId)
+async function finalizeInterruptedPersistedStreamingSessionIfIdle(sessionId: string): Promise<void> {
+  await releaseTerminalPersistedActiveRunForSession(sessionId)
+  if (!runRegistry.hasActiveRunForSession(sessionId) && !runRegistry.hasPendingRun(sessionId)) {
+    await finalizeInterruptedSessionEventStream(sessionId)
+    await projectTerminalRunFactsForSession(sessionId)
   }
 }
 
@@ -4931,18 +3181,14 @@ function releaseActiveRun(activeRun: ActiveRun): void {
     activeRun.runId,
     new Error('Chat run ended before pending user input was submitted')
   )
-  activeRuns.delete(activeRun.runId)
+  runRegistry.deleteActiveRun(activeRun.runId)
   runSubscribers.delete(activeRun.runId)
-  if (activeRunIdsBySession.get(activeRun.sessionId) === activeRun.runId) {
-    activeRunIdsBySession.delete(activeRun.sessionId)
+  if (runRegistry.getActiveRunIdForSession(activeRun.sessionId) === activeRun.runId) {
+    runRegistry.deleteActiveRunIdForSession(activeRun.sessionId)
   }
   activeRun.pendingDeltaChunk = null
   activeRun.chunkBuffer = []
   activeRun.chunkBufferIndexByKey.clear()
-  activeRun.activeTextPartIds.clear()
-  activeRun.activeReasoningPartIds.clear()
-  activeRun.streamedToolInputStartIds.clear()
-  activeRun.streamedToolInvocationIds.clear()
   activeRun.finalMessage.parts = []
   activeRun.finalProjection.activeTextParts.clear()
   activeRun.finalProjection.activeReasoningParts.clear()

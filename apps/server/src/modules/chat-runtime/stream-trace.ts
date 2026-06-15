@@ -2,6 +2,14 @@
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readSync, statSync } from 'node:fs'
 import { dirname, join } from 'node:path'
 
+import type { BackendRun } from '@cradle/db'
+import { backendRuns } from '@cradle/db'
+import { desc, eq } from 'drizzle-orm'
+
+import { AppError } from '../../errors/app-error'
+import { readPositiveIntegerEnv } from '../../helpers/env'
+import { db } from '../../infra'
+
 export type ChatStreamTracePhase
   = | 'run_started'
     | 'provider_raw'
@@ -40,6 +48,23 @@ export interface ChatRunTrace {
   path: string
   recordCount: number
   records: ChatStreamTraceRecord[]
+}
+
+export interface ChatRunTraceDto {
+  runId: string
+  sessionId: string
+  messageId: string | null
+  status: BackendRun['status']
+  startedAt: number
+  finishedAt: number | null
+  path: string
+  recordCount: number
+  records: ChatStreamTraceRecord[]
+}
+
+export interface ChatSessionTraceDto {
+  sessionId: string
+  traces: ChatRunTraceDto[]
 }
 
 const traceSeqByRunId = new Map<string, number>()
@@ -82,14 +107,6 @@ export function resolveChatStreamTraceDir(env: NodeJS.ProcessEnv = process.env):
 
 export function resolveChatStreamTracePath(runId: string, env: NodeJS.ProcessEnv = process.env): string {
   return join(resolveChatStreamTraceDir(env), `${encodeURIComponent(runId)}.jsonl`)
-}
-
-function readPositiveInteger(value: string | undefined, fallback: number): number {
-  if (!value) {
-    return fallback
-  }
-  const parsed = Number.parseInt(value, 10)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }
 
 function limitTraceValue(
@@ -166,10 +183,13 @@ function normalizeTracePayload(payload: unknown): unknown {
   }
 
   return limitTraceValue(payload, {
-    stringLimit: readPositiveInteger(process.env.CRADLE_CHAT_STREAM_TRACE_STRING_LIMIT, DEFAULT_STRING_LIMIT),
-    arrayLimit: readPositiveInteger(process.env.CRADLE_CHAT_STREAM_TRACE_ARRAY_LIMIT, DEFAULT_ARRAY_LIMIT),
-    objectKeyLimit: readPositiveInteger(process.env.CRADLE_CHAT_STREAM_TRACE_OBJECT_KEY_LIMIT, DEFAULT_OBJECT_KEY_LIMIT),
-    depthLimit: readPositiveInteger(process.env.CRADLE_CHAT_STREAM_TRACE_DEPTH_LIMIT, DEFAULT_DEPTH_LIMIT),
+    stringLimit: readPositiveIntegerEnv('CRADLE_CHAT_STREAM_TRACE_STRING_LIMIT', DEFAULT_STRING_LIMIT),
+    arrayLimit: readPositiveIntegerEnv('CRADLE_CHAT_STREAM_TRACE_ARRAY_LIMIT', DEFAULT_ARRAY_LIMIT),
+    objectKeyLimit: readPositiveIntegerEnv(
+      'CRADLE_CHAT_STREAM_TRACE_OBJECT_KEY_LIMIT',
+      DEFAULT_OBJECT_KEY_LIMIT
+    ),
+    depthLimit: readPositiveIntegerEnv('CRADLE_CHAT_STREAM_TRACE_DEPTH_LIMIT', DEFAULT_DEPTH_LIMIT),
   })
 }
 
@@ -217,11 +237,14 @@ export function readChatRunTrace(runId: string): ChatRunTrace {
     return { runId, path, recordCount: 0, records: [] }
   }
 
-  const limit = readPositiveInteger(process.env.CRADLE_CHAT_STREAM_TRACE_READ_LIMIT, DEFAULT_TRACE_READ_LIMIT)
+  const limit = readPositiveIntegerEnv(
+    'CRADLE_CHAT_STREAM_TRACE_READ_LIMIT',
+    DEFAULT_TRACE_READ_LIMIT
+  )
   const lines = readTraceTailLines(
     path,
     limit,
-    readPositiveInteger(process.env.CRADLE_CHAT_STREAM_TRACE_READ_BYTES, DEFAULT_TRACE_READ_BYTES),
+    readPositiveIntegerEnv('CRADLE_CHAT_STREAM_TRACE_READ_BYTES', DEFAULT_TRACE_READ_BYTES),
   )
   const records = lines
     .map(line => JSON.parse(line) as ChatStreamTraceRecord)
@@ -229,8 +252,50 @@ export function readChatRunTrace(runId: string): ChatRunTrace {
   return { runId, path, recordCount: records.at(-1) ? records.at(-1)!.seq + 1 : records.length, records }
 }
 
+export function readChatRunTraceDto(runId: string): ChatRunTraceDto {
+  const run = db().select().from(backendRuns).where(eq(backendRuns.id, runId)).get()
+  if (!run) {
+    throw new AppError({
+      code: 'chat_run_not_found',
+      status: 404,
+      message: 'Chat run not found',
+      details: { runId }
+    })
+  }
+  return toChatRunTraceDto(run)
+}
+
+export function listChatSessionTraceDtos(sessionId: string): ChatSessionTraceDto {
+  const rows = db()
+    .select()
+    .from(backendRuns)
+    .where(eq(backendRuns.chatSessionId, sessionId))
+    .orderBy(desc(backendRuns.startedAt))
+    .all()
+
+  return {
+    sessionId,
+    traces: rows.map(toChatRunTraceDto)
+  }
+}
+
 export function shutdownTraceStreams(): void {
   traceSeqByRunId.clear()
+}
+
+function toChatRunTraceDto(run: BackendRun): ChatRunTraceDto {
+  const trace = readChatRunTrace(run.id)
+  return {
+    runId: run.id,
+    sessionId: run.chatSessionId,
+    messageId: run.messageId,
+    status: run.status,
+    startedAt: run.startedAt,
+    finishedAt: run.finishedAt,
+    path: trace.path,
+    recordCount: trace.recordCount,
+    records: trace.records
+  }
 }
 
 function readTraceTailLines(path: string, limit: number, readBytes: number): string[] {

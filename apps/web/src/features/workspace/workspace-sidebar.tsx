@@ -762,7 +762,7 @@ type MultiFolderWorkspaceFolderDraft = MultiFolderWorkspaceFolder & { id: string
 
 function createMultiFolderWorkspaceFolderDraft(): MultiFolderWorkspaceFolderDraft {
   return {
-    id: globalThis.crypto?.randomUUID() ?? `${Date.now()}-${Math.random()}`,
+    id: `${Date.now()}-${Math.random()}`,
     name: '',
     path: ''
   }
@@ -2781,7 +2781,7 @@ export const WorkspaceSidebar = memo(({ collapsed = false }: { collapsed?: boole
       </TooltipProvider>
 
       <ScrollArea
-        scrollFade
+        // scrollFade
         className="min-h-0 min-w-0 flex-1 overflow-x-hidden [--scroll-area-fade-background:var(--sidebar)]"
         viewportClassName="min-w-0 max-w-full overflow-x-hidden"
         contentClassName="min-w-0 max-w-full overflow-x-hidden"

@@ -10,6 +10,7 @@ import {
   AgentRuntimeConfigJsonSchema,
   buildSessionRuntimeConfigJson,
 } from '../../helpers/agent-runtime-config'
+import { parseJsonObjectOrEmpty, readObjectRecord } from '../../helpers/json-record'
 import { db } from '../../infra'
 import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-state-snapshot'
 import {
@@ -86,20 +87,8 @@ function listRequestedModelsBySessionIds(sessionIds: string[]): Map<string, stri
   return modelsBySessionId
 }
 
-function readUnknownRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {}
-}
-
 function parseTrustedConfigJson(configJson: string | null | undefined): Record<string, unknown> {
-  try {
-    const parsed: unknown = JSON.parse(configJson ?? '{}')
-    return readUnknownRecord(parsed)
-  }
-  catch {
-    return {}
-  }
+  return parseJsonObjectOrEmpty(configJson)
 }
 
 export function readSessionModelPreference(configJson: string | null | undefined): string | null {
@@ -133,8 +122,8 @@ function hasActiveCodexGoal(binding: {
   }
   try {
     const snapshot = readProviderStateSnapshot(binding.backendStateSnapshot)
-    const codex = readUnknownRecord(snapshot.codex)
-    const goal = readUnknownRecord(codex.goal)
+    const codex = readObjectRecord(snapshot.codex)
+    const goal = readObjectRecord(codex.goal)
     return goal.status === 'active'
       && typeof goal.objective === 'string'
       && goal.objective.trim().length > 0

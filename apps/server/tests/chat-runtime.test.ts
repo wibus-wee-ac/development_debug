@@ -2,7 +2,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { backendRuns, backendRunSnapshots, backendSessionBindings, chatSessionQueueItems, messages, providerTargets, sessions, workspaces } from '@cradle/db'
+import { backendRuns, backendRunSnapshots, backendSessionBindings, chatSessionQueueItems, messages, providerTargets, sessionEvents, sessions, workspaces } from '@cradle/db'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { readUIMessageStream } from 'ai'
 import { eq } from 'drizzle-orm'
@@ -18,6 +18,10 @@ import {
   getActiveRunReplayBufferSummary,
   reportRuntimeSessionTitle,
 } from '../src/modules/chat-runtime/service'
+import {
+  cancelQueuedSessionItem,
+  claimSessionQueueItem,
+} from '../src/modules/chat-runtime/es/commands'
 import { providerRuntimeHostManager } from '../src/modules/provider-runtime/host-manager'
 import {
   clearSideConversations,
@@ -3293,7 +3297,7 @@ describe('chat runtime capability', () => {
     }
   })
 
-  it('repairs oversized stored snapshots after message hydration', async () => {
+  it('compacts oversized stored snapshots in hydrated message DTOs without mutating storage', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -3348,14 +3352,15 @@ describe('chat runtime capability', () => {
 
       const messageRows = await getChatMessages(app, 'session-chat-repair-snapshot')
       expect(messageRows[0]?.message.parts.find(part => part.type === 'text')?.text).toBe('oversized assistant text')
+      expect(messageRows[0]?.content).toBe('oversized assistant text')
 
-      const repairedRow = db()
+      const storedRow = db()
         .select()
         .from(messages)
         .where(eq(messages.id, 'message-repair-snapshot-assistant'))
         .get()
-      expect(repairedRow?.messageJson.length).toBeLessThan(originalSnapshot.length)
-      expect(repairedRow?.content).toBe('oversized assistant text')
+      expect(storedRow?.messageJson).toBe(originalSnapshot)
+      expect(storedRow?.content).toBe(`oversized assistant text ${'x'.repeat(2_000)}`)
     }
     finally {
       shutdownInfra()
@@ -3770,7 +3775,7 @@ describe('chat runtime capability', () => {
     }
   })
 
-  it('normalizes missing text and tool protocol anchors before streaming to clients', async () => {
+  it('passes malformed runtime chunks through without synthesizing protocol anchors', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -3805,33 +3810,21 @@ describe('chat runtime capability', () => {
       const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-chat-protocol-normalization/response', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ text: 'Normalize malformed stream' }),
+        body: JSON.stringify({ text: 'Stream malformed chunks' }),
       }))
       expect(runRes.status).toBe(200)
 
       const chunks = await collectSseChunks(runRes)
-      expect(chunks).toEqual(expect.arrayContaining([
-        expect.objectContaining({ type: 'text-start', id: 'text-missing-start' }),
+      expect(chunks).toEqual([
+        expect.objectContaining({ type: 'start' }),
         expect.objectContaining({ type: 'text-delta', id: 'text-missing-start', delta: 'Recovered text' }),
-        expect.objectContaining({ type: 'tool-input-start', toolCallId: 'call_missing_tool', toolName: 'unknown_tool' }),
+        expect.objectContaining({ type: 'text-end', id: 'text-missing-start' }),
         expect.objectContaining({ type: 'tool-output-available', toolCallId: 'call_missing_tool', output: { ok: true } }),
-      ]))
-      expect(chunks.findIndex(chunk => chunk.type === 'text-start')).toBeLessThan(
-        chunks.findIndex(chunk => chunk.type === 'text-delta'),
-      )
-      expect(chunks.findIndex(chunk => chunk.type === 'tool-input-start')).toBeLessThan(
-        chunks.findIndex(chunk => chunk.type === 'tool-output-available'),
-      )
-
-      const message = await readMessageFromUiChunks(chunks)
-      expect(message?.parts).toEqual(expect.arrayContaining([
-        expect.objectContaining({ type: 'text', text: 'Recovered text' }),
-        expect.objectContaining({
-          type: 'tool-unknown_tool',
-          toolCallId: 'call_missing_tool',
-          state: 'output-available',
-          output: { ok: true },
-        }),
+        expect.objectContaining({ type: 'finish', finishReason: 'stop' }),
+      ])
+      expect(chunks).not.toEqual(expect.arrayContaining([
+        expect.objectContaining({ type: 'text-start', id: 'text-missing-start' }),
+        expect.objectContaining({ type: 'tool-input-start', toolCallId: 'call_missing_tool' }),
       ]))
     }
     finally {
@@ -4417,6 +4410,89 @@ describe('chat runtime capability', () => {
       rmSync(workspaceRoot, { recursive: true, force: true })
       restoreEnv('CRADLE_DATA_DIR', previousDataDir)
       restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('cancels a claimed queue item before a run is started through session events', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+
+    try {
+      db().insert(sessions).values({
+        id: 'session-claimed-queue-cancel',
+        title: 'Claimed queue cancellation',
+        titleSource: 'initial',
+        runtimeKind: 'standard',
+      }).run()
+      db().insert(chatSessionQueueItems).values({
+        id: 'queue-claimed-cancel',
+        sessionId: 'session-claimed-queue-cancel',
+        mode: 'queue',
+        status: 'pending',
+        text: 'cancel before run starts',
+        filesJson: '[]',
+        contextPartsJson: '[]',
+        providerTargetId: null,
+        modelId: null,
+        thinkingEffort: null,
+        permissionMode: null,
+        runtimeAccessMode: 'approval-required',
+        runtimeInteractionMode: 'default',
+        position: 1,
+        sourceRunId: null,
+        startedRunId: null,
+        errorText: null,
+        createdAt: 100,
+        updatedAt: 100,
+      }).run()
+
+      const claimed = await claimSessionQueueItem(
+        'session-claimed-queue-cancel',
+        'queue-claimed-cancel',
+      )
+      expect(claimed).toEqual(expect.objectContaining({
+        id: 'queue-claimed-cancel',
+        status: 'running',
+        startedRunId: null,
+      }))
+
+      const cancelled = await cancelQueuedSessionItem(
+        'session-claimed-queue-cancel',
+        'queue-claimed-cancel',
+      )
+      expect(cancelled).toEqual(expect.objectContaining({
+        id: 'queue-claimed-cancel',
+        status: 'cancelled',
+        startedRunId: null,
+      }))
+
+      const row = db()
+        .select()
+        .from(chatSessionQueueItems)
+        .where(eq(chatSessionQueueItems.id, 'queue-claimed-cancel'))
+        .get()
+      expect(row).toEqual(expect.objectContaining({
+        status: 'cancelled',
+        startedRunId: null,
+        errorText: null,
+      }))
+
+      const events = db()
+        .select()
+        .from(sessionEvents)
+        .where(eq(sessionEvents.aggregateId, 'session-claimed-queue-cancel'))
+        .orderBy(sessionEvents.version)
+        .all()
+      expect(events.map(event => event.eventType)).toEqual([
+        'QueueItemClaimed',
+        'QueueItemCancelled',
+      ])
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
     }
   })
 

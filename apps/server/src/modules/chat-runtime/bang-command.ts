@@ -2,19 +2,20 @@
 import { spawn } from 'node:child_process'
 import { randomUUID } from 'node:crypto'
 
-import { messages, sessions, workspaces } from '@cradle/db'
+import { sessions, workspaces } from '@cradle/db'
 import type { UIMessage } from 'ai'
 import { eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
+import { commitSessionEvents } from './es/commands'
 import {
   annotateBangCommandMessage,
   annotateBangResultMessage,
   createUserMessage,
-  extractMessageText,
-} from './message-snapshots'
+  extractMessageText
+} from './ui-message'
 
 const BANG_COMMAND_TIMEOUT_MS = 30_000
 const BANG_COMMAND_FORCE_KILL_GRACE_MS = 2_000
@@ -46,7 +47,7 @@ function createBoundedBuffer(): BoundedBuffer {
   return {
     chunks: [],
     bytes: 0,
-    truncated: false,
+    truncated: false
   }
 }
 
@@ -80,7 +81,7 @@ function readBangCommandCwd(sessionId: string): string {
       code: 'chat_session_not_found',
       status: 404,
       message: 'Chat session was not found',
-      details: { sessionId },
+      details: { sessionId }
     })
   }
   if (!session.workspaceId) {
@@ -88,17 +89,21 @@ function readBangCommandCwd(sessionId: string): string {
       code: 'chat_session_workspace_required',
       status: 400,
       message: 'Bang commands require a workspace-backed chat session',
-      details: { sessionId },
+      details: { sessionId }
     })
   }
 
-  const workspace = db().select().from(workspaces).where(eq(workspaces.id, session.workspaceId)).get()
+  const workspace = db()
+    .select()
+    .from(workspaces)
+    .where(eq(workspaces.id, session.workspaceId))
+    .get()
   if (!workspace) {
     throw new AppError({
       code: 'chat_session_workspace_not_found',
       status: 404,
       message: 'Chat session workspace was not found',
-      details: { sessionId, workspaceId: session.workspaceId },
+      details: { sessionId, workspaceId: session.workspaceId }
     })
   }
 
@@ -112,18 +117,19 @@ function readProviderVisibleResultText(input: {
   timedOut: boolean
   truncated: boolean
 }): string {
-  const text = input.stdout.length > 0
-    ? input.stdout
-    : input.stderr.length > 0
-      ? input.stderr
-      : input.timedOut
-        ? 'Command timed out with no output.'
-        : `Command exited with code ${input.exitCode ?? 'unknown'} and no output.`
+  const text =
+    input.stdout.length > 0
+      ? input.stdout
+      : input.stderr.length > 0
+        ? input.stderr
+        : input.timedOut
+          ? 'Command timed out with no output.'
+          : `Command exited with code ${input.exitCode ?? 'unknown'} and no output.`
 
   return input.truncated ? `${text}\n\n[Output truncated]` : text
 }
 
-export function persistBangCommandMessages(input: {
+export async function persistBangCommandMessages(input: {
   sessionId: string
   command: string
   stdout: string
@@ -132,74 +138,76 @@ export function persistBangCommandMessages(input: {
   durationMs: number
   timedOut: boolean
   truncated: boolean
-}): {
+}): Promise<{
   userMessageId: string
   resultMessageId: string
   userMessage: ChatBangMessage
   resultMessage: ChatBangMessage
-} {
+}> {
   const userMessageId = randomUUID()
   const resultMessageId = randomUUID()
   const userMessage = annotateBangCommandMessage(
     createUserMessage(userMessageId, `!${input.command}`),
-    input.command,
+    input.command
   )
   const resultText = readProviderVisibleResultText(input)
-  const resultMessage = annotateBangResultMessage(
-    createUserMessage(resultMessageId, resultText),
-    {
-      command: input.command,
-      stdout: input.stdout,
-      stderr: input.stderr,
-      exitCode: input.exitCode,
-      durationMs: input.durationMs,
-      timedOut: input.timedOut,
-      truncated: input.truncated,
-    },
-  )
+  const resultMessage = annotateBangResultMessage(createUserMessage(resultMessageId, resultText), {
+    command: input.command,
+    stdout: input.stdout,
+    stderr: input.stderr,
+    exitCode: input.exitCode,
+    durationMs: input.durationMs,
+    timedOut: input.timedOut,
+    truncated: input.truncated
+  })
   const now = currentUnixSeconds()
 
-  db().transaction((tx) => {
-    tx.insert(messages)
-      .values({
-        id: userMessageId,
-        sessionId: input.sessionId,
-        parentMessageId: null,
-        parentToolCallId: null,
-        taskId: null,
-        depth: 0,
-        role: 'user',
-        status: 'complete',
-        content: extractMessageText(userMessage),
-        messageJson: JSON.stringify(userMessage),
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run()
-    tx.insert(messages)
-      .values({
-        id: resultMessageId,
-        sessionId: input.sessionId,
-        parentMessageId: null,
-        parentToolCallId: null,
-        taskId: null,
-        depth: 0,
-        role: 'user',
-        status: 'complete',
-        content: extractMessageText(resultMessage),
-        messageJson: JSON.stringify(resultMessage),
-        createdAt: now,
-        updatedAt: now,
-      })
-      .run()
-    tx.update(sessions).set({ updatedAt: now }).where(eq(sessions.id, input.sessionId)).run()
-  })
+  await commitSessionEvents(input.sessionId, [
+    {
+      type: 'UserMessageAppended',
+      payload: {
+        message: {
+          id: userMessageId,
+          sessionId: input.sessionId,
+          parentMessageId: null,
+          parentToolCallId: null,
+          taskId: null,
+          depth: 0,
+          role: 'user',
+          status: 'complete',
+          content: extractMessageText(userMessage),
+          messageJson: JSON.stringify(userMessage),
+          createdAt: now,
+          updatedAt: now
+        }
+      }
+    },
+    {
+      type: 'UserMessageAppended',
+      payload: {
+        message: {
+          id: resultMessageId,
+          sessionId: input.sessionId,
+          parentMessageId: null,
+          parentToolCallId: null,
+          taskId: null,
+          depth: 0,
+          role: 'user',
+          status: 'complete',
+          content: extractMessageText(resultMessage),
+          messageJson: JSON.stringify(resultMessage),
+          createdAt: now,
+          updatedAt: now
+        }
+      }
+    }
+  ])
 
   return {
     userMessageId,
     resultMessageId,
     userMessage: userMessage as ChatBangMessage,
-    resultMessage: resultMessage as ChatBangMessage,
+    resultMessage: resultMessage as ChatBangMessage
   }
 }
 
@@ -213,14 +221,14 @@ export async function executeLocalBangCommand(input: {
     throw new AppError({
       code: 'chat_bang_command_empty',
       status: 400,
-      message: 'Bang command must not be empty',
+      message: 'Bang command must not be empty'
     })
   }
   if (command.includes('\n') || command.includes('\r')) {
     throw new AppError({
       code: 'chat_bang_command_multiline_unsupported',
       status: 400,
-      message: 'Bang command must be a single line',
+      message: 'Bang command must be a single line'
     })
   }
 
@@ -236,7 +244,7 @@ export async function executeLocalBangCommand(input: {
     const child = spawn(command, {
       shell: true,
       cwd,
-      env: process.env,
+      env: process.env
     })
     let settled = false
     let forceKillTimer: ReturnType<typeof setTimeout> | null = null
@@ -267,8 +275,8 @@ export async function executeLocalBangCommand(input: {
       reject(new DOMException('Bang command aborted', 'AbortError'))
     }
 
-    child.stdout?.on('data', chunk => appendBoundedChunk(stdout, chunk as Buffer | string))
-    child.stderr?.on('data', chunk => appendBoundedChunk(stderr, chunk as Buffer | string))
+    child.stdout?.on('data', (chunk) => appendBoundedChunk(stdout, chunk as Buffer | string))
+    child.stderr?.on('data', (chunk) => appendBoundedChunk(stderr, chunk as Buffer | string))
     input.signal?.addEventListener('abort', abort, { once: true })
     child.once('error', (error) => {
       if (settled) {
@@ -298,15 +306,15 @@ export async function executeLocalBangCommand(input: {
     exitCode: result.exitCode,
     durationMs,
     timedOut,
-    truncated: stdout.truncated || stderr.truncated,
+    truncated: stdout.truncated || stderr.truncated
   }
-  const persisted = persistBangCommandMessages({
+  const persisted = await persistBangCommandMessages({
     sessionId: input.sessionId,
-    ...output,
+    ...output
   })
 
   return {
     ...output,
-    ...persisted,
+    ...persisted
   }
 }

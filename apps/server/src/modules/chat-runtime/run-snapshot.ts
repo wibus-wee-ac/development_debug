@@ -13,6 +13,7 @@ import { and, desc, eq, gte, lt, ne } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '../../infra'
+import { readNonNegativeIntegerEnv, readPositiveIntegerEnv } from '../../helpers/env'
 import { createChildLogger } from '../../logging/logger'
 
 const logger = createChildLogger({ module: 'chat-runtime.run-snapshot' })
@@ -363,22 +364,4 @@ function clampSnapshotLimit(limit: number | undefined): number {
     return 200
   }
   return Math.min(Math.max(Math.floor(limit), 1), 1000)
-}
-
-function readNonNegativeIntegerEnv(name: string, fallback: number): number {
-  const value = process.env[name]
-  if (!value) {
-    return fallback
-  }
-  const parsed = Number.parseInt(value, 10)
-  return Number.isFinite(parsed) && parsed >= 0 ? parsed : fallback
-}
-
-function readPositiveIntegerEnv(name: string, fallback: number): number {
-  const value = process.env[name]
-  if (!value) {
-    return fallback
-  }
-  const parsed = Number.parseInt(value, 10)
-  return Number.isFinite(parsed) && parsed > 0 ? parsed : fallback
 }

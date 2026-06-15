@@ -1,10 +1,11 @@
 import type { UIMessageChunk } from 'ai'
 
+import { readPositiveIntegerEnv } from '../../../helpers/env'
 import type { ProviderThreadEvent } from '../runtime-provider-types'
+import { createSubscriberRegistry } from '../stream/subscriber-registry'
+import type { SubscriberRegistry } from '../stream/subscriber-registry'
 
 const DEFAULT_PROVIDER_THREAD_REPLAY_CHUNKS = 1_000
-
-export type ProviderThreadSubscriber = (chunk: UIMessageChunk, terminal: boolean) => void
 
 interface ProviderThreadStreamState {
   sessionId: string
@@ -16,13 +17,13 @@ interface ProviderThreadStreamState {
 
 export interface ProviderThreadStreamStore {
   streams: Map<string, ProviderThreadStreamState>
-  subscribers: Map<string, Set<ProviderThreadSubscriber>>
+  subscribers: SubscriberRegistry
 }
 
 export function createProviderThreadStreamStore(): ProviderThreadStreamStore {
   return {
     streams: new Map(),
-    subscribers: new Map()
+    subscribers: createSubscriberRegistry()
   }
 }
 
@@ -96,24 +97,7 @@ export function publishProviderThreadChunk(input: {
     state.terminal = true
   }
 
-  const subscribers = input.store.subscribers.get(key)
-  if (!subscribers) {
-    return
-  }
-  const dead: ProviderThreadSubscriber[] = []
-  for (const subscriber of subscribers) {
-    try {
-      subscriber(input.chunk, input.terminal)
-    } catch {
-      dead.push(subscriber)
-    }
-  }
-  for (const subscriber of dead) {
-    subscribers.delete(subscriber)
-  }
-  if (input.terminal || subscribers.size === 0) {
-    input.store.subscribers.delete(key)
-  }
+  input.store.subscribers.publish(key, input.chunk, input.terminal)
 }
 
 export function providerThreadStreamKey(sessionId: string, threadId: string): string {
@@ -133,13 +117,4 @@ function providerThreadReplayChunkLimit(): number {
     'CRADLE_CHAT_PROVIDER_THREAD_REPLAY_CHUNKS',
     DEFAULT_PROVIDER_THREAD_REPLAY_CHUNKS
   )
-}
-
-function readPositiveIntegerEnv(name: string, fallback: number): number {
-  const raw = process.env[name]
-  if (!raw) {
-    return fallback
-  }
-  const value = Number.parseInt(raw, 10)
-  return Number.isFinite(value) && value > 0 ? value : fallback
 }

@@ -1,10 +1,13 @@
-import { chatSessionQueueItems } from '@cradle/db'
 import type { FileUIPart } from 'ai'
-import { and, eq } from 'drizzle-orm'
 
 import { AppError } from '../../../errors/app-error'
-import { currentUnixSeconds } from '../../../helpers/time'
-import { db } from '../../../infra'
+import {
+  claimSessionQueueItem,
+  failSessionQueueItem,
+  normalizeSessionQueuePositions,
+  recoverOrphanedQueueItemClaims,
+  releaseSessionQueueItem
+} from '../es/commands'
 import type { ChatContextPart } from '../context-parts'
 import type { ChatRuntimeSettings } from '../runtime-provider-types'
 import type { SerializedChatError } from '../run/errors'
@@ -12,12 +15,10 @@ import type { PersistedThinkingEffort } from './session-queue'
 import {
   compareQueueRows,
   listPendingQueueRows,
-  normalizePendingQueuePositions,
   parseQueueContextParts,
   parseQueueFiles,
   readPersistedThinkingEffort,
-  readQueueItemRuntimeSettings,
-  recoverOrphanedRunningQueueItems
+  readQueueItemRuntimeSettings
 } from './session-queue'
 
 const drainingSessionIds = new Set<string>()
@@ -64,14 +65,14 @@ async function drainSessionQueue(sessionId: string, deps: QueueDrainDeps): Promi
   drainingSessionIds.add(sessionId)
   requestedDrainSessionIds.delete(sessionId)
   try {
-    recoverOrphanedRunningQueueItems(sessionId)
+    await recoverOrphanedQueueItemClaims(sessionId)
     while (!deps.hasActiveOrPendingRun(sessionId)) {
       const next = listPendingQueueRows(sessionId).sort(compareQueueRows)[0]
       if (!next) {
         return
       }
 
-      const claimed = claimQueueItem(sessionId, next.id)
+      const claimed = await claimQueueItem(sessionId, next.id)
       if (!claimed) {
         continue
       }
@@ -81,7 +82,7 @@ async function drainSessionQueue(sessionId: string, deps: QueueDrainDeps): Promi
           claimed,
           deps.readSessionRuntimeSettings(sessionId)
         )
-        const run = await deps.createQueuedRun({
+        await deps.createQueuedRun({
           sessionId,
           text: claimed.text,
           files: parseQueueFiles(claimed.filesJson),
@@ -92,22 +93,21 @@ async function drainSessionQueue(sessionId: string, deps: QueueDrainDeps): Promi
           runtimeSettings,
           queueItemId: claimed.id
         })
-        markQueueItemStarted(sessionId, claimed.id, run.runId)
-        normalizePendingQueuePositions(sessionId)
+        await normalizeSessionQueuePositions(sessionId)
         return
       } catch (error) {
         if (error instanceof AppError && error.code === 'chat_run_cancelled') {
-          normalizePendingQueuePositions(sessionId)
+          await normalizeSessionQueuePositions(sessionId)
           return
         }
 
         if (error instanceof AppError && error.code === 'chat_run_in_progress') {
-          releaseClaimedQueueItem(sessionId, claimed.id)
+          await releaseClaimedQueueItem(sessionId, claimed.id)
           return
         }
 
-        failClaimedQueueItem(sessionId, claimed.id, deps.serializeError(error).text)
-        normalizePendingQueuePositions(sessionId)
+        await failClaimedQueueItem(sessionId, claimed.id, deps.serializeError(error).text)
+        await normalizeSessionQueuePositions(sessionId)
       }
     }
   } finally {
@@ -121,75 +121,18 @@ async function drainSessionQueue(sessionId: string, deps: QueueDrainDeps): Promi
   }
 }
 
-function claimQueueItem(sessionId: string, queueItemId: string) {
-  return db()
-    .update(chatSessionQueueItems)
-    .set({ status: 'running', updatedAt: currentUnixSeconds() })
-    .where(
-      and(
-        eq(chatSessionQueueItems.id, queueItemId),
-        eq(chatSessionQueueItems.sessionId, sessionId),
-        eq(chatSessionQueueItems.mode, 'queue'),
-        eq(chatSessionQueueItems.status, 'pending')
-      )
-    )
-    .returning()
-    .get()
+async function claimQueueItem(sessionId: string, queueItemId: string) {
+  return await claimSessionQueueItem(sessionId, queueItemId)
 }
 
-function markQueueItemStarted(sessionId: string, queueItemId: string, runId: string): void {
-  db()
-    .update(chatSessionQueueItems)
-    .set({
-      startedRunId: runId,
-      updatedAt: currentUnixSeconds()
-    })
-    .where(
-      and(
-        eq(chatSessionQueueItems.id, queueItemId),
-        eq(chatSessionQueueItems.sessionId, sessionId),
-        eq(chatSessionQueueItems.mode, 'queue'),
-        eq(chatSessionQueueItems.status, 'running')
-      )
-    )
-    .run()
+async function releaseClaimedQueueItem(sessionId: string, queueItemId: string): Promise<void> {
+  await releaseSessionQueueItem(sessionId, queueItemId)
 }
 
-function releaseClaimedQueueItem(sessionId: string, queueItemId: string): void {
-  db()
-    .update(chatSessionQueueItems)
-    .set({
-      status: 'pending',
-      startedRunId: null,
-      errorText: null,
-      updatedAt: currentUnixSeconds()
-    })
-    .where(
-      and(
-        eq(chatSessionQueueItems.id, queueItemId),
-        eq(chatSessionQueueItems.sessionId, sessionId),
-        eq(chatSessionQueueItems.mode, 'queue'),
-        eq(chatSessionQueueItems.status, 'running')
-      )
-    )
-    .run()
-}
-
-function failClaimedQueueItem(sessionId: string, queueItemId: string, errorText: string): void {
-  db()
-    .update(chatSessionQueueItems)
-    .set({
-      status: 'failed',
-      errorText,
-      updatedAt: currentUnixSeconds()
-    })
-    .where(
-      and(
-        eq(chatSessionQueueItems.id, queueItemId),
-        eq(chatSessionQueueItems.sessionId, sessionId),
-        eq(chatSessionQueueItems.mode, 'queue'),
-        eq(chatSessionQueueItems.status, 'running')
-      )
-    )
-    .run()
+async function failClaimedQueueItem(
+  sessionId: string,
+  queueItemId: string,
+  errorText: string
+): Promise<void> {
+  await failSessionQueueItem(sessionId, queueItemId, errorText)
 }

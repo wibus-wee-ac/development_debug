@@ -7,6 +7,7 @@
 import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import type { UIMessage } from 'ai'
 
+import { readObjectRecord as readRecord } from '../../../helpers/json-record'
 import { getRegisteredMcpServers } from '../../../plugins'
 import { isChatSkillContextPart, readChatPluginContextPart, readChatSkillContextPart } from '../../chat-runtime/context-parts'
 import type {
@@ -381,12 +382,6 @@ function readBangResultMetadata(message: UIMessage): {
     exitCode: typeof bangResult.exitCode === 'number' ? bangResult.exitCode : null,
     durationMs: typeof bangResult.durationMs === 'number' ? bangResult.durationMs : 0,
   }
-}
-
-function readRecord(value: unknown): Record<string, unknown> {
-  return value && typeof value === 'object' && !Array.isArray(value)
-    ? value as Record<string, unknown>
-    : {}
 }
 
 function toClaudeAgentImageBlock(part: Extract<MessagePart, { type: 'file' }>, runtimeLabel: string): ClaudeAgentContentBlock {

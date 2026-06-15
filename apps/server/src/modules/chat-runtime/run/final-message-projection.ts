@@ -1,3 +1,4 @@
+import { parsePartialJson } from 'ai'
 import type { ProviderMetadata, UIMessage, UIMessageChunk } from 'ai'
 
 export interface FinalMessageProjectionState {
@@ -245,17 +246,19 @@ export function finalizeFinalMessageProjection(activeRun: FinalMessageProjection
   activeRun.finalProjection.activeReasoningParts.clear()
 }
 
-export function flushProjectedToolInputs(
-  activeRun: FinalMessageProjectionRun,
-  parsePartialToolInputText: (text: string) => unknown
-): void {
+export async function flushProjectedToolInputs(activeRun: FinalMessageProjectionRun): Promise<void> {
   const message = activeRun.finalMessage
   for (const [toolCallId, partialToolCall] of activeRun.finalProjection.partialToolCalls) {
+    const inputText = partialToolCall.deltas.join('')
+    const parsedInput = await parsePartialJson(inputText)
     upsertProjectedToolPart(message, {
       toolCallId,
       toolName: partialToolCall.toolName,
       state: 'input-streaming',
-      input: parsePartialToolInputText(partialToolCall.deltas.join('')),
+      input:
+        parsedInput.state === 'failed-parse' || parsedInput.value === undefined
+          ? inputText
+          : parsedInput.value,
       dynamic: partialToolCall.dynamic,
       title: partialToolCall.title
     })

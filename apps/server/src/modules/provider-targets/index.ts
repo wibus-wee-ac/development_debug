@@ -4,7 +4,7 @@ import {
   cancelCodexChatgptCredentialLogin,
   readCodexChatgptCredentialLoginStatus,
   startCodexChatgptCredentialLogin,
-} from '../chat-runtime-providers/codex/account-service'
+} from '../chat-runtime-providers/codex/app-server/account-service'
 import { ProviderTargetsModel } from './model'
 import * as ProviderTargets from './service'
 
