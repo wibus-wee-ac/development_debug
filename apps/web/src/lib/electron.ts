@@ -1,5 +1,7 @@
 import { createIpcProxy } from '@cradle/ipc/client'
 
+import { getDefaultServerUrl, readCustomServerUrl } from './server-endpoint-preferences'
+
 /**
  * Whether we're running inside Electron.
  */
@@ -19,14 +21,11 @@ export function isLocalMode(): boolean {
 }
 
 /**
- * The server URL — from Electron preload or Vite env.
+ * The server URL — from renderer-local override, Electron preload, or Vite env.
  * WARNING: Unless you need to bypass api-gen's react-query integration, do not use this client directly.
  */
 export function getServerUrl(): string {
-  if (window.cradle?.env?.serverUrl) {
-    return window.cradle.env.serverUrl
-  }
-  return import.meta.env.VITE_SERVER_URL ?? 'http://100.76.118.70:21423'
+  return readCustomServerUrl() ?? getDefaultServerUrl()
 }
 
 /**

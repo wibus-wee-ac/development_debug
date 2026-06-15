@@ -47,12 +47,23 @@ interface CreateServerContractAppOptions {
   includeRuntimeHttpPlugins?: boolean
 }
 
-const corsAllowedOrigins = [
-  'http://localhost:5174',
-  'http://127.0.0.1:5174',
-  'http://[::1]:5174',
-  'http://100.76.118.70:5174',
-]
+function isAllowedCorsOrigin({ headers }: { headers: Headers }): boolean {
+  const origin = headers.get('origin')
+  if (!origin || origin === 'null') {
+    return true
+  }
+
+  try {
+    const parsed = new URL(origin)
+    return (
+      (parsed.protocol === 'http:' || parsed.protocol === 'https:')
+      && ['localhost', '127.0.0.1', '::1'].includes(parsed.hostname)
+    )
+  }
+ catch {
+    return false
+  }
+}
 
 export async function createServerContractApp(options: CreateServerContractAppOptions = {}) {
   const { includeRuntimeHttpPlugins = false } = options
@@ -64,7 +75,7 @@ export async function createServerContractApp(options: CreateServerContractAppOp
 
   app.use(
     cors({
-      origin: corsAllowedOrigins,
+      origin: isAllowedCorsOrigin,
       exposeHeaders: [
         'x-cradle-run-id',
         'x-cradle-assistant-message-id',
@@ -154,7 +165,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     import('./modules/workspace/files'),
   ])
   if (recoverPersistedRunsOnCreate) {
-    await recoverPersistedRunProjections()
+    recoverPersistedRunProjections()
   }
 
   const app = await createServerContractApp({ includeRuntimeHttpPlugins: true })
