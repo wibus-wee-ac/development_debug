@@ -24,7 +24,7 @@ interface AppHeaderProps {
   sidebarSheetOpen?: boolean
   onOpenSidebarSheet?: () => void
   onToggleSidebarSheet?: () => void
-  asideInSheet?: boolean
+  // asideInSheet?: boolean
   asideSheetOpen?: boolean
   onToggleAsideSheet?: () => void
 }
@@ -41,7 +41,7 @@ export function AppHeader({
   sidebarSheetOpen = false,
   onOpenSidebarSheet,
   onToggleSidebarSheet,
-  asideInSheet = false,
+  // asideInSheet = false,
   asideSheetOpen = false,
   onToggleAsideSheet,
 }: AppHeaderProps) {
@@ -68,7 +68,7 @@ export function AppHeader({
       ? t('header.action.expandSidebar')
       : t('header.action.collapseSidebar')
   const reserveTrafficLightSpace = platform === 'darwin' && (isTearoffWindow || sidebarInSheet)
-  const asidePresentationOpen = asideInSheet ? asideSheetOpen : asideOpen
+  const asidePresentationOpen = asideOpen
 
   const handleSidebarToggle = useCallback(() => {
     if (sidebarInSheet) {
@@ -84,13 +84,13 @@ export function AppHeader({
   }, [onOpenSidebarSheet, onToggleSidebarSheet, sidebarInSheet, toggleSidebar])
 
   const handleAsideToggle = useCallback(() => {
-    if (asideInSheet) {
-      onToggleAsideSheet?.()
-      return
-    }
+    // if (asideInSheet) {
+    //   onToggleAsideSheet?.()
+    //   return
+    // }
 
     toggleAside()
-  }, [asideInSheet, onToggleAsideSheet, toggleAside])
+  }, [onToggleAsideSheet, toggleAside])
 
   return (
     <div
@@ -132,7 +132,7 @@ export function AppHeader({
       )}
 
       {/* Surface bar */}
-      <div className="flex-1 min-w-0 ml-0.5 mr-1 h-full" style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}>
+      <div className="flex-1 min-w-0 ml-0.5 mr-1 h-full" style={{ WebkitAppRegion: isTearoffWindow ? 'drag' : 'no-drag' } as React.CSSProperties}>
         {!sessionScoped && (
           <SurfaceBar
             className="h-full"
@@ -183,7 +183,7 @@ export function AppHeader({
             aria-pressed={asidePresentationOpen}
             title={t('header.action.toggleRightPanel')}
             data-testid="app-header-aside-toggle"
-            data-chrome-side-sheet-trigger={asideInSheet ? 'right' : undefined}
+            // data-chrome-side-sheet-trigger={asideInSheet ? 'right' : undefined}
           >
             <PanelRightIcon aria-hidden="true" />
           </Button>

@@ -16,9 +16,9 @@ import {
 } from '~/components/layout/layout-geometry-context'
 import { CENTER_COLUMN_EXPANDED_SCALE, CENTER_COLUMN_EXPANDED_Y } from '~/components/layout/layout-motion'
 import {
-  CHROME_CENTER_MIN_WIDTH,
-  CHROME_COLLAPSED_SIDEBAR_WIDTH,
-  CHROME_RESPONSIVE_GUTTER_WIDTH,
+  // CHROME_CENTER_MIN_WIDTH,
+  // CHROME_COLLAPSED_SIDEBAR_WIDTH,
+  // CHROME_RESPONSIVE_GUTTER_WIDTH,
   useViewportWidth,
 } from '~/components/layout/layout-responsive'
 import { ResizeHandle } from '~/components/layout/resize-handle'
@@ -359,13 +359,8 @@ function AppLayoutContent({
   const canUseRightAside
     = !isSettings && !!resolvedHasAside && (!!resolvedAsideSessionId || !!resolvedAsideWorkspaceId)
   const viewportWidth = useViewportWidth()
-  const dockedSidebarWidth = sidebarInSheet
-    ? 0
-    : sidebarCollapsed
-      ? CHROME_COLLAPSED_SIDEBAR_WIDTH
-      : sidebarWidth
-  const rightAsideInSheet = canUseRightAside
-    && viewportWidth < dockedSidebarWidth + asideWidth + CHROME_CENTER_MIN_WIDTH + CHROME_RESPONSIVE_GUTTER_WIDTH
+  // const rightAsideInSheet = canUseRightAside
+    // && viewportWidth < dockedSidebarWidth + asideWidth + CHROME_CENTER_MIN_WIDTH + CHROME_RESPONSIVE_GUTTER_WIDTH
   const resolvedBrowserPanelOpen = !isSettings && !!resolvedHasBrowserPanel && browserPanelOpen
   const browserPanelMounted = !!resolvedHasBrowserPanel
   const browserPanelVisible = browserPanelMounted && resolvedBrowserPanelOpen
@@ -575,11 +570,11 @@ function AppLayoutContent({
     setRightAsideSheetOpen(open => !open)
   }, [])
 
-  useEffect(() => {
-    if (!rightAsideInSheet || !canUseRightAside) {
-      setRightAsideSheetOpen(false)
-    }
-  }, [canUseRightAside, rightAsideInSheet])
+  // useEffect(() => {
+    // if (!rightAsideInSheet || !canUseRightAside) {
+      // setRightAsideSheetOpen(false)
+    // }
+  // }, [canUseRightAside, rightAsideInSheet])
 
   useEffect(() => {
     useBrowserPanelStore.getState().setActiveOwner(activeBrowserPanelOwnerId)
@@ -613,7 +608,6 @@ function AppLayoutContent({
         sidebarSheetOpen={sidebarSheetOpen}
         onOpenSidebarSheet={onOpenSidebarSheet}
         onToggleSidebarSheet={onToggleSidebarSheet}
-        asideInSheet={rightAsideInSheet}
         asideSheetOpen={rightAsideSheetOpen}
         onToggleAsideSheet={handleToggleRightAsideSheet}
       />
@@ -718,7 +712,7 @@ function AppLayoutContent({
         </m.div>
 
         {/* Right Aside — layout-owned, independent of tab lifecycle */}
-        {canUseRightAside && !rightAsideInSheet && (
+        {canUseRightAside && (
           <AppRightAside
             sessionId={resolvedAsideSessionId}
             workspaceId={resolvedAsideWorkspaceId}
@@ -727,26 +721,6 @@ function AppLayoutContent({
             onResizeStart={handleAsideLayoutResizeStart}
             onResizeEnd={handleAsideLayoutResizeEnd}
           />
-        )}
-        {canUseRightAside && rightAsideInSheet && (
-          <ChromeSideSheet
-            open={rightAsideSheetOpen}
-            onOpenChange={setRightAsideSheetOpen}
-            side="right"
-            title={t('chromeSheet.rightAside.title')}
-            closeLabel={t('chromeSheet.action.close')}
-            contentTestId="app-layout-right-aside"
-            className="w-[min(22rem,calc(100vw-2rem))]"
-          >
-            <Suspense fallback={null}>
-              <MemoizedRightAside
-                sessionId={resolvedAsideSessionId}
-                workspaceId={resolvedAsideWorkspaceId}
-                workspaceName={resolvedAsideWorkspaceName}
-                workspacePath={resolvedAsideWorkspacePath}
-              />
-            </Suspense>
-          </ChromeSideSheet>
         )}
       </div>
 
