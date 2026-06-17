@@ -31,15 +31,16 @@ interface Tab {
     | 'rightAside.tab.runtime'
     | 'rightAside.tab.adjustment'
   icon: typeof FolderTreeIcon
+  requiresSession?: boolean
 }
 
 const TABS: Tab[] = [
   { id: 'files', labelKey: 'rightAside.tab.files', icon: FolderTreeIcon },
   { id: 'changes', labelKey: 'rightAside.tab.changes', icon: FileDiffIcon },
   { id: 'git', labelKey: 'rightAside.tab.git', icon: GitBranchIcon },
-  { id: 'issue', labelKey: 'rightAside.tab.issue', icon: CircleDotIcon },
-  { id: 'runtime', labelKey: 'rightAside.tab.runtime', icon: ActivityIcon },
-  { id: 'await', labelKey: 'rightAside.tab.await', icon: RssIcon },
+  { id: 'issue', labelKey: 'rightAside.tab.issue', icon: CircleDotIcon, requiresSession: true },
+  { id: 'runtime', labelKey: 'rightAside.tab.runtime', icon: ActivityIcon, requiresSession: true },
+  { id: 'await', labelKey: 'rightAside.tab.await', icon: RssIcon, requiresSession: true },
   { id: 'adjustment', labelKey: 'rightAside.tab.adjustment', icon: SlidersHorizontalIcon },
 ]
 
@@ -270,9 +271,13 @@ export function RightAside({
       ?? ownerState?.tabs[0]
     return activePanelTab?.kind === 'browser'
   })
-  const visibleTabs = TABS.filter(
-    tab => tab.id !== 'adjustment' || (browserPanelOpen && hasActiveBrowserTab),
-  )
+  const visibleTabs = TABS.filter((tab) => {
+    if (tab.requiresSession && !sessionId) {
+      return false
+    }
+
+    return tab.id !== 'adjustment' || (browserPanelOpen && hasActiveBrowserTab)
+  })
   const resolvedActiveTab = visibleTabs.some(tab => tab.id === activeTab)
     ? activeTab
     : 'files'
