@@ -1,152 +1,172 @@
 /**
- * Hero — full viewport intro
+ * Hero — Swiss-grid editorial.
  *
- * Gradient background, dot grid texture, star-bordered icon frame.
+ * One 12-column grid: a giant left-aligned headline (normal case) on the left,
+ * a rule + body + text-link CTA on the right, a meta strip at the foot. Motion
+ * is GSAP and deliberately quiet — per-line mask reveal, a rule that draws
+ * left-to-right, and a fade for the rest. No parallax, no glow: the page is
+ * meant to read like a well-set print sheet.
  */
 
-import { useGSAP } from '@gsap/react'
-import gsap from 'gsap'
-import { Download } from 'lucide-react'
-import { motion } from 'motion/react'
 import { useRef } from 'react'
-import { StarBorders } from './blueprint-annotations'
+import { gsap, useGSAP } from '../hooks/use-gsap'
+import { Container } from './primitives'
 
-gsap.registerPlugin(useGSAP)
+const HEADLINE = ['One layer', 'above your', 'AI tools.']
 
 export function Hero() {
   const sectionRef = useRef<HTMLElement>(null)
 
-  useGSAP(() => {
-    gsap.set('.hero-icon-wrap', { opacity: 0, scale: 0.95, y: 20 })
-    gsap.set('.hero-title', { opacity: 0, y: 24 })
-    gsap.set('.hero-sub', { opacity: 0, y: 16 })
-    gsap.set('.hero-ctas', { opacity: 0, y: 12 })
+  useGSAP(
+    () => {
+      const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches
+      if (reduce) return
 
-    const tl = gsap.timeline({ defaults: { ease: 'power3.out' } })
-    tl.to('.hero-icon-wrap', { opacity: 1, scale: 1, y: 0, duration: 0.7, ease: 'expo.out' })
-      .to('.hero-title', { opacity: 1, y: 0, duration: 0.7 }, '-=0.3')
-      .to('.hero-sub', { opacity: 1, y: 0, duration: 0.6 }, '-=0.4')
-      .to('.hero-ctas', { opacity: 1, y: 0, duration: 0.5 }, '-=0.3')
-  }, { scope: sectionRef })
+      const tl = gsap.timeline({ defaults: { ease: 'expo.out' } })
+
+      // Per-line mask reveal — `from` sets the offset, the natural state is
+      // untransformed, so there's no CSS/JSAP transform conflict (the bug that
+      // hid the title before).
+      tl.from('.hero-line-inner', { yPercent: 118, duration: 1.15, stagger: 0.11, delay: 0.2 })
+        .from('.hero-index', { opacity: 0, y: 10, duration: 0.7 }, 0.2)
+        // Rule draws from the left.
+        .from('.hero-rule', { scaleX: 0, duration: 0.9, transformOrigin: 'left center' }, '-=0.8')
+        .from('.hero-side-line', { opacity: 0, y: 14, duration: 0.8, stagger: 0.08 }, '-=0.6')
+        .from('.hero-meta', { opacity: 0, duration: 0.9 }, '-=0.5')
+    },
+    { scope: sectionRef },
+  )
 
   return (
     <section
       ref={sectionRef}
       style={{
+        position: 'relative',
         minHeight: '100vh',
         display: 'flex',
         flexDirection: 'column',
-        alignItems: 'center',
-        justifyContent: 'center',
-        textAlign: 'center',
-        padding: 'clamp(48px, 12dvh, 120px) 24px 60px',
-        position: 'relative',
-        overflow: 'hidden',
+        // paddingTop: 'calc(52px + clamp(48px, 12vh, 120px))',
+        paddingBottom: 'clamp(32px, 6vh, 64px)',
       }}
     >
-      {/* Background gradient + dot grid */}
-      <div style={{ position: 'absolute', inset: 0, pointerEvents: 'none', overflow: 'hidden' }}>
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            background: `radial-gradient(44.02% 44.02% at 14.38% 14.47%, var(--hero-gradient-1) 0%, transparent 100%), radial-gradient(50.49% 50.49% at 85.46% 82.33%, var(--hero-gradient-2) 0%, transparent 100%)`,
-          }}
-        />
-        <div
-          style={{
-            position: 'absolute',
-            inset: 0,
-            backgroundImage: 'radial-gradient(var(--pattern-fg) 1px, transparent 1px)',
-            backgroundSize: '10px 10px',
-            backgroundAttachment: 'fixed',
-          }}
-        />
-      </div>
+      <Container style={{ flex: 1, display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+        <div className="hero-grid">
+          {/* Left — headline */}
+          <div className="hero-title-col">
+            <span
+              className="hero-index"
+              style={{
+                display: 'block',
+                fontSize: 13,
+                fontWeight: 500,
+                letterSpacing: '0.04em',
+                color: 'var(--text-muted)',
+                fontVariantNumeric: 'tabular-nums',
+                marginBottom: 'clamp(20px, 3vh, 32px)',
+              }}
+            >
+              {/* — 01 */}
+            </span>
 
-      {/* Icon */}
-      <div className="hero-icon-wrap" style={{ position: 'relative', zIndex: 1, marginBottom: 36 }}>
-        <StarBorders>
-          <div style={{ padding: 16 }}>
-            <img
-              src="/icon.png"
-              alt="Cradle"
-              width={120}
-              height={120}
-              fetchPriority="high"
-              decoding="async"
-              style={{ display: 'block' }}
-            />
+            <h1
+              style={{
+                fontSize: 'clamp(2.8rem, 9.5vw, 6.75rem)',
+                fontWeight: 600,
+                lineHeight: 0.98,
+                letterSpacing: '-0.045em',
+                color: 'var(--text)',
+              }}
+            >
+              {HEADLINE.map((line) => (
+                <span key={line} className="hero-line" style={{ display: 'block', overflow: 'hidden' }}>
+                  <span className="hero-line-inner" style={{ display: 'block', willChange: 'transform' }}>
+                    {line}
+                  </span>
+                </span>
+              ))}
+            </h1>
           </div>
-        </StarBorders>
-      </div>
 
-      {/* Headline */}
-      <h1
-        className="hero-title"
-        style={{
-          position: 'relative',
-          zIndex: 1,
-          fontSize: 'clamp(2.5rem, 8vw, 5.5rem)',
-          fontWeight: 700,
-          lineHeight: 0.95,
-          letterSpacing: '-0.04em',
-          color: 'var(--text)',
-          marginBottom: 'clamp(12px, 2dvh, 20px)',
-        }}
-      >
-        One layer above
-        <br />
-        <span style={{ color: 'var(--text-muted)' }}>your AI tools.</span>
-      </h1>
+          {/* Right — rule, body, CTA */}
+          <div className="hero-side-col" style={{ paddingTop: '0.72em' }}>
+            <div
+              className="hero-rule"
+              style={{
+                height: 1,
+                background: 'var(--text)',
+                width: '100%',
+                marginBottom: 28,
+                transformOrigin: 'left center',
+              }}
+            />
 
-      {/* Subline */}
-      <p
-        className="hero-sub"
-        style={{
-          position: 'relative',
-          zIndex: 1,
-          fontSize: 'clamp(0.95rem, 1.6vw, 1.1rem)',
-          lineHeight: 1.7,
-          color: 'var(--text-secondary)',
-          maxWidth: 460,
-          marginBottom: 'clamp(20px, 3dvh, 36px)',
-        }}
-      >
-        Your AI coding tools are brilliant. Managing them is a mess.
-        Cradle is the command center that coordinates all of them.
-      </p>
+            <p
+              className="hero-side-line"
+              style={{
+                fontSize: 'clamp(1rem, 1.4vw, 1.15rem)',
+                lineHeight: 1.6,
+                letterSpacing: '-0.01em',
+                color: 'var(--text-secondary)',
+                marginBottom: 32,
+              }}
+            >
+              Your AI coding tools are brilliant. Managing them is a mess. Cradle is
+              the command center that coordinates all of them — in parallel, on your
+              machine.
+            </p>
 
-      {/* CTAs */}
-      <div className="hero-ctas" style={{ position: 'relative', zIndex: 1, display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
-        <motion.a
-          href="#download"
-          whileHover={{ scale: 1.02 }}
-          whileTap={{ scale: 0.98 }}
-          style={{
-            display: 'inline-flex',
-            alignItems: 'center',
-            gap: 8,
-            padding: '10px 22px',
-            background: 'var(--text)',
-            color: 'var(--bg)',
-            fontWeight: 600,
-            fontSize: 13,
-            textDecoration: 'none',
-            transition: 'opacity 0.15s',
-          }}
-        >
-          <Download style={{ width: 14, height: 14 }} />
-          Download for macOS
-        </motion.a>
-      </div>
+            <div className="hero-side-line" style={{ marginBottom: 14 }}>
+              <a
+                href="#download"
+                className="hero-link"
+                style={{
+                  display: 'inline-flex',
+                  alignItems: 'center',
+                  gap: 10,
+                  fontSize: 'clamp(1.05rem, 1.5vw, 1.25rem)',
+                  fontWeight: 500,
+                  letterSpacing: '-0.015em',
+                  color: 'var(--text)',
+                  paddingBottom: 2,
+                }}
+              >
+                Download for macOS
+                <span aria-hidden style={{ fontSize: '1.1em' }}>⟶</span>
+              </a>
+            </div>
 
-      {/* Footnote */}
-      <div style={{ position: 'relative', zIndex: 1, marginTop: 48 }}>
-        <span style={{ fontSize: 11, color: 'var(--text-muted)' }}>
-          macOS 14+ · Apple Silicon & Intel · Free forever
-        </span>
-      </div>
+            <div className="hero-side-line" style={{ marginBottom: 28 }}>
+              <a
+                href="https://github.com/wibus-wee/Cradle"
+                target="_blank"
+                rel="noopener noreferrer"
+                className="hero-link"
+                style={{
+                  fontSize: 13.5,
+                  color: 'var(--text-muted)',
+                  paddingBottom: 1,
+                }}
+              >
+                View on GitHub
+              </a>
+            </div>
+
+            <p
+              className="hero-side-line"
+              style={{
+                fontSize: 12,
+                lineHeight: 1.7,
+                color: 'var(--text-muted)',
+                fontVariantNumeric: 'tabular-nums',
+              }}
+            >
+              macOS 14+ · Apple Silicon &amp; Intel
+              <br />
+              Free forever
+            </p>
+          </div>
+        </div>
+      </Container>
     </section>
   )
 }
