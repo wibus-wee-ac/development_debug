@@ -1,10 +1,12 @@
 import type { ComponentProps } from 'react'
 import { useEffect, useState } from 'react'
 
+import type { BuiltinRuntimeKind, RuntimeKind } from '~/features/agent-runtime/types'
 import { cn } from '~/lib/cn'
 import { getLobeIconUrl } from '~/lib/lobe-icons'
-import type { BuiltinRuntimeKind, RuntimeKind } from '~/features/agent-runtime/types'
 import { useResolvedThemeMode } from '~/store/theme'
+
+import hijarvisIconUrl from './assets/hijarvis.png'
 
 type IconProps = ComponentProps<'svg'>
 
@@ -52,10 +54,8 @@ function CustomIcon({ className, ...props }: IconProps) {
   )
 }
 
-const HIJARVIS_ICON_URL = '/icons/hijarvis.png'
-
 function HiJarvisIcon({ className }: IconProps) {
-  return <img src={HIJARVIS_ICON_URL} alt="" className={cn('size-4 object-contain', className)} />
+  return <img src={hijarvisIconUrl} alt="" className={cn('size-4 object-contain', className)} />
 }
 
 export const PROVIDER_ICONS: Record<string, (props: IconProps) => React.JSX.Element> = {

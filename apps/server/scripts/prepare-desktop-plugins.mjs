@@ -4,8 +4,8 @@
  * Input: plugins/* package manifests and built plugin dist directories.
  * Position: Server-owned desktop plugin packaging boundary; desktop includes this artifact without enumerating plugin packages.
  */
-import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
+import { cpSync, existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from 'node:fs'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
@@ -61,6 +61,13 @@ function preparePlugin(directoryName) {
   mkdirSync(pluginArtifactDir, { recursive: true })
   cpSync(packageJsonPath, join(pluginArtifactDir, 'package.json'))
   cpSync(distDir, join(pluginArtifactDir, 'dist'), { recursive: true })
+  copyPackageRelativeAsset({
+    packageDir,
+    pluginArtifactDir,
+    packageName: packageJson.name ?? directoryName,
+    assetPath: cradle.icon,
+    label: 'icon',
+  })
 
   return {
     name: packageJson.name,
@@ -74,4 +81,34 @@ function isDesktopDeployment(deployments) {
     return true
   }
   return Array.isArray(deployments) && deployments.includes('desktop')
+}
+
+function copyPackageRelativeAsset({ packageDir, pluginArtifactDir, packageName, assetPath, label }) {
+  if (typeof assetPath !== 'string' || assetPath.trim() === '') {
+    return
+  }
+
+  const normalizedAssetPath = assetPath.trim()
+  if (isAbsolute(normalizedAssetPath)) {
+    throw new Error(`Plugin ${packageName} ${label} path must be package-relative: ${assetPath}`)
+  }
+
+  const sourcePath = resolve(packageDir, normalizedAssetPath)
+  const packageRelativePath = relative(packageDir, sourcePath)
+  if (
+    packageRelativePath === ''
+    || packageRelativePath === '..'
+    || packageRelativePath.startsWith(`..${sep}`)
+    || isAbsolute(packageRelativePath)
+  ) {
+    throw new Error(`Plugin ${packageName} ${label} path escapes the package directory: ${assetPath}`)
+  }
+
+  if (!existsSync(sourcePath) || !statSync(sourcePath).isFile()) {
+    throw new Error(`Plugin ${packageName} ${label} asset is missing: ${assetPath}`)
+  }
+
+  const targetPath = join(pluginArtifactDir, packageRelativePath)
+  mkdirSync(dirname(targetPath), { recursive: true })
+  cpSync(sourcePath, targetPath)
 }
