@@ -1,4 +1,4 @@
-import { DownloadIcon, MonitorIcon, PackageCheckIcon, RefreshCwIcon, RotateCwIcon, TerminalIcon, UnlinkIcon } from 'lucide-react'
+import { DownloadIcon, MonitorIcon, PackageCheckIcon, RefreshCwIcon, TerminalIcon, UnlinkIcon } from 'lucide-react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -25,6 +25,7 @@ const EMPTY_UPDATE_STATUS: DesktopUpdateStatus = {
   isDownloadingUpdate: false,
   downloadingProgress: 0,
   updateDownloaded: false,
+  downloadedFilePath: null,
   updateInfo: null,
   errorMessage: 'Desktop updates are only available in the Electron app',
 }
@@ -90,7 +91,6 @@ export function DesktopUpdateSettings() {
   const busy = loading || status.isCheckingForUpdates || status.isDownloadingUpdate
   const canCheck = isElectron && !!nativeIpc && !status.unsupported && !busy
   const canDownload = canCheck && !!status.updateInfo && !status.updateDownloaded
-  const canApply = isElectron && !!nativeIpc && !status.unsupported && status.updateDownloaded && !busy
 
   const updateStatusLabel = useMemo(() => {
     if (status.unsupported) {
@@ -231,18 +231,6 @@ export function DesktopUpdateSettings() {
           />
         </SettingsRow>
 
-        <SettingsRow
-          label={t('desktop.autoDownloadUpdates.label' as SettingsKey)}
-          description={t('desktop.autoDownloadUpdates.description' as SettingsKey)}
-        >
-          <Switch
-            checked={desktopPrefs?.autoDownloadUpdates ?? false}
-            onCheckedChange={autoDownloadUpdates => savePreference({ autoDownloadUpdates })}
-            disabled={prefsDisabled || !(desktopPrefs?.autoCheckForUpdates ?? true)}
-            aria-label={t('desktop.autoDownloadUpdates.label' as SettingsKey)}
-            data-testid="desktop-auto-download"
-          />
-        </SettingsRow>
       </SettingsGroup>
 
       {isElectron
@@ -283,6 +271,12 @@ export function DesktopUpdateSettings() {
                 </div>
               )}
 
+              {status.downloadedFilePath && (
+                <p className="font-mono text-[11px] text-muted-foreground break-all">
+                  {status.downloadedFilePath}
+                </p>
+              )}
+
               {status.errorMessage && (
                 <p className="text-[11px] text-muted-foreground">{status.errorMessage}</p>
               )}
@@ -319,16 +313,6 @@ export function DesktopUpdateSettings() {
                 >
                   <DownloadIcon className="size-3.5" aria-hidden="true" />
                   {t('desktop.updates.actions.download' as SettingsKey)}
-                </Button>
-                <Button
-                  type="button"
-                  variant="default"
-                  size="sm"
-                  onClick={() => void runUpdateAction(() => nativeIpc!.desktopUpdate.applyUpdate())}
-                  disabled={!canApply}
-                >
-                  <RotateCwIcon className="size-3.5" aria-hidden="true" />
-                  {t('desktop.updates.actions.restart' as SettingsKey)}
                 </Button>
               </div>
             </OperationsCard>

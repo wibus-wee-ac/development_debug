@@ -261,6 +261,7 @@ export interface DesktopUpdateStatus {
   isDownloadingUpdate: boolean
   downloadingProgress: number
   updateDownloaded: boolean
+  downloadedFilePath: string | null
   updateInfo: DesktopUpdateInfo | null
   errorMessage: string | null
 }

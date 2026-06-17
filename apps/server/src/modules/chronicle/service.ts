@@ -96,6 +96,7 @@ const defaultConfig: ChronicleConfig = {
 }
 
 const CLOSED_EYES_DISCARD_RUNTIME_ENABLED = false
+const CHRONICLE_PRODUCTION_DISABLED_MESSAGE = 'Chronicle runtime is only available in development builds.'
 const CHRONICLE_MODEL_GENERATE_DEFAULT_MAX_ATTEMPTS = 3
 const CHRONICLE_MODEL_GENERATE_DEFAULT_BASE_DELAY_MS = 750
 const CHRONICLE_MODEL_GENERATE_MAX_DELAY_MS = 5_000
@@ -2101,6 +2102,22 @@ function getConfigPath(): string {
   return resolve(baseDir, 'preferences', 'chronicle.json')
 }
 
+export function isChronicleRuntimeAllowed(): boolean {
+  return process.env.NODE_ENV !== 'production'
+}
+
+function assertChronicleRuntimeAllowed(): void {
+  if (isChronicleRuntimeAllowed()) {
+    return
+  }
+  throw new AppError({
+    code: 'chronicle_runtime_disabled',
+    status: 403,
+    message: CHRONICLE_PRODUCTION_DISABLED_MESSAGE,
+    details: { nodeEnv: process.env.NODE_ENV ?? null },
+  })
+}
+
 export async function getConfig(): Promise<ChronicleConfig> {
   const filePath = getConfigPath()
   if (!existsSync(filePath)) {
@@ -2234,6 +2251,9 @@ async function delayChronicleModelRetry(attempt: number, baseDelayMs: number): P
 
 export async function updateConfig(input: unknown): Promise<ChronicleConfig> {
   const config = ChronicleConfigSchema.parse(input)
+  if (config.enabled) {
+    assertChronicleRuntimeAllowed()
+  }
   const previous = await getConfig()
   const next = {
     ...config,
@@ -2390,6 +2410,8 @@ function normalizeLanguageModelUsage(usage: {
 
 export async function getStatus(): Promise<ChronicleStatus> {
   const config = await getConfig()
+  const runtimeAllowed = isChronicleRuntimeAllowed()
+  const runtimeEnabled = runtimeAllowed && config.enabled
   const daemonInfo = DaemonManager.getDaemonInfo()
   const latestSnapshot = db().select().from(chronicleSnapshots).orderBy(desc(chronicleSnapshots.capturedAt)).limit(1).get()
   const latestMemory = db().select().from(chronicleMemories).orderBy(desc(chronicleMemories.createdAt)).limit(1).get()
@@ -2414,8 +2436,8 @@ export async function getStatus(): Promise<ChronicleStatus> {
   const dreamRunCount = db().get<{ count: number }>(sql`SELECT COUNT(*) AS count FROM chronicle_dream_runs`)?.count ?? 0
 
   return {
-    available: config.enabled && !!config.profileId,
-    running: daemonInfo.running,
+    available: runtimeEnabled && !!config.profileId,
+    running: runtimeEnabled && daemonInfo.running,
     pid: daemonInfo.pid,
     lastCaptureAt: latestSnapshot?.capturedAt ?? null,
     lastSummaryAt: latestMemory?.createdAt ?? null,
@@ -2443,17 +2465,17 @@ export async function getStatus(): Promise<ChronicleStatus> {
     lastKnowledgeCardAt: db().select({ updatedAt: chronicleKnowledgeCards.updatedAt }).from(chronicleKnowledgeCards).orderBy(desc(chronicleKnowledgeCards.updatedAt)).limit(1).get()?.updatedAt ?? null,
     totalDreamRuns: dreamRunCount,
     lastDreamRunAt: db().select({ startedAt: chronicleDreamRuns.startedAt }).from(chronicleDreamRuns).orderBy(desc(chronicleDreamRuns.startedAt)).limit(1).get()?.startedAt ?? null,
-    dreamSchedulerEnabled: config.dreamSchedulerEnabled,
-    dreamSchedulerRunning,
+    dreamSchedulerEnabled: runtimeEnabled && config.dreamSchedulerEnabled,
+    dreamSchedulerRunning: runtimeEnabled && dreamSchedulerRunning,
     dreamSchedulerIntervalMs: config.dreamSchedulerIntervalMs,
     dreamSchedulerApplyMerge: config.dreamSchedulerApplyMerge,
-    activityPipelineEnabled: config.activityPipelineEnabled,
-    activityPipelineRunning,
+    activityPipelineEnabled: runtimeEnabled && config.activityPipelineEnabled,
+    activityPipelineRunning: runtimeEnabled && activityPipelineRunning,
     activityPipelineIntervalMs: config.activityPipelineIntervalMs,
     activityPipelineBatchSize: config.activityPipelineBatchSize,
     audioCaptureEnabled: config.audioCaptureEnabled,
     audioSource: config.audioSource,
-    audioRuntimeStatus: getAudioRuntimeStatus(config, daemonInfo),
+    audioRuntimeStatus: runtimeAllowed ? getAudioRuntimeStatus(config, daemonInfo) : 'disabled',
     closedEyesDiscardEnabled: config.closedEyesDiscardEnabled,
     closedEyesMode: config.closedEyesMode,
     configuredModel: await getConfiguredModel(config),
@@ -2461,6 +2483,12 @@ export async function getStatus(): Promise<ChronicleStatus> {
 }
 
 export async function initDaemon(): Promise<void> {
+  if (!isChronicleRuntimeAllowed()) {
+    DaemonManager.stopDaemon()
+    stopActivityPipelineScheduler()
+    stopDreamScheduler()
+    return
+  }
   const config = await getConfig()
   if (config.enabled) {
     DaemonManager.startDaemon(toDaemonOptions(config))
@@ -2470,6 +2498,10 @@ export async function initDaemon(): Promise<void> {
 }
 
 export function startSlackBackgroundSync(): void {
+  if (!isChronicleRuntimeAllowed()) {
+    stopSlackBackgroundSync()
+    return
+  }
   if (slackSyncTimer) {
     return
   }
@@ -2515,7 +2547,7 @@ export function stopDreamScheduler(): void {
 
 export function restartActivityPipelineScheduler(config: ChronicleConfig): void {
   stopActivityPipelineScheduler()
-  if (!config.enabled || !config.activityPipelineEnabled) {
+  if (!isChronicleRuntimeAllowed() || !config.enabled || !config.activityPipelineEnabled) {
     return
   }
   void runActivityPipelineTick().catch((error) => {
@@ -2530,7 +2562,7 @@ export function restartActivityPipelineScheduler(config: ChronicleConfig): void 
 
 export function restartDreamScheduler(config: ChronicleConfig): void {
   stopDreamScheduler()
-  if (!config.enabled || !config.dreamSchedulerEnabled) {
+  if (!isChronicleRuntimeAllowed() || !config.enabled || !config.dreamSchedulerEnabled) {
     return
   }
   dreamSchedulerTimer = setInterval(() => {
@@ -2541,6 +2573,9 @@ export function restartDreamScheduler(config: ChronicleConfig): void {
 }
 
 export async function runDreamSchedulerTick(): Promise<DreamRunEntry | null> {
+  if (!isChronicleRuntimeAllowed()) {
+    return null
+  }
   if (dreamSchedulerRunning) {
     return null
   }
@@ -2569,6 +2604,9 @@ export async function runActivityPipelineTick(): Promise<{
   skipped: number
   errors: number
 }> {
+  if (!isChronicleRuntimeAllowed()) {
+    return { checked: 0, triaged: 0, summarized: 0, crystallized: 0, skipped: 0, errors: 0 }
+  }
   if (activityPipelineRunning) {
     return { checked: 0, triaged: 0, summarized: 0, crystallized: 0, skipped: 0, errors: 0 }
   }
@@ -2642,6 +2680,9 @@ async function advanceActivitySegmentPipeline(segmentId: string): Promise<Activi
 }
 
 export async function runSlackSyncTick(): Promise<{ checked: number, synced: number, errors: number }> {
+  if (!isChronicleRuntimeAllowed()) {
+    return { checked: 0, synced: 0, errors: 0 }
+  }
   if (slackSyncRunning) {
     return { checked: 0, synced: 0, errors: 0 }
   }

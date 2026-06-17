@@ -287,6 +287,16 @@ function readProviderCounts(): { enabled: number, total: number } {
 }
 
 async function readChronicleHealthItem(): Promise<DesktopHealthItem> {
+  if (!Chronicle.isChronicleRuntimeAllowed()) {
+    return {
+      id: 'chronicle',
+      label: 'Chronicle',
+      value: 'Disabled',
+      status: 'ok',
+      detail: 'Chronicle runtime is only available in development builds.',
+    }
+  }
+
   try {
     const status = await Chronicle.getStatus()
     return {

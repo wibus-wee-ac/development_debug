@@ -1,6 +1,8 @@
 import { EventEmitter } from 'node:events'
+import { access, copyFile, mkdir } from 'node:fs/promises'
+import { basename, extname, join } from 'node:path'
 
-import { app } from 'electron'
+import { app, shell } from 'electron'
 import type { AppUpdater, ProgressInfo, UpdateInfo } from 'electron-updater'
 import { autoUpdater } from 'electron-updater'
 
@@ -31,6 +33,7 @@ export type DesktopUpdateStatus = {
   isDownloadingUpdate: boolean
   downloadingProgress: number
   updateDownloaded: boolean
+  downloadedFilePath: string | null
   updateInfo: DesktopUpdateInfo | null
   errorMessage: string | null
 }
@@ -40,7 +43,6 @@ export type DesktopUpdateManagerEvents = {
 }
 
 type DesktopUpdateEventName = keyof DesktopUpdateManagerEvents
-type BeforeApplyUpdate = () => Promise<void> | void
 
 export type DesktopUpdatePreferences = {
   autoCheckForUpdates: boolean
@@ -49,12 +51,10 @@ export type DesktopUpdatePreferences = {
 
 export type DesktopUpdateManagerOptions = {
   updateFeedUrl?: string | null
-  beforeApplyUpdate?: BeforeApplyUpdate
   preferences?: Partial<DesktopUpdatePreferences>
 }
 
 type CheckForUpdatesOptions = {
-  autoDownload?: boolean
   quiet?: boolean
 }
 
@@ -129,7 +129,6 @@ export class DesktopUpdateManager {
   private readonly events = new EventEmitter()
   private readonly updateFeedUrl: string | null
   private readonly updater: AppUpdater | null
-  private readonly beforeApplyUpdate: BeforeApplyUpdate
   private preferences: DesktopUpdatePreferences
   private statusSnapshot: DesktopUpdateStatus
   private backgroundTimer: NodeJS.Timeout | null = null
@@ -139,7 +138,6 @@ export class DesktopUpdateManager {
     const updateFeedUrl = options.updateFeedUrl ?? readUpdateFeedUrl()
     this.updateFeedUrl = updateFeedUrl
     this.updater = this.createUpdater(updateFeedUrl)
-    this.beforeApplyUpdate = options.beforeApplyUpdate ?? (() => {})
     this.preferences = {
       autoCheckForUpdates: options.preferences?.autoCheckForUpdates ?? true,
       autoDownloadUpdates: options.preferences?.autoDownloadUpdates ?? false,
@@ -151,6 +149,7 @@ export class DesktopUpdateManager {
       isDownloadingUpdate: false,
       downloadingProgress: 0,
       updateDownloaded: false,
+      downloadedFilePath: null,
       updateInfo: null,
       errorMessage: this.updater === null ? this.getUnsupportedReason(updateFeedUrl) : null,
     }
@@ -189,10 +188,7 @@ export class DesktopUpdateManager {
     const check = async () => {
       this.backgroundCheckRunning = true
       try {
-        await this.checkForUpdates({
-          autoDownload: this.preferences.autoDownloadUpdates,
-          quiet: true,
-        })
+        await this.checkForUpdates({ quiet: true })
       }
       finally {
         this.backgroundCheckRunning = false
@@ -222,14 +218,6 @@ export class DesktopUpdateManager {
     }
 
     this.startBackgroundChecks()
-    if (
-      preferences.autoDownloadUpdates
-      && this.statusSnapshot.updateInfo
-      && !this.statusSnapshot.updateDownloaded
-      && !this.statusSnapshot.isDownloadingUpdate
-    ) {
-      void this.downloadUpdate()
-    }
     return this.statusSnapshot
   }
 
@@ -250,12 +238,9 @@ export class DesktopUpdateManager {
         isCheckingForUpdates: false,
         updateInfo,
         updateDownloaded: false,
+        downloadedFilePath: null,
         downloadingProgress: 0,
       })
-
-      if (updateInfo && options.autoDownload === true) {
-        await this.downloadUpdate()
-      }
     }
     catch (error) {
       this.setStatus({
@@ -276,22 +261,27 @@ export class DesktopUpdateManager {
     this.setStatus({
       isDownloadingUpdate: true,
       updateDownloaded: false,
+      downloadedFilePath: null,
       downloadingProgress: 0,
       errorMessage: null,
     })
 
     try {
-      await retryWithBackoff(() => this.updater!.downloadUpdate())
+      const downloadedPaths = await retryWithBackoff(() => this.updater!.downloadUpdate())
+      const desktopPath = await this.copyInstallerToDesktop(downloadedPaths)
+      await this.openDownloadedInstaller(desktopPath)
       this.setStatus({
         isDownloadingUpdate: false,
         downloadingProgress: 100,
         updateDownloaded: true,
+        downloadedFilePath: desktopPath,
       })
     }
     catch (error) {
       this.setStatus({
         isDownloadingUpdate: false,
         updateDownloaded: false,
+        downloadedFilePath: null,
         errorMessage: readErrorMessage(error),
       })
     }
@@ -300,13 +290,12 @@ export class DesktopUpdateManager {
   }
 
   async applyUpdate(): Promise<void> {
-    if (!this.updater || !this.statusSnapshot.updateDownloaded) {
+    if (!this.statusSnapshot.downloadedFilePath) {
       return
     }
 
     try {
-      await this.beforeApplyUpdate()
-      this.updater.quitAndInstall(false, true)
+      await this.openDownloadedInstaller(this.statusSnapshot.downloadedFilePath)
     }
     catch (error) {
       this.setStatus({
@@ -347,6 +336,7 @@ export class DesktopUpdateManager {
         isCheckingForUpdates: false,
         updateInfo: projectUpdateInfo(info),
         updateDownloaded: false,
+        downloadedFilePath: null,
         downloadingProgress: 0,
       })
     })
@@ -355,6 +345,7 @@ export class DesktopUpdateManager {
         isCheckingForUpdates: false,
         updateInfo: null,
         updateDownloaded: false,
+        downloadedFilePath: null,
         downloadingProgress: 0,
       })
     })
@@ -368,7 +359,8 @@ export class DesktopUpdateManager {
       this.setStatus({
         isDownloadingUpdate: false,
         downloadingProgress: 100,
-        updateDownloaded: true,
+        updateDownloaded: this.statusSnapshot.downloadedFilePath !== null,
+        downloadedFilePath: this.statusSnapshot.downloadedFilePath,
         updateInfo: projectUpdateInfo(info),
       })
     })
@@ -389,6 +381,54 @@ export class DesktopUpdateManager {
       return 'Desktop updates are only available in packaged builds'
     }
     return 'electron-updater is unavailable in the current runtime'
+  }
+
+  private async copyInstallerToDesktop(downloadedPaths: string[]): Promise<string> {
+    const sourcePath = this.pickInstallerPath(downloadedPaths)
+    const desktopDir = app.getPath('desktop')
+    await mkdir(desktopDir, { recursive: true })
+
+    const fileName = basename(sourcePath)
+    const desktopPath = await this.resolveAvailableDesktopPath(desktopDir, fileName)
+    await copyFile(sourcePath, desktopPath)
+    return desktopPath
+  }
+
+  private pickInstallerPath(downloadedPaths: string[]): string {
+    const installerPath = downloadedPaths.find((filePath) => {
+      const extension = extname(filePath).toLowerCase()
+      return ['.dmg', '.pkg', '.zip', '.exe', '.msi', '.appimage'].includes(extension)
+    }) ?? downloadedPaths[0]
+
+    if (!installerPath) {
+      throw new Error('Update download did not produce an installer file')
+    }
+    return installerPath
+  }
+
+  private async resolveAvailableDesktopPath(desktopDir: string, fileName: string): Promise<string> {
+    const extension = extname(fileName)
+    const stem = extension ? fileName.slice(0, -extension.length) : fileName
+
+    for (let index = 0; index < 100; index++) {
+      const candidateName = index === 0 ? fileName : `${stem} ${index + 1}${extension}`
+      const candidatePath = join(desktopDir, candidateName)
+      try {
+        await access(candidatePath)
+      }
+      catch {
+        return candidatePath
+      }
+    }
+
+    return join(desktopDir, `${stem} ${Date.now()}${extension}`)
+  }
+
+  private async openDownloadedInstaller(filePath: string): Promise<void> {
+    const openError = await shell.openPath(filePath)
+    if (openError) {
+      throw new Error(openError)
+    }
   }
 
   private setStatus(patch: Partial<DesktopUpdateStatus>): void {

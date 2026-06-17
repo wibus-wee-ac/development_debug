@@ -25,5 +25,16 @@
   "rightAside.tab.files": "Files",
   "rightAside.tab.git": "Git",
   "rightAside.tab.issue": "Issue",
-  "rightAside.tab.runtime": "Runtime"
+  "rightAside.tab.runtime": "Runtime",
+  "update.button": "Updates",
+  "update.status.available": "Update {{version}}",
+  "update.status.checking": "Checking",
+  "update.status.current": "Current",
+  "update.status.downloaded": "Downloaded",
+  "update.status.downloading": "Downloading {{progress}}%",
+  "update.status.unavailable": "Updates unavailable",
+  "update.toast.availableDescription": "Open Desktop settings to download the installer to your Desktop.",
+  "update.toast.availableTitle": "Cradle {{version}} is available",
+  "update.tooltip.available": "Available: {{version}}",
+  "update.tooltip.title": "Cradle updates"
 }
