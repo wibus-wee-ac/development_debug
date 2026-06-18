@@ -60,6 +60,7 @@ function HiJarvisIcon({ className }: IconProps) {
 
 export const PROVIDER_ICONS: Record<string, (props: IconProps) => React.JSX.Element> = {
   'anthropic': ClaudeIcon,
+  'claude': ClaudeIcon,
   'claude-agent': ClaudeIcon,
   'claude-cli': ClaudeCodeIcon,
   'codex': CodexIcon,
@@ -126,6 +127,10 @@ export function ProviderIcon({
   if (iconSlug) {
     if (iconSlug.startsWith('url:')) {
       return <img src={decodeURIComponent(iconSlug.slice(4))} alt="" className={cn('object-contain', className)} />
+    }
+    const Icon = PROVIDER_ICONS[iconSlug]
+    if (Icon) {
+      return <Icon className={className} />
     }
     return <LobeIconImage slug={iconSlug} className={className} />
   }

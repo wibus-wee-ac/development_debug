@@ -102,7 +102,20 @@ export function ProviderModelPicker<TThinking extends string | null>({
 
   return (
     <Menu onOpenChange={handleMenuOpenChange}>
-      <MenuTrigger render={<Button variant="ghost" size="xs" data-testid={triggerTestId} disabled={disabled} className="min-w-0 max-w-full shrink" />}>
+      <MenuTrigger
+        render={(
+          <Button
+            variant="ghost"
+            size="xs"
+            data-testid={triggerTestId}
+            data-selected-provider-target-id={selectedProviderTargetId ?? ''}
+            data-selected-model-id={selectedModelId ?? ''}
+            data-thinking-value={thinkingValue ?? ''}
+            disabled={disabled}
+            className="min-w-0 max-w-full shrink"
+          />
+        )}
+      >
         {selectedProviderTarget
           ? (
               <ProviderIcon

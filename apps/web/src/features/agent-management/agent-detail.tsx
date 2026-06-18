@@ -784,7 +784,11 @@ function AgentDetailHeader({
   const { t } = useTranslation('agentManagement')
 
   return (
-    <div className={cn('flex items-center justify-between', onBack ? 'mb-6' : 'mb-4')}>
+    <div
+      className={cn('flex items-center justify-between', onBack ? 'mb-6' : 'mb-4')}
+      data-testid="agent-detail-save-state"
+      data-save-state={saveState}
+    >
       {onBack
         ? (
           <button

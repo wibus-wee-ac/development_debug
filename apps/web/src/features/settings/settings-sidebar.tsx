@@ -75,7 +75,7 @@ export function SettingsSidebar({ activeSection, onSetSection, onClose }: Settin
   const { t } = useTranslation('settings')
 
   return (
-    <div className="flex flex-1 flex-col overflow-hidden">
+    <div className="flex flex-1 flex-col overflow-hidden" data-testid="settings-sidebar">
       {/* Back header */}
       <div className="flex items-center gap-1.5 px-3 py-2">
         <Button

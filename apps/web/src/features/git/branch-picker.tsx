@@ -23,6 +23,7 @@ import { cn } from '~/lib/cn'
 import {
   gitBranchesQueryKey,
   gitGraphQueryKey,
+  gitRepositoriesQueryKey,
   gitStatusQueryKey,
   useGitBranches,
 } from './use-git'
@@ -320,6 +321,7 @@ export function BranchPicker({
   const repositoryBody = repositoryPath ? { repo: repositoryPath } : {}
 
   const invalidateAll = () => {
+    void queryClient.invalidateQueries({ queryKey: gitRepositoriesQueryKey({ path: { id: workspaceId } }) })
     void queryClient.invalidateQueries({ queryKey: gitStatusQueryKey({ path: { id: workspaceId }, ...repositoryQuery }) })
     void queryClient.invalidateQueries({ queryKey: gitBranchesQueryKey({ path: { id: workspaceId }, ...repositoryQuery }) })
     // Omit query.limit to fuzzy-match all limit variants for this workspace

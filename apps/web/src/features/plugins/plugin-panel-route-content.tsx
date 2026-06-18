@@ -30,5 +30,9 @@ export function PluginPanelRouteContent({
     )
   }
 
-  return createElement(panel.component, { isActive })
+  return (
+    <div className="h-full min-h-0" data-testid={`plugin-panel-${localId}`}>
+      {createElement(panel.component, { isActive })}
+    </div>
+  )
 }

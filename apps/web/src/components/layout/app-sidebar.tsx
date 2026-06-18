@@ -1,5 +1,5 @@
+import { DownloadIcon, SparklesIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { DownloadIcon, PackageCheckIcon, SparklesIcon } from 'lucide-react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -12,9 +12,9 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/comp
 import { SettingsSidebar } from '~/features/settings/settings-sidebar'
 import { WorkspaceSidebar } from '~/features/workspace'
 import { useShortcut } from '~/hooks/use-shortcut'
+import { cn } from '~/lib/cn'
 import type { DesktopUpdateStatus } from '~/lib/electron'
 import { isElectron, nativeIpc, subscribeDesktopUpdateStatus } from '~/lib/electron'
-import { cn } from '~/lib/cn'
 import { closeSurfaceById, openSettingsSection } from '~/navigation/navigation-commands'
 import { useSurfaceStore } from '~/navigation/surface-store'
 import { useLayoutStore } from '~/store/layout'
@@ -71,7 +71,12 @@ const AppSidebarContent = memo(({
         style={{ WebkitAppRegion: 'no-drag' } as React.CSSProperties}
       >
         <m.div
-          className="absolute inset-0 flex flex-col overflow-hidden"
+          className={cn(
+            'absolute inset-0 flex flex-col overflow-hidden',
+            isSettings ? 'pointer-events-auto' : 'pointer-events-none',
+          )}
+          data-testid="settings-sidebar-pane"
+          data-sidebar-pane-active={isSettings ? 'true' : 'false'}
           initial={false}
           animate={isSettings
             ? { x: 0, opacity: 1, filter: 'blur(0px)' }
@@ -87,7 +92,12 @@ const AppSidebarContent = memo(({
           />
         </m.div>
         <m.div
-          className="absolute inset-0 flex flex-col overflow-hidden"
+          className={cn(
+            'absolute inset-0 flex flex-col overflow-hidden',
+            isSettings ? 'pointer-events-none' : 'pointer-events-auto',
+          )}
+          data-testid="workspace-sidebar-pane"
+          data-sidebar-pane-active={isSettings ? 'false' : 'true'}
           initial={false}
           animate={isSettings
             ? { x: -20, opacity: 0, filter: 'blur(4px)' }
@@ -146,6 +156,12 @@ function SidebarUpdateButton({ collapsed }: { collapsed: boolean }) {
     })
   }, [status.updateInfo?.version, t])
 
+  const hasUpdateNotice = !!status.updateInfo || status.isDownloadingUpdate || status.updateDownloaded
+
+  if (!isElectron || !hasUpdateNotice) {
+    return null
+  }
+
   const label = status.unsupported
     ? t('update.status.unavailable')
     : status.isCheckingForUpdates
@@ -158,11 +174,7 @@ function SidebarUpdateButton({ collapsed }: { collapsed: boolean }) {
             ? t('update.status.available', { version: status.updateInfo.version })
             : t('update.status.current')
 
-  if (!isElectron) {
-    return null
-  }
-
-  const Icon = status.updateDownloaded ? DownloadIcon : status.updateInfo ? SparklesIcon : PackageCheckIcon
+  const Icon = status.updateDownloaded || status.isDownloadingUpdate ? DownloadIcon : SparklesIcon
 
   return (
     <TooltipProvider delayDuration={collapsed ? 0 : 500}>
@@ -226,7 +238,7 @@ function SidebarUpdateButton({ collapsed }: { collapsed: boolean }) {
 function useAppSidebarContentController() {
   const settingsSection = useSettingsOverlayStore(s => s.settingsSection)
   const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
-  const isSettings = useSurfaceStore(s => {
+  const isSettings = useSurfaceStore((s) => {
     const activeSurface = s.surfaces.find(surface => surface.id === s.activeSurfaceId)
     return activeSurface?.kind === 'settings'
   })

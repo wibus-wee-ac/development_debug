@@ -14,6 +14,7 @@ import packageJson from './package.json' with { type: 'json' }
 const ASSET_MODULE_RE = /\.(?:avif|gif|ico|jpe?g|png|svg|webp)(?:\?|$)/
 const PRECACHE_ASSET_RE = /\.(?:css|js|woff2)$/
 const enableViteDevtools = process.env.CRADLE_VITE_DEVTOOLS === '1'
+const isE2E = process.env.CRADLE_E2E === '1'
 
 function getVendorChunk(id: string): string | undefined {
   if (id.includes('?url') || ASSET_MODULE_RE.test(id)) {
@@ -90,6 +91,7 @@ self.addEventListener('fetch', event => {
 export default defineConfig({
   define: {
     'import.meta.env.PACKAGE_VERSION': JSON.stringify(packageJson.version),
+    'import.meta.env.CRADLE_E2E': JSON.stringify(isE2E ? '1' : '0'),
   },
   devtools: {
     enabled: enableViteDevtools,
@@ -115,6 +117,7 @@ export default defineConfig({
   },
   server: {
     port: 5174,
+    hmr: isE2E ? false : undefined,
   },
   build: {
     manifest: true,

@@ -105,7 +105,9 @@ export const FALLBACK_RUNTIME_CATALOG: RuntimeCatalogItem[] = [
   },
 ]
 
-const HIDDEN_RUNTIME_KINDS = new Set<RuntimeKind>(['acp-chat', 'standard'])
+const HIDDEN_RUNTIME_KINDS = new Set<RuntimeKind>(
+  import.meta.env.CRADLE_E2E === '1' ? ['acp-chat'] : ['acp-chat', 'standard'],
+)
 
 function normalizeCatalogItem(item: z.infer<typeof RuntimeCatalogSchema>['items'][number]): RuntimeCatalogItem {
   return {

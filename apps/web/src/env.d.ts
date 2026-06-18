@@ -2,6 +2,7 @@
 
 interface ImportMetaEnv {
   readonly PACKAGE_VERSION?: string
+  readonly CRADLE_E2E?: string
   readonly VITE_SERVER_URL?: string
 }
 

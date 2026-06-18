@@ -194,6 +194,7 @@ function ProviderTargetGroup<TThinking extends string | null>({
   return (
     <MenuSub onOpenChange={open => open && onRequestProviderTargetModels?.(providerTarget.id, { refresh: true })}>
       <MenuSubTrigger
+        data-testid={`provider-target-option-${providerTarget.id}`}
         onClick={() => {
           onRequestProviderTargetModels?.(providerTarget.id, { refresh: true })
           if (!isProviderTargetSelectionDisabled) {
@@ -292,6 +293,7 @@ function ModelSubmenu<TThinking extends string | null>({
   if (!hasAdjustableThinking) {
     return (
       <MenuItem
+        data-testid={`provider-model-option-${model.id}`}
         onClick={onSelectModel}
         className={cn('items-start', isModelSelected && 'text-primary font-medium')}
       >
@@ -303,6 +305,7 @@ function ModelSubmenu<TThinking extends string | null>({
   return (
     <MenuSub>
       <MenuSubTrigger
+        data-testid={`provider-model-option-${model.id}`}
         onClick={onSelectModel}
         className={cn(isModelSelected && 'text-primary font-medium')}
       >
@@ -312,7 +315,11 @@ function ModelSubmenu<TThinking extends string | null>({
         {thinkingOptions.map(option => (
           <MenuItem
             key={option.value ?? 'none'}
-            onClick={() => onSelectThinking(option.value)}
+            data-testid={`provider-model-thinking-${option.value ?? 'none'}`}
+            onClick={() => {
+              onSelectModel()
+              onSelectThinking(option.value)
+            }}
             className={cn('flex-col items-start', thinkingValue === option.value && 'text-primary font-medium')}
           >
             <div className="flex w-full items-center gap-2">
