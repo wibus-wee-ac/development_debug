@@ -1,5 +1,5 @@
 import type { Session } from '@cradle/db'
-import { agents, messages, sessions } from '@cradle/db'
+import { agents, sessions } from '@cradle/db'
 import type { UIMessage } from 'ai'
 import { eq } from 'drizzle-orm'
 
@@ -7,12 +7,9 @@ import { readTrustedAgentRuntimeConfig } from '../../../helpers/agent-runtime-co
 import { readPositiveIntegerEnv } from '../../../helpers/env'
 import { getSystemWorkflow } from '../../../helpers/system-workflow'
 import { db } from '../../../infra'
-import { createChildLogger } from '../../../logging/logger'
-import { buildAgentMemoryContext } from '../../chronicle/agent-context'
 import type { CradleTurnTranscript } from '../transcript'
 import { resolveCradleTurnTranscript } from '../transcript'
 
-const chatTurnContextLogger = createChildLogger({ module: 'chat-runtime.turn-context' })
 const DEFAULT_TURN_CONTEXT_MAX_MESSAGES = 12
 const DEFAULT_TURN_CONTEXT_MAX_CHARS = 120_000
 
@@ -45,17 +42,8 @@ export function resolveTurnContext(input: {
   const session = db().select().from(sessions).where(eq(sessions.id, input.sessionId)).get()
 
   let systemPrompt = resolveSessionSystemPrompt(session)
-  const draftUserMessage = db()
-    .select()
-    .from(messages)
-    .where(eq(messages.id, input.draftUserMessageId))
-    .get()
-  const chronicleContext = draftUserMessage?.content
-    ? resolveChronicleTurnContext(draftUserMessage.content)
-    : null
-  if (chronicleContext) {
-    systemPrompt = systemPrompt ? `${systemPrompt}\n\n---\n\n${chronicleContext}` : chronicleContext
-  }
+  // Chronicle per-turn memory context is intentionally disabled for now.
+  // It is dynamic and unstable; when re-enabled, decide whether it belongs in system prompt or a lower-authority context channel.
   const transcript = resolveBoundedTurnHistory({
     sessionId: input.sessionId,
     excludedMessageIds: new Set([input.draftMessageId, input.draftUserMessageId])
@@ -84,20 +72,4 @@ function resolveBoundedTurnHistory(input: {
       DEFAULT_TURN_CONTEXT_MAX_CHARS
     )
   })
-}
-
-function resolveChronicleTurnContext(query: string): string | null {
-  try {
-    return buildAgentMemoryContext({
-      query,
-      memoryLimit: 3,
-      knowledgeLimit: 3,
-      maxChars: 6_000
-    })
-  } catch (error) {
-    chatTurnContextLogger.warn('failed to resolve Chronicle turn context', {
-      error: error instanceof Error ? error.message : String(error)
-    })
-    return null
-  }
 }

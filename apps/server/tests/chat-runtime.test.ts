@@ -3587,7 +3587,7 @@ describe('chat runtime capability', () => {
     }
   })
 
-  it('injects relevant Chronicle long-term memory into chat runtime system context', async () => {
+  it('does not inject Chronicle per-turn memory into chat runtime system context', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -3666,10 +3666,10 @@ describe('chat runtime capability', () => {
         payload.messages.at(-1)?.content === 'What should I remember about Project Nebula checkout?')
       expect(turnPayload).toBeTruthy()
       const systemMessage = turnPayload?.messages.find(message => message.role === 'system')
-      expect(systemMessage?.content).toContain('Chronicle long-term memory context follows')
-      expect(systemMessage?.content).toContain('Project Nebula checkout decision')
-      expect(systemMessage?.content).toContain('Remember that Project Nebula uses Stripe Checkout')
-      expect(systemMessage?.content).toContain('[EMAIL]')
+      expect(systemMessage?.content).toContain('Cradle System Workflow')
+      expect(systemMessage?.content).not.toContain('Chronicle long-term memory context follows')
+      expect(systemMessage?.content).not.toContain('Project Nebula checkout decision')
+      expect(systemMessage?.content).not.toContain('Remember that Project Nebula uses Stripe Checkout')
       expect(systemMessage?.content).not.toContain('alice@example.com')
       expect(fetchSpy.mock.calls.filter(([url]) => String(url).endsWith('/chat/completions')).length).toBeGreaterThanOrEqual(1)
     }
