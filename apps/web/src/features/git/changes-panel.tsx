@@ -30,9 +30,10 @@ import {
 } from '~/features/workspace/workspace-file-shortcuts'
 import { cn } from '~/lib/cn'
 import { isElectron, nativeIpc } from '~/lib/electron'
-import type { GitFileStatus, GitRepository } from '~/features/git/types'
+import { openWorkspaceDiffs } from '~/navigation/navigation-commands'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
+import type { GitFileStatus, GitRepository } from '~/features/git/types'
 
 import type { ChangeSection } from './changes-grouping'
 import { groupGitFileStatuses } from './changes-grouping'
@@ -55,35 +56,21 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
   const { data: repositories, isLoading, isError, isSuccess } = useGitRepositories(workspaceId)
   const gitRepositories = repositories ?? []
   const changedFileCount = gitRepositories.reduce((total, repository) => total + repository.files.length, 0)
-
-  const openDiffTab = useBrowserPanelStore(s => s.openWorkspaceDiffTab)
-  const setBrowserPanelOpen = useLayoutStore(s => s.setBrowserPanelOpen)
-
-  const requestScrollToFilePath = useBrowserPanelStore(s => s.requestScrollToFilePath)
+  // Diffs review is a very early implementation — only reachable in dev until it's further along.
+  const canOpenReview = import.meta.env.DEV
 
   const handleReviewRepository = (repository: GitRepository) => {
     if (!workspaceId) {
       return
     }
-    openDiffTab({
-      workspaceId,
-      repositoryPath: repository.path,
-      title: gitRepositories.length > 1 ? `${repository.name} Changes` : 'All Changes',
-    })
-    setBrowserPanelOpen(true)
+    openWorkspaceDiffs({ workspaceId, repositoryPath: repository.path })
   }
 
   const handleReviewFile = (repository: GitRepository, path: string) => {
     if (!workspaceId) {
       return
     }
-    const tabId = openDiffTab({
-      workspaceId,
-      repositoryPath: repository.path,
-      title: gitRepositories.length > 1 ? `${repository.name} Changes` : 'All Changes',
-    })
-    setBrowserPanelOpen(true)
-    requestScrollToFilePath({ path, tabId })
+    openWorkspaceDiffs({ workspaceId, repositoryPath: repository.path, path })
   }
 
   let changesContent: ReactNode = null
@@ -133,6 +120,7 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
         viewMode={viewMode}
         workspaceId={workspaceId}
         workspacePath={workspacePath ?? undefined}
+        canOpenReview={canOpenReview}
         onFileClick={handleReviewFile}
         onReviewRepository={handleReviewRepository}
       />
@@ -189,7 +177,7 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
         >
           {changedFileCount}
         </span>
-        {changedFileCount > 0 && gitRepositories.length === 1 && (
+        {canOpenReview && changedFileCount > 0 && gitRepositories.length === 1 && (
           <button
             type="button"
             onClick={() => handleReviewRepository(gitRepositories[0]!)}
@@ -241,6 +229,7 @@ function ChangesRepositoryList({
   viewMode,
   workspaceId,
   workspacePath,
+  canOpenReview,
   onFileClick,
   onReviewRepository,
 }: {
@@ -248,6 +237,7 @@ function ChangesRepositoryList({
   viewMode: ChangesViewMode
   workspaceId: string | null | undefined
   workspacePath?: string
+  canOpenReview: boolean
   onFileClick: (repository: GitRepository, path: string) => void
   onReviewRepository: (repository: GitRepository) => void
 }) {
@@ -279,15 +269,17 @@ function ChangesRepositoryList({
                 )}
               </div>
             </div>
-            <button
-              type="button"
-              onClick={() => onReviewRepository(repository)}
-              className="flex h-5 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] font-medium text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
-              data-testid="changes-repository-review"
-            >
-              <ScanEyeIcon className="size-3" aria-hidden />
-              Review
-            </button>
+            {canOpenReview && (
+              <button
+                type="button"
+                onClick={() => onReviewRepository(repository)}
+                className="flex h-5 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] font-medium text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+                data-testid="changes-repository-review"
+              >
+                <ScanEyeIcon className="size-3" aria-hidden />
+                Review
+              </button>
+            )}
           </div>
           <div className="min-h-0 overflow-hidden rounded-md border border-border/35 bg-background/30">
             {viewMode === 'tree'

@@ -7,6 +7,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import type { GitFileStatus } from '~/features/git/types'
 import { DEFAULT_BROWSER_PANEL_OWNER_ID, useBrowserPanelStore } from '~/store/browser-panel'
 import { DEFAULT_LAYOUT_BROWSER_PANEL_OWNER_ID, useLayoutStore } from '~/store/layout'
+import { openWorkspaceDiffs } from '~/navigation/navigation-commands'
 
 import { groupGitFileStatuses } from './changes-grouping'
 import { ChangesPanel } from './changes-panel'
@@ -55,6 +56,10 @@ vi.mock('@pierre/trees/react', async () => {
 
 vi.mock('./use-git', () => ({
   useGitRepositories: gitQueryMocks.useGitRepositories,
+}))
+
+vi.mock('~/navigation/navigation-commands', () => ({
+  openWorkspaceDiffs: vi.fn(),
 }))
 
 beforeEach(() => {
@@ -145,7 +150,7 @@ describe('groupGitFileStatuses', () => {
 })
 
 describe('changesPanel type interactions', () => {
-  it('reuses the all changes diff tab while scrolling to clicked files', () => {
+  it('opens the Cradle Diffs surface for clicked files', () => {
     gitQueryMocks.useGitRepositories.mockReturnValue({
       data: [createGitRepository([
         { path: 'src/app.tsx', workspacePath: 'src/app.tsx', status: 'modified' },
@@ -160,28 +165,23 @@ describe('changesPanel type interactions', () => {
 
     const rows = screen.getAllByTestId('changes-file-row')
     fireEvent.click(rows[0]!)
-    const tabId = useBrowserPanelStore.getState().activeTabId
     fireEvent.click(rows[1]!)
 
-    expect(useLayoutStore.getState().browserPanelOpen).toBe(true)
-    expect(useBrowserPanelStore.getState().tabs).toEqual([
-      expect.objectContaining({
-        kind: 'workspace-diff',
-        workspaceId: 'workspace-1',
-        repositoryPath: '.',
-        title: 'All Changes',
-      }),
-    ])
-    expect(useBrowserPanelStore.getState().activeTabId).toBe(tabId)
-    expect(useBrowserPanelStore.getState().scrollToFilePath).toMatchObject({
+    expect(openWorkspaceDiffs).toHaveBeenNthCalledWith(1, {
+      workspaceId: 'workspace-1',
+      repositoryPath: '.',
+      path: 'src/app.tsx',
+    })
+    expect(openWorkspaceDiffs).toHaveBeenNthCalledWith(2, {
+      workspaceId: 'workspace-1',
+      repositoryPath: '.',
       path: 'src/feature.ts',
-      tabId,
     })
   })
 })
 
 describe('changesPanel tree interactions', () => {
-  it('opens the diff tab and scrolls to the double-clicked tree file', () => {
+  it('opens the Cradle Diffs surface for the double-clicked tree file', () => {
     renderWithQueryClient(createElement(ChangesPanel, { workspaceId: 'workspace-1' }))
 
     fireEvent.click(screen.getByRole('radio', { name: 'Show changes as tree' }))
@@ -189,18 +189,10 @@ describe('changesPanel tree interactions', () => {
 
     expect(treeMocks.focusPath).toHaveBeenCalledWith('src/app.tsx')
     expect(treeMocks.select).toHaveBeenCalled()
-    expect(useLayoutStore.getState().browserPanelOpen).toBe(true)
-    expect(useBrowserPanelStore.getState().tabs).toEqual([
-      expect.objectContaining({
-        kind: 'workspace-diff',
-        workspaceId: 'workspace-1',
-        repositoryPath: '.',
-        title: 'All Changes',
-      }),
-    ])
-    expect(useBrowserPanelStore.getState().scrollToFilePath).toMatchObject({
+    expect(openWorkspaceDiffs).toHaveBeenCalledWith({
+      workspaceId: 'workspace-1',
+      repositoryPath: '.',
       path: 'src/app.tsx',
-      tabId: useBrowserPanelStore.getState().activeTabId,
     })
   })
 
@@ -210,8 +202,7 @@ describe('changesPanel tree interactions', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Show changes as tree' }))
     fireEvent.doubleClick(screen.getByText('src'))
 
-    expect(useBrowserPanelStore.getState().tabs).toEqual([])
-    expect(useBrowserPanelStore.getState().scrollToFilePath).toBeNull()
+    expect(openWorkspaceDiffs).not.toHaveBeenCalled()
   })
 })
 

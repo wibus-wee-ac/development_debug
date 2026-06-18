@@ -20,6 +20,8 @@ import { Route as SettingsSectionRouteImport } from './routes/settings/$section'
 import { Route as KanbanBoardIdRouteImport } from './routes/kanban/$boardId'
 import { Route as ChatNewRouteImport } from './routes/chat/new'
 import { Route as ChatSessionIdRouteImport } from './routes/chat/$sessionId'
+import { Route as WorkspacesWorkspaceIdIndexRouteImport } from './routes/workspaces/$workspaceId/index'
+import { Route as WorkspacesWorkspaceIdDiffsRouteImport } from './routes/workspaces/$workspaceId/diffs'
 import { Route as PluginsRouteSegmentLocalIdRouteImport } from './routes/plugins/$routeSegment/$localId'
 
 const UsageRoute = UsageRouteImport.update({
@@ -77,6 +79,18 @@ const ChatSessionIdRoute = ChatSessionIdRouteImport.update({
   path: '/chat/$sessionId',
   getParentRoute: () => rootRouteImport,
 } as any)
+const WorkspacesWorkspaceIdIndexRoute =
+  WorkspacesWorkspaceIdIndexRouteImport.update({
+    id: '/',
+    path: '/',
+    getParentRoute: () => WorkspacesWorkspaceIdRoute,
+  } as any)
+const WorkspacesWorkspaceIdDiffsRoute =
+  WorkspacesWorkspaceIdDiffsRouteImport.update({
+    id: '/diffs',
+    path: '/diffs',
+    getParentRoute: () => WorkspacesWorkspaceIdRoute,
+  } as any)
 const PluginsRouteSegmentLocalIdRoute =
   PluginsRouteSegmentLocalIdRouteImport.update({
     id: '/plugins/$routeSegment/$localId',
@@ -95,8 +109,10 @@ export interface FileRoutesByFullPath {
   '/chat/new': typeof ChatNewRoute
   '/kanban/$boardId': typeof KanbanBoardIdRoute
   '/settings/$section': typeof SettingsSectionRoute
-  '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
+  '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRouteWithChildren
   '/plugins/$routeSegment/$localId': typeof PluginsRouteSegmentLocalIdRoute
+  '/workspaces/$workspaceId/diffs': typeof WorkspacesWorkspaceIdDiffsRoute
+  '/workspaces/$workspaceId/': typeof WorkspacesWorkspaceIdIndexRoute
 }
 export interface FileRoutesByTo {
   '/': typeof IndexRoute
@@ -109,8 +125,9 @@ export interface FileRoutesByTo {
   '/chat/new': typeof ChatNewRoute
   '/kanban/$boardId': typeof KanbanBoardIdRoute
   '/settings/$section': typeof SettingsSectionRoute
-  '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
   '/plugins/$routeSegment/$localId': typeof PluginsRouteSegmentLocalIdRoute
+  '/workspaces/$workspaceId/diffs': typeof WorkspacesWorkspaceIdDiffsRoute
+  '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdIndexRoute
 }
 export interface FileRoutesById {
   __root__: typeof rootRouteImport
@@ -124,8 +141,10 @@ export interface FileRoutesById {
   '/chat/new': typeof ChatNewRoute
   '/kanban/$boardId': typeof KanbanBoardIdRoute
   '/settings/$section': typeof SettingsSectionRoute
-  '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRoute
+  '/workspaces/$workspaceId': typeof WorkspacesWorkspaceIdRouteWithChildren
   '/plugins/$routeSegment/$localId': typeof PluginsRouteSegmentLocalIdRoute
+  '/workspaces/$workspaceId/diffs': typeof WorkspacesWorkspaceIdDiffsRoute
+  '/workspaces/$workspaceId/': typeof WorkspacesWorkspaceIdIndexRoute
 }
 export interface FileRouteTypes {
   fileRoutesByFullPath: FileRoutesByFullPath
@@ -142,6 +161,8 @@ export interface FileRouteTypes {
     | '/settings/$section'
     | '/workspaces/$workspaceId'
     | '/plugins/$routeSegment/$localId'
+    | '/workspaces/$workspaceId/diffs'
+    | '/workspaces/$workspaceId/'
   fileRoutesByTo: FileRoutesByTo
   to:
     | '/'
@@ -154,8 +175,9 @@ export interface FileRouteTypes {
     | '/chat/new'
     | '/kanban/$boardId'
     | '/settings/$section'
-    | '/workspaces/$workspaceId'
     | '/plugins/$routeSegment/$localId'
+    | '/workspaces/$workspaceId/diffs'
+    | '/workspaces/$workspaceId'
   id:
     | '__root__'
     | '/'
@@ -170,6 +192,8 @@ export interface FileRouteTypes {
     | '/settings/$section'
     | '/workspaces/$workspaceId'
     | '/plugins/$routeSegment/$localId'
+    | '/workspaces/$workspaceId/diffs'
+    | '/workspaces/$workspaceId/'
   fileRoutesById: FileRoutesById
 }
 export interface RootRouteChildren {
@@ -183,7 +207,7 @@ export interface RootRouteChildren {
   ChatNewRoute: typeof ChatNewRoute
   KanbanBoardIdRoute: typeof KanbanBoardIdRoute
   SettingsSectionRoute: typeof SettingsSectionRoute
-  WorkspacesWorkspaceIdRoute: typeof WorkspacesWorkspaceIdRoute
+  WorkspacesWorkspaceIdRoute: typeof WorkspacesWorkspaceIdRouteWithChildren
   PluginsRouteSegmentLocalIdRoute: typeof PluginsRouteSegmentLocalIdRoute
 }
 
@@ -266,6 +290,20 @@ declare module '@tanstack/react-router' {
       preLoaderRoute: typeof ChatSessionIdRouteImport
       parentRoute: typeof rootRouteImport
     }
+    '/workspaces/$workspaceId/': {
+      id: '/workspaces/$workspaceId/'
+      path: '/'
+      fullPath: '/workspaces/$workspaceId/'
+      preLoaderRoute: typeof WorkspacesWorkspaceIdIndexRouteImport
+      parentRoute: typeof WorkspacesWorkspaceIdRoute
+    }
+    '/workspaces/$workspaceId/diffs': {
+      id: '/workspaces/$workspaceId/diffs'
+      path: '/diffs'
+      fullPath: '/workspaces/$workspaceId/diffs'
+      preLoaderRoute: typeof WorkspacesWorkspaceIdDiffsRouteImport
+      parentRoute: typeof WorkspacesWorkspaceIdRoute
+    }
     '/plugins/$routeSegment/$localId': {
       id: '/plugins/$routeSegment/$localId'
       path: '/plugins/$routeSegment/$localId'
@@ -275,6 +313,21 @@ declare module '@tanstack/react-router' {
     }
   }
 }
+
+interface WorkspacesWorkspaceIdRouteChildren {
+  WorkspacesWorkspaceIdDiffsRoute: typeof WorkspacesWorkspaceIdDiffsRoute
+  WorkspacesWorkspaceIdIndexRoute: typeof WorkspacesWorkspaceIdIndexRoute
+}
+
+const WorkspacesWorkspaceIdRouteChildren: WorkspacesWorkspaceIdRouteChildren = {
+  WorkspacesWorkspaceIdDiffsRoute: WorkspacesWorkspaceIdDiffsRoute,
+  WorkspacesWorkspaceIdIndexRoute: WorkspacesWorkspaceIdIndexRoute,
+}
+
+const WorkspacesWorkspaceIdRouteWithChildren =
+  WorkspacesWorkspaceIdRoute._addFileChildren(
+    WorkspacesWorkspaceIdRouteChildren,
+  )
 
 const rootRouteChildren: RootRouteChildren = {
   IndexRoute: IndexRoute,
@@ -287,7 +340,7 @@ const rootRouteChildren: RootRouteChildren = {
   ChatNewRoute: ChatNewRoute,
   KanbanBoardIdRoute: KanbanBoardIdRoute,
   SettingsSectionRoute: SettingsSectionRoute,
-  WorkspacesWorkspaceIdRoute: WorkspacesWorkspaceIdRoute,
+  WorkspacesWorkspaceIdRoute: WorkspacesWorkspaceIdRouteWithChildren,
   PluginsRouteSegmentLocalIdRoute: PluginsRouteSegmentLocalIdRoute,
 }
 export const routeTree = rootRouteImport

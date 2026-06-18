@@ -1,0 +1,191 @@
+import type { CodeViewItem, DiffLineAnnotation } from '@pierre/diffs'
+import type { CodeViewHandle } from '@pierre/diffs/react'
+import { CodeView, useStableCallback } from '@pierre/diffs/react'
+import type { CSSProperties } from 'react'
+import { useEffect, useMemo, useRef } from 'react'
+
+import type { CodeViewLineSelection, DiffData, ThreadAnnotation } from '../shared/diff-items'
+import { buildCodeViewOptions, buildThreadAnnotations } from '../shared/diff-items'
+import type { CradleDiffReview, DiffStyle, ReviewFile, ReviewThread } from '../shared/types'
+import { InlineThread } from './inline-thread'
+import { ThreadComposer } from './thread-composer'
+
+export interface DiffStageHandle {
+  scrollToPath: (path: string) => void
+  scrollToThread: (thread: ReviewThread) => void
+}
+
+interface DiffStageProps {
+  review: CradleDiffReview
+  diffData: DiffData
+  visibleItems: CodeViewItem<ThreadAnnotation>[]
+  visiblePathToItemId: Map<string, string>
+  diffStyle: DiffStyle
+  selectedLineSelection: CodeViewLineSelection | null
+  onSelectLines: (selection: CodeViewLineSelection | null) => void
+  onFileFromSelection: (fileId: string) => void
+  composerAnchor: CodeViewLineSelection | null
+  onComposerClose: () => void
+  onCreateThread: (input: { fileId: string, anchor: { fileId: string, side: 'base' | 'head', startLine: number, endLine: number }, bodyMarkdown: string }) => void
+  createPending: boolean
+  onReply: (threadId: string, bodyMarkdown: string) => void
+  replyPending: boolean
+  onResolve: (threadId: string) => void
+  resolvePending: boolean
+  files: ReviewFile[]
+  onExpandedThreadIdChange?: (id: string | null) => void
+  handleRef?: (handle: DiffStageHandle | null) => void
+}
+
+export function DiffStage({
+  review,
+  diffData,
+  visibleItems,
+  visiblePathToItemId,
+  diffStyle,
+  selectedLineSelection,
+  onSelectLines,
+  onFileFromSelection,
+  composerAnchor,
+  onComposerClose,
+  onCreateThread,
+  createPending,
+  onReply,
+  replyPending,
+  onResolve,
+  resolvePending,
+  files,
+  onExpandedThreadIdChange,
+  handleRef,
+}: DiffStageProps) {
+  const viewerRef = useRef<CodeViewHandle<ThreadAnnotation>>(null)
+
+  const options = useMemo(
+    () => buildCodeViewOptions(diffStyle, review.preferences),
+    [diffStyle, review.preferences],
+  )
+
+  const annotationsByItem = useMemo(
+    () => buildThreadAnnotations(review.threads, diffData.itemIdToPath),
+    // Key on `review.threads` only: unrelated review changes (viewed/preference/submit mutations)
+    // must not rebuild item objects, or CodeView's referential areItemListsEqual check fails and it
+    // does a full setItems + re-render of the whole visible window.
+    [review.threads, diffData.itemIdToPath],
+  )
+
+  const itemsWithAnnotations = useMemo(
+    () => visibleItems.map((item) => {
+      const annotations = annotationsByItem.get(item.id)
+      return annotations ? { ...item, annotations } : item
+    }),
+    [visibleItems, annotationsByItem],
+  )
+
+  const diffStyleVars = {
+    '--diffs-font-size': `${review.preferences.fontSize ?? 11}px`,
+    '--diffs-line-height': `${review.preferences.lineHeight ?? 18}px`,
+  } as CSSProperties
+
+  const scrollToPath = useStableCallback((path: string) => {
+    const viewer = viewerRef.current
+    if (!viewer || visibleItems.length === 0) {
+      return
+    }
+    const itemId = visiblePathToItemId.get(path)
+    if (!itemId) {
+      return
+    }
+    const item = viewer.getItem(itemId)
+    if (item?.collapsed === true) {
+      viewer.updateItem({ ...item, collapsed: false, version: typeof item.version === 'number' ? item.version + 1 : 1 })
+    }
+    viewer.scrollTo({ type: 'item', id: itemId, align: 'start', behavior: 'smooth' })
+  })
+
+  const scrollToThread = useStableCallback((thread: ReviewThread) => {
+    const viewer = viewerRef.current
+    const anchor = thread.anchor
+    if (!viewer || !anchor) {
+      return
+    }
+    const itemId = visiblePathToItemId.get(anchor.path)
+    if (!itemId) {
+      return
+    }
+    const side = anchor.side === 'base' ? 'deletions' : 'additions'
+    viewer.scrollTo({ type: 'line', id: itemId, lineNumber: anchor.startLine, side, align: 'center', behavior: 'smooth' })
+  })
+
+  useEffect(() => {
+    handleRef?.({ scrollToPath, scrollToThread })
+    return () => handleRef?.(null)
+  }, [handleRef, scrollToPath, scrollToThread])
+
+  const threadById = useMemo(() => new Map(review.threads.map(thread => [thread.id, thread])), [review.threads])
+
+  const renderAnnotation = useStableCallback((annotation: DiffLineAnnotation<ThreadAnnotation>) => {
+    const thread = annotation.metadata ? threadById.get(annotation.metadata.threadId) : null
+    if (!thread) {
+      return null
+    }
+    return (
+      <InlineThread
+        thread={thread}
+        onReply={onReply}
+        replyPending={replyPending}
+        onResolve={onResolve}
+        resolvePending={resolvePending}
+        onExpandedChange={onExpandedThreadIdChange}
+      />
+    )
+  })
+
+  const renderGutterUtility = useStableCallback(() => null)
+
+  const selectDiffLines = useStableCallback((selection: CodeViewLineSelection | null) => {
+    onSelectLines(selection)
+    if (!selection) {
+      return
+    }
+    const path = diffData.itemIdToPath.get(selection.id)
+    const file = path ? files.find(item => item.path === path) : undefined
+    if (file) {
+      onFileFromSelection(file.id)
+    }
+  })
+
+  return (
+    <div className="relative min-h-0 flex-1 overflow-hidden">
+      {visibleItems.length === 0
+        ? (
+            <div className="flex h-full items-center justify-center p-4 text-center">
+              <p className="text-xs text-muted-foreground">Working tree clean</p>
+            </div>
+          )
+        : (
+            <CodeView
+              ref={viewerRef}
+              items={itemsWithAnnotations}
+              options={options}
+              selectedLines={selectedLineSelection}
+              onSelectedLinesChange={selectDiffLines}
+              renderAnnotation={renderAnnotation}
+              renderGutterUtility={renderGutterUtility}
+              style={diffStyleVars}
+              className="min-h-0 h-full overflow-auto overscroll-contain [overflow-anchor:none]"
+            />
+          )}
+
+      {composerAnchor && (
+        <ThreadComposer
+          selection={composerAnchor}
+          files={files}
+          itemIdToPath={diffData.itemIdToPath}
+          onClose={onComposerClose}
+          onCreate={onCreateThread}
+          pending={createPending}
+        />
+      )}
+    </div>
+  )
+}

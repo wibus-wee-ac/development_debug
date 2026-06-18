@@ -3,6 +3,7 @@ export type SurfaceKind =
   | 'new-chat'
   | 'chat'
   | 'workspace'
+  | 'workspace-diffs'
   | 'kanban'
   | 'plugin'
   | 'awaits'
@@ -17,6 +18,7 @@ export type SurfaceRoute =
   | { to: '/chat/new', params?: undefined, search?: undefined }
   | { to: '/chat/$sessionId', params: { sessionId: string }, search?: undefined }
   | { to: '/workspaces/$workspaceId', params: { workspaceId: string }, search?: undefined }
+  | { to: '/workspaces/$workspaceId/diffs', params: { workspaceId: string }, search?: { repo?: string, path?: string } }
   | { to: '/kanban/$boardId', params: { boardId: string }, search?: { issue?: string, milestoneId?: string } }
   | { to: '/plugins/$routeSegment/$localId', params: { routeSegment: string, localId: string }, search?: undefined }
   | { to: '/awaits', params?: undefined, search?: undefined }
@@ -72,6 +74,10 @@ export function workspaceSurfaceId(workspaceId: string): string {
   return `workspace:${workspaceId}`
 }
 
+export function workspaceDiffsSurfaceId(workspaceId: string): string {
+  return `workspace-diffs:${workspaceId}`
+}
+
 export function kanbanSurfaceId(boardId: string): string {
   return `kanban:${boardId}`
 }
@@ -118,6 +124,23 @@ export function surfaceDraftFromRoute(input: {
   }
 
   const workspaceId = readString(params.workspaceId)
+  if (input.pathname.startsWith('/workspaces/') && input.pathname.endsWith('/diffs') && workspaceId) {
+    return {
+      id: workspaceDiffsSurfaceId(workspaceId),
+      kind: 'workspace-diffs',
+      title: 'Cradle Diffs',
+      route: {
+        to: '/workspaces/$workspaceId/diffs',
+        params: { workspaceId },
+        search: {
+          repo: readString(search.repo),
+          path: readString(search.path),
+        },
+      },
+      closable: true,
+    }
+  }
+
   if (input.pathname.startsWith('/workspaces/') && workspaceId) {
     return {
       id: workspaceSurfaceId(workspaceId),
@@ -235,6 +258,10 @@ export function layoutSlotIdForSurface(surface: Pick<AppSurface, 'kind' | 'route
     return `workspace-detail:${surface.route.params.workspaceId}`
   }
 
+  if (surface.kind === 'workspace-diffs' && surface.route.to === '/workspaces/$workspaceId/diffs') {
+    return `workspace-diffs:${surface.route.params.workspaceId}`
+  }
+
   if (surface.kind === 'new-chat') {
     return 'new-chat'
   }
@@ -252,6 +279,10 @@ export function chatSessionIdForSurface(surface: Pick<AppSurface, 'kind' | 'rout
 
 export function workspaceIdForSurface(surface: Pick<AppSurface, 'kind' | 'route'> | null | undefined): string | null {
   if (surface?.kind === 'workspace' && surface.route.to === '/workspaces/$workspaceId') {
+    return surface.route.params.workspaceId
+  }
+
+  if (surface?.kind === 'workspace-diffs' && surface.route.to === '/workspaces/$workspaceId/diffs') {
     return surface.route.params.workspaceId
   }
 

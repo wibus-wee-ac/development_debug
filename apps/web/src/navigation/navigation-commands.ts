@@ -10,6 +10,7 @@ import {
   createHomeSurfaceDraft,
   kanbanSurfaceId,
   pluginSurfaceId,
+  workspaceDiffsSurfaceId,
   workspaceSurfaceId,
 } from './surface-identity'
 import { readActiveSurface, readSurface, useSurfaceStore } from './surface-store'
@@ -64,6 +65,27 @@ export function openWorkspaceDetail(workspaceId: string, options: { replace?: bo
     kind: 'workspace',
     title: 'Workspace',
     route: { to: '/workspaces/$workspaceId', params: { workspaceId } },
+    closable: true,
+  }, options)
+}
+
+export function openWorkspaceDiffs(input: {
+  workspaceId: string
+  repositoryPath?: string
+  path?: string
+}, options: { replace?: boolean } = {}): void {
+  openSurface({
+    id: workspaceDiffsSurfaceId(input.workspaceId),
+    kind: 'workspace-diffs',
+    title: 'Cradle Diffs',
+    route: {
+      to: '/workspaces/$workspaceId/diffs',
+      params: { workspaceId: input.workspaceId },
+      search: {
+        repo: input.repositoryPath && input.repositoryPath !== '.' ? input.repositoryPath : undefined,
+        path: input.path,
+      },
+    },
     closable: true,
   }, options)
 }
