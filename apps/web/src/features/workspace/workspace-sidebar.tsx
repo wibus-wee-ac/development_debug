@@ -1289,11 +1289,14 @@ const SessionItem = memo(
                 label={t('session.aria.newReply')}
               />
               {isStreaming ? (
-                <LoaderCircleIcon
-                  className="size-3.5 shrink-0 animate-spin text-muted-foreground/70"
+                <span
+                  className="grid size-3.5 shrink-0 animate-spin place-items-center text-muted-foreground/70 [contain:layout_paint] [will-change:transform] motion-reduce:animate-none"
                   aria-label={t('session.aria.running')}
+                  role="status"
                   data-testid={`session-running-indicator-${session.id}`}
-                />
+                >
+                  <LoaderCircleIcon className="size-3.5" aria-hidden="true" />
+                </span>
               ) : (
                 <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">
                   {formatRelativeTime(session.listActivityAt, t)}
