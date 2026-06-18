@@ -174,7 +174,10 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
         visible,
       })
     }
-    else if (e.key === 'Tab' && !e.shiftKey && results[effectiveActiveIndex]) {
+    else if (
+      ((e.key === 'Tab' && !e.shiftKey) || e.key === 'Enter')
+      && results[effectiveActiveIndex]
+    ) {
       e.preventDefault()
       setSelection({ activeIndex: 0, query, visible })
       if (onTabComplete) {
@@ -183,11 +186,6 @@ export function AutocompletePanel<TItem extends AutocompletePanelItem>({
       else {
         onSelect(results[effectiveActiveIndex].item)
       }
-    }
-    else if (e.key === 'Enter' && results[effectiveActiveIndex]) {
-      e.preventDefault()
-      setSelection({ activeIndex: 0, query, visible })
-      onSelect(results[effectiveActiveIndex].item)
     }
     else if (e.key === 'Escape') {
       e.preventDefault()

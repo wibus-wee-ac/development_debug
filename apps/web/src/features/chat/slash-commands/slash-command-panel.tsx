@@ -320,8 +320,8 @@ export function SlashCommandPanel({
   })
 
   useEffect(() => {
-    document.addEventListener('keydown', handleDocumentKeyDown)
-    return () => document.removeEventListener('keydown', handleDocumentKeyDown)
+    document.addEventListener('keydown', handleDocumentKeyDown, true)
+    return () => document.removeEventListener('keydown', handleDocumentKeyDown, true)
   }, [])
 
   const handleOptionClick = useCallback(

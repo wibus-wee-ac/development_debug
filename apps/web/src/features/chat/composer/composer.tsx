@@ -882,7 +882,12 @@ export function Composer({
 
   const handleMentionTabComplete = useCallback((item: MentionPickerItem) => {
     const range = mentionRangeRef.current
-    if (!range || item.kind === 'plugin') {
+    if (!range) {
+      return
+    }
+    if (item.kind === 'plugin') {
+      promptEditorRef.current?.insertPluginMention(item, range)
+      dispatch({ type: 'mention/selected' })
       return
     }
     promptEditorRef.current?.replaceFileTriggerWithText(item, range)
