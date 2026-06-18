@@ -741,11 +741,52 @@ function getDitheredCellFillStyle(lightness: number, tone: 'neutral' | 'plan'): 
   return `oklch(${lightness.toFixed(3)} 0 0)`
 }
 
+function clearDitheredMouseTarget(target: { current: { x: number, y: number } }): boolean {
+  if (target.current.x <= -9998) {
+    return false
+  }
+  target.current = { x: -9999, y: -9999 }
+  return true
+}
+
+function updateDitheredMouseTarget(
+  canvas: HTMLCanvasElement | null,
+  target: { current: { x: number, y: number } },
+  glowRadius: number,
+  clientX: number,
+  clientY: number,
+): boolean {
+  const rect = canvas?.getBoundingClientRect()
+  if (!rect) {
+    return false
+  }
+
+  const x = clientX - rect.left
+  const y = clientY - rect.top
+  const inGlowRange = glowRadius > 0
+    && x >= -glowRadius
+    && x <= rect.width + glowRadius
+    && y >= -glowRadius
+    && y <= rect.height + glowRadius
+
+  if (!inGlowRange) {
+    return clearDitheredMouseTarget(target)
+  }
+
+  const current = target.current
+  if (Math.abs(current.x - x) < 0.5 && Math.abs(current.y - y) < 0.5) {
+    return false
+  }
+
+  target.current = { x, y }
+  return true
+}
+
 /**
  * GitHub-style contribution graph decoration — Canvas-based, monochrome dither
- * pattern where cells trade deterministic brightness levels over time. Mouse
- * proximity creates a localized glow. Pattern is position-stable: resizing the
- * window does not reshuffle the layout.
+ * pattern with deterministic brightness variation. Mouse proximity creates a
+ * localized glow. Pattern is position-stable: resizing the window does not
+ * reshuffle the layout.
  */
 export function DitheredGradientDecoration({
   rows = 16,
@@ -762,7 +803,6 @@ export function DitheredGradientDecoration({
   style,
 }: DitheredGradientDecorationProps = {}) {
   const canvasRef = useRef<HTMLCanvasElement>(null)
-  const mouseRef = useRef({ x: -9999, y: -9999 })
   const targetMouseRef = useRef({ x: -9999, y: -9999 })
   const requestPaintRef = useRef<(() => void) | null>(null)
   const toneRef = useRef(tone)
@@ -796,82 +836,85 @@ export function DitheredGradientDecoration({
     const t2 = invThreshold + density * (2 / 3)
     const t3 = invThreshold + density * 0.867
 
-    // Lazy cell lookup keyed by grid position — deterministic, resize-stable
-    const cellCache = new Map<string, { level: number; phase: number; speed: number }>()
-    function getCell(col: number, row: number) {
-      const key = `${col},${row}`
-      const cached = cellCache.get(key)
-      if (cached) return cached
-      const v = posHash(col, row)
-      let level = 0
-      if (v >= invThreshold && v < t1) level = 1
-      else if (v >= t1 && v < t2) level = 2
-      else if (v >= t2 && v < t3) level = 3
-      else if (v >= t3) level = 4
-      const cell = {
-        level,
-        phase: posHash(col * 3 + 7, row * 3 + 7) * Math.PI * 2,
-        speed: 0.8 + posHash(col * 5 + 13, row * 5 + 13) * 0.8,
+    const baseLightness = {
+      dark: [0, 0.65, 0.50, 0.38, 0.25],
+      light: [0, 0.86, 0.72, 0.58, 0.44],
+    } as const
+
+    let cellColumns = -1
+    let cells: Array<{
+      x: number
+      y: number
+      cx: number
+      cy: number
+      darkLightness: number
+      lightLightness: number
+    }> = []
+
+    const rebuildCells = (cols: number) => {
+      cellColumns = cols
+      cells = []
+      for (let row = 0; row < rows; row++) {
+        for (let col = 0; col < cols; col++) {
+          const v = posHash(col, row)
+          let level = 0
+          if (v >= invThreshold && v < t1) level = 1
+          else if (v >= t1 && v < t2) level = 2
+          else if (v >= t2 && v < t3) level = 3
+          else if (v >= t3) level = 4
+
+          if (level === 0) {
+            continue
+          }
+
+          const direction = posHash(col * 3 + 7, row * 3 + 7) > 0.5 ? 1 : -1
+          const blend = posHash(col * 5 + 13, row * 5 + 13)
+          const targetLevel = Math.max(1, Math.min(4, level + direction))
+          cells.push({
+            x: col * step,
+            y: row * step,
+            cx: col * step + cellSize / 2,
+            cy: row * step + cellSize / 2,
+            darkLightness: baseLightness.dark[level] + (baseLightness.dark[targetLevel] - baseLightness.dark[level]) * blend,
+            lightLightness: baseLightness.light[level] + (baseLightness.light[targetLevel] - baseLightness.light[level]) * blend,
+          })
+        }
       }
-      cellCache.set(key, cell)
-      return cell
     }
 
-    const paint = (runtime: CanvasRuntime, time = performance.now()) => {
+    const paint = (runtime: CanvasRuntime) => {
       const { W: w, H: h } = runtime.size
       ctx.clearRect(0, 0, w, h)
 
-      const isDark = runtime.theme === 'dark'
-      // Wider range per level → visible "alternating bright" contrast
-      const baseLightness = isDark
-        ? [0, 0.65, 0.50, 0.38, 0.25]
-        : [0, 0.86, 0.72, 0.58, 0.44]
-
-      const t = time / 1000
-
-      const ease = 0.06
-      if (targetMouseRef.current.x > -9998) {
-        mouseRef.current.x += (targetMouseRef.current.x - mouseRef.current.x) * ease
-        mouseRef.current.y += (targetMouseRef.current.y - mouseRef.current.y) * ease
-      }
-      else {
-        mouseRef.current.x += (-9999 - mouseRef.current.x) * 0.15
-        mouseRef.current.y += (-9999 - mouseRef.current.y) * 0.15
-      }
-
-      const mx = mouseRef.current.x
-      const my = mouseRef.current.y
       const cols = Math.ceil(w / step)
+      if (cols !== cellColumns) {
+        rebuildCells(cols)
+      }
 
-      for (let row = 0; row < rows; row++) {
-        for (let col = 0; col < cols; col++) {
-          const cell = getCell(col, row)
-          if (cell.level === 0) continue
+      const isDark = runtime.theme === 'dark'
+      const mouse = targetMouseRef.current
+      const hasMouse = mouse.x > -9998 && glowRadius > 0
+      const glowRadiusSquared = glowRadius * glowRadius
+      const tone = toneRef.current
 
-          // Dither swap: each cell oscillates between its base level and an
-          // adjacent level. Nearby cells run at different phases, so brightness
-          // "trades places" across the grid — like real dithering.
-          const wave = Math.sin(t * cell.speed + cell.phase)
-          const dir = wave > 0 ? 1 : -1
-          const blend = Math.abs(wave)
-          const targetLevel = Math.max(1, Math.min(4, cell.level + dir))
-          const l = baseLightness[cell.level] + (baseLightness[targetLevel] - baseLightness[cell.level]) * blend
-
-          // Mouse glow — sharp falloff, direction-correct per theme
-          const cx = col * step + cellSize / 2
-          const cy = row * step + cellSize / 2
-          const dist = Math.sqrt((mx - cx) ** 2 + (my - cy) ** 2)
-          const glow = Math.max(0, 1 - dist / glowRadius) ** 1.5
-          const finalL = isDark
-            ? Math.min(0.95, l + glow * 0.35)
-            : Math.max(0.05, l - glow * 0.35)
-
-          ctx.globalAlpha = 1
-          ctx.fillStyle = getDitheredCellFillStyle(finalL, toneRef.current)
-          ctx.beginPath()
-          ctx.roundRect(col * step, row * step, cellSize, cellSize, radius)
-          ctx.fill()
+      for (const cell of cells) {
+        let finalL = isDark ? cell.darkLightness : cell.lightLightness
+        if (hasMouse) {
+          const dx = mouse.x - cell.cx
+          const dy = mouse.y - cell.cy
+          const distanceSquared = dx * dx + dy * dy
+          if (distanceSquared < glowRadiusSquared) {
+            const glow = Math.max(0, 1 - Math.sqrt(distanceSquared) / glowRadius) ** 1.5
+            finalL = isDark
+              ? Math.min(0.95, finalL + glow * 0.35)
+              : Math.max(0.05, finalL - glow * 0.35)
+          }
         }
+
+        ctx.fillStyle = getDitheredCellFillStyle(finalL, tone)
+        ctx.beginPath()
+        ctx.roundRect(cell.x, cell.y, cellSize, cellSize, radius)
+        ctx.fill()
       }
 
       if (fadeBottom) {
@@ -889,50 +932,44 @@ export function DitheredGradientDecoration({
 
     const runtime = createCanvasRuntime(canvas, ctx, paint)
     requestPaintRef.current = runtime.requestPaint
-    let animationFrameId = 0
-    let animationDisposed = false
-
-    const paintAnimationFrame = (time: number) => {
-      animationFrameId = 0
-      if (isCanvasDrawable(runtime)) {
-        paint(runtime, time)
-      }
-      if (!animationDisposed) {
-        animationFrameId = requestAnimationFrame(paintAnimationFrame)
-      }
-    }
-    animationFrameId = requestAnimationFrame(paintAnimationFrame)
 
     let cleanupMouse: (() => void) | undefined
     if (trackGlobal) {
       const onMove = (e: MouseEvent) => {
-        const rect = canvas.getBoundingClientRect()
-        targetMouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-        runtime.requestPaint()
+        if (updateDitheredMouseTarget(canvas, targetMouseRef, glowRadius, e.clientX, e.clientY)) {
+          runtime.requestPaint()
+        }
+      }
+      const onLeave = () => {
+        if (clearDitheredMouseTarget(targetMouseRef)) {
+          runtime.requestPaint()
+        }
       }
       window.addEventListener('mousemove', onMove)
-      cleanupMouse = () => window.removeEventListener('mousemove', onMove)
+      window.addEventListener('blur', onLeave)
+      cleanupMouse = () => {
+        window.removeEventListener('mousemove', onMove)
+        window.removeEventListener('blur', onLeave)
+      }
     }
 
     return () => {
-      animationDisposed = true
-      cancelAnimationFrame(animationFrameId)
       requestPaintRef.current = null
       runtime.cleanup()
       cleanupMouse?.()
     }
-  }, [active, rows, cellSize, gap, radius, glowRadius, density, fadeBottom, step, trackGlobal])
+  }, [active, rows, cellSize, radius, glowRadius, density, fadeBottom, step, trackGlobal])
 
   const handleMouseMove = (e: { clientX: number, clientY: number }) => {
-    const rect = canvasRef.current?.getBoundingClientRect()
-    if (!rect) return
-    targetMouseRef.current = { x: e.clientX - rect.left, y: e.clientY - rect.top }
-    requestPaintRef.current?.()
+    if (updateDitheredMouseTarget(canvasRef.current, targetMouseRef, glowRadius, e.clientX, e.clientY)) {
+      requestPaintRef.current?.()
+    }
   }
 
   const handleMouseLeave = () => {
-    targetMouseRef.current = { x: -9999, y: -9999 }
-    requestPaintRef.current?.()
+    if (clearDitheredMouseTarget(targetMouseRef)) {
+      requestPaintRef.current?.()
+    }
   }
 
   return (
