@@ -13,12 +13,11 @@ import { useLayoutStore } from '~/store/layout'
 import { runtimeUiSlotStatesQueryKey } from '../capabilities/chat-capabilities'
 import { readBangCommand } from '../commands/bang-command'
 import { annotateBangCommandMessage, annotateBangResultMessage } from '../commands/bang-command-metadata'
-import { cancelChatResponse, createSideChat, enqueueChatSessionQueueItem, executeBangCommand, readChatCommandErrorCode, resolvePlanImplementationApproval, steerChatSessionTurn, submitRuntimeUserInput } from '../commands/chat-response-command'
+import { cancelChatResponse, createSideChat, enqueueChatSessionQueueItem, executeBangCommand, readChatCommandErrorCode, resolvePlanImplementationApproval, steerChatSessionTurn, submitRuntimeToolApproval, submitRuntimeUserInput } from '../commands/chat-response-command'
 import type { RuntimeSessionStatus } from '../commands/runtime-session-status-command'
-import { getRuntimeSessionStatus } from '../commands/runtime-session-status-command'
 import { runtimeSettingsQueryKey, updateSessionRuntimeSettings } from '../commands/runtime-settings-command'
 import type { ChatContextPart } from '../context/chat-context-parts'
-import { runtimeSessionStatusQueryKey } from '../runtime/use-runtime-session-status'
+import { runtimeSessionStatusQueryKey, runtimeSessionStatusQueryOptions } from '../runtime/use-runtime-session-status'
 import { startChatResponseStream } from '../transport/chat-stream-transport'
 import { ChatStreamingHandler } from '../transport/chat-streaming-handler'
 import { buildOptimisticUserMessage, readCodexGoalCommandObjective } from './optimistic-chat-turn'
@@ -31,6 +30,7 @@ import {
   isMatchingToolPart,
   QUEUE_DRAIN_SYNC_DELAY_MS,
   readPlanImplementationApprovalRequest,
+  readRuntimeToolApprovalRequest,
   readRuntimeUserInputRequestId,
   readSideChatCommand,
   releaseStaleSessionStreamingState,
@@ -74,8 +74,7 @@ export function useChatActions(input: UseChatActionsInput) {
       ? readCodexGoalCommandObjective(text)
       : null
     const canonicalRuntimeStatus = await queryClient.fetchQuery({
-      queryKey: runtimeSessionStatusQueryKey(chatSessionId),
-      queryFn: () => getRuntimeSessionStatus(chatSessionId),
+      ...runtimeSessionStatusQueryOptions(chatSessionId),
       staleTime: 0,
     }).catch(() => runtimeStatus ?? null)
     const isBusy = Boolean(
@@ -322,8 +321,7 @@ export function useChatActions(input: UseChatActionsInput) {
     if (isBusy) {
       if (codexGoalObjective) {
         const latestRuntimeStatus = canonicalRuntimeStatus ?? await queryClient.fetchQuery({
-          queryKey: runtimeSessionStatusQueryKey(chatSessionId),
-          queryFn: () => getRuntimeSessionStatus(chatSessionId),
+          ...runtimeSessionStatusQueryOptions(chatSessionId),
           staleTime: 0,
         })
         if (latestRuntimeStatus && latestRuntimeStatus.runtimeKind === 'codex') {
@@ -387,8 +385,7 @@ export function useChatActions(input: UseChatActionsInput) {
 
           if (errorCode === 'chat_steer_no_active_run') {
             const runtimeStatus = await queryClient.fetchQuery({
-              queryKey: runtimeSessionStatusQueryKey(chatSessionId),
-              queryFn: () => getRuntimeSessionStatus(chatSessionId),
+              ...runtimeSessionStatusQueryOptions(chatSessionId),
               staleTime: 0,
             }).catch(() => null)
             releaseStaleSessionStreamingState(chatSessionId)
@@ -472,6 +469,34 @@ export function useChatActions(input: UseChatActionsInput) {
           runtimeSettings: { interactionMode: 'default' },
         })
       }
+      return
+    }
+
+    const runtimeToolApprovalRequest = readRuntimeToolApprovalRequest(currentMessages, response)
+    if (runtimeToolApprovalRequest) {
+      store.updateMessage(chatSessionId, response.messageId, message => ({
+        ...message,
+        parts: message.parts.map(part =>
+          isMatchingApprovalPart(part, response.approvalId)
+            ? {
+                ...part,
+                state: 'approval-responded',
+                approval: {
+                  id: response.approvalId,
+                  approved: response.approved,
+                  ...(response.reason ? { reason: response.reason } : {}),
+                },
+              } as UIMessage['parts'][number]
+            : part),
+      }), { dirtyToolCallIds: new Set([runtimeToolApprovalRequest.toolCallId]) })
+      await submitRuntimeToolApproval({
+        sessionId: chatSessionId,
+        requestId: runtimeToolApprovalRequest.requestId,
+        approved: response.approved,
+        reason: response.reason,
+      })
+      scheduleSnapshotRefresh(0)
+      void queryClient.invalidateQueries({ queryKey: runtimeUiSlotStatesQueryKey(chatSessionId) })
       return
     }
 

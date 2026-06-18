@@ -174,9 +174,18 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     argumentHint: '',
     iconKey: 'approvals',
     commandText: '/approvals ',
+    anyMethods: [
+      'item/commandExecution/requestApproval',
+      'item/fileChange/requestApproval',
+      'item/permissions/requestApproval',
+      'applyPatchApproval',
+      'execCommandApproval'
+    ],
     anyNotifications: [
       'item/autoApprovalReview/started',
       'item/autoApprovalReview/completed',
+      'serverRequest/pending',
+      'serverRequest/handled',
       'serverRequest/resolved'
     ]
   },

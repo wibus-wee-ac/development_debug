@@ -558,6 +558,7 @@ export interface ProviderContext {
   updateSecret?: (credentialRef: string, value: string) => void
   resolveSkillPaths?: (workspacePath: string) => string[]
   requestUserInput?: (input: RuntimeUserInputRequest) => Promise<RuntimeUserInputResolution>
+  requestToolApproval?: (input: RuntimeToolApprovalRequest) => Promise<RuntimeToolApprovalResolution>
   recordObservability?: (input: CreateEventInput) => void
   logger?: Logger
 }
@@ -591,6 +592,23 @@ export interface RuntimeUserInputRequest {
 export interface RuntimeUserInputResolution {
   requestId: string
   answers: Record<string, string[]>
+}
+
+export interface RuntimeToolApprovalRequest {
+  sessionId: string
+  runId: string
+  providerRequestId: string
+  providerKind: ProviderKind
+  runtimeKind: RuntimeKind
+  providerMethod: string
+  toolCallId: string
+  metadata?: Record<string, unknown>
+}
+
+export interface RuntimeToolApprovalResolution {
+  requestId: string
+  approved: boolean
+  reason?: string
 }
 
 export type ProviderError =

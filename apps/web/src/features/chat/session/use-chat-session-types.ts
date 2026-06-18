@@ -156,6 +156,19 @@ export interface PlanImplementationApprovalRequest {
   planContent: string
 }
 
+export interface RuntimeToolApprovalRequest {
+  requestId: string
+  toolCallId: string
+}
+
+const RUNTIME_TOOL_APPROVAL_API_NAMES = new Set([
+  'approval.command_execution',
+  'approval.file_change',
+  'approval.permissions',
+  'approval.apply_patch',
+  'approval.exec_command',
+])
+
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
 }
@@ -209,6 +222,31 @@ export function readPlanImplementationApprovalRequest(
   }
   const planContent = readPlanContentFromInput((part as { input?: unknown }).input)
   return planContent ? { toolCallId: part.toolCallId, planContent } : null
+}
+
+export function readRuntimeToolApprovalRequest(
+  messages: UIMessage[],
+  response: ToolApprovalResponseInput,
+): RuntimeToolApprovalRequest | null {
+  if (!response.approvalId.startsWith('server-request-')) {
+    return null
+  }
+  const message = messages.find(item => item.id === response.messageId)
+  const part = message?.parts.find(item => isMatchingApprovalPart(item, response.approvalId))
+  if (!part || !('toolCallId' in part) || typeof part.toolCallId !== 'string') {
+    return null
+  }
+  if (part.toolCallId !== response.approvalId) {
+    return null
+  }
+  const apiName = readToolApiName(part)
+  if (!apiName || !RUNTIME_TOOL_APPROVAL_API_NAMES.has(apiName)) {
+    return null
+  }
+  return {
+    requestId: readRuntimeUserInputRequestId(response.approvalId),
+    toolCallId: part.toolCallId,
+  }
 }
 
 export function readSideChatCommand(text: string): string | null {

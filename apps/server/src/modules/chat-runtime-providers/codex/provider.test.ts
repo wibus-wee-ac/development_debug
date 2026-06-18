@@ -5,9 +5,17 @@ import { join } from 'node:path'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
-import type { RuntimeProviderTargetProfile, RuntimeSession, RuntimeUserInputRequest, RuntimeUserInputResolution } from '../../chat-runtime/runtime-provider-types'
+import type {
+  RuntimeProviderTargetProfile,
+  RuntimeSession,
+  RuntimeToolApprovalRequest,
+  RuntimeToolApprovalResolution,
+  RuntimeUserInputRequest,
+  RuntimeUserInputResolution,
+} from '../../chat-runtime/runtime-provider-types'
 import { providerRuntimeHostManager } from '../../provider-runtime/host-manager'
 import type { CodexAppServerClientOptions, CodexAppServerMessage, CodexAppServerServerRequest } from './app-server/client'
+import { isCodexAppServerInteractiveServerRequest } from './app-server/server-request-methods'
 import { CodexProvider } from './provider'
 
 afterEach(() => {
@@ -446,7 +454,7 @@ class FakeCodexAppServerClient {
     if (!this.options.serverRequestHandler) {
       throw new Error('Expected a Codex app-server server request handler')
     }
-    if (isPendingInteractiveServerRequest(request.method)) {
+    if (isCodexAppServerInteractiveServerRequest(request.method)) {
       this.pushNotification({
         method: 'serverRequest/pending',
         params: {
@@ -468,10 +476,6 @@ class FakeCodexAppServerClient {
     })
     return result
   }
-}
-
-function isPendingInteractiveServerRequest(method: string): boolean {
-  return method === 'item/tool/requestUserInput' || method === 'mcpServer/elicitation/request'
 }
 
 function createProfile(config: Record<string, unknown> = {}): RuntimeProviderTargetProfile {
@@ -5560,7 +5564,24 @@ describe('codexProvider app-server integration', () => {
 
   it('handles Codex app-server server requests as standardized tool chunks', async () => {
     const client = new FakeCodexAppServerClient({})
-    const provider = createProvider(client)
+    const approvalResolver: {
+      resolve: ((resolution: RuntimeToolApprovalResolution) => void) | null
+    } = { resolve: null }
+    const requestToolApproval = vi.fn((_request: RuntimeToolApprovalRequest) => {
+      return new Promise<RuntimeToolApprovalResolution>((resolve) => {
+        approvalResolver.resolve = resolve
+      })
+    })
+    const provider = new CodexProvider({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      requestToolApproval,
+      createAppServerClient: (options) => {
+        client.options = options
+        return client
+      },
+    })
     const stream = provider.streamTurn({
       runId: 'run-codex-server-request',
       runtimeSession: createRuntimeSession(),
@@ -5576,11 +5597,11 @@ describe('codexProvider app-server integration', () => {
     })
 
     const params = { command: 'rm -rf build' }
-    await expect(client.pushServerRequest({
+    const serverRequestPromise = client.pushServerRequest({
       id: 42,
       method: 'item/commandExecution/requestApproval',
       params,
-    })).resolves.toEqual({ decision: 'decline' })
+    })
 
     await expect(firstChunkPromise).resolves.toEqual({
       done: false,
@@ -5590,6 +5611,38 @@ describe('codexProvider app-server integration', () => {
         toolName: 'server_request_item_commandExecution_requestApproval',
       },
     })
+    await expect(stream.next()).resolves.toEqual({
+      done: false,
+      value: {
+        type: 'tool-input-available',
+        toolCallId: 'server-request-42',
+        toolName: 'server_request_item_commandExecution_requestApproval',
+        input: codexInput('approval.command_execution', params),
+      },
+    })
+    await expect(stream.next()).resolves.toEqual({
+      done: false,
+      value: {
+        type: 'tool-approval-request',
+        toolCallId: 'server-request-42',
+        approvalId: 'server-request-42',
+      },
+    })
+
+    expect(requestToolApproval).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'chat-session-1',
+      runId: 'run-codex-server-request',
+      providerRequestId: '42',
+      providerMethod: 'item/commandExecution/requestApproval',
+      toolCallId: 'server-request-42',
+      metadata: { params },
+    }))
+
+    approvalResolver.resolve?.({
+      requestId: '42',
+      approved: true,
+    })
+    await expect(serverRequestPromise).resolves.toEqual({ decision: 'accept' })
 
     client.pushNotification({
       method: 'turn/completed',
@@ -5606,15 +5659,9 @@ describe('codexProvider app-server integration', () => {
 
     expect(chunks).toEqual([
       {
-        type: 'tool-input-available',
-        toolCallId: 'server-request-42',
-        toolName: 'server_request_item_commandExecution_requestApproval',
-        input: codexInput('approval.command_execution', params),
-      },
-      {
         type: 'tool-output-available',
         toolCallId: 'server-request-42',
-        output: codexOutput('approval.command_execution', params, { decision: 'decline' }),
+        output: codexOutput('approval.command_execution', params, { decision: 'accept' }),
       },
     ])
   })

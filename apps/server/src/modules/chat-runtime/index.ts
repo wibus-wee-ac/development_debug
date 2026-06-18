@@ -9,6 +9,7 @@ import {
 } from './chat-runtime-provider-registry'
 import { invokeCodexAppServer, openCodexAppServerStream } from './codex/host'
 import { ChatRuntimeModel } from './model'
+import { submitRuntimeToolApproval } from './pending-tool-approval'
 import { submitRuntimeUserInput } from './pending-user-input'
 import { getRunSnapshot, getRunSnapshots } from './run-snapshot'
 import { createEmptyRuntimePresentation } from './runtime-provider-types'
@@ -220,6 +221,26 @@ export const chatRuntime = new Elysia({
       params: ChatRuntimeModel.userInputParams,
       body: ChatRuntimeModel.userInputBody,
       response: { 200: ChatRuntimeModel.userInputResponse }
+    }
+  )
+  // POST /chat/sessions/:sessionId/tool-approval/:requestId -> resolve a provider pending tool approval request
+  .post(
+    '/sessions/:sessionId/tool-approval/:requestId',
+    async ({ params, body }) => {
+      return submitRuntimeToolApproval({
+        sessionId: params.sessionId,
+        requestId: params.requestId,
+        approved: body.approved,
+        reason: body.reason
+      })
+    },
+    {
+      detail: {
+        summary: 'Submit a decision for a pending runtime tool approval request'
+      },
+      params: ChatRuntimeModel.toolApprovalParams,
+      body: ChatRuntimeModel.toolApprovalBody,
+      response: { 200: ChatRuntimeModel.toolApprovalResponse }
     }
   )
   // POST /chat/side-conversations/:sideConversationId/response -> stream a live-only side conversation turn

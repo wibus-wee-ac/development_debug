@@ -942,6 +942,11 @@ export const ChatRuntimeModel = {
     requestId: t.String({ minLength: 1 })
   }),
 
+  toolApprovalParams: t.Object({
+    sessionId: t.String({ minLength: 1 }),
+    requestId: t.String({ minLength: 1 })
+  }),
+
   planImplementationApprovalParams: t.Object({
     sessionId: t.String({ minLength: 1 }),
     messageId: t.String({ minLength: 1 })
@@ -973,6 +978,17 @@ export const ChatRuntimeModel = {
 
   userInputBody: t.Object({
     answers: t.Record(t.String(), t.Array(t.String()))
+  }),
+
+  toolApprovalBody: t.Object({
+    approved: t.Boolean(),
+    reason: t.Optional(t.String())
+  }),
+
+  toolApprovalResponse: t.Object({
+    requestId: t.String(),
+    approved: t.Boolean(),
+    reason: t.Optional(t.String())
   }),
 
   planImplementationApprovalBody: t.Object({

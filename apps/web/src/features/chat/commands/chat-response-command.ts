@@ -426,6 +426,31 @@ export async function submitRuntimeUserInput(args: {
   return await res.json() as { requestId: string, answers: Record<string, string[]> }
 }
 
+export async function submitRuntimeToolApproval(args: {
+  sessionId: string
+  requestId: string
+  approved: boolean
+  reason?: string
+  signal?: AbortSignal
+}): Promise<{ requestId: string, approved: boolean, reason?: string }> {
+  const res = await fetch(`${SERVER_BASE}/chat/sessions/${args.sessionId}/tool-approval/${args.requestId}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      approved: args.approved,
+      ...(args.reason ? { reason: args.reason } : {}),
+    }),
+    signal: args.signal,
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Failed to submit runtime tool approval: ${res.status} ${body}`)
+  }
+
+  return await res.json() as { requestId: string, approved: boolean, reason?: string }
+}
+
 export async function resolvePlanImplementationApproval(args: {
   sessionId: string
   messageId: string

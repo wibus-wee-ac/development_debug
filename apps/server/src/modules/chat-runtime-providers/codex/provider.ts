@@ -55,6 +55,10 @@ import {
 } from './app-server/bridge'
 import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server/client'
 import { buildCradleCodexAppServerEnv } from './app-server/client'
+import {
+  isCodexAppServerToolApprovalRequest,
+  isCodexAppServerUserInputRequest,
+} from './app-server/server-request-methods'
 import type { CodexAppServerHostLease } from './app-server/host-lease'
 import { acquireCodexAppServerHostLease } from './app-server/host-lease'
 import type { Thread } from './app-server-protocol/v2/Thread'
@@ -1312,7 +1316,27 @@ export class CodexProvider implements ChatRuntime {
       updateSecretValue?: (credentialRef: string, secret: string) => void
     },
   ): Promise<unknown> {
-    if (request.method !== 'item/tool/requestUserInput' && request.method !== 'mcpServer/elicitation/request') {
+    if (isCodexAppServerToolApprovalRequest(request.method)) {
+      if (!this.deps.requestToolApproval) {
+        throw codexRequestError(request.method, 'Chat Runtime does not expose pending tool approval handling')
+      }
+      const requestId = String(request.id)
+      const resolution = await this.deps.requestToolApproval({
+        sessionId: input.runtimeSession.chatSessionId,
+        runId: input.runId,
+        providerRequestId: requestId,
+        providerKind: input.profile.providerKind,
+        runtimeKind: RUNTIME_KIND,
+        providerMethod: request.method,
+        toolCallId: `server-request-${request.id}`,
+        metadata: {
+          params: request.params,
+        },
+      })
+      return this.buildCodexToolApprovalResponse(request.method, request.params, resolution.approved)
+    }
+
+    if (!isCodexAppServerUserInputRequest(request.method)) {
       return await buildDefaultCodexAppServerRequestResult(request, options)
     }
     if (!this.deps.requestUserInput) {
@@ -1344,6 +1368,24 @@ export class CodexProvider implements ChatRuntime {
       answers: Object.fromEntries(
         Object.entries(resolution.answers).map(([questionId, answers]) => [questionId, { answers }]),
       ),
+    }
+  }
+
+  private buildCodexToolApprovalResponse(method: string, params: unknown, approved: boolean): unknown {
+    switch (method) {
+      case 'item/commandExecution/requestApproval':
+      case 'item/fileChange/requestApproval':
+        return { decision: approved ? 'accept' : 'decline' }
+      case 'item/permissions/requestApproval':
+        return {
+          permissions: approved ? readGrantedCodexPermissions(params) : {},
+          scope: 'turn',
+        }
+      case 'applyPatchApproval':
+      case 'execCommandApproval':
+        return { decision: approved ? 'approved' : 'denied' }
+      default:
+        return { decision: approved ? 'approved' : 'denied' }
     }
   }
 
@@ -1908,6 +1950,18 @@ function readCodexThreadSpawnParentThreadId(source: Thread['source']): string | 
   }
   const parentThreadId = (spawn as { parent_thread_id?: unknown }).parent_thread_id
   return typeof parentThreadId === 'string' && parentThreadId.length > 0 ? parentThreadId : null
+}
+
+function readGrantedCodexPermissions(params: unknown): Record<string, unknown> {
+  const requestPermissions = readRecord(readRecord(params).permissions)
+  const granted: Record<string, unknown> = {}
+  if (requestPermissions.network !== undefined && requestPermissions.network !== null) {
+    granted.network = requestPermissions.network
+  }
+  if (requestPermissions.fileSystem !== undefined && requestPermissions.fileSystem !== null) {
+    granted.fileSystem = requestPermissions.fileSystem
+  }
+  return granted
 }
 
 function syncCodexProviderNativeAppServerSnapshot(

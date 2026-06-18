@@ -16,6 +16,7 @@ import type { RuntimeKind } from '../provider-contracts/types'
 import { resolveProviderTarget } from '../provider-targets/service'
 import * as Secrets from '../secrets/service'
 import { resolveScopeRoot } from '../skills/skills-paths'
+import { requestRuntimeToolApproval } from './pending-tool-approval'
 import { requestRuntimeUserInput } from './pending-user-input'
 import type {
   ChatRuntime,
@@ -296,6 +297,7 @@ function createProviderContext(): ProviderContext {
     updateSecret: (ref, val) => Secrets.updateSecretValue(ref, val),
     resolveSkillPaths: resolveRuntimeSkillPaths,
     requestUserInput: requestRuntimeUserInput,
+    requestToolApproval: requestRuntimeToolApproval,
     recordObservability,
     logger: createChildLogger({ module: 'chat-runtime-provider' }),
   }

@@ -7,6 +7,7 @@ import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 
 import type { ClientInfo } from '../app-server-protocol/ClientInfo'
+import { isCodexAppServerInteractiveServerRequest } from './server-request-methods'
 
 type RequestId = number
 type CodexUserAgentMode = 'cradle' | 'native'
@@ -253,7 +254,7 @@ export class CodexAppServerClient {
 
     let response: CodexAppServerMessage
     try {
-      if (this.exposeServerRequestsAsNotifications && isPendingInteractiveServerRequest(message.method)) {
+      if (this.exposeServerRequestsAsNotifications && isCodexAppServerInteractiveServerRequest(message.method)) {
         this.pushNotification({
           method: 'serverRequest/pending',
           params: {
@@ -335,10 +336,6 @@ export class CodexAppServerClient {
       }
     })
   }
-}
-
-function isPendingInteractiveServerRequest(method: string): boolean {
-  return method === 'item/tool/requestUserInput' || method === 'mcpServer/elicitation/request'
 }
 
 export function readCradleCodexClientVersion(env: Record<string, string | undefined> = process.env): string {

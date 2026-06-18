@@ -49,6 +49,7 @@ import {
   rejectPendingUserInputsForRun,
   setRuntimeUserInputPublisher
 } from './pending-user-input'
+import { rejectPendingToolApprovalsForRun } from './pending-tool-approval'
 import {
   createProviderThreadStreamStore,
   providerThreadStreamKey,
@@ -3180,6 +3181,10 @@ function releaseActiveRun(activeRun: ActiveRun): void {
   rejectPendingUserInputsForRun(
     activeRun.runId,
     new Error('Chat run ended before pending user input was submitted')
+  )
+  rejectPendingToolApprovalsForRun(
+    activeRun.runId,
+    new Error('Chat run ended before pending tool approval was submitted')
   )
   runRegistry.deleteActiveRun(activeRun.runId)
   runSubscribers.delete(activeRun.runId)

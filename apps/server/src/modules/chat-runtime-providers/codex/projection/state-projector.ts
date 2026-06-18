@@ -6,6 +6,7 @@
 
 import { Buffer } from 'node:buffer'
 
+import { readObjectRecord as readRecord } from '../../../../helpers/json-record'
 import type {
   RuntimeApprovalStatus,
   RuntimeCompactUiSlotState,
@@ -66,6 +67,7 @@ import type {
   TurnPlanUpdatedNotificationParams,
   WarningNotificationParams,
 } from '../types'
+import { isCodexAppServerToolApprovalRequest } from '../app-server/server-request-methods'
 
 export interface CodexNativeHistorySnapshot {
   threadId: string
@@ -77,6 +79,13 @@ export interface CodexNativeHistorySnapshot {
   itemCount: number
   nextCursor: string | null
   error: string | null
+}
+
+interface ServerRequestBridgeNotificationParams {
+  id?: number
+  method?: string
+  params?: unknown
+  result?: unknown
 }
 
 interface CodexProviderStateSnapshot extends WorkspaceProviderStateSnapshot {
@@ -897,6 +906,42 @@ function projectCodexApprovalsSnapshot(
       return
     }
     updateResolvedApproval(runtimeSession, params.requestId)
+    return
+  }
+
+  if (notification.method === 'serverRequest/pending') {
+    const params = notification.params as ServerRequestBridgeNotificationParams | undefined
+    if (typeof params?.id !== 'number' || !params.method || !isCodexAppServerToolApprovalRequest(params.method)) {
+      return
+    }
+    const requestParams = readRecord(params.params)
+    writeCodexApprovalItem(runtimeSession, {
+      threadId: readString(requestParams.threadId) ?? fallbackThreadId,
+      turnId: readString(requestParams.turnId),
+      item: {
+        id: `server-request-${params.id}`,
+        targetItemId: readString(requestParams.itemId),
+        status: 'pending',
+        label: readServerRequestApprovalLabel(params.method),
+        riskLevel: null,
+        rationale: readString(requestParams.reason),
+        startedAt: readNumber(requestParams.startedAtMs),
+        completedAt: null,
+      },
+    })
+    return
+  }
+
+  if (notification.method === 'serverRequest/handled') {
+    const params = notification.params as ServerRequestBridgeNotificationParams | undefined
+    if (typeof params?.id !== 'number' || !params.method || !isCodexAppServerToolApprovalRequest(params.method)) {
+      return
+    }
+    updateResolvedApproval(
+      runtimeSession,
+      `server-request-${params.id}`,
+      readServerRequestApprovalStatus(params.method, params.result),
+    )
   }
 }
 
@@ -934,14 +979,18 @@ function writeCodexApprovalItem(
   })
 }
 
-function updateResolvedApproval(runtimeSession: RuntimeSession, requestId: string): void {
+function updateResolvedApproval(
+  runtimeSession: RuntimeSession,
+  requestId: string,
+  status: RuntimeApprovalStatus = 'approved',
+): void {
   const snapshot = readCodexProviderSnapshot(runtimeSession.providerStateSnapshot)
   const approvals = snapshot.codex?.approvals
   if (!approvals) {
     return
   }
   const items = approvals.items.map(item => item.id === requestId && item.status === 'pending'
-    ? { ...item, status: 'approved' as const, completedAt: Date.now() }
+    ? { ...item, status, completedAt: Date.now() }
     : item)
   runtimeSession.providerStateSnapshot = JSON.stringify({
     ...snapshot,
@@ -1195,6 +1244,47 @@ function readApprovalActionLabel(action: GuardianApprovalReviewNotificationParam
     default:
       return 'Approval'
   }
+}
+
+function readServerRequestApprovalLabel(method: string): string {
+  switch (method) {
+    case 'item/commandExecution/requestApproval':
+    case 'execCommandApproval':
+      return 'Command'
+    case 'item/fileChange/requestApproval':
+    case 'applyPatchApproval':
+      return 'File change'
+    case 'item/permissions/requestApproval':
+      return 'Permissions'
+    default:
+      return 'Approval'
+  }
+}
+
+function readServerRequestApprovalStatus(method: string, result: unknown): RuntimeApprovalStatus {
+  const response = readRecord(result)
+  const decision = response.decision
+  if (decision === 'decline' || decision === 'denied') {
+    return 'denied'
+  }
+  if (decision === 'cancel' || decision === 'abort') {
+    return 'aborted'
+  }
+  if (decision === 'timed_out') {
+    return 'timedOut'
+  }
+  if (method === 'item/permissions/requestApproval') {
+    return Object.keys(readRecord(response.permissions)).length > 0 ? 'approved' : 'denied'
+  }
+  return 'approved'
+}
+
+function readString(value: unknown): string | null {
+  return typeof value === 'string' && value.length > 0 ? value : null
+}
+
+function readNumber(value: unknown): number | null {
+  return typeof value === 'number' && Number.isFinite(value) ? value : null
 }
 
 function readAlertMessage(method: string, params: WarningNotificationParams | ErrorNotificationParams | undefined): string | null {

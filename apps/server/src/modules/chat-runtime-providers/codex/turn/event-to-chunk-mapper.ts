@@ -8,6 +8,7 @@ import type { UIMessageChunk } from 'ai'
 
 import type { BoundedTextCollector } from '../../bounded-text-collector'
 import { createBoundedTextCollector } from '../../bounded-text-collector'
+import { isCodexAppServerToolApprovalRequest } from '../app-server/server-request-methods'
 import type { CodexAppServerItem } from '../tools/mapper'
 import {
   buildCodexServerRequestToolInput,
@@ -404,7 +405,7 @@ function mapPendingServerRequest(rawParams: unknown, state: CodexAppServerMapper
   const request = { id: params.id, method: params.method, params: params.params }
   const toolCallId = `server-request-${params.id}`
   const toolName = toSafeToolName(`server_request_${params.method}`)
-  return [
+  const chunks: UIMessageChunk[] = [
     { type: 'tool-input-start', toolCallId, toolName },
     {
       type: 'tool-input-available',
@@ -413,6 +414,10 @@ function mapPendingServerRequest(rawParams: unknown, state: CodexAppServerMapper
       input: buildCodexServerRequestToolInput(request),
     },
   ]
+  if (isCodexAppServerToolApprovalRequest(params.method)) {
+    chunks.push({ type: 'tool-approval-request', toolCallId, approvalId: toolCallId })
+  }
+  return chunks
 }
 
 function mapHandledServerRequest(rawParams: unknown, state: CodexAppServerMapperState): UIMessageChunk[] {
