@@ -15,6 +15,7 @@ import {
   getIssues,
   getIssuesById,
   getIssuesByIdActivity,
+  getIssuesByIdAgentSessions,
   getIssuesByIdComments,
   getIssuesByIdFieldChanges,
   getIssuesByIdRelations,
@@ -37,6 +38,7 @@ import {
   postIssuesRelations,
   postIssuesStatuses,
   postIssuesStatusesReorder,
+  postIssueAgentSessionsByAgentSessionIdRerun,
   postKanbanBoards,
   postSessionsByIdLinkedIssue,
 } from '~/api-gen/sdk.gen'
@@ -65,6 +67,7 @@ export const kanbanKeys = {
   issues: (params: Record<string, unknown>) => ['kanban', 'issues', params] as const,
   searchIssues: (query: string, limit: number) => ['kanban', 'searchIssues', query, limit] as const,
   issue: (id: string) => ['kanban', 'issue', id] as const,
+  agentSessions: (issueId: string) => ['kanban', 'agentSessions', issueId] as const,
   activity: (issueId: string) => ['kanban', 'activity', issueId] as const,
   comments: (issueId: string) => ['kanban', 'comments', issueId] as const,
   fieldChanges: (issueId: string) => ['kanban', 'fieldChanges', issueId] as const,
@@ -830,6 +833,18 @@ export function useIssueActivity(issueId: string, enabled = true) {
   })
 }
 
+export function useIssueAgentSessions(issueId: string, enabled = true) {
+  return useQuery({
+    queryKey: kanbanKeys.agentSessions(issueId),
+    queryFn: async () => {
+      const { data } = await getIssuesByIdAgentSessions({ path: { id: issueId } })
+      return z.array(AgentSessionSchema).parse(data) satisfies AgentSession[]
+    },
+    enabled: enabled && !!issueId,
+    ...queryRefreshPolicies.interactive,
+  })
+}
+
 export function useComments(issueId: string) {
   return useQuery({
     queryKey: kanbanKeys.comments(issueId),
@@ -939,6 +954,28 @@ export function useDelegateIssue() {
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
+      qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
+      qc.invalidateQueries({ queryKey: kanbanKeys.activity(vars.issueId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.fieldChanges(vars.issueId) })
+    },
+  })
+}
+
+export function useRerunIssueAgentSession() {
+  const qc = useQueryClient()
+  return useMutation({
+    mutationFn: async (vars: { issueId: string, agentSessionId: string }) => {
+      const { data } = await postIssueAgentSessionsByAgentSessionIdRerun({
+        path: { agentSessionId: vars.agentSessionId },
+        body: {},
+      })
+      return AgentSessionSchema.parse(data) satisfies AgentSession
+    },
+    onSuccess: (_data, vars) => {
+      qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
       qc.invalidateQueries({ queryKey: kanbanKeys.activity(vars.issueId) })
       qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) })
@@ -955,6 +992,7 @@ export function useUndelegateIssue() {
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
       qc.invalidateQueries({ queryKey: kanbanKeys.activity(vars.issueId) })
       qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) })

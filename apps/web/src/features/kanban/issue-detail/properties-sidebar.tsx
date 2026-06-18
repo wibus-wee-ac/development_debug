@@ -2,8 +2,10 @@ import {
   BotIcon,
   CalendarIcon,
   CheckIcon,
+  ExternalLinkIcon,
   PencilIcon,
   PlusIcon,
+  RotateCwIcon,
   SearchIcon,
   TagsIcon,
   Trash2Icon,
@@ -27,8 +29,9 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { AgentAvatar } from '~/features/agent-runtime/agent-avatar'
 import { useAgents } from '~/features/agent-runtime/use-agents'
-import type { KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
+import type { AgentSession, KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 import { cn } from '~/lib/cn'
+import { openChatSession } from '~/navigation/navigation-commands'
 
 import { AssigneeAvatar } from '../shared/assignee-avatar'
 import { findDelegatedAgent } from '../shared/issue-delegation'
@@ -44,7 +47,7 @@ import {
 import { PriorityIcon } from '../shared/priority-icon'
 import { StatusIcon } from '../shared/status-icon'
 import type { IssuePriority } from '../use-kanban'
-import { useDelegateIssue, usePatchIssueLabels, useUndelegateIssue } from '../use-kanban'
+import { useDelegateIssue, useIssueAgentSessions, usePatchIssueLabels, useRerunIssueAgentSession, useUndelegateIssue } from '../use-kanban'
 import type { StatusCategory } from '../use-view-config'
 import { RelationManager } from './relation-manager'
 
@@ -236,10 +239,114 @@ export const PropertiesSidebar = ({
         </PropertyRow>
       </div>
 
+      <AgentSessionPanel issue={issue} readOnly={readOnly} />
+
       <div className="my-3" />
 
       <div className="bg-card rounded-lg px-3 py-2 shadow-xs text-sm font-medium text-muted-foreground border border-border">
         <RelationManager issueId={issue.id} workspaceId={issue.workspaceId} readOnly={readOnly} />
+      </div>
+    </div>
+  )
+}
+
+const agentSessionStatusText = {
+  created: 'Pending',
+  active: 'Running',
+  completed: 'Done',
+  stopped: 'Stopped',
+  failed: 'Failed',
+} satisfies Record<AgentSession['status'], string>
+
+const rerunnableAgentSessionStatuses = new Set<AgentSession['status']>([
+  'completed',
+  'stopped',
+  'failed',
+])
+
+function AgentSessionPanel({
+  issue,
+  readOnly = false,
+}: {
+  issue: KanbanIssue
+  readOnly?: boolean
+}) {
+  const { data: sessions = [] } = useIssueAgentSessions(
+    issue.id,
+    !!issue.delegateAgentId || !!issue.delegateProviderTargetId,
+  )
+  const rerunSession = useRerunIssueAgentSession()
+  const currentSession = sessions.find(session => session.isCurrentDelegation) ?? null
+
+  if (!currentSession) {
+    return null
+  }
+
+  const canOpenChat = !!currentSession.chatSessionId
+  const canRerun
+    = !readOnly
+      && rerunnableAgentSessionStatuses.has(currentSession.status)
+      && !rerunSession.isPending
+
+  return (
+    <div
+      className="mt-2 rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-xs"
+      data-testid="issue-agent-session"
+    >
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <div className="text-[12px] font-medium text-muted-foreground">Agent session</div>
+          <div
+            className="mt-0.5 text-[13px] font-semibold text-foreground"
+            data-testid="issue-agent-session-phase"
+          >
+            {agentSessionStatusText[currentSession.status]}
+          </div>
+        </div>
+        <div className="flex shrink-0 items-center gap-1">
+          <button
+            type="button"
+            className={cn(
+              'flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors',
+              canOpenChat
+                ? 'hover:bg-fill hover:text-foreground'
+                : 'cursor-not-allowed opacity-50',
+            )}
+            disabled={!canOpenChat}
+            aria-label="Open chat"
+            title="Open chat"
+            data-testid="issue-agent-session-open-chat"
+            onClick={() => {
+              if (currentSession.chatSessionId) {
+                openChatSession(currentSession.chatSessionId)
+              }
+            }}
+          >
+            <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
+          </button>
+          {rerunnableAgentSessionStatuses.has(currentSession.status) && (
+            <button
+              type="button"
+              className={cn(
+                'flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors',
+                canRerun
+                  ? 'hover:bg-fill hover:text-foreground'
+                  : 'cursor-not-allowed opacity-50',
+              )}
+              disabled={!canRerun}
+              aria-label="Rerun"
+              title="Rerun"
+              data-testid="issue-agent-rerun-btn"
+              onClick={() =>
+                rerunSession.mutate({
+                  issueId: issue.id,
+                  agentSessionId: currentSession.id,
+                })}
+            >
+              <RotateCwIcon className={cn('size-3.5', rerunSession.isPending && 'animate-spin')} aria-hidden="true" />
+            </button>
+          )}
+        </div>
       </div>
     </div>
   )
