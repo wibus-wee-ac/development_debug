@@ -17,6 +17,95 @@ export interface BufferedChunkStreamInput {
 
 const encoder = new TextEncoder()
 
+export function bindReadableStreamToAbortSignal<T>(
+  stream: ReadableStream<T>,
+  signal: AbortSignal
+): ReadableStream<T> {
+  const reader = stream.getReader()
+  let abortListener: (() => void) | null = null
+  let closed = false
+  let readerReleased = false
+
+  const detachAbortListener = () => {
+    if (!abortListener) {
+      return
+    }
+    signal.removeEventListener('abort', abortListener)
+    abortListener = null
+  }
+
+  const releaseReader = () => {
+    if (readerReleased) {
+      return
+    }
+    readerReleased = true
+    reader.releaseLock()
+  }
+
+  return new ReadableStream<T>({
+    start(controller) {
+      const abort = () => {
+        if (closed) {
+          return
+        }
+        closed = true
+        detachAbortListener()
+        void reader.cancel(createStreamAbortError())
+          .catch(() => undefined)
+          .finally(releaseReader)
+        controller.error(createStreamAbortError())
+      }
+
+      abortListener = abort
+      if (signal.aborted) {
+        abort()
+        return
+      }
+      signal.addEventListener('abort', abort, { once: true })
+    },
+    async pull(controller) {
+      if (closed) {
+        return
+      }
+      try {
+        const result = await reader.read()
+        if (closed) {
+          return
+        }
+        if (result.done) {
+          closed = true
+          detachAbortListener()
+          releaseReader()
+          controller.close()
+          return
+        }
+        controller.enqueue(result.value)
+      } catch (error) {
+        if (closed) {
+          return
+        }
+        closed = true
+        detachAbortListener()
+        releaseReader()
+        controller.error(error)
+      }
+    },
+    async cancel(reason) {
+      if (closed) {
+        return
+      }
+      closed = true
+      detachAbortListener()
+      await reader.cancel(reason).catch(() => undefined)
+      releaseReader()
+    }
+  })
+}
+
+function createStreamAbortError(): DOMException {
+  return new DOMException('Readable stream aborted by request signal', 'AbortError')
+}
+
 /**
  * Shared SSE encoding tail used by every chunk stream: AI SDK JSON→SSE transform
  * (which also emits the terminal `data: [DONE]` on flush) then UTF-8 encode.

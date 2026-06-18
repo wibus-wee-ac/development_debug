@@ -13,6 +13,7 @@ import { submitRuntimeToolApproval } from './pending-tool-approval'
 import { submitRuntimeUserInput } from './pending-user-input'
 import { getRunSnapshot, getRunSnapshots } from './run-snapshot'
 import { createEmptyRuntimePresentation } from './runtime-provider-types'
+import { bindReadableStreamToAbortSignal } from './stream/sse'
 import { listChatSessionTraceDtos, readChatRunTraceDto } from './stream-trace'
 import type { ChatThinkingEffort, ProviderThreadSourceKind } from './runtime-provider-types'
 
@@ -65,7 +66,7 @@ export const chatRuntime = new Elysia({
   // POST /chat/sessions/:sessionId/response → SSE stream (send message + get streaming response)
   .post(
     '/sessions/:sessionId/response',
-    async ({ params, body }) => {
+    async ({ params, body, request }) => {
       const runtime = await loadChatRuntime()
       const response = await runtime.streamResponse({
         sessionId: params.sessionId,
@@ -78,7 +79,7 @@ export const chatRuntime = new Elysia({
         thinkingEffort: readChatThinkingEffort(body.thinkingEffort),
         runtimeSettings: body.runtimeSettings
       })
-      return new Response(response.stream, {
+      return new Response(bindReadableStreamToAbortSignal(response.stream, request.signal), {
         headers: {
           'content-type': 'text/event-stream',
           'cache-control': 'no-cache',
@@ -295,10 +296,10 @@ export const chatRuntime = new Elysia({
   // GET /chat/sessions/:sessionId/stream → join the active run SSE stream
   .get(
     '/sessions/:sessionId/stream',
-    async ({ params }) => {
+    async ({ params, request }) => {
       const stream = await (await loadChatRuntime()).openSessionRunStream(params.sessionId)
       const activeRun = (await loadChatRuntime()).getActiveSessionRun(params.sessionId)
-      return new Response(stream, {
+      return new Response(bindReadableStreamToAbortSignal(stream, request.signal), {
         headers: {
           'content-type': 'text/event-stream',
           'cache-control': 'no-cache',

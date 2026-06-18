@@ -224,9 +224,11 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
   useEffect(() => {
     return () => {
       if (passiveStreamRef.current) {
-        passiveStreamRef.current.controller.abort()
-        passiveStreamRef.current.handler.dispose()
+        const current = passiveStreamRef.current
+        current.controller.abort()
+        current.handler.dispose()
         passiveStreamRef.current = null
+        releasePassiveSessionStreamingState(current.sessionId)
       }
       requestedRuntimeActiveRunMessageRef.current = null
       runtimeQueueSignatureRef.current = null
@@ -305,6 +307,7 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
         passiveStreamRef.current.controller.abort()
         passiveStreamRef.current.handler.dispose()
         passiveStreamRef.current = null
+        releasePassiveSessionStreamingState(chatSessionId)
       }
       return
     }
@@ -315,6 +318,7 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
         passiveStreamRef.current.controller.abort()
         passiveStreamRef.current.handler.dispose()
         passiveStreamRef.current = null
+        releasePassiveSessionStreamingState(chatSessionId)
       }
       return
     }
@@ -327,6 +331,7 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
       current.controller.abort()
       current.handler.dispose()
       passiveStreamRef.current = null
+      releasePassiveSessionStreamingState(current.sessionId)
     }
 
     const controller = new AbortController()
