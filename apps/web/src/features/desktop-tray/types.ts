@@ -1,6 +1,7 @@
 export type TrayActionId
   = | 'open-app'
     | 'open-chat'
+    | 'chat-session-updated'
     | 'new-chat'
     | 'global-search'
     | 'open-awaits'
