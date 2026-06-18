@@ -6776,6 +6776,13 @@ export type GetWorkspacesByIdDiffReviewsResponses = {
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -7012,6 +7019,13 @@ export type PostWorkspacesByIdDiffReviewsLocalWorkingTreeResponses = {
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -7223,6 +7237,13 @@ export type PostWorkspacesByIdDiffReviewsLocalBranchCompareResponses = {
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -7431,6 +7452,13 @@ export type GetWorkspacesByIdDiffReviewsByReviewIdResponses = {
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -7639,6 +7667,13 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdRefreshResponses = {
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -7850,6 +7885,13 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewedResponses 
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -8069,6 +8111,13 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsResponses = {
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -8280,6 +8329,13 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdCommentsResp
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -8491,6 +8547,13 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdReactionsRes
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -8700,6 +8763,13 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdResolveRespo
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -8911,6 +8981,13 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdSubmitResponses = {
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -9165,6 +9242,13 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateResponses = {
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -9386,6 +9470,13 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesResponses = {
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -9599,6 +9690,13 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStartRe
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -9841,6 +9939,13 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCancelR
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -10054,6 +10159,13 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerunRe
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -10264,6 +10376,13 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdCommitPlanResponses = {
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -10485,6 +10604,13 @@ export type PutWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdRespo
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -10696,6 +10822,13 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdAppl
         };
         guide: {
             revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
             steps: Array<{
                 id: string;
                 title: string;

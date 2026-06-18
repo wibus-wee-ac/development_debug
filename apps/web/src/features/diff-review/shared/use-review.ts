@@ -71,6 +71,12 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
       return data
     },
     ...queryRefreshPolicies.active,
+    refetchInterval: (query) => {
+      const review = query.state.data as CradleDiffReview | undefined
+      return review?.guide.status === 'pending' || review?.guide.status === 'running'
+        ? 1_500
+        : queryRefreshPolicies.active.refetchInterval
+    },
     retry: false,
   })
 

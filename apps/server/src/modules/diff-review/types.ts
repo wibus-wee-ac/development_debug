@@ -209,14 +209,24 @@ export interface ReviewGuideStepView {
   order: number
 }
 
+export type GuideRuntimeKind = 'codex' | 'claude-agent'
+export type ReviewGuideStatus = 'pending' | 'running' | 'ready' | 'failed'
+
 export interface ReviewGuideView {
   revisionId: string | null
+  status: ReviewGuideStatus | null
+  providerTargetId: string | null
+  runtimeKind: GuideRuntimeKind | null
+  modelId: string | null
+  errorMessage: string | null
+  createdAt: number | null
+  updatedAt: number | null
   steps: ReviewGuideStepView[]
 }
 
 export interface ReviewGuideGenerateInput {
   providerTargetId: string
-  runtimeKind?: 'codex' | 'claude-agent'
+  runtimeKind?: GuideRuntimeKind
   modelId?: string | null
   force?: boolean
 }

@@ -195,7 +195,14 @@ interface DiffReviewResponse {
     }>
   }>
   guide: {
-    revisionId: string
+    revisionId: string | null
+    status: 'pending' | 'running' | 'ready' | 'failed' | null
+    providerTargetId: string | null
+    runtimeKind: 'codex' | 'claude-agent' | null
+    modelId: string | null
+    errorMessage: string | null
+    createdAt: number | null
+    updatedAt: number | null
     steps: Array<{
       id: string
       title: string
@@ -675,6 +682,24 @@ describe('diff-review capability', () => {
         },
       )
 
+      expect(generated.guide).toMatchObject({
+        revisionId: review.currentRevisionId,
+        status: 'running',
+        providerTargetId: 'provider-target-diff-review-guide',
+        runtimeKind: 'codex',
+        modelId: 'gpt-5-codex',
+        errorMessage: null,
+        steps: [],
+      })
+
+      const completed = await waitForCondition(async () => {
+        const reloaded = await getJson<DiffReviewResponse>(
+          app,
+          `/workspaces/workspace-diff-review-guide/diff-reviews/${review.id}`,
+        )
+        return reloaded.guide.status === 'ready' && reloaded.guide.steps.length === 2 ? reloaded : null
+      }, 'guided review generation')
+
       expect(runtime.streamInputs).toHaveLength(1)
       expect(runtime.streamInputs[0]).toMatchObject({
         workspacePath: workspaceRoot,
@@ -691,8 +716,13 @@ describe('diff-review capability', () => {
       })
       expect(JSON.stringify(runtime.streamInputs[0]?.message)).toContain('git diff --stat HEAD')
       expect(JSON.stringify(runtime.streamInputs[0]?.message)).not.toContain('diff --git a/README.md b/README.md')
-      expect(generated.guide).toMatchObject({
+      expect(completed.guide).toMatchObject({
         revisionId: review.currentRevisionId,
+        status: 'ready',
+        providerTargetId: 'provider-target-diff-review-guide',
+        runtimeKind: 'codex',
+        modelId: 'gpt-5-codex',
+        errorMessage: null,
         steps: [
           {
             id: expect.stringMatching(/^step-1-/),
@@ -733,7 +763,7 @@ describe('diff-review capability', () => {
         app,
         `/workspaces/workspace-diff-review-guide/diff-reviews/${review.id}`,
       )
-      expect(reloaded.guide).toEqual(generated.guide)
+      expect(reloaded.guide).toEqual(completed.guide)
     }
     finally {
       if (originalCodexRuntime) {

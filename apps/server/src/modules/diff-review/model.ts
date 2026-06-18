@@ -151,8 +151,23 @@ const event = t.Object({
   createdAt: t.Number(),
 })
 
+const guideRuntimeKind = t.Union([t.Literal('codex'), t.Literal('claude-agent')])
+const guideStatus = t.Union([
+  t.Literal('pending'),
+  t.Literal('running'),
+  t.Literal('ready'),
+  t.Literal('failed'),
+])
+
 const guide = t.Object({
   revisionId: t.Nullable(t.String()),
+  status: t.Nullable(guideStatus),
+  providerTargetId: t.Nullable(t.String()),
+  runtimeKind: t.Nullable(guideRuntimeKind),
+  modelId: t.Nullable(t.String()),
+  errorMessage: t.Nullable(t.String()),
+  createdAt: t.Nullable(t.Number()),
+  updatedAt: t.Nullable(t.Number()),
   steps: t.Array(t.Object({
     id: t.String(),
     title: t.String(),
@@ -164,8 +179,6 @@ const guide = t.Object({
     order: t.Number(),
   })),
 })
-
-const guideRuntimeKind = t.Union([t.Literal('codex'), t.Literal('claude-agent')])
 
 const agentFix = t.Object({
   id: t.String(),

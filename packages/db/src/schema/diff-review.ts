@@ -344,7 +344,7 @@ export const diffReviewGuides = sqliteTable('diff_review_guides', {
   modelId: text('model_id'),
   inputHash: text('input_hash').notNull(),
   status: text('status', {
-    enum: ['ready', 'failed'],
+    enum: ['pending', 'running', 'ready', 'failed'],
   }).notNull(),
   stepsJson: text('steps_json').notNull().default('[]'),
   errorMessage: text('error_message'),

@@ -18,6 +18,6 @@ The diff-review module owns Cradle Diffs review records, local worktree and bran
 
 ## Guided Review
 
-`POST /workspaces/:id/diff-reviews/:reviewId/guide/generate` is owned by this module. For local working tree reviews it starts an ephemeral tool-enabled runtime turn, asks the provider to inspect the live repository with shell/file tools, then validates the final guide artifact against the current revision.
+`POST /workspaces/:id/diff-reviews/:reviewId/guide/generate` is owned by this module. For local working tree reviews it performs synchronous source and provider preflight checks, records a `running` guide row, returns the review immediately, then starts an ephemeral tool-enabled runtime turn in the background. The provider inspects the live repository with shell/file tools, and Diff Review later marks the guide `ready` or `failed`.
 
 The provider outputs path and line-range candidates only. Diff Review derives stable step ids, order, file ids, and `ReviewRangeAnchorView` anchors, and rejects stale worktree state by comparing the current `Git.getDiff()` hash with the revision `patchHash` before and after generation.

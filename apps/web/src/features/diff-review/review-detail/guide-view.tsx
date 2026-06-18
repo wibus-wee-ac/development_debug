@@ -1,13 +1,27 @@
 import type { CodeViewItem, FileDiffMetadata } from '@pierre/diffs'
 import type { CodeViewHandle } from '@pierre/diffs/react'
 import { CodeView } from '@pierre/diffs/react'
-import { ArrowLeftIcon, ChevronDownIcon, ChevronRightIcon, FileDiffIcon, ListTreeIcon, Loader2Icon, RotateCcwIcon, SparklesIcon } from 'lucide-react'
+import {
+  ActivityIcon,
+  AlertCircleIcon,
+  ArrowLeftIcon,
+  CheckCircle2Icon,
+  ChevronDownIcon,
+  ChevronRightIcon,
+  Clock3Icon,
+  FileDiffIcon,
+  ListTreeIcon,
+  Loader2Icon,
+  RotateCcwIcon,
+  SparklesIcon,
+} from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { ProviderModelSelector, RuntimeSelector, useComposerState } from '~/features/composer-toolbar'
 import type { RuntimeKindOption } from '~/features/composer-toolbar/constants'
+import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
 
 import type { CodeViewLineSelection, DiffData, ThreadAnnotation } from '../shared/diff-items'
@@ -47,10 +61,14 @@ export function GuideView({ workspaceId, repositoryPath, reviewId, onBack }: Gui
   const [regenerating, setRegenerating] = useState(false)
 
   const handleGenerate = (input: GenerateGuideInput) => {
-    generateGuideMutation.mutate(input, {
-      onSuccess: () => setRegenerating(false),
-    })
+    generateGuideMutation.mutate(input)
   }
+
+  useEffect(() => {
+    if (review?.guide.status === 'ready') {
+      setRegenerating(false)
+    }
+  }, [review?.guide.status])
 
   if (isLoading) {
     return (
@@ -69,8 +87,10 @@ export function GuideView({ workspaceId, repositoryPath, reviewId, onBack }: Gui
     )
   }
 
-  const hasGuide = review.guide.steps.length > 0
-  const showGate = !hasGuide || regenerating
+  const guideGenerating = isGuideGenerationActive(review.guide.status) || generateGuideMutation.isPending
+  const guideFailed = review.guide.status === 'failed'
+  const hasGuide = review.guide.status === 'ready' && review.guide.steps.length > 0
+  const showGate = !hasGuide || regenerating || guideGenerating || guideFailed
 
   return (
     <div className="flex h-full w-full min-h-0 flex-col overflow-hidden" data-testid="guide-view">
@@ -107,6 +127,7 @@ export function GuideView({ workspaceId, repositoryPath, reviewId, onBack }: Gui
               review={review}
               force={regenerating}
               pending={generateGuideMutation.isPending}
+              requestError={generateGuideMutation.error}
               onCancel={regenerating ? () => setRegenerating(false) : undefined}
               onGenerate={handleGenerate}
             />
@@ -127,10 +148,12 @@ function GuideGenerateGate({
   pending,
   onCancel,
   onGenerate,
+  requestError,
 }: {
   review: NonNullable<ReturnType<typeof useReview>['review']>
   force?: boolean
   pending: boolean
+  requestError: Error | null
   onCancel?: () => void
   onGenerate: (input: GenerateGuideInput) => void
 }) {
@@ -140,9 +163,10 @@ function GuideGenerateGate({
   const modelId = composer.selection.modelId
 
   const canGenerate = profileId != null && isGuideRuntime(runtimeKind)
+  const generationActive = pending || isGuideGenerationActive(review.guide.status)
 
   const handleGenerate = () => {
-    if (!profileId || !canGenerate) {
+    if (!profileId || !canGenerate || generationActive) {
       return
     }
     onGenerate({
@@ -176,7 +200,7 @@ function GuideGenerateGate({
               value={runtimeKind}
               onChange={composer.setRuntimeKind}
               options={GUIDE_RUNTIME_OPTIONS}
-              disabled={pending}
+              disabled={generationActive}
             />
           </Field>
 
@@ -210,6 +234,14 @@ function GuideGenerateGate({
           </span>
         </div>
 
+        {(generationActive || review.guide.status === 'failed' || requestError) && (
+          <GuideGenerationStatusPanel
+            guide={review.guide}
+            requestPending={pending}
+            requestError={requestError}
+          />
+        )}
+
         <div className="mt-5 flex items-center gap-2">
           {force && onCancel && (
             <Button
@@ -218,7 +250,7 @@ function GuideGenerateGate({
               variant="outline"
               className="flex-1"
               onClick={onCancel}
-              disabled={pending}
+              disabled={generationActive}
             >
               Cancel
             </Button>
@@ -228,13 +260,133 @@ function GuideGenerateGate({
             size="lg"
             className="flex-1"
             onClick={handleGenerate}
-            disabled={!canGenerate || pending}
+            disabled={!canGenerate || generationActive}
           >
-            {pending ? <Loader2Icon className="size-4 animate-spin" /> : (force ? <RotateCcwIcon className="size-4" /> : <SparklesIcon className="size-4" />)}
-            {pending ? 'Generating…' : force ? 'Regenerate guide' : 'Generate guide'}
+            {generationActive ? <Loader2Icon className="size-4 animate-spin" /> : (force ? <RotateCcwIcon className="size-4" /> : <SparklesIcon className="size-4" />)}
+            {generationActive
+              ? 'Generating guide'
+              : review.guide.status === 'failed'
+                ? 'Retry guide'
+                : force ? 'Regenerate guide' : 'Generate guide'}
           </Button>
         </div>
       </div>
+    </div>
+  )
+}
+
+function isGuideGenerationActive(status: NonNullable<ReturnType<typeof useReview>['review']>['guide']['status']): boolean {
+  return status === 'pending' || status === 'running'
+}
+
+function formatElapsed(seconds: number): string {
+  const minutes = Math.floor(seconds / 60)
+  const rest = seconds % 60
+  return minutes > 0 ? `${minutes}m ${rest.toString().padStart(2, '0')}s` : `${rest}s`
+}
+
+function GuideGenerationStatusPanel({
+  guide,
+  requestPending,
+  requestError,
+}: {
+  guide: NonNullable<ReturnType<typeof useReview>['review']>['guide']
+  requestPending: boolean
+  requestError: Error | null
+}) {
+  const active = requestPending || isGuideGenerationActive(guide.status)
+  const now = useNow(1_000, active)
+  const startedAtMs = guide.createdAt ? guide.createdAt * 1_000 : now
+  const elapsedSeconds = Math.max(0, Math.floor((now - startedAtMs) / 1_000))
+  const errorText = requestError?.message ?? guide.errorMessage
+  const failed = Boolean(errorText) || guide.status === 'failed'
+
+  return (
+    <div
+      className={cn(
+        'mt-4 rounded-lg px-3 py-3 text-[11px]',
+        failed
+          ? 'bg-red-500/10 text-red-700 dark:text-red-300'
+          : 'bg-orange-500/10 text-orange-700 dark:text-orange-300',
+      )}
+    >
+      <div className="flex items-start gap-2">
+        {failed
+          ? <AlertCircleIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+          : active
+            ? <ActivityIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            : <Clock3Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden />}
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-3">
+            <p className="font-medium">
+              {failed ? 'Generation failed' : requestPending ? 'Starting generation' : 'Generation running'}
+            </p>
+            {active && (
+              <span className="shrink-0 tabular-nums text-current/70">
+                {formatElapsed(elapsedSeconds)}
+              </span>
+            )}
+          </div>
+          <p className="mt-1 leading-relaxed text-current/80">
+            {failed
+              ? 'The backend saved the failure so you can adjust the model or retry.'
+              : requestPending
+                ? 'Cradle is checking the diff revision and provider before starting the runtime turn.'
+                : 'The runtime turn is reading changed files with tools and producing the guide artifact in the background.'}
+          </p>
+          {errorText && (
+            <p className="mt-2 break-words rounded-md bg-background/70 px-2 py-1.5 font-mono text-[10px] leading-relaxed text-current/90">
+              {errorText}
+            </p>
+          )}
+          {!failed && (
+            <div className="mt-3 space-y-1.5">
+              <GuideGenerationStep
+                label="Preflight"
+                state={requestPending ? 'active' : 'done'}
+              />
+              <GuideGenerationStep
+                label="Runtime turn"
+                state={requestPending ? 'pending' : 'active'}
+              />
+              <GuideGenerationStep
+                label="Validate artifact"
+                state="pending"
+              />
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  )
+}
+
+function GuideGenerationStep({
+  label,
+  state,
+}: {
+  label: string
+  state: 'pending' | 'active' | 'done'
+}) {
+  return (
+    <div className="flex items-center gap-2 text-current/75">
+      <span
+        className={cn(
+          'flex size-4 shrink-0 items-center justify-center rounded-full',
+          {
+            'bg-current/10': state === 'pending',
+            'bg-current/15': state === 'active',
+            'bg-emerald-500/15 text-emerald-600 dark:text-emerald-300': state === 'done',
+          },
+        )}
+      >
+        {state === 'done'
+          ? <CheckCircle2Icon className="size-3" aria-hidden />
+          : state === 'active'
+            ? <Loader2Icon className="size-3 animate-spin" aria-hidden />
+            : <span className="size-1 rounded-full bg-current/50" aria-hidden />}
+      </span>
+      <span>{label}</span>
     </div>
   )
 }

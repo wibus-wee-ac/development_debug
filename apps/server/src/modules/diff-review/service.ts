@@ -57,6 +57,7 @@ import type {
   DiffReviewPreferenceView,
   DiffReviewView,
   DiffRevisionView,
+  GuideRuntimeKind,
   ReviewActorKind,
   ReviewAgentFixArtifactView,
   ReviewAgentFixView,
@@ -67,6 +68,7 @@ import type {
   ReviewEventKind,
   ReviewEventView,
   ReviewFileDiffView,
+  ReviewGuideStatus,
   ReviewGuideStepView,
   ReviewGuideView,
   ReviewRangeAnchorInput,
@@ -106,8 +108,6 @@ const GUIDE_RUNTIME_SETTINGS: ChatRuntimeSettings = {
   accessMode: 'full-access',
   interactionMode: 'default',
 }
-
-type GuideRuntimeKind = 'codex' | 'claude-agent'
 
 function toRevisionView(row: DiffReviewRevision): DiffRevisionView {
   return {
@@ -240,6 +240,20 @@ function toCommitPlanView(row: DiffReviewCommitPlan): ReviewCommitPlanView {
   }
 }
 
+function emptyGuideView(revisionId: string | null): ReviewGuideView {
+  return {
+    revisionId,
+    status: null,
+    providerTargetId: null,
+    runtimeKind: null,
+    modelId: null,
+    errorMessage: null,
+    createdAt: null,
+    updatedAt: null,
+    steps: [],
+  }
+}
+
 function ensurePreferences(workspaceId: string, userId = LOCAL_USER_ID): DiffReviewPreference {
   const existing = db().select().from(diffReviewPreferences).where(and(
     eq(diffReviewPreferences.workspaceId, workspaceId),
@@ -320,13 +334,23 @@ function loadThreads(reviewId: string): ReviewThreadView[] {
 }
 
 function toGuideView(row: DiffReviewGuide | null | undefined, revision: DiffReviewRevision | null): ReviewGuideView {
-  if (!revision || !row || row.status !== 'ready') {
-    return { revisionId: revision?.id ?? null, steps: [] }
+  if (!revision) {
+    return emptyGuideView(null)
+  }
+  if (!row) {
+    return emptyGuideView(revision.id)
   }
   const parsed = safeJsonParse(row.stepsJson)
   return {
     revisionId: revision.id,
-    steps: normalizeStoredGuideSteps(parsed),
+    status: row.status,
+    providerTargetId: row.providerTargetId,
+    runtimeKind: row.runtimeKind as GuideRuntimeKind,
+    modelId: row.modelId,
+    errorMessage: row.errorMessage,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+    steps: row.status === 'ready' ? normalizeStoredGuideSteps(parsed) : [],
   }
 }
 
@@ -370,7 +394,7 @@ function normalizeStoredGuideSteps(parsed: unknown): ReviewGuideStepView[] {
 
 function loadCurrentGuide(reviewId: string, revision: DiffReviewRevision | null): ReviewGuideView {
   if (!revision) {
-    return { revisionId: null, steps: [] }
+    return emptyGuideView(null)
   }
   const row = db().select().from(diffReviewGuides).where(and(
     eq(diffReviewGuides.reviewId, reviewId),
@@ -1740,11 +1764,12 @@ function upsertGuide(input: {
   runtimeKind: GuideRuntimeKind
   modelId?: string | null
   inputHash: string
-  status: 'ready' | 'failed'
-  steps: ReviewGuideStepView[]
+  status: ReviewGuideStatus
+  steps?: ReviewGuideStepView[]
   errorMessage?: string | null
 }): void {
   const now = currentUnixSeconds()
+  const steps = input.steps ?? []
   db().insert(diffReviewGuides).values({
     id: randomUUID(),
     reviewId: input.reviewId,
@@ -1754,7 +1779,7 @@ function upsertGuide(input: {
     modelId: input.modelId ?? null,
     inputHash: input.inputHash,
     status: input.status,
-    stepsJson: jsonStringify(input.steps),
+    stepsJson: jsonStringify(steps),
     errorMessage: input.errorMessage ?? null,
     createdAt: now,
     updatedAt: now,
@@ -1766,7 +1791,7 @@ function upsertGuide(input: {
       modelId: input.modelId ?? null,
       inputHash: input.inputHash,
       status: input.status,
-      stepsJson: jsonStringify(input.steps),
+      stepsJson: jsonStringify(steps),
       errorMessage: input.errorMessage ?? null,
       updatedAt: now,
     },
@@ -1802,6 +1827,117 @@ async function assertGuideWorktreeMatchesRevision(input: {
         revisionPatchHash: input.revision.patchHash,
         currentPatchHash,
       },
+    })
+  }
+}
+
+function isGuideGenerationActive(status: DiffReviewGuide['status'] | undefined): boolean {
+  return status === 'pending' || status === 'running'
+}
+
+function isCurrentGuideGeneration(input: {
+  reviewId: string
+  revisionId: string
+  inputHash: string
+}): boolean {
+  const current = db().select().from(diffReviewGuides).where(and(
+    eq(diffReviewGuides.reviewId, input.reviewId),
+    eq(diffReviewGuides.revisionId, input.revisionId),
+  )).get()
+  return current?.inputHash === input.inputHash && isGuideGenerationActive(current.status)
+}
+
+async function runGuideGenerationTask(input: {
+  workspaceId: string
+  review: DiffReview
+  revision: DiffReviewRevision
+  files: DiffReviewFile[]
+  threads: ReviewThreadView[]
+  profile: RuntimeProviderTargetProfile
+  providerTargetId: string
+  runtimeKind: GuideRuntimeKind
+  modelId?: string | null
+  workspacePath: string
+  instruction: string
+  inputHash: string
+  runtimeSession: RuntimeSession
+}): Promise<void> {
+  try {
+    const runtime = getRuntimeRegistry().get(input.runtimeKind)
+    if (!runtime) {
+      throw new AppError({
+        code: 'diff_review_guide_provider_unsupported',
+        status: 400,
+        message: 'Provider target runtime does not support guided review generation',
+        details: { runtimeKind: input.runtimeKind, providerTargetId: input.providerTargetId },
+      })
+    }
+
+    const startedRuntimeSession = await runtime.startChatSession({
+      chatSessionId: input.runtimeSession.chatSessionId,
+      profile: input.profile,
+      workspacePath: input.workspacePath,
+      modelId: input.modelId ?? undefined,
+      previousProviderStateSnapshot: input.runtimeSession.providerStateSnapshot,
+    })
+    const rawOutput = await runGuideAgentTurn({
+      runtimeKind: input.runtimeKind,
+      profile: input.profile,
+      runtimeSession: startedRuntimeSession,
+      workspaceId: input.workspaceId,
+      workspacePath: input.workspacePath,
+      instruction: input.instruction,
+      modelId: input.modelId,
+    })
+    await assertGuideWorktreeMatchesRevision({
+      workspaceId: input.workspaceId,
+      review: input.review,
+      revision: input.revision,
+    })
+    const steps = normalizeGuideSteps({
+      parsed: parseGuideJson(rawOutput),
+      revision: input.revision,
+      files: input.files,
+      threads: input.threads,
+    })
+    if (!isCurrentGuideGeneration({
+      reviewId: input.review.id,
+      revisionId: input.revision.id,
+      inputHash: input.inputHash,
+    })) {
+      return
+    }
+    upsertGuide({
+      reviewId: input.review.id,
+      revisionId: input.revision.id,
+      providerTargetId: input.providerTargetId,
+      runtimeKind: input.runtimeKind,
+      modelId: input.modelId,
+      inputHash: input.inputHash,
+      status: 'ready',
+      steps,
+      errorMessage: null,
+    })
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    if (!isCurrentGuideGeneration({
+      reviewId: input.review.id,
+      revisionId: input.revision.id,
+      inputHash: input.inputHash,
+    })) {
+      return
+    }
+    upsertGuide({
+      reviewId: input.review.id,
+      revisionId: input.revision.id,
+      providerTargetId: input.providerTargetId,
+      runtimeKind: input.runtimeKind,
+      modelId: input.modelId,
+      inputHash: input.inputHash,
+      status: 'failed',
+      steps: [],
+      errorMessage: message,
     })
   }
 }
@@ -1842,6 +1978,9 @@ export async function generateGuide(input: {
   if (existing?.status === 'ready' && !input.force) {
     return loadReviewView(review, { userId: input.userId })
   }
+  if (isGuideGenerationActive(existing?.status) && !input.force) {
+    return loadReviewView(review, { userId: input.userId })
+  }
 
   const profile = buildGuideProfile(input.providerTargetId)
   const runtimeKind = resolveGuideRuntimeKind({
@@ -1873,8 +2012,7 @@ export async function generateGuide(input: {
     workspacePath,
     modelId: input.modelId,
   })
-  const runtime = getRuntimeRegistry().get(runtimeKind)
-  if (!runtime) {
+  if (!getRuntimeRegistry().get(runtimeKind)) {
     throw new AppError({
       code: 'diff_review_guide_provider_unsupported',
       status: 400,
@@ -1883,69 +2021,34 @@ export async function generateGuide(input: {
     })
   }
 
-  try {
-    const startedRuntimeSession = await runtime.startChatSession({
-      chatSessionId: runtimeSession.chatSessionId,
-      profile,
-      workspacePath,
-      modelId: input.modelId ?? undefined,
-      previousProviderStateSnapshot: runtimeSession.providerStateSnapshot,
-    })
-    const rawOutput = await runGuideAgentTurn({
-      runtimeKind,
-      profile,
-      runtimeSession: startedRuntimeSession,
-      workspaceId: input.workspaceId,
-      workspacePath,
-      instruction,
-      modelId: input.modelId,
-    })
-    await assertGuideWorktreeMatchesRevision({
-      workspaceId: input.workspaceId,
-      review,
-      revision,
-    })
-    const steps = normalizeGuideSteps({
-      parsed: parseGuideJson(rawOutput),
-      revision,
-      files,
-      threads,
-    })
-    upsertGuide({
-      reviewId: review.id,
-      revisionId: revision.id,
-      providerTargetId: input.providerTargetId,
-      runtimeKind,
-      modelId: input.modelId,
-      inputHash,
-      status: 'ready',
-      steps,
-      errorMessage: null,
-    })
-  }
-  catch (error) {
-    if (error instanceof AppError && error.code === 'diff_review_guide_source_changed') {
-      throw error
-    }
-    const message = error instanceof Error ? error.message : String(error)
-    upsertGuide({
-      reviewId: review.id,
-      revisionId: revision.id,
-      providerTargetId: input.providerTargetId,
-      runtimeKind,
-      modelId: input.modelId,
-      inputHash,
-      status: 'failed',
-      steps: [],
-      errorMessage: message,
-    })
-    throw new AppError({
-      code: 'diff_review_guide_generation_failed',
-      status: 502,
-      message: 'Guided review generation failed',
-      details: { reviewId: review.id, revisionId: revision.id, runtimeKind, providerTargetId: input.providerTargetId, cause: message },
-    })
-  }
+  upsertGuide({
+    reviewId: review.id,
+    revisionId: revision.id,
+    providerTargetId: input.providerTargetId,
+    runtimeKind,
+    modelId: input.modelId,
+    inputHash,
+    status: 'running',
+    steps: [],
+    errorMessage: null,
+  })
+  void runGuideGenerationTask({
+    workspaceId: input.workspaceId,
+    review,
+    revision,
+    files,
+    threads,
+    profile,
+    providerTargetId: input.providerTargetId,
+    runtimeKind,
+    modelId: input.modelId,
+    workspacePath,
+    instruction,
+    inputHash,
+    runtimeSession,
+  }).catch((error) => {
+    console.error('Diff review guide generation background task failed', error)
+  })
 
   return loadReviewView(review, { userId: input.userId })
 }
