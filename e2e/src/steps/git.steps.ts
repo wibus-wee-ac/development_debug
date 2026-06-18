@@ -5,6 +5,10 @@ import { basename, join } from 'node:path'
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
+import {
+  newChatWorkspaceSelector,
+  visibleNewChatEntry,
+} from '../support/ui'
 import type { CradleWorld } from '../support/world'
 
 interface GitWorkspaceFixture {
@@ -148,6 +152,19 @@ Given('我已添加了一个真实 Git 工作区', async function (this: CradleW
   const fixture = createGitWorkspaceFixture(this)
   await addWorkspaceFromPicker(this, fixture)
   this.remember(GIT_WORKSPACE_KEY, fixture)
+})
+
+Given('我在新建聊天中选择 Git 工作区', async function (this: CradleWorld) {
+  const fixture = recallGitWorkspace(this)
+  const selector = newChatWorkspaceSelector(visibleNewChatEntry(this))
+
+  await expect(selector).toBeVisible({ timeout: 10_000 })
+  await selector.click()
+
+  const option = this.page.locator('[data-testid^="new-chat-workspace-option-"]').filter({ hasText: fixture.name }).first()
+  await expect(option).toBeVisible({ timeout: 10_000 })
+  await option.click()
+  await expect(selector).toContainText(fixture.name, { timeout: 10_000 })
 })
 
 Then('Chat Header 中应该显示当前 Git 分支', async function (this: CradleWorld) {

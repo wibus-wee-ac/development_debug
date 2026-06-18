@@ -156,6 +156,30 @@ export class CradleWorld extends World {
       throw new Error(`Failed to configure mock LLM provider: ${response.status} ${await response.text()}`)
     }
 
+    const agentsResponse = await fetch(`${this.params.serverUrl}/agents`)
+    if (!agentsResponse.ok) {
+      throw new Error(`Failed to list agents for mock LLM provider: ${agentsResponse.status} ${await agentsResponse.text()}`)
+    }
+    const agents = await agentsResponse.json() as Array<{ name?: unknown, providerTargetId?: unknown }>
+    const hasMockAgent = agents.some(agent => agent.name === 'Mock LLM' && agent.providerTargetId === 'mock-llm-profile')
+    if (!hasMockAgent) {
+      const agentResponse = await fetch(`${this.params.serverUrl}/agents`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          name: 'Mock LLM',
+          avatarStyle: 'dicebear',
+          avatarSeed: 'Mock LLM',
+          providerTargetId: 'mock-llm-profile',
+          modelId: 'mock-model',
+          runtimeKind: 'standard',
+        }),
+      })
+      if (!agentResponse.ok) {
+        throw new Error(`Failed to create mock LLM agent: ${agentResponse.status} ${await agentResponse.text()}`)
+      }
+    }
+
     // Ensure at least one workspace exists so the send button becomes enabled
     await this.ensureWorkspaceExists()
 

@@ -41,7 +41,7 @@
     而且 我在 Provider 表单填写 Name 为"Broken OpenAI"
     而且 我在 Provider 表单填写 Base URL 为 Mock 地址
     而且 我点击提交 Provider 按钮
-    那么 Provider 状态应为失败并提示"API key secretRef is required"
+    那么 Provider 状态应为失败并提示"Credential is required"
     而且 Provider 对话框应保持打开
 
   @P1 @CRADLE-AGENT-RUNTIME-009

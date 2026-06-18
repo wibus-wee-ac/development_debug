@@ -7,7 +7,7 @@ import type { CradleWorld } from '../support/world'
 const SYSTEM_INFO_PANEL_LINK = '[data-testid="plugin-panel-link-system-info"]'
 
 function systemInfoPanel(world: CradleWorld) {
-  return world.page.locator('[data-tab-visible="true"]').filter({ hasText: 'System Info' }).first()
+  return world.page.locator('[data-testid="plugin-panel-system-info"]').filter({ visible: true }).first()
 }
 
 async function assertSystemInfoPanelVisible(world: CradleWorld): Promise<void> {
@@ -32,7 +32,7 @@ When('我刷新 System Info 面板', async function (this: CradleWorld) {
 })
 
 When('我点击首页导航项', async function (this: CradleWorld) {
-  const homeTabPill = this.page.locator('[data-testid^="tab-pill-"]').first()
+  const homeTabPill = this.page.locator('[data-testid="surface-pill-home"]')
   await expect(homeTabPill).toBeVisible({ timeout: 15_000 })
   await homeTabPill.click()
 })

@@ -4,7 +4,7 @@ import { expect } from '@playwright/test'
 import type { CradleWorld } from '../support/world'
 
 const DELEGATE_TRIGGER = '[data-testid="issue-agent-trigger"]'
-const DELEGATE_OPTIONS = '[role="menuitemradio"]'
+const DELEGATE_OPTIONS = '[data-testid^="issue-agent-option-"]'
 const AGENT_SESSION = '[data-testid="issue-agent-session"]'
 const AGENT_SESSION_PHASE = '[data-testid="issue-agent-session-phase"]'
 const AGENT_SESSION_OPEN_CHAT = '[data-testid="issue-agent-session-open-chat"]'
@@ -92,5 +92,5 @@ When('我取消当前 Issue 的 Agent 委派', async function (this: CradleWorld
 
 Then('当前 Issue 不应再显示 Agent 委派', async function (this: CradleWorld) {
   const trigger = this.page.locator(DELEGATE_TRIGGER)
-  await expect(trigger).toContainText('Unassigned', { timeout: 30_000 })
+  await expect(trigger).toContainText('No agent', { timeout: 30_000 })
 })

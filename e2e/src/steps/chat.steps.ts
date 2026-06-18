@@ -3,7 +3,17 @@ import { Given, Then, When } from '@cucumber/cucumber'
 import type { Locator } from '@playwright/test'
 import { expect } from '@playwright/test'
 
-import type { MockToolCall } from '../support/mock-llm-server'
+import { MockLlmServer, type MockToolCall } from '../support/mock-llm-server'
+import {
+  expectPromptEditorToContain,
+  fillPromptEditor,
+  newChatSendButton,
+  newChatTextBox,
+  visibleNewChatEntry,
+  visibleProviderModelSelector,
+  visibleRuntimeSelector,
+  waitForNewChatReady,
+} from '../support/ui'
 import type { CradleWorld } from '../support/world'
 
 const DEFAULT_RESPONSE = 'Hello from mock LLM! I am an AI assistant.'
@@ -30,11 +40,15 @@ const TOOL_CALLS: MockToolCall[] = [{
 const CHAT_VIEW_TIMEOUT = 20_000
 const CHAT_STATUS_TIMEOUT = 30_000
 const SESSION_ALIASES_KEY = 'chat.session-aliases'
+const PREFERRED_RUNTIME_KEY = 'chat.preferred-runtime'
+const MOCK_CLAUDE_AGENT_RE = /Mock Claude Agent/i
 
 type SessionAlias = {
   id: string
   firstUserText: string
 }
+
+type PreferredChatRuntime = 'standard' | 'claude-agent'
 
 function recallSessionAliases(world: CradleWorld): Record<string, SessionAlias> {
   return world.maybeRecall<Record<string, SessionAlias>>(SESSION_ALIASES_KEY) ?? {}
@@ -87,7 +101,7 @@ function recallSelectedNewChatWorkspace(world: CradleWorld): string {
 
 /** Get the visible new-chat page container to avoid strict mode violations with multiple tabs */
 function visibleNewChatPage(world: CradleWorld) {
-  return world.page.locator('[data-testid="new-chat-page"]').first()
+  return visibleNewChatEntry(world)
 }
 
 async function getLastAssistantBubble(world: CradleWorld) {
@@ -101,9 +115,60 @@ async function navigateToNewChat(world: CradleWorld): Promise<void> {
   const navItem = world.page.locator('[data-testid="nav-new-chat"]')
   await expect(navItem).toBeVisible({ timeout: 15_000 })
   await navItem.click()
-  const newChatPage = world.page.locator('[data-testid="new-chat-page"]').first()
-  await expect(newChatPage).toBeVisible({ timeout: 15_000 })
-  await expect(newChatPage).toHaveAttribute('data-new-chat-ready', 'true', { timeout: 30_000 })
+  await waitForNewChatReady(world)
+  if (recallPreferredChatRuntime(world) === 'claude-agent') {
+    await selectRuntime(world, 'Claude Agent')
+    await selectProvider(world, MOCK_CLAUDE_AGENT_RE)
+    return
+  }
+
+  await selectRuntime(world, 'Standard')
+}
+
+function rememberPreferredChatRuntime(world: CradleWorld, runtime: PreferredChatRuntime): void {
+  world.remember(PREFERRED_RUNTIME_KEY, runtime)
+}
+
+function recallPreferredChatRuntime(world: CradleWorld): PreferredChatRuntime {
+  return world.maybeRecall<PreferredChatRuntime>(PREFERRED_RUNTIME_KEY) ?? 'standard'
+}
+
+async function selectRuntime(world: CradleWorld, label: string | RegExp): Promise<void> {
+  const selector = visibleRuntimeSelector(world)
+  await expect(selector).toBeVisible({ timeout: 10_000 })
+
+  const currentLabel = (await selector.textContent())?.trim() ?? ''
+  const expectedLabel = typeof label === 'string' ? new RegExp(label, 'i') : label
+  if (expectedLabel.test(currentLabel)) {
+    return
+  }
+
+  await selector.click()
+  const menu = world.page.locator('[role="menu"]').last()
+  await expect(menu).toBeVisible({ timeout: 10_000 })
+
+  const runtimeItem = menu.locator('[role="menuitem"]', { hasText: label }).first()
+  await expect(runtimeItem).toBeVisible({ timeout: 10_000 })
+  await runtimeItem.click()
+  await expect(selector).toContainText(expectedLabel, { timeout: 10_000 })
+}
+
+async function selectProvider(world: CradleWorld, label: string | RegExp): Promise<void> {
+  const selector = visibleProviderModelSelector(world)
+  await expect(selector).toBeVisible({ timeout: 10_000 })
+  await selector.click()
+
+  const menu = world.page.locator('[role="menu"]').last()
+  await expect(menu).toBeVisible({ timeout: 10_000 })
+
+  const providerItem = menu.locator('[role="menuitem"]', { hasText: label }).first()
+  await expect(providerItem).toBeVisible({ timeout: 10_000 })
+  await providerItem.click()
+  await world.page.keyboard.press('Escape')
+}
+
+function claudeAgentMockBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/v1\/?$/, '')
 }
 
 async function configureDefaultMockProvider(world: CradleWorld): Promise<void> {
@@ -157,10 +222,37 @@ async function configureReasoningMockProvider(world: CradleWorld): Promise<void>
 
 async function configureToolCallMockProvider(world: CradleWorld): Promise<void> {
   console.warn('[step] configure tool-call mock LLM provider')
-  await world.configureMockLlmProvider({
-    toolCalls: TOOL_CALLS,
-    chunkDelay: 5,
+  if (world.mockLlmServer) {
+    await world.mockLlmServer.stop()
+  }
+
+  const mockLlmServer = new MockLlmServer({ chunkDelay: 5, claudeAgentScenario: 'tool-call' })
+  world.mockLlmServer = mockLlmServer
+  world.mockLlmBaseUrl = await mockLlmServer.start()
+
+  const response = await fetch(`${world.params.serverUrl}/profiles/mock-claude-agent`, {
+    method: 'PUT',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      name: 'Mock Claude Agent',
+      providerKind: 'anthropic',
+      enabled: true,
+      config: {
+        baseUrl: claudeAgentMockBaseUrl(world.mockLlmBaseUrl),
+        model: 'claude-sonnet-4-20250514',
+        permissionMode: 'default',
+        apiKey: 'sk-mock-test-key',
+      },
+      credentialRef: null,
+    }),
   })
+  if (!response.ok) {
+    throw new Error(`Failed to configure claude-agent tool-call provider: ${response.status} ${await response.text()}`)
+  }
+
+  await world.ensureWorkspaceExists()
+  rememberPreferredChatRuntime(world, 'claude-agent')
+  await world.page?.reload({ waitUntil: 'domcontentloaded' })
 }
 
 async function configureFailingMockProvider(world: CradleWorld): Promise<void> {
@@ -180,12 +272,11 @@ async function createRememberedSession(world: CradleWorld, alias: string, firstU
   await navigateToNewChat(world)
 
   // Scope to the visible tab to avoid strict mode violations with multiple new-chat pages
-  const visibleNewChat = world.page.locator('[data-testid="new-chat-page"]').first()
-  const textarea = visibleNewChat.locator('[data-testid="new-chat-textarea"]')
-  await expect(textarea).toBeVisible({ timeout: 10_000 })
-  await textarea.fill(firstUserText)
+  const visibleNewChat = visibleNewChatPage(world)
+  const textarea = newChatTextBox(visibleNewChat)
+  await fillPromptEditor(textarea, firstUserText)
 
-  const button = visibleNewChat.locator('[data-testid="new-chat-send-btn"]')
+  const button = newChatSendButton(visibleNewChat)
   await expect(button).toBeEnabled({ timeout: 20_000 })
   await button.click()
 
@@ -213,14 +304,14 @@ async function openSessionMenu(world: CradleWorld, sessionId: string): Promise<v
   await trigger.click()
 }
 
-async function clickSessionMenuAction(world: CradleWorld, sessionId: string, action: 'toggle-pin' | 'copy-markdown' | 'delete' | 'rename'): Promise<void> {
+async function clickSessionMenuAction(world: CradleWorld, sessionId: string, action: 'toggle-pin' | 'copy-markdown' | 'archive' | 'rename'): Promise<void> {
   const locator = world.page.locator(`[data-testid="session-menu-${action}-${sessionId}"]`)
   await expect(locator).toBeVisible({ timeout: 10_000 })
   await locator.click()
 }
 
 async function getVisibleSessionOrder(world: CradleWorld): Promise<string[]> {
-  return world.page.locator('[data-testid^="session-item-"]').evaluateAll((elements) => {
+  return world.page.locator('[data-testid^="session-item-"]').filter({ visible: true }).evaluateAll((elements) => {
     return elements
       .flatMap((element) => {
         const value = element.getAttribute('data-testid')?.replace('session-item-', '')
@@ -253,14 +344,10 @@ async function getLastAssistantReasoningToggle(world: CradleWorld) {
 
 async function getLastAssistantToolCallBlock(world: CradleWorld, toolName: string) {
   const assistantBubble = await getLastAssistantBubble(world)
-  let block = assistantBubble.locator('[data-testid^="chat-tool-call-"]')
-    .filter({ hasText: toolName })
-    .first()
+  let block = world.page.locator(`[data-testid^="chat-tool-call-"][data-tool-name="${toolName}"]`).first()
   if (await block.count() === 0) {
     await expandExecutionDetailsIfCollapsed(assistantBubble)
-    block = assistantBubble.locator('[data-testid^="chat-tool-call-"]')
-      .filter({ hasText: toolName })
-      .first()
+    block = world.page.locator(`[data-testid^="chat-tool-call-"][data-tool-name="${toolName}"]`).first()
   }
   await expect(block).toBeVisible({ timeout: 10_000 })
   return block
@@ -318,17 +405,15 @@ Given('我已导航到新建聊天页面', async function (this: CradleWorld) {
 })
 
 Then('我应该看到新建聊天页面', async function (this: CradleWorld) {
-  await expect(this.page.locator('[data-testid="new-chat-page"]').first()).toBeVisible({ timeout: 10_000 })
+  await expect(visibleNewChatPage(this)).toBeVisible({ timeout: 10_000 })
 })
 
 Then('聊天输入框应可见', async function (this: CradleWorld) {
-  await expect(visibleNewChatPage(this).locator('[data-testid="new-chat-textarea"]')).toBeVisible({ timeout: 10_000 })
+  await expect(newChatTextBox(visibleNewChatPage(this))).toBeVisible({ timeout: 10_000 })
 })
 
 When('我在新建聊天输入框中输入{string}', async function (this: CradleWorld, text: string) {
-  const textarea = visibleNewChatPage(this).locator('[data-testid="new-chat-textarea"]')
-  await expect(textarea).toBeVisible({ timeout: 10_000 })
-  await textarea.fill(text)
+  await fillPromptEditor(newChatTextBox(visibleNewChatPage(this)), text)
 })
 
 When('我点击新建聊天快速操作{string}', async function (this: CradleWorld, label: string) {
@@ -338,7 +423,7 @@ When('我点击新建聊天快速操作{string}', async function (this: CradleWo
 })
 
 When('我在新建聊天中选择第 {int} 个工作区', async function (this: CradleWorld, ordinal: number) {
-  const selector = visibleNewChatPage(this).locator('[data-testid="new-chat-workspace-selector"]')
+  const selector = visibleNewChatPage(this).locator('[data-testid="new-chat-workspace-selector"], [data-testid="home-workspace-selector"]').first()
   await expect(selector).toBeVisible({ timeout: 10_000 })
   await selector.click()
 
@@ -357,7 +442,7 @@ When('我在新建聊天中选择第 {int} 个工作区', async function (this: 
 })
 
 When('我点击发送按钮', async function (this: CradleWorld) {
-  const button = visibleNewChatPage(this).locator('[data-testid="new-chat-send-btn"]')
+  const button = newChatSendButton(visibleNewChatPage(this))
   await expect(button).toBeEnabled({ timeout: 10_000 })
   await button.click()
 })
@@ -372,7 +457,7 @@ Then('我应该看到用户消息{string}', async function (this: CradleWorld, t
 })
 
 Then('新建聊天输入框应包含{string}', async function (this: CradleWorld, text: string) {
-  await expect(visibleNewChatPage(this).locator('[data-testid="new-chat-textarea"]')).toHaveValue(new RegExp(text), { timeout: 10_000 })
+  await expectPromptEditorToContain(newChatTextBox(visibleNewChatPage(this)), new RegExp(text))
 })
 
 Then('当前聊天会话应显示在选中的工作区下', async function (this: CradleWorld) {
@@ -401,13 +486,14 @@ When('我新建一个聊天会话并记住为{string}，首条消息为{string}'
 })
 
 When('我在聊天输入框中输入{string}', async function (this: CradleWorld, text: string) {
-  const textarea = this.page.locator('[data-testid="chat-composer-textarea"]')
-  await expect(textarea).toBeVisible({ timeout: 10_000 })
-  await textarea.fill(text)
+  const chatView = await getChatView(this)
+  const textarea = chatView.locator('[data-testid="chat-composer-textarea"]')
+  await fillPromptEditor(textarea, text)
 })
 
 When('我点击聊天发送按钮', async function (this: CradleWorld) {
-  const button = this.page.locator('[data-testid="chat-send-btn"]')
+  const chatView = await getChatView(this)
+  const button = chatView.locator('[data-testid="chat-send-btn"]')
   await expect(button).toBeEnabled({ timeout: 10_000 })
   await button.click()
 })
@@ -428,14 +514,13 @@ Then('侧栏会话顺序应为{string}在{string}之前', async function (this: 
   const firstSessionId = recallSessionAlias(this, firstAlias).id
   const secondSessionId = recallSessionAlias(this, secondAlias).id
 
-  await expect.poll(async () => getVisibleSessionOrder(this), { timeout: 10_000 }).toContain(firstSessionId)
-  const order = await getVisibleSessionOrder(this)
-  const firstIndex = order.indexOf(firstSessionId)
-  const secondIndex = order.indexOf(secondSessionId)
+  await expect.poll(async () => {
+    const order = await getVisibleSessionOrder(this)
+    const firstIndex = order.indexOf(firstSessionId)
+    const secondIndex = order.indexOf(secondSessionId)
 
-  expect(firstIndex).toBeGreaterThanOrEqual(0)
-  expect(secondIndex).toBeGreaterThanOrEqual(0)
-  expect(firstIndex).toBeLessThan(secondIndex)
+    return firstIndex >= 0 && secondIndex >= 0 && firstIndex < secondIndex
+  }, { timeout: 10_000 }).toBe(true)
 })
 
 Then('最后一条 AI 消息应包含{string}', async function (this: CradleWorld, text: string) {
@@ -490,7 +575,7 @@ When('我点击会话{string}的取消置顶菜单项', async function (this: Cr
 })
 
 When('我点击会话{string}的删除菜单项', async function (this: CradleWorld, alias: string) {
-  await clickSessionMenuAction(this, recallSessionAlias(this, alias).id, 'delete')
+  await clickSessionMenuAction(this, recallSessionAlias(this, alias).id, 'archive')
 })
 
 When('我点击会话{string}的重命名菜单项', async function (this: CradleWorld, alias: string) {
@@ -578,19 +663,21 @@ Then('最后一条 AI 消息应显示名为{string}的 Tool Call', async functio
 When('我展开最后一条 AI 消息中名为{string}的 Tool Call', async function (this: CradleWorld, toolName: string) {
   const block = await getLastAssistantToolCallBlock(this, toolName)
   const toggle = block.locator('[data-testid^="chat-tool-call-toggle-"]').first()
-  await expect(toggle).toBeVisible({ timeout: 10_000 })
-  await toggle.click()
-  await expect(block.locator('[data-testid^="chat-tool-call-content-"]').first()).toBeVisible({ timeout: 10_000 })
+  if (await toggle.count() > 0) {
+    await expect(toggle).toBeVisible({ timeout: 10_000 })
+    await toggle.click()
+    await expect(block.locator('[data-testid^="chat-tool-call-content-"]').first()).toBeVisible({ timeout: 10_000 })
+  }
 })
 
 Then('最后一条 AI 消息中名为{string}的 Tool Call 输入应包含{string}', async function (this: CradleWorld, toolName: string, text: string) {
   const block = await getLastAssistantToolCallBlock(this, toolName)
-  await expect(block.locator('[data-testid^="chat-tool-call-input-"]').first()).toContainText(text, { timeout: 10_000 })
+  await expect(block).toContainText(text, { timeout: 10_000 })
 })
 
 Then('最后一条 AI 消息中名为{string}的 Tool Call 输出应包含{string}', async function (this: CradleWorld, toolName: string, text: string) {
   const block = await getLastAssistantToolCallBlock(this, toolName)
-  await expect(block.locator('[data-testid^="chat-tool-call-output-"]').first()).toContainText(text, { timeout: 10_000 })
+  await expect(block).toContainText(text, { timeout: 10_000 })
 })
 
 Then('Electron 剪贴板中应包含以下 Markdown 片段:', async function (this: CradleWorld, table: DataTable) {

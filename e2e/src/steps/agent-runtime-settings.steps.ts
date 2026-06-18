@@ -19,9 +19,13 @@ function getProviderRows(world: CradleWorld, name: string) {
 }
 
 async function openAgentRuntimeSettings(world: CradleWorld): Promise<void> {
+  const activeSettingsSurface = world.page.locator('[data-testid="surface-pill-settings"][data-surface-active="true"]')
   const settingsBtn = world.page.locator('[data-testid="settings-btn"]')
-  await expect(settingsBtn).toBeVisible({ timeout: 15000 })
-  await settingsBtn.click()
+  if (!(await activeSettingsSurface.isVisible().catch(() => false))) {
+    await expect(settingsBtn).toBeVisible({ timeout: 15000 })
+    await settingsBtn.click()
+    await expect(activeSettingsSurface).toBeVisible({ timeout: 10_000 })
+  }
 
   const navItem = world.page.locator('[data-testid="settings-nav-providers"]')
   await expect(navItem).toBeVisible({ timeout: 5000 })
@@ -62,7 +66,7 @@ async function ensureJarvisMockProviderBaseUrl(world: CradleWorld): Promise<stri
 }
 
 const KIND_TO_PRESET: Record<string, string> = {
-  'OpenAI-compatible': 'custom',
+  'OpenAI-compatible': 'openai',
   'Codex': 'openai',
   'Claude Agent': 'anthropic',
 }
@@ -79,9 +83,11 @@ async function selectProviderPresetCard(world: CradleWorld, kindLabel: string): 
 
 When('我点击设置按钮', async function (this: CradleWorld) {
   console.warn('[step] click settings button')
+  const activeSettingsSurface = this.page.locator('[data-testid="surface-pill-settings"][data-surface-active="true"]')
   const btn = this.page.locator('[data-testid="settings-btn"]')
   await expect(btn).toBeVisible({ timeout: 15000 })
   await btn.click()
+  await expect(activeSettingsSurface).toBeVisible({ timeout: 10_000 })
 })
 
 When('我点击添加 Provider 按钮', async function (this: CradleWorld) {

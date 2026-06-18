@@ -4,14 +4,21 @@ import { join } from 'node:path'
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
+import {
+  fillPromptEditor,
+  newChatSendButton,
+  newChatTextBox,
+  visibleChatView,
+  visibleNewChatEntry,
+} from '../support/ui'
 import type { CradleWorld } from '../support/world'
 
 const APP_SIDEBAR = '[data-testid="app-sidebar"]'
 const WORKSPACE_LIST = '[data-testid="workspace-list"]'
 const SETTINGS_NAV = '[data-testid="settings-nav-appearance"]'
-const TAB_BAR = '[data-testid="tab-bar"]'
-const TAB_PILL = '[data-testid^="tab-pill-"]'
-const TAB_NEW_BUTTON = '[data-testid="tab-new-btn"]'
+const TAB_BAR = '[data-testid="surface-bar"]'
+const TAB_PILL = '[data-testid^="surface-pill-"]'
+const TAB_NEW_BUTTON = '[data-testid="surface-new-btn"]'
 const RIGHT_ASIDE = '[data-testid="app-layout-right-aside"]'
 const BOTTOM_PANEL = '[data-testid="app-layout-bottom-panel"]'
 const HEADER_ASIDE_TOGGLE = '[data-testid="app-header-aside-toggle"]'
@@ -83,7 +90,7 @@ async function closeTabAtIndex(world: CradleWorld, index: number): Promise<void>
   await expect(tab).toBeVisible({ timeout: 10_000 })
   await tab.hover()
 
-  const closeButton = tab.locator('[data-testid^="tab-close-"]')
+  const closeButton = tab.locator('[data-testid^="surface-close-"]')
   await expect(closeButton).toBeVisible({ timeout: 10_000 })
   await closeButton.click()
 
@@ -102,7 +109,7 @@ async function ensureSingleInitialTab(world: CradleWorld): Promise<void> {
 }
 
 async function _getActiveTab(world: CradleWorld) {
-  const activeTab = world.page.locator(`${TAB_PILL}[data-tab-active="true"]`).first()
+  const activeTab = world.page.locator(`${TAB_PILL}[data-surface-active="true"]`).first()
   await expect(activeTab).toBeVisible({ timeout: 10_000 })
   return activeTab
 }
@@ -119,9 +126,7 @@ async function addWorkspaceFromPicker(world: CradleWorld, dirPath: string): Prom
 }
 
 async function getActiveChatView(world: CradleWorld) {
-  // Wait for the currently visible tab to contain a chat-view.
-  // This handles the timing lag when switching from new-chat to the opened chat tab.
-  const chatView = world.page.locator('[data-tab-visible="true"] [data-testid="chat-view"]').first()
+  const chatView = visibleChatView(world)
   await expect(chatView).toBeVisible({ timeout: 20_000 })
   return chatView
 }
@@ -186,11 +191,10 @@ Given('我已准备好一个带工作区的聊天标签页', async function (thi
   await expect(newChatNav).toBeVisible({ timeout: 10_000 })
   await newChatNav.click()
 
-  const textarea = this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-textarea"]').first()
-  await expect(textarea).toBeVisible({ timeout: 10_000 })
-  await textarea.fill('用来验证 shell 布局快捷键的测试消息')
+  const entry = visibleNewChatEntry(this)
+  await fillPromptEditor(newChatTextBox(entry), '用来验证 shell 布局快捷键的测试消息')
 
-  const sendButton = this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-send-btn"]').first()
+  const sendButton = newChatSendButton(entry)
   await expect(sendButton).toBeEnabled({ timeout: 15_000 })
   await sendButton.click()
 
@@ -301,5 +305,5 @@ Then('标签页总数应恢复为记录值', async function (this: CradleWorld) 
 Then('最后一个标签页应处于活跃状态', async function (this: CradleWorld) {
   const tabs = this.page.locator(TAB_PILL)
   const lastIndex = (await tabs.count()) - 1
-  await expect(tabs.nth(lastIndex)).toHaveAttribute('data-tab-active', 'true', { timeout: 10_000 })
+  await expect(tabs.nth(lastIndex)).toHaveAttribute('data-surface-active', 'true', { timeout: 10_000 })
 })

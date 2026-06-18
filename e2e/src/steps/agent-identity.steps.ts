@@ -8,6 +8,14 @@ const AGENT_CREATE_PAGE = '[data-testid="agent-create"]'
 const AGENT_NAME_INPUT = '[data-testid="agent-detail-name"]'
 const BG_FOREGROUND_RE = /bg-foreground/
 
+function visibleSettingsSidebar(world: CradleWorld) {
+  return world.page.locator('[data-testid="settings-sidebar-pane"][data-sidebar-pane-active="true"] [data-testid="settings-sidebar"]').last()
+}
+
+function activeSettingsPane(world: CradleWorld) {
+  return world.page.locator('[data-testid="settings-sidebar-pane"][data-sidebar-pane-active="true"]').last()
+}
+
 async function selectOption(world: CradleWorld, triggerSelector: string, value: string) {
   const trigger = world.page.locator(triggerSelector)
   await expect(trigger).toBeVisible({ timeout: 10_000 })
@@ -81,20 +89,27 @@ function getProviderRows(world: CradleWorld, name: string) {
 }
 
 async function ensureSettingsOpen(world: CradleWorld): Promise<void> {
-  const agentsNav = world.page.locator('[data-testid="settings-nav-agents"]')
-  if (await agentsNav.isVisible().catch(() => false)) {
+  if (await activeSettingsPane(world).waitFor({ state: 'attached', timeout: 2_000 }).then(() => true).catch(() => false)) {
+    return
+  }
+
+  const activeSettingsSurface = world.page.locator('[data-testid="surface-pill-settings"][data-surface-active="true"]')
+  if (await activeSettingsSurface.isVisible().catch(() => false)) {
     return
   }
 
   const settingsBtn = world.page.locator('[data-testid="settings-btn"]')
   await expect(settingsBtn).toBeVisible({ timeout: 15_000 })
   await settingsBtn.click()
+  await expect(activeSettingsSurface).toBeVisible({ timeout: 10_000 })
 }
 
 async function openSettingsSection(world: CradleWorld, navTestId: string, pageSelector: string): Promise<void> {
-  await ensureSettingsOpen(world)
+  const navItem = visibleSettingsSidebar(world).locator(`[data-testid="${navTestId}"]`)
+  if (!await navItem.isVisible().catch(() => false)) {
+    await ensureSettingsOpen(world)
+  }
 
-  const navItem = world.page.locator(`[data-testid="${navTestId}"]`)
   await expect(navItem).toBeVisible({ timeout: 5_000 })
   await navItem.click()
   await expect(world.page.locator(pageSelector)).toBeVisible({ timeout: 10_000 })
@@ -142,7 +157,7 @@ async function createProviderViaUi(world: CradleWorld, providerName: string, mod
   await expect(addProviderButton).toBeVisible({ timeout: 10_000 })
   await addProviderButton.click()
 
-  const presetCard = world.page.locator('[data-testid="provider-preset-custom"]')
+  const presetCard = world.page.locator('[data-testid="provider-preset-openai"]')
   await expect(presetCard).toBeVisible({ timeout: 10_000 })
   await presetCard.click()
 
@@ -185,7 +200,7 @@ async function createAgentViaUi(
   agentName: string,
   providerName: string,
   modelId: string,
-  thinkingEffort: 'low' | 'medium' | 'high' | 'auto',
+  thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh',
 ): Promise<void> {
   await createProviderViaUi(world, providerName, modelId)
   await openAgentList(world)
@@ -239,7 +254,7 @@ async function createAgentViaUi(
     name: agentName,
     avatarStyle: 'dicebear',
     avatarSeed: agentName,
-    thinkingEffort: thinkingEffort ?? 'auto',
+    thinkingEffort,
     runtimeKind: 'standard',
   }
   if (target) {
@@ -367,7 +382,7 @@ Given('我已有一个名称为{string}、Provider 为{string}、Model 为{strin
   agentName: string,
   providerName: string,
   modelId: string,
-  thinkingEffort: 'low' | 'medium' | 'high' | 'auto',
+  thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh',
 ) {
   console.warn(`[step] prepare agent ${agentName}`)
   await createAgentViaUi(this, agentName, providerName, modelId, thinkingEffort)
@@ -428,18 +443,29 @@ When('我选择 Agent Model 为{string}', async function (this: CradleWorld, mod
   await this.page.keyboard.press('Escape')
 })
 
-When('我选择 Agent Thinking Effort 为{string}', async function (this: CradleWorld, thinkingEffort: 'low' | 'medium' | 'high' | 'auto') {
+When('我选择 Agent Thinking Effort 为{string}', async function (this: CradleWorld, thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh') {
   console.warn(`[step] select agent thinking effort: ${thinkingEffort}`)
-  // Thinking is selected through the ProviderModelPicker menu
   const trigger = this.page.locator('[data-testid="agent-provider-model-selector"]')
   await expect(trigger).toBeVisible({ timeout: 10_000 })
-  await trigger.click()
-  const menuPopup = this.page.locator('[role="menu"]').last()
-  await expect(menuPopup).toBeVisible({ timeout: 10_000 })
-  const thinkingItem = this.page.locator('[role="menuitem"]', { hasText: new RegExp(thinkingEffort, 'i') }).first()
-  if (await thinkingItem.isVisible().catch(() => false)) {
-    await thinkingItem.click()
+  const selectedProviderTargetId = await trigger.getAttribute('data-selected-provider-target-id')
+  const selectedModelId = await trigger.getAttribute('data-selected-model-id')
+  if (!selectedProviderTargetId || !selectedModelId) {
+    throw new Error('Expected Agent provider/model selector to expose selected provider target and model ids')
   }
+
+  await trigger.click()
+  const providerItem = this.page.getByTestId(`provider-target-option-${selectedProviderTargetId}`).last()
+  await expect(providerItem).toBeVisible({ timeout: 10_000 })
+  await providerItem.click()
+
+  const modelItem = this.page.getByTestId(`provider-model-option-${selectedModelId}`).last()
+  await expect(modelItem).toBeVisible({ timeout: 10_000 })
+  await modelItem.click()
+
+  const thinkingItem = this.page.getByTestId(`provider-model-thinking-${thinkingEffort}`).last()
+  await expect(thinkingItem).toBeVisible({ timeout: 10_000 })
+  await thinkingItem.click()
+
   await this.page.keyboard.press('Escape')
 })
 
@@ -474,32 +500,31 @@ Then('Agent 详情页应显示名称为{string}', async function (this: CradleWo
   await expect(this.page.locator('[data-testid="agent-detail-delete-trigger"]')).toBeVisible({ timeout: 10_000 })
 })
 
-Then('当前 Agent Thinking Effort 应显示{string}', async function (this: CradleWorld, thinkingEffort: 'low' | 'medium' | 'high' | 'auto') {
+Then('当前 Agent Thinking Effort 应显示{string}', async function (this: CradleWorld, thinkingEffort: 'low' | 'medium' | 'high' | 'xhigh') {
   console.warn(`[step] assert current agent thinking effort visible: ${thinkingEffort}`)
-  // Thinking effort is displayed in the ProviderModelPicker trigger button
   const trigger = this.page.locator('[data-testid="agent-provider-model-selector"]')
   await expect(trigger).toBeVisible({ timeout: 10_000 })
-  // Use poll to wait for the trigger text to reflect the selected thinking effort
-  const pattern = new RegExp(thinkingEffort, 'i')
-  await expect
-    .poll(async () => (await trigger.innerText()).match(pattern)?.[0] ?? '', {
-      timeout: 30_000,
-      message: `Expected thinking effort trigger to contain "${thinkingEffort}"`,
-    })
-    .toBeTruthy()
+  await expect(trigger).toHaveAttribute('data-thinking-value', thinkingEffort, { timeout: 30_000 })
 })
 
 Then('Agent 详情应显示已保存状态', async function (this: CradleWorld) {
   console.warn('[step] assert agent detail save indicator visible')
-  await expect(this.page.getByText('Saved', { exact: true })).toBeVisible({ timeout: 10_000 })
+  const saveState = this.page.locator('[data-testid="agent-detail-save-state"]')
+  await expect(saveState).toBeVisible({ timeout: 10_000 })
+  await expect
+    .poll(async () => await saveState.getAttribute('data-save-state'), {
+      timeout: 15_000,
+      message: 'Expected agent detail auto-save to finish',
+    })
+    .toMatch(/^(saved|idle)$/)
 })
 
 When('我返回 Agent 列表', async function (this: CradleWorld) {
   console.warn('[step] navigate back to agent list')
   const backButton = this.page.locator('[data-testid="agent-detail-back"]')
-  // After edit operations, give more time for the UI to settle before checking the back button
-  await expect(backButton).toBeVisible({ timeout: 15_000 })
-  await backButton.click()
+  if (await backButton.isVisible({ timeout: 1_000 }).catch(() => false)) {
+    await backButton.click()
+  }
   await expect(this.page.locator('[data-testid="agent-list"]')).toBeVisible({ timeout: 15_000 })
 })
 

@@ -113,9 +113,13 @@ async function _selectOption(world: CradleWorld, triggerSelector: string, value:
 async function createWorkflowProviderViaUi(world: CradleWorld, providerName: string): Promise<void> {
   const baseUrl = await startWorkflowMockProvider(world)
 
+  const activeSettingsSurface = world.page.locator('[data-testid="surface-pill-settings"][data-surface-active="true"]')
   const settingsButton = world.page.locator('[data-testid="settings-btn"]')
-  await expect(settingsButton).toBeVisible({ timeout: 15_000 })
-  await settingsButton.click()
+  if (!(await activeSettingsSurface.isVisible().catch(() => false))) {
+    await expect(settingsButton).toBeVisible({ timeout: 15_000 })
+    await settingsButton.click()
+    await expect(activeSettingsSurface).toBeVisible({ timeout: 10_000 })
+  }
 
   const providersNav = world.page.locator('[data-testid="settings-nav-providers"]')
   await expect(providersNav).toBeVisible({ timeout: 10_000 })
@@ -127,7 +131,7 @@ async function createWorkflowProviderViaUi(world: CradleWorld, providerName: str
   await expect(addProviderButton).toBeVisible({ timeout: 10_000 })
   await addProviderButton.click()
 
-  const presetCard = world.page.locator('[data-testid="provider-preset-custom"]')
+  const presetCard = world.page.locator('[data-testid="provider-preset-openai"]')
   await expect(presetCard).toBeVisible({ timeout: 10_000 })
   await presetCard.click()
 
@@ -327,13 +331,12 @@ When('我切换到 Agent {string} 的 Workflow 范围', async function (this: Cr
 })
 
 When('我关闭当前工作区详情标签', async function (this: CradleWorld) {
-  const fixture = recallWorkflowWorkspace(this)
-  const activeTab = this.page.locator('[data-testid^="tab-pill-"][data-tab-active="true"]').filter({ hasText: fixture.name }).first()
+  const activeTab = this.page.locator('[data-testid^="surface-pill-workspace:"][data-surface-active="true"]').first()
 
   await expect(activeTab).toBeVisible({ timeout: 10_000 })
   await activeTab.hover()
 
-  const closeButton = activeTab.locator('[data-testid^="tab-close-"]')
+  const closeButton = activeTab.locator('[data-testid^="surface-close-workspace:"]')
   await expect(closeButton).toBeVisible({ timeout: 10_000 })
   await closeButton.click()
 

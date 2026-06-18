@@ -41,14 +41,15 @@ function agentSkillsPageSelector(agentId?: string): string {
 }
 
 async function ensureSettingsOpen(world: CradleWorld): Promise<void> {
-  const agentsNav = world.page.locator('[data-testid="settings-nav-agents"]')
-  if (await agentsNav.isVisible().catch(() => false)) {
+  const activeSettingsSurface = world.page.locator('[data-testid="surface-pill-settings"][data-surface-active="true"]')
+  if (await activeSettingsSurface.isVisible().catch(() => false)) {
     return
   }
 
   const settingsBtn = world.page.locator('[data-testid="settings-btn"]')
   await expect(settingsBtn).toBeVisible({ timeout: 15_000 })
   await settingsBtn.click()
+  await expect(activeSettingsSurface).toBeVisible({ timeout: 10_000 })
 }
 
 async function openSettingsSection(world: CradleWorld, navTestId: string, pageSelector: string): Promise<void> {
@@ -93,7 +94,7 @@ async function createProviderViaUi(world: CradleWorld, providerName: string): Pr
   await expect(addProviderButton).toBeVisible({ timeout: 10_000 })
   await addProviderButton.click()
 
-  const presetCard = world.page.locator('[data-testid="provider-preset-custom"]')
+  const presetCard = world.page.locator('[data-testid="provider-preset-openai"]')
   await expect(presetCard).toBeVisible({ timeout: 10_000 })
   await presetCard.click()
 

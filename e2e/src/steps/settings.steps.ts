@@ -52,10 +52,9 @@ When('我关闭设置并返回首页', async function (this: CradleWorld) {
   await expect(closeButton).toBeVisible({ timeout: SETTINGS_TIMEOUT })
   await closeButton.click()
 
-  // Navigate to the home tab via the first tab pill (home is always the first pinned tab)
-  const firstTabPill = this.page.locator('[data-testid^="tab-pill-"]').first()
-  await expect(firstTabPill).toBeVisible({ timeout: SETTINGS_TIMEOUT })
-  await firstTabPill.click()
+  const homeSurface = this.page.locator('[data-testid="surface-pill-home"]')
+  await expect(homeSurface).toBeVisible({ timeout: SETTINGS_TIMEOUT })
+  await homeSurface.click()
 })
 
 When('我复制 Support 反馈模板', async function (this: CradleWorld) {

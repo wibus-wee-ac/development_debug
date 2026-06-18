@@ -29,17 +29,17 @@
 
   @P1 @CRADLE-AGENT-IDENTITY-005
   场景: 完整创建 Agent
-    假如 我已准备名为"Primary Provider"模型为"gpt-4o-mini"的 Agent Provider
+    假如 我已准备名为"Primary Provider"模型为"o3-mini"的 Agent Provider
     而且 我已进入 Agent 列表页面
     当 我点击"New Agent"按钮
     而且 我填写 Agent 名称为"Planner Agent"
     而且 我选择 Agent Provider 为"Primary Provider"
-    而且 我选择 Agent Model 为"gpt-4o-mini"
+    而且 我选择 Agent Model 为"o3-mini"
     而且 我选择 Agent Thinking Effort 为"high"
     而且 我点击创建 Agent 保存按钮
     那么 Agent 详情页应显示名称为"Planner Agent"
     当 我返回 Agent 列表
-    那么 Agent 列表中应显示名称为"Planner Agent"、Provider 为"Primary Provider"、Model 为"gpt-4o-mini"的条目
+    那么 Agent 列表中应显示名称为"Planner Agent"、Provider 为"Primary Provider"、Model 为"o3-mini"的条目
 
   @P1 @CRADLE-AGENT-IDENTITY-006
   场景: Agent 列表展示已创建的 Agent
@@ -50,8 +50,8 @@
 
   @P1 @CRADLE-AGENT-IDENTITY-007
   场景: 编辑 Agent 名称与 Thinking Effort
-    假如 我已准备名为"Primary Provider"模型为"gpt-4o-mini"的 Agent Provider
-    而且 我已有一个名称为"Draft Agent"、Provider 为"Primary Provider"、Model 为"gpt-4o-mini"、Thinking Effort 为"auto"的 Agent
+    假如 我已准备名为"Primary Provider"模型为"o3-mini"的 Agent Provider
+    而且 我已有一个名称为"Draft Agent"、Provider 为"Primary Provider"、Model 为"o3-mini"、Thinking Effort 为"high"的 Agent
     而且 我已进入 Agent 列表页面
     当 我打开名称为"Draft Agent"的 Agent
     而且 我填写 Agent 名称为"Draft Agent Updated"
@@ -60,7 +60,7 @@
     而且 当前 Agent Thinking Effort 应显示"low"
     而且 Agent 详情应显示已保存状态
     当 我返回 Agent 列表
-    那么 Agent 列表中应显示名称为"Draft Agent Updated"、Provider 为"Primary Provider"、Model 为"gpt-4o-mini"的条目
+    那么 Agent 列表中应显示名称为"Draft Agent Updated"、Provider 为"Primary Provider"、Model 为"o3-mini"的条目
 
   @P1 @CRADLE-AGENT-IDENTITY-008
   场景: 删除已有 Agent

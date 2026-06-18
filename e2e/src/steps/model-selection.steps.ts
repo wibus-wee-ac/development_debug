@@ -1,6 +1,16 @@
 import { Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
+import {
+  fillPromptEditor,
+  newChatSendButton,
+  newChatTextBox,
+  visibleChatView,
+  visibleNewChatEntry,
+  visibleProviderModelSelector,
+  visibleRuntimeSelector,
+  waitForNewChatReady,
+} from '../support/ui'
 import type { CradleWorld } from '../support/world'
 
 const SELECTOR_TIMEOUT = 15_000
@@ -8,7 +18,7 @@ const MOCK_RE = /mock/i
 const RUNTIME_LABELS = ['Standard', 'Claude Agent', 'Codex', 'CLI TUI'] as const
 
 async function openProviderModelSelector(world: CradleWorld) {
-  const selector = world.page.locator('[data-tab-visible="true"] [data-testid="provider-model-selector"]').first()
+  const selector = visibleProviderModelSelector(world)
   await expect(selector).toBeVisible({ timeout: SELECTOR_TIMEOUT })
   await selector.click()
 
@@ -25,7 +35,7 @@ async function selectMockLlmProvider(world: CradleWorld) {
 
   // After selecting provider, models load asynchronously and auto-select.
   // Wait for the trigger text to update from placeholder to actual model name.
-  const trigger = world.page.locator('[data-tab-visible="true"] [data-testid="provider-model-selector"]').first()
+  const trigger = visibleProviderModelSelector(world)
   await expect(trigger).not.toHaveText(/Select a model|Model$/, { timeout: 15_000 }).catch(() => {})
   await world.page.keyboard.press('Escape')
 }
@@ -34,7 +44,7 @@ When('我进入新会话页面', async function (this: CradleWorld) {
   const navItem = this.page.locator('[data-testid="nav-new-chat"]')
   await expect(navItem).toBeVisible({ timeout: 15_000 })
   await navItem.click()
-  await expect(this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-page"]').first()).toBeVisible({ timeout: 10_000 })
+  await waitForNewChatReady(this)
 })
 
 When('我打开 Provider 与模型选择器', async function (this: CradleWorld) {
@@ -54,12 +64,10 @@ When('我选择 Mock LLM Provider', async function (this: CradleWorld) {
 })
 
 When('我发送消息{string}', async function (this: CradleWorld, text: string) {
-  const textarea = this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-textarea"]').first()
-  await expect(textarea).toBeVisible({ timeout: 10_000 })
-  await textarea.click()
-  await textarea.fill(text)
+  const entry = visibleNewChatEntry(this)
+  await fillPromptEditor(newChatTextBox(entry), text)
 
-  const button = this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-send-btn"]').first()
+  const button = newChatSendButton(entry)
 
   // If button is still disabled after a short wait, reload to pick up fresh query data
   const isEnabled = await button.isEnabled().catch(() => false)
@@ -72,13 +80,11 @@ When('我发送消息{string}', async function (this: CradleWorld, text: string)
       const navItem = this.page.locator('[data-testid="nav-new-chat"]')
       await expect(navItem).toBeVisible({ timeout: 15_000 })
       await navItem.click()
-      await expect(this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-page"]').first()).toBeVisible({ timeout: 10_000 })
+      await waitForNewChatReady(this)
 
       await selectMockLlmProvider(this)
 
-      const ta = this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-textarea"]').first()
-      await ta.click()
-      await ta.fill(text)
+      await fillPromptEditor(newChatTextBox(visibleNewChatEntry(this)), text)
     }
   }
 
@@ -88,7 +94,7 @@ When('我发送消息{string}', async function (this: CradleWorld, text: string)
 
 Then('应该收到 Agent 的回复', async function (this: CradleWorld) {
   // Wait for chat view to appear and reach idle status
-  const chatView = this.page.locator('[data-tab-visible="true"] [data-testid="chat-view"]').first()
+  const chatView = visibleChatView(this)
   await expect(chatView).toBeVisible({ timeout: 20_000 })
   await expect(chatView).toHaveAttribute('data-chat-status', 'idle', { timeout: 30_000 })
 
@@ -98,7 +104,7 @@ Then('应该收到 Agent 的回复', async function (this: CradleWorld) {
 })
 
 Then('Provider 与模型选择器应显示模型{string}', async function (this: CradleWorld, model: string) {
-  const selector = this.page.locator('[data-tab-visible="true"] [data-testid="provider-model-selector"]').first()
+  const selector = visibleProviderModelSelector(this)
   await expect(selector).toBeVisible({ timeout: SELECTOR_TIMEOUT })
   // Model loads lazily after provider selection — poll until it appears
   await expect.poll(async () => {
@@ -108,7 +114,7 @@ Then('Provider 与模型选择器应显示模型{string}', async function (this:
 })
 
 When('我打开运行时选择器', async function (this: CradleWorld) {
-  const selector = this.page.locator('[data-tab-visible="true"] [data-testid="runtime-selector"]').first()
+  const selector = visibleRuntimeSelector(this)
   await expect(selector).toBeVisible({ timeout: SELECTOR_TIMEOUT })
   await selector.click()
 })

@@ -1,11 +1,11 @@
 import { Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
+import { visibleChatView } from '../support/ui'
 import type { CradleWorld } from '../support/world'
 
 const GLOBAL_SEARCH_TIMEOUT = 15_000
 const SESSION_ALIASES_KEY = 'chat.session-aliases'
-const TAB_PILL = '[data-testid^="tab-pill-"]'
 
 const COMMAND_LABEL_TO_ID: Record<string, string> = {
   打开设置: 'open-settings',
@@ -73,16 +73,7 @@ async function openGlobalSearch(world: CradleWorld): Promise<void> {
 }
 
 async function getActiveChatView(world: CradleWorld) {
-  const activeTab = world.page.locator(`${TAB_PILL}[data-tab-active="true"]`).first()
-  await expect(activeTab).toBeVisible({ timeout: GLOBAL_SEARCH_TIMEOUT })
-
-  const activeTabTestId = await activeTab.getAttribute('data-testid')
-  if (!activeTabTestId) {
-    throw new Error('Expected active tab pill to expose a data-testid')
-  }
-
-  const activeTabId = activeTabTestId.replace('tab-pill-', '')
-  const chatView = world.page.locator(`[data-testid="tab-content-${activeTabId}"] [data-testid="chat-view"]`).first()
+  const chatView = visibleChatView(world)
   await expect(chatView).toBeVisible({ timeout: GLOBAL_SEARCH_TIMEOUT })
   return chatView
 }

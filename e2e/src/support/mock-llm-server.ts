@@ -59,6 +59,7 @@ export interface MockToolDefinition {
  */
 export type MockClaudeAgentScenario
   = | 'basic-chat'
+    | 'tool-call'
     | 'agent-subagent' // Parent spawns Agent tool → subagent does work with parent_tool_use_id
     | 'agent-subagent-deep' // Subagent spawns its own Agent (nested depth 2)
     | 'agent-parallel' // Parent spawns 2 Agents at once
@@ -665,10 +666,27 @@ export class MockLlmServer {
         item: {
           type: 'function_call',
           id: itemId,
+          status: 'in_progress',
           call_id: tc.id,
           name: tc.function.name,
-          arguments: tc.function.arguments,
+          arguments: '',
         },
+      })
+      await this.delay(this.chunkDelay)
+
+      this.writeSSE(res, {
+        type: 'response.function_call_arguments.delta',
+        item_id: itemId,
+        output_index: i,
+        delta: tc.function.arguments,
+      })
+      await this.delay(this.chunkDelay)
+
+      this.writeSSE(res, {
+        type: 'response.function_call_arguments.done',
+        item_id: itemId,
+        output_index: i,
+        arguments: tc.function.arguments,
       })
       await this.delay(this.chunkDelay)
 
@@ -897,13 +915,13 @@ export class MockLlmServer {
         'Cache-Control': 'no-cache',
       })
 
-      void this.streamClaudeAgentScenario(res)
+      void this.streamClaudeAgentScenario(res, this.turnCount)
     })
   }
 
-  private async streamClaudeAgentScenario(res: ServerResponse): Promise<void> {
+  private async streamClaudeAgentScenario(res: ServerResponse, turnCount: number): Promise<void> {
     const sessionId = 'mock-session-001'
-    const msgs = buildClaudeAgentScenario(this.claudeAgentScenario!, sessionId)
+    const msgs = buildClaudeAgentScenario(this.claudeAgentScenario!, sessionId, turnCount)
 
     for (const msg of msgs) {
       this.writeSSE(res, msg as unknown as Record<string, unknown>)
@@ -973,6 +991,24 @@ function makeUserMsg(opts: {
   }
 }
 
+function makeAssistantMsg(opts: {
+  content: Array<Record<string, unknown>>
+  parentToolUseId: string | null
+  uuid: string
+  sessionId: string
+}): MockSdkMessage {
+  return {
+    type: 'assistant',
+    message: {
+      role: 'assistant',
+      content: opts.content,
+    },
+    parent_tool_use_id: opts.parentToolUseId,
+    uuid: opts.uuid,
+    session_id: opts.sessionId,
+  }
+}
+
 function makeResultMsg(sessionId: string): MockSdkMessage {
   return {
     type: 'result',
@@ -994,10 +1030,13 @@ function makeResultMsg(sessionId: string): MockSdkMessage {
 function buildClaudeAgentScenario(
   scenario: MockClaudeAgentScenario,
   sessionId: string,
+  turnCount = 1,
 ): MockSdkMessage[] {
   switch (scenario) {
     case 'basic-chat':
       return buildBasicChat(sessionId)
+    case 'tool-call':
+      return buildToolCall(sessionId)
     case 'agent-subagent':
       return buildAgentSubagent(sessionId)
     case 'agent-subagent-deep':
@@ -1005,7 +1044,7 @@ function buildClaudeAgentScenario(
     case 'agent-parallel':
       return buildAgentParallel(sessionId)
     case 'approval-tool':
-      return buildApprovalTool(sessionId)
+      return buildApprovalTool(sessionId, turnCount)
     default:
       return buildBasicChat(sessionId)
   }
@@ -1024,6 +1063,31 @@ function buildBasicChat(sessionId: string): MockSdkMessage[] {
   msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'Hello! This is a basic response from the mock LLM.' }, parentToolUseId: null, uuid: 'u1', sessionId }))
   msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 1, parentToolUseId: null, uuid: 'u1', sessionId }))
 
+  msgs.push(makeResultMsg(sessionId))
+  return msgs
+}
+
+function buildToolCall(sessionId: string): MockSdkMessage[] {
+  const toolCallId = 'toolu_read_file_001'
+  const msgs: MockSdkMessage[] = []
+
+  msgs.push(makeAssistantMsg({
+    content: [{
+      type: 'tool_use',
+      id: toolCallId,
+      name: 'read_file',
+      input: { path: 'demo.txt' },
+    }],
+    parentToolUseId: null,
+    uuid: 'u-read-file',
+    sessionId,
+  }))
+  msgs.push(makeUserMsg({
+    toolResults: [{ tool_use_id: toolCallId, content: 'Mock file contents' }],
+    parentToolUseId: null,
+    uuid: 'u-read-file-result',
+    sessionId,
+  }))
   msgs.push(makeResultMsg(sessionId))
   return msgs
 }
@@ -1214,26 +1278,37 @@ function buildAgentParallel(sessionId: string): MockSdkMessage[] {
 }
 
 /**
- * Streams a Bash tool_use to trigger canUseTool/approval in the mock provider.
+ * Emits a Claude Agent plan approval request, then completes on the follow-up
+ * turn triggered by approving the plan.
  */
-function buildApprovalTool(sessionId: string): MockSdkMessage[] {
-  const toolCallId = 'call_bash_approval_001'
+function buildApprovalTool(sessionId: string, turnCount: number): MockSdkMessage[] {
+  if (turnCount > 1) {
+    const msgs: MockSdkMessage[] = []
+    msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: null, uuid: 'u-approval-final', sessionId }))
+    msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Approved. The command execution plan completed.' }, parentToolUseId: null, uuid: 'u-approval-final', sessionId }))
+    msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: null, uuid: 'u-approval-final', sessionId }))
+    msgs.push(makeResultMsg(sessionId))
+    return msgs
+  }
+
+  const toolCallId = 'toolu_plan_approval_001'
   const msgs: MockSdkMessage[] = []
+  const plan = '1. Run echo hello\n2. Report the command output'
 
   msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: null, uuid: 'u1', sessionId }))
-  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'I will run a command for you.' }, parentToolUseId: null, uuid: 'u1', sessionId }))
+  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'I prepared a plan that needs approval.' }, parentToolUseId: null, uuid: 'u1', sessionId }))
   msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: null, uuid: 'u1', sessionId }))
-
-  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 1, contentBlock: { type: 'tool_use', id: toolCallId, name: 'Bash', input: {} }, parentToolUseId: null, uuid: 'u1', sessionId }))
-  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 1, delta: { type: 'input_json_delta', partial_json: '{"command":"echo hello","description":"Run echo"}' }, parentToolUseId: null, uuid: 'u1', sessionId }))
-  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 1, parentToolUseId: null, uuid: 'u1', sessionId }))
-
-  msgs.push(makeUserMsg({ toolResults: [{ tool_use_id: toolCallId, content: 'hello\n' }], parentToolUseId: null, uuid: 'u-tr', sessionId }))
-
-  msgs.push(makeStreamEvent({ eventType: 'content_block_start', index: 0, contentBlock: { type: 'text', text: '' }, parentToolUseId: null, uuid: 'u2', sessionId }))
-  msgs.push(makeStreamEvent({ eventType: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'Done! The command executed successfully.' }, parentToolUseId: null, uuid: 'u2', sessionId }))
-  msgs.push(makeStreamEvent({ eventType: 'content_block_stop', index: 0, parentToolUseId: null, uuid: 'u2', sessionId }))
-
+  msgs.push(makeAssistantMsg({
+    content: [{
+      type: 'tool_use',
+      id: toolCallId,
+      name: 'ExitPlanMode',
+      input: { plan },
+    }],
+    parentToolUseId: null,
+    uuid: 'u-plan-approval',
+    sessionId,
+  }))
   msgs.push(makeResultMsg(sessionId))
   return msgs
 }

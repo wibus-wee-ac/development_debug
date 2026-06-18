@@ -4,6 +4,7 @@ import { basename, dirname, join } from 'node:path'
 import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
+import { newChatWorkspaceSelector, visibleNewChatEntry } from '../support/ui'
 import type { CradleWorld } from '../support/world'
 
 interface WorkspaceFixture {
@@ -204,7 +205,7 @@ Given('当前工作区中存在文件{string}，内容为{string}', async functi
 
 When('我在新建聊天中选择当前工作区', async function (this: CradleWorld) {
   const fixture = recallCurrentWorkspace(this)
-  const selector = this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-workspace-selector"]').first()
+  const selector = newChatWorkspaceSelector(visibleNewChatEntry(this))
 
   await expect(selector).toBeVisible({ timeout: 10_000 })
   await selector.click()

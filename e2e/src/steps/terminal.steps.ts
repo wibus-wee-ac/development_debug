@@ -3,6 +3,7 @@ import { createHash } from 'node:crypto'
 import { Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
+import { visibleChatView } from '../support/ui'
 import type { CradleWorld } from '../support/world'
 
 const TERMINAL_TIMEOUT = 30_000
@@ -42,7 +43,7 @@ async function waitForBottomShellReady(world: CradleWorld) {
 }
 
 async function getActiveChatWorkspacePath(world: CradleWorld): Promise<string> {
-  const chatView = world.page.locator('[data-tab-visible="true"] [data-testid="chat-view"]').first()
+  const chatView = visibleChatView(world)
   await expect(chatView).toBeVisible({ timeout: 10_000 })
 
   const sessionId = await chatView.getAttribute('data-chat-session-id')

@@ -2,13 +2,26 @@ import { Given, Then, When } from '@cucumber/cucumber'
 import { expect } from '@playwright/test'
 
 import { MockLlmServer } from '../support/mock-llm-server'
+import {
+  fillPromptEditor,
+  newChatSendButton,
+  newChatTextBox,
+  visibleChatView,
+  visibleProviderModelSelector,
+  visibleRuntimeSelector,
+  waitForNewChatReady,
+} from '../support/ui'
 import type { CradleWorld } from '../support/world'
 
 const APPROVAL_TIMEOUT = 20_000
 const MOCK_CLAUDE_AGENT_RE = /Mock Claude Agent/i
 
+function claudeAgentMockBaseUrl(baseUrl: string): string {
+  return baseUrl.replace(/\/v1\/?$/, '')
+}
+
 async function selectClaudeAgentRuntime(world: CradleWorld): Promise<void> {
-  const runtimeSelector = world.page.locator('[data-tab-visible="true"] [data-testid="runtime-selector"]').first()
+  const runtimeSelector = visibleRuntimeSelector(world)
   await expect(runtimeSelector).toBeVisible({ timeout: 10_000 })
   await runtimeSelector.click()
 
@@ -18,7 +31,7 @@ async function selectClaudeAgentRuntime(world: CradleWorld): Promise<void> {
 }
 
 async function selectMockClaudeAgentProvider(world: CradleWorld): Promise<void> {
-  const providerSelector = world.page.locator('[data-tab-visible="true"] [data-testid="provider-model-selector"]').first()
+  const providerSelector = visibleProviderModelSelector(world)
   await expect(providerSelector).toBeVisible({ timeout: 10_000 })
   await providerSelector.click()
 
@@ -39,6 +52,7 @@ Given('已创建一个需要审批的会话', async function (this: CradleWorld)
   const mockLlmServer = new MockLlmServer({ chunkDelay: 5, claudeAgentScenario: 'approval-tool' })
   this.mockLlmServer = mockLlmServer
   this.mockLlmBaseUrl = await mockLlmServer.start()
+  const claudeAgentBaseUrl = claudeAgentMockBaseUrl(this.mockLlmBaseUrl)
 
   const response = await fetch(`${this.params.serverUrl}/profiles/mock-claude-agent`, {
     method: 'PUT',
@@ -48,7 +62,7 @@ Given('已创建一个需要审批的会话', async function (this: CradleWorld)
       providerKind: 'anthropic',
       enabled: true,
       config: {
-        baseUrl: this.mockLlmBaseUrl,
+        baseUrl: claudeAgentBaseUrl,
         model: 'claude-sonnet-4-20250514',
         permissionMode: 'default',
       },
@@ -70,7 +84,7 @@ Given('已创建一个需要审批的会话', async function (this: CradleWorld)
       providerKind: 'anthropic',
       enabled: true,
       config: {
-        baseUrl: this.mockLlmBaseUrl,
+        baseUrl: claudeAgentBaseUrl,
         model: 'claude-sonnet-4-20250514',
         permissionMode: 'default',
         apiKey: 'sk-mock-test-key',
@@ -92,21 +106,19 @@ Given('已创建一个需要审批的会话', async function (this: CradleWorld)
   const navItem = this.page.locator('[data-testid="nav-new-chat"]')
   await expect(navItem).toBeVisible({ timeout: 15_000 })
   await navItem.click()
-  await expect(this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-page"]').first()).toBeVisible({ timeout: 10_000 })
+  const entry = await waitForNewChatReady(this)
 
   await selectClaudeAgentRuntime(this)
   await selectMockClaudeAgentProvider(this)
 
   // Fill and send
-  const textarea = this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-textarea"]').first()
-  await textarea.click()
-  await textarea.fill('请执行 echo hello')
-  const sendBtn = this.page.locator('[data-tab-visible="true"] [data-testid="new-chat-send-btn"]').first()
+  await fillPromptEditor(newChatTextBox(entry), '请执行 echo hello')
+  const sendBtn = newChatSendButton(entry)
   await expect(sendBtn).toBeEnabled({ timeout: 15_000 })
   await sendBtn.click()
 
   // Wait for chat view to appear (the agent is now running and should hit canUseTool)
-  const chatView = this.page.locator('[data-tab-visible="true"] [data-testid="chat-view"]').first()
+  const chatView = visibleChatView(this)
   await expect(chatView).toBeVisible({ timeout: 20_000 })
 })
 
@@ -134,6 +146,6 @@ Then('审批卡片应该消失', async function (this: CradleWorld) {
 
 Then('Agent 应该继续执行', async function (this: CradleWorld) {
   // After approval, the chat should return to idle status (agent completed execution)
-  const chatView = this.page.locator('[data-tab-visible="true"] [data-testid="chat-view"]').first()
+  const chatView = visibleChatView(this)
   await expect(chatView).toHaveAttribute('data-chat-status', 'idle', { timeout: 30_000 })
 })
