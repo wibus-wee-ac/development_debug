@@ -9,6 +9,8 @@ SQL 文件负责重放数据库结构，`meta/` 负责 journal 与 snapshot，�
 ## Files
 
 - **0000_initial_release_baseline.sql**: 当前 schema 的干净 baseline migration。
+- **0001_cradle_diffs.sql**: Cradle Diffs / `diff-review` lifecycle schema.
+- **0002_diff_review_guides.sql**: Guided review generation persistence for `diff-review` revisions.
 - **meta/**: Drizzle journal 与 schema snapshot，用于 tooling 和 migration 顺序管理；该目录必须保持 JSON-only，否则 `drizzle-kit generate` 会解析失败
 
 ## Regenerate Before Release Boundary

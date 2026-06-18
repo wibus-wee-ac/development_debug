@@ -8,6 +8,20 @@
       "when": 1781289566575,
       "tag": "0000_initial_release_baseline",
       "breakpoints": true
+    },
+    {
+      "idx": 1,
+      "version": "6",
+      "when": 1781616720000,
+      "tag": "0001_cradle_diffs",
+      "breakpoints": true
+    },
+    {
+      "idx": 2,
+      "version": "6",
+      "when": 1781705239852,
+      "tag": "0002_diff_review_guides",
+      "breakpoints": true
     }
   ]
 }

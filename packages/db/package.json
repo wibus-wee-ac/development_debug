@@ -3,6 +3,9 @@
   "type": "module",
   "version": "0.1.0",
   "private": true,
+  "scripts": {
+    "generate": "drizzle-kit generate"
+  },
   "exports": {
     ".": "./src/index.ts",
     "./paths": "./src/paths.ts"
