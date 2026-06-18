@@ -12,6 +12,8 @@
 
 ## Ownership Notes
 
+Chronicle runtime lifecycle is development-only for now. Production server builds may still read Chronicle-owned DB projections and historical config, but `service.ts` refuses to enable runtime config, reports saved enabled config as unavailable, and no-ops daemon, Slack background sync, activity pipeline, and dream scheduler startup. Desktop health projects this as intentionally disabled rather than as a warning.
+
 CLI metadata is intentionally limited to Agent-facing read/query/list commands and explicit operational commands: config/status/daemon resources, model resource reconciliation/install/verify, Slack source management/sync, activity pipeline actions, knowledge/dream listings, timeline, realtime event backlog, memories search/list, privacy redaction/export/breadcrumbs, and evidence listings. Binary frame reads and frame-mask image projections, SSE download progress/event streams, Slack Events webhook ingress, daemon ingest endpoints, and destructive model resource removal are HTTP-only because they are not stable plain shell interactions.
 
 Chronicle 的 canonical product state 是 Cradle DB，不是 artifact filename scan，也不是 Rust outbox。Artifact files 与 `outbox/events.ndjson` 是本地证据和恢复来源；Server ingest 会把 Rust 上报的 paths 转成 Chronicle storage root 相对路径，并决定这些 evidence 如何进入 activity、memory、knowledge 和 privacy projections。

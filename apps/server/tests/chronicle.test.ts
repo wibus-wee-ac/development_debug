@@ -238,6 +238,135 @@ async function postMemory(
 }
 
 describe('chronicle module', () => {
+  it('does not allow Chronicle runtime to be enabled in production', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const storageRoot = makeTempDir('cradle-chronicle-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousCredentialSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    const previousNodeEnv = process.env.NODE_ENV
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chronicle-test-secret'
+    process.env.NODE_ENV = 'production'
+    shutdownInfra()
+
+    try {
+      const app = await createServerApp({ startBackgroundTasks: false })
+      const response = await requestJson(app, '/chronicle/config', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          profileId: 'profile-1',
+          modelId: 'model-1',
+          workspaceId: '',
+          enabled: true,
+          activityPipelineEnabled: true,
+          activityPipelineIntervalMs: 120_000,
+          activityPipelineBatchSize: 3,
+          dreamSchedulerEnabled: true,
+          dreamSchedulerIntervalMs: 86_400_000,
+          dreamSchedulerApplyMerge: false,
+          audioCaptureEnabled: true,
+          audioSource: 'microphone',
+          audioSegmentMs: 5_000,
+          audioSegmentIntervalMs: 60_000,
+          audioRmsThreshold: 0.02,
+          storageRoot,
+        }),
+      })
+
+      expect(response.status).toBe(403)
+      expect(await response.json()).toEqual(expect.objectContaining({
+        code: 'chronicle_runtime_disabled',
+        message: 'Chronicle runtime is only available in development builds.',
+      }))
+    }
+    finally {
+      stopActivityPipelineScheduler()
+      stopDreamScheduler()
+      stopSlackBackgroundSync()
+      shutdownInfra()
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousCredentialSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousCredentialSecret
+      }
+      if (previousNodeEnv === undefined) {
+        delete process.env.NODE_ENV
+      }
+      else {
+        process.env.NODE_ENV = previousNodeEnv
+      }
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(storageRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('projects saved Chronicle enabled config as unavailable in production status', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const storageRoot = makeTempDir('cradle-chronicle-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousCredentialSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    const previousNodeEnv = process.env.NODE_ENV
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chronicle-test-secret'
+    process.env.NODE_ENV = 'production'
+    writeChroniclePreference(dataDir, storageRoot, {
+      profileId: 'profile-1',
+      modelId: 'model-1',
+      enabled: true,
+      audioCaptureEnabled: true,
+      audioSource: 'microphone',
+    })
+    shutdownInfra()
+
+    try {
+      const app = await createServerApp({ startBackgroundTasks: false })
+      const response = await requestJson(app, '/chronicle/status')
+
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual(expect.objectContaining({
+        available: false,
+        running: false,
+        activityPipelineEnabled: false,
+        dreamSchedulerEnabled: false,
+        audioRuntimeStatus: 'disabled',
+      }))
+    }
+    finally {
+      stopActivityPipelineScheduler()
+      stopDreamScheduler()
+      stopSlackBackgroundSync()
+      shutdownInfra()
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousCredentialSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousCredentialSecret
+      }
+      if (previousNodeEnv === undefined) {
+        delete process.env.NODE_ENV
+      }
+      else {
+        process.env.NODE_ENV = previousNodeEnv
+      }
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(storageRoot, { recursive: true, force: true })
+    }
+  })
+
   it('round-trips configured privacy rules through Chronicle config', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const storageRoot = makeTempDir('cradle-chronicle-')

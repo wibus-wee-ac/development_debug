@@ -188,6 +188,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
 
   // Start chronicle daemon if enabled
   if (startBackgroundTasks) {
+    const chronicleRuntimeAllowed = chronicleService.isChronicleRuntimeAllowed()
     void refreshAllExternalProviderSources()
       .then((results) => {
         for (const result of results) {
@@ -202,10 +203,12 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
       .catch((error) => {
         console.error('[external-provider-sources] Refresh failed:', error)
       })
-    void chronicleService.initDaemon().catch((error) => {
-      console.error('[chronicle] Daemon initialization failed:', error)
-    })
-    chronicleService.startSlackBackgroundSync()
+    if (chronicleRuntimeAllowed) {
+      void chronicleService.initDaemon().catch((error) => {
+        console.error('[chronicle] Daemon initialization failed:', error)
+      })
+      chronicleService.startSlackBackgroundSync()
+    }
     providerRuntimeHostManager.startReaper()
   }
 

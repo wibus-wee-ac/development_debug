@@ -14,6 +14,45 @@ function createTempDir(prefix: string): string {
 }
 
 describe('desktop tray projection', () => {
+  it('reports Chronicle as intentionally disabled in production health', async () => {
+    const dataDir = createTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousNodeEnv = process.env.NODE_ENV
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.NODE_ENV = 'production'
+
+    try {
+      const app = await createServerApp({ startBackgroundTasks: false })
+
+      const healthResponse = await app.handle(new Request('http://localhost/desktop/health'))
+      expect(healthResponse.status).toBe(200)
+      expect(await healthResponse.json()).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          id: 'chronicle',
+          value: 'Disabled',
+          status: 'ok',
+          detail: 'Chronicle runtime is only available in development builds.',
+        }),
+      ]))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousNodeEnv === undefined) {
+        delete process.env.NODE_ENV
+      }
+      else {
+        process.env.NODE_ENV = previousNodeEnv
+      }
+    }
+  })
+
   it('returns desktop facts for recent sessions, health, summary, and pending awaits', async () => {
     const dataDir = createTempDir('cradle-data-')
     const workspaceRoot = createTempDir('cradle-workspace-')
