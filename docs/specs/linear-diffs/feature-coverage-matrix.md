@@ -70,3 +70,28 @@
 
 This slice avoids remote auth, comments, and agent execution while proving the owner boundary and renderer migration.
 
+## Current Implementation Status
+
+This matrix is a specification coverage checklist, not a completed-feature checklist. As of the current local implementation, Cradle Diffs has a local working-tree review lifecycle, generated-file classification/collapse, and explicit agent-fix start/cancel/rerun/artifact controls backed by Chat Runtime. It still does not perform remote GitHub review sync or extract rich provider-native artifacts beyond final assistant output.
+
+| Scope item | Status | Notes |
+| --- | --- | --- |
+| `diff-review` local working tree source | Done | Server module creates or refreshes a workspace-scoped local review from existing `git` status and diff materialization. |
+| `diff-review` local branch compare source | Done | Server module creates or refreshes `local-branch-compare` reviews from existing `git` branch compare facts without checkout, and Cradle Diffs has a minimal base/head compare opener. |
+| `DiffReview`, immutable `DiffRevision`, `ReviewFileDiff` persistence | Done | Drizzle schema and migration exist for review, revision, and file rows. |
+| Review-owned diff container | Done | `features/diff-review/cradle-diffs-viewer.tsx` renders review revisions with `@pierre/diffs`. |
+| Changes panel opens local review | Done | Changes actions open the `workspace-diffs` surface at `/workspaces/$workspaceId/diffs`. |
+| Independent Cradle Diffs surface | Done | Route is `routes/workspaces_.$workspaceId.diffs.tsx`, intentionally non-nested under workspace detail. |
+| Split/unified display toggle | Done | UI toggle persists through `diff_review_preferences`; narrow layout hides rails and keeps the main diff usable. |
+| Viewed file state | Done | `diff_review_file_view_state` persists per local user/review/revision/file and the file rail projects viewed status. |
+| Review sidebar / inbox | Partial | Cradle Diffs left rail now has attention/authored/participated/all tabs, source/status grouping, review counts, and review meta from `diff-review` lifecycle data. Issue/requester grouping and failed-check grouping wait for issue refs and GitHub/check adapters. |
+| GitHub source adapter and auth readiness | Partial | Source readiness API returns explicit local ready states for working tree and branch compare, plus GitHub integration missing state. No GitHub adapter, code access check, personal connection check, or webhook refresh exists. |
+| PR detail metadata | Partial | Review detail has header, file rail, activity, threads, and agent rail. It does not have remote PR CI checks, GitHub activity metadata, or semantic guided review content. |
+| Inline comments and reactions | Partial | Local threads, comments, resolve, and reaction persistence exist. Threads can now be anchored from click/drag same-side base/head diff selections, persist typed range anchors, and remap by exact line hash, hunk/context, or conservative fuzzy same-file matching. Cross-side range UX is not complete. |
+| Submit review operations | Partial | Local approve/request-changes/comment submissions persist with `local-only` sync state. Remote outbound operations are not implemented. |
+| Guided review | Partial | Backend generation now persists revision-scoped guide steps from `runtime.quickQuestion` for Codex/Claude Agent runtimes with explicit unsupported-provider errors. Frontend guide authoring/refresh UX, range-level links, and quality/eval loops are not complete. |
+| Structural diff | Partial | The `hideWhitespaceOnly` preference now suppresses whitespace-only file changes in the Cradle Diffs rail and renderer using `@pierre/diffs` parsed metadata while preserving raw patches. Review files are also deterministically classified as generated from paths such as `api-gen`, `drizzle`, `dist`, lockfiles, snapshots, and `.gen.*` outputs, and the `collapseGeneratedFiles` preference hides those files from the rail and renderer. AST/semantic structural highlighting is not implemented yet. |
+| Notifications and review preferences | Partial | Events and display preferences persist locally. Notification delivery and bot filtering are not implemented. |
+| Agent fix loop | Partial | Review-owned agent fix work orders persist and show in UI. Pending work orders can start real chat-runtime sessions/runs through an explicit start operation, running work orders can be cancelled, and terminal work orders can be rerun with fresh session/run links. Completed runs refresh the review source, link to the resulting review revision, record a content-addressed artifact id from final assistant output, and expose the artifact through web/API/CLI. Rich provider-native artifacts and richer agent selection remain incomplete. |
+| Commit Planner / AI Commit | Partial | Rule-based draft commit plans persist in `diff_review_commit_plans`, expose grouped/single planning APIs, render in the Cradle Diffs Commit rail, support manual edits to messages/rationale/status with server-side file/dependency validation, and can apply accepted local working-tree plans as native git commits with idempotent operation records. LLM grouping, remote/source-adapter apply, and richer commit staging controls are not implemented. |
+| Agent CLI surface | Done | Generated `cradle workspace diffs ...` commands expose local review creation/list/get/refresh, viewed state, threads/comments/reactions/resolve, submissions, preferences, readiness, agent fix work order create/start/cancel/rerun/artifact retrieval, and commit plan create/update/apply from the server OpenAPI contract. |
