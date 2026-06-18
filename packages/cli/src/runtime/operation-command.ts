@@ -111,6 +111,7 @@ function describeGroup(name: string): string | undefined {
     'document': 'Manage documents',
     'export': 'Export resources',
     'file': 'Manage workspace files',
+    'diffs': 'Manage workspace diff reviews',
     'git': 'Manage workspace git state',
     'issue': 'Manage kanban issues',
     'issue-agent-session': 'Manage issue agent sessions',

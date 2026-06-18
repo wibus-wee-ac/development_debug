@@ -4,7 +4,8 @@ import * as z from 'zod';
 
 export const zPutPreferencesAppBody = z.object({
     featureFlags: z.object({
-        multiWorkspacePoc: z.boolean().default(false)
+        multiWorkspacePoc: z.boolean().default(false),
+        localAuthForDangerousActions: z.boolean().optional().default(false)
     })
 });
 
@@ -1517,6 +1518,258 @@ export const zGetWorkspacesByIdGitMergeBaseQuery = z.object({
     baseBranch: z.string().min(1)
 });
 
+export const zGetWorkspacesByIdGitBranchComparePath = z.object({
+    id: z.string().min(1)
+});
+
+export const zGetWorkspacesByIdGitBranchCompareQuery = z.object({
+    repo: z.string().min(1).optional(),
+    baseRef: z.string().min(1),
+    headRef: z.string().min(1)
+});
+
+export const zGetWorkspacesByIdDiffReviewsPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zGetWorkspacesByIdDiffReviewsSourceReadinessPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsLocalWorkingTreeBody = z.object({
+    repo: z.string().min(1).optional()
+});
+
+export const zPostWorkspacesByIdDiffReviewsLocalWorkingTreePath = z.object({
+    id: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsLocalBranchCompareBody = z.object({
+    repo: z.string().min(1).optional(),
+    baseRef: z.string().min(1),
+    headRef: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsLocalBranchComparePath = z.object({
+    id: z.string().min(1)
+});
+
+export const zGetWorkspacesByIdDiffReviewsByReviewIdPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdRefreshPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewedBody = z.object({
+    viewed: z.boolean()
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewedPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1),
+    fileId: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdThreadsBody = z.object({
+    fileId: z.string().min(1).nullish(),
+    anchor: z.object({
+        fileId: z.string().min(1),
+        side: z.enum(['base', 'head']).optional(),
+        startLine: z.number().gte(1),
+        endLine: z.number().gte(1).optional(),
+        startColumn: z.number().gte(1).optional(),
+        endColumn: z.number().gte(1).optional()
+    }).nullish(),
+    bodyMarkdown: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdThreadsPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdCommentsBody = z.object({
+    bodyMarkdown: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdCommentsPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1),
+    threadId: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdReactionsBody = z.object({
+    reaction: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdReactionsPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1),
+    threadId: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdResolvePath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1),
+    threadId: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdSubmitBody = z.object({
+    decision: z.enum([
+        'approve',
+        'request-changes',
+        'comment'
+    ]),
+    bodyMarkdown: z.string().nullish()
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdSubmitPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1)
+});
+
+export const zPutWorkspacesByIdDiffReviewsPreferencesBody = z.object({
+    diffStyle: z.enum(['split', 'unified']).optional(),
+    codeTheme: z.string().min(1).optional(),
+    fontSize: z.number().gte(9).lte(24).optional(),
+    lineHeight: z.number().gte(12).lte(36).optional(),
+    hideWhitespaceOnly: z.boolean().optional(),
+    structuralHighlighting: z.boolean().optional(),
+    collapseGeneratedFiles: z.boolean().optional(),
+    notificationMode: z.enum([
+        'all-activity',
+        'all-activity-by-people',
+        'reviews-and-comments',
+        'reviews-and-comments-by-people',
+        'none'
+    ]).optional()
+});
+
+export const zPutWorkspacesByIdDiffReviewsPreferencesPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateBody = z.object({
+    providerTargetId: z.string().min(1),
+    runtimeKind: z.enum(['codex', 'claude-agent']).optional(),
+    modelId: z.string().min(1).nullish(),
+    force: z.boolean().optional()
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdGuideGeneratePath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdAgentFixesBody = z.object({
+    threadId: z.string().min(1).nullish(),
+    anchor: z.object({
+        fileId: z.string().min(1),
+        side: z.enum(['base', 'head']).optional(),
+        startLine: z.number().gte(1),
+        endLine: z.number().gte(1).optional(),
+        startColumn: z.number().gte(1).optional(),
+        endColumn: z.number().gte(1).optional()
+    }).nullish(),
+    instruction: z.string().min(1),
+    profileId: z.string().nullish(),
+    expectedOutput: z.enum([
+        'commit',
+        'working-tree-change',
+        'patch-artifact'
+    ])
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdAgentFixesPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStartBody = z.object({
+    agentId: z.string().min(1).nullish(),
+    providerTargetId: z.string().min(1).nullish(),
+    modelId: z.string().min(1).nullish()
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStartPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1),
+    agentFixId: z.string().min(1)
+});
+
+export const zGetWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdArtifactPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1),
+    agentFixId: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCancelBody = z.record(z.string(), z.never());
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCancelPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1),
+    agentFixId: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerunBody = z.object({
+    agentId: z.string().min(1).nullish(),
+    providerTargetId: z.string().min(1).nullish(),
+    modelId: z.string().min(1).nullish()
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerunPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1),
+    agentFixId: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdCommitPlanBody = z.object({
+    strategy: z.enum(['single', 'rule-based-groups']).optional()
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdCommitPlanPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1)
+});
+
+export const zPutWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdBody = z.object({
+    groups: z.array(z.object({
+        id: z.string().min(1),
+        title: z.string().min(1),
+        message: z.string().min(1),
+        rationale: z.string(),
+        fileIds: z.array(z.string().min(1)),
+        paths: z.array(z.string()).optional(),
+        dependsOn: z.array(z.string())
+    })).optional(),
+    rationale: z.string().optional(),
+    status: z.enum([
+        'draft',
+        'accepted',
+        'abandoned'
+    ]).optional()
+});
+
+export const zPutWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1),
+    commitPlanId: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdApplyBody = z.object({
+    idempotencyKey: z.string().min(1).optional()
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdApplyPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1),
+    commitPlanId: z.string().min(1)
+});
+
 export const zGetAcpRegistryByAgentIdDistributionTypesPath = z.object({
     agentId: z.string().min(1)
 });
@@ -1665,6 +1918,16 @@ export const zPostChatSessionsBySessionIdUserInputByRequestIdBody = z.object({
 });
 
 export const zPostChatSessionsBySessionIdUserInputByRequestIdPath = z.object({
+    sessionId: z.string().min(1),
+    requestId: z.string().min(1)
+});
+
+export const zPostChatSessionsBySessionIdToolApprovalByRequestIdBody = z.object({
+    approved: z.boolean(),
+    reason: z.string().optional()
+});
+
+export const zPostChatSessionsBySessionIdToolApprovalByRequestIdPath = z.object({
     sessionId: z.string().min(1),
     requestId: z.string().min(1)
 });

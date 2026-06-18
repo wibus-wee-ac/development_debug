@@ -200,6 +200,28 @@ import { register as registerWorkflowRuleList } from './workflow-rule/list'
 import { register as registerWorkflowRuleSave } from './workflow-rule/save'
 import { register as registerWorkspaceCreate } from './workspace/create'
 import { register as registerWorkspaceDelete } from './workspace/delete'
+import { register as registerWorkspaceDiffsAgentFixArtifact } from './workspace/diffs/agent-fix/artifact'
+import { register as registerWorkspaceDiffsAgentFixCancel } from './workspace/diffs/agent-fix/cancel'
+import { register as registerWorkspaceDiffsAgentFixCreate } from './workspace/diffs/agent-fix/create'
+import { register as registerWorkspaceDiffsAgentFixRerun } from './workspace/diffs/agent-fix/rerun'
+import { register as registerWorkspaceDiffsAgentFixStart } from './workspace/diffs/agent-fix/start'
+import { register as registerWorkspaceDiffsBranchCompare } from './workspace/diffs/branch-compare'
+import { register as registerWorkspaceDiffsCommitPlanApply } from './workspace/diffs/commit-plan/apply'
+import { register as registerWorkspaceDiffsCommitPlanCreate } from './workspace/diffs/commit-plan/create'
+import { register as registerWorkspaceDiffsCommitPlanUpdate } from './workspace/diffs/commit-plan/update'
+import { register as registerWorkspaceDiffsFileViewed } from './workspace/diffs/file/viewed'
+import { register as registerWorkspaceDiffsGet } from './workspace/diffs/get'
+import { register as registerWorkspaceDiffsGuideGenerate } from './workspace/diffs/guide/generate'
+import { register as registerWorkspaceDiffsList } from './workspace/diffs/list'
+import { register as registerWorkspaceDiffsLocalWorkingTree } from './workspace/diffs/local-working-tree'
+import { register as registerWorkspaceDiffsPreferencesSet } from './workspace/diffs/preferences/set'
+import { register as registerWorkspaceDiffsReadiness } from './workspace/diffs/readiness'
+import { register as registerWorkspaceDiffsRefresh } from './workspace/diffs/refresh'
+import { register as registerWorkspaceDiffsSubmit } from './workspace/diffs/submit'
+import { register as registerWorkspaceDiffsThreadComment } from './workspace/diffs/thread/comment'
+import { register as registerWorkspaceDiffsThreadCreate } from './workspace/diffs/thread/create'
+import { register as registerWorkspaceDiffsThreadReaction } from './workspace/diffs/thread/reaction'
+import { register as registerWorkspaceDiffsThreadResolve } from './workspace/diffs/thread/resolve'
 import { register as registerWorkspaceFileCreate } from './workspace/file/create'
 import { register as registerWorkspaceFileRead } from './workspace/file/read'
 import { register as registerWorkspaceFileRename } from './workspace/file/rename'
@@ -423,6 +445,28 @@ export function registerGeneratedCommands(program: Command): void {
   registerWorkflowRuleSave(program)
   registerWorkspaceCreate(program)
   registerWorkspaceDelete(program)
+  registerWorkspaceDiffsAgentFixArtifact(program)
+  registerWorkspaceDiffsAgentFixCancel(program)
+  registerWorkspaceDiffsAgentFixCreate(program)
+  registerWorkspaceDiffsAgentFixRerun(program)
+  registerWorkspaceDiffsAgentFixStart(program)
+  registerWorkspaceDiffsBranchCompare(program)
+  registerWorkspaceDiffsCommitPlanApply(program)
+  registerWorkspaceDiffsCommitPlanCreate(program)
+  registerWorkspaceDiffsCommitPlanUpdate(program)
+  registerWorkspaceDiffsFileViewed(program)
+  registerWorkspaceDiffsGet(program)
+  registerWorkspaceDiffsGuideGenerate(program)
+  registerWorkspaceDiffsList(program)
+  registerWorkspaceDiffsLocalWorkingTree(program)
+  registerWorkspaceDiffsPreferencesSet(program)
+  registerWorkspaceDiffsReadiness(program)
+  registerWorkspaceDiffsRefresh(program)
+  registerWorkspaceDiffsSubmit(program)
+  registerWorkspaceDiffsThreadComment(program)
+  registerWorkspaceDiffsThreadCreate(program)
+  registerWorkspaceDiffsThreadReaction(program)
+  registerWorkspaceDiffsThreadResolve(program)
   registerWorkspaceFileCreate(program)
   registerWorkspaceFileRead(program)
   registerWorkspaceFileRename(program)

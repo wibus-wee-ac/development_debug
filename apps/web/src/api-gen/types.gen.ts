@@ -52,6 +52,7 @@ export type GetPreferencesAppResponses = {
     200: {
         featureFlags: {
             multiWorkspacePoc: boolean;
+            localAuthForDangerousActions?: boolean;
         };
     };
 };
@@ -62,6 +63,7 @@ export type PutPreferencesAppData = {
     body: {
         featureFlags: {
             multiWorkspacePoc: boolean;
+            localAuthForDangerousActions?: boolean;
         };
     };
     path?: never;
@@ -6615,6 +6617,4164 @@ export type GetWorkspacesByIdGitMergeBaseResponses = {
 
 export type GetWorkspacesByIdGitMergeBaseResponse = GetWorkspacesByIdGitMergeBaseResponses[keyof GetWorkspacesByIdGitMergeBaseResponses];
 
+export type GetWorkspacesByIdGitBranchCompareData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query: {
+        repo?: string;
+        baseRef: string;
+        headRef: string;
+    };
+    url: '/workspaces/{id}/git/branch-compare';
+};
+
+export type GetWorkspacesByIdGitBranchCompareResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        repositoryPath: string;
+        repositoryName: string;
+        baseRef: string;
+        headRef: string;
+        baseSha: string;
+        headSha: string;
+        mergeBaseSha: string | null;
+        patch: string;
+    };
+};
+
+export type GetWorkspacesByIdGitBranchCompareResponse = GetWorkspacesByIdGitBranchCompareResponses[keyof GetWorkspacesByIdGitBranchCompareResponses];
+
+export type GetWorkspacesByIdDiffReviewsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews';
+};
+
+export type GetWorkspacesByIdDiffReviewsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    }>;
+};
+
+export type GetWorkspacesByIdDiffReviewsResponse = GetWorkspacesByIdDiffReviewsResponses[keyof GetWorkspacesByIdDiffReviewsResponses];
+
+export type GetWorkspacesByIdDiffReviewsSourceReadinessData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/source-readiness';
+};
+
+export type GetWorkspacesByIdDiffReviewsSourceReadinessResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        workspaceId: string;
+        state: 'ready' | 'workspace-integration-missing' | 'repository-code-access-missing' | 'personal-connection-missing' | 'permission-insufficient';
+        actions: Array<{
+            label: string;
+            url?: string;
+            ownerKind: 'workspace-admin' | 'github-org-owner' | 'current-user';
+        }>;
+    }>;
+};
+
+export type GetWorkspacesByIdDiffReviewsSourceReadinessResponse = GetWorkspacesByIdDiffReviewsSourceReadinessResponses[keyof GetWorkspacesByIdDiffReviewsSourceReadinessResponses];
+
+export type PostWorkspacesByIdDiffReviewsLocalWorkingTreeData = {
+    body: {
+        repo?: string;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/local-working-tree';
+};
+
+export type PostWorkspacesByIdDiffReviewsLocalWorkingTreeResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsLocalWorkingTreeResponse = PostWorkspacesByIdDiffReviewsLocalWorkingTreeResponses[keyof PostWorkspacesByIdDiffReviewsLocalWorkingTreeResponses];
+
+export type PostWorkspacesByIdDiffReviewsLocalBranchCompareData = {
+    body: {
+        repo?: string;
+        baseRef: string;
+        headRef: string;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/local-branch-compare';
+};
+
+export type PostWorkspacesByIdDiffReviewsLocalBranchCompareResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsLocalBranchCompareResponse = PostWorkspacesByIdDiffReviewsLocalBranchCompareResponses[keyof PostWorkspacesByIdDiffReviewsLocalBranchCompareResponses];
+
+export type GetWorkspacesByIdDiffReviewsByReviewIdData = {
+    body?: never;
+    path: {
+        id: string;
+        reviewId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}';
+};
+
+export type GetWorkspacesByIdDiffReviewsByReviewIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type GetWorkspacesByIdDiffReviewsByReviewIdResponse = GetWorkspacesByIdDiffReviewsByReviewIdResponses[keyof GetWorkspacesByIdDiffReviewsByReviewIdResponses];
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdRefreshData = {
+    body?: never;
+    path: {
+        id: string;
+        reviewId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/refresh';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdRefreshResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdRefreshResponse = PostWorkspacesByIdDiffReviewsByReviewIdRefreshResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdRefreshResponses];
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewedData = {
+    body: {
+        viewed: boolean;
+    };
+    path: {
+        id: string;
+        reviewId: string;
+        fileId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/files/{fileId}/viewed';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewedResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewedResponse = PostWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewedResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewedResponses];
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsData = {
+    body: {
+        fileId?: string | null;
+        anchor?: {
+            fileId: string;
+            side?: 'base' | 'head';
+            startLine: number;
+            endLine?: number;
+            startColumn?: number;
+            endColumn?: number;
+        } | null;
+        bodyMarkdown: string;
+    };
+    path: {
+        id: string;
+        reviewId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/threads';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsResponse = PostWorkspacesByIdDiffReviewsByReviewIdThreadsResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdThreadsResponses];
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdCommentsData = {
+    body: {
+        bodyMarkdown: string;
+    };
+    path: {
+        id: string;
+        reviewId: string;
+        threadId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/threads/{threadId}/comments';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdCommentsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdCommentsResponse = PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdCommentsResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdCommentsResponses];
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdReactionsData = {
+    body: {
+        reaction: string;
+    };
+    path: {
+        id: string;
+        reviewId: string;
+        threadId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/threads/{threadId}/reactions';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdReactionsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdReactionsResponse = PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdReactionsResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdReactionsResponses];
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdResolveData = {
+    body?: never;
+    path: {
+        id: string;
+        reviewId: string;
+        threadId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/threads/{threadId}/resolve';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdResolveResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdResolveResponse = PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdResolveResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdResolveResponses];
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdSubmitData = {
+    body: {
+        decision: 'approve' | 'request-changes' | 'comment';
+        bodyMarkdown?: string | null;
+    };
+    path: {
+        id: string;
+        reviewId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/submit';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdSubmitResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdSubmitResponse = PostWorkspacesByIdDiffReviewsByReviewIdSubmitResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdSubmitResponses];
+
+export type PutWorkspacesByIdDiffReviewsPreferencesData = {
+    body: {
+        diffStyle?: 'split' | 'unified';
+        codeTheme?: string;
+        fontSize?: number;
+        lineHeight?: number;
+        hideWhitespaceOnly?: boolean;
+        structuralHighlighting?: boolean;
+        collapseGeneratedFiles?: boolean;
+        notificationMode?: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/preferences';
+};
+
+export type PutWorkspacesByIdDiffReviewsPreferencesResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        userId: string;
+        diffStyle: 'split' | 'unified';
+        codeTheme: string;
+        fontSize: number;
+        lineHeight: number;
+        hideWhitespaceOnly: boolean;
+        structuralHighlighting: boolean;
+        collapseGeneratedFiles: boolean;
+        notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PutWorkspacesByIdDiffReviewsPreferencesResponse = PutWorkspacesByIdDiffReviewsPreferencesResponses[keyof PutWorkspacesByIdDiffReviewsPreferencesResponses];
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateData = {
+    body: {
+        providerTargetId: string;
+        runtimeKind?: 'codex' | 'claude-agent';
+        modelId?: string | null;
+        force?: boolean;
+    };
+    path: {
+        id: string;
+        reviewId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/guide/generate';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateResponse = PostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateResponses];
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesData = {
+    body: {
+        threadId?: string | null;
+        anchor?: {
+            fileId: string;
+            side?: 'base' | 'head';
+            startLine: number;
+            endLine?: number;
+            startColumn?: number;
+            endColumn?: number;
+        } | null;
+        instruction: string;
+        profileId?: string | null;
+        expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+    };
+    path: {
+        id: string;
+        reviewId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/agent-fixes';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesResponse = PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesResponses];
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStartData = {
+    body: {
+        agentId?: string | null;
+        providerTargetId?: string | null;
+        modelId?: string | null;
+    };
+    path: {
+        id: string;
+        reviewId: string;
+        agentFixId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/agent-fixes/{agentFixId}/start';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStartResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStartResponse = PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStartResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStartResponses];
+
+export type GetWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdArtifactData = {
+    body?: never;
+    path: {
+        id: string;
+        reviewId: string;
+        agentFixId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/agent-fixes/{agentFixId}/artifact';
+};
+
+export type GetWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdArtifactResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        reviewId: string;
+        agentFixId: string;
+        sessionId: string;
+        runId: string;
+        kind: 'patch' | 'assistant-summary';
+        mimeType: string;
+        content: string;
+        contentHash: string;
+        createdAt: number;
+    };
+};
+
+export type GetWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdArtifactResponse = GetWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdArtifactResponses[keyof GetWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdArtifactResponses];
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCancelData = {
+    body: {
+        [key: string]: never;
+    };
+    path: {
+        id: string;
+        reviewId: string;
+        agentFixId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/agent-fixes/{agentFixId}/cancel';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCancelResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCancelResponse = PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCancelResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCancelResponses];
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerunData = {
+    body: {
+        agentId?: string | null;
+        providerTargetId?: string | null;
+        modelId?: string | null;
+    };
+    path: {
+        id: string;
+        reviewId: string;
+        agentFixId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/agent-fixes/{agentFixId}/rerun';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerunResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerunResponse = PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerunResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerunResponses];
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdCommitPlanData = {
+    body: {
+        strategy?: 'single' | 'rule-based-groups';
+    };
+    path: {
+        id: string;
+        reviewId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/commit-plan';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdCommitPlanResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdCommitPlanResponse = PostWorkspacesByIdDiffReviewsByReviewIdCommitPlanResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdCommitPlanResponses];
+
+export type PutWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdData = {
+    body: {
+        groups?: Array<{
+            id: string;
+            title: string;
+            message: string;
+            rationale: string;
+            fileIds: Array<string>;
+            paths?: Array<string>;
+            dependsOn: Array<string>;
+        }>;
+        rationale?: string;
+        status?: 'draft' | 'accepted' | 'abandoned';
+    };
+    path: {
+        id: string;
+        reviewId: string;
+        commitPlanId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/commit-plans/{commitPlanId}';
+};
+
+export type PutWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PutWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdResponse = PutWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdResponses[keyof PutWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdResponses];
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdApplyData = {
+    body: {
+        idempotencyKey?: string;
+    };
+    path: {
+        id: string;
+        reviewId: string;
+        commitPlanId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/commit-plans/{commitPlanId}/apply';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdApplyResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdApplyResponse = PostWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdApplyResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdApplyResponses];
+
 export type GetAcpRegistryData = {
     body?: never;
     path?: never;
@@ -7079,6 +11239,32 @@ export type PostChatSessionsBySessionIdUserInputByRequestIdResponses = {
 };
 
 export type PostChatSessionsBySessionIdUserInputByRequestIdResponse = PostChatSessionsBySessionIdUserInputByRequestIdResponses[keyof PostChatSessionsBySessionIdUserInputByRequestIdResponses];
+
+export type PostChatSessionsBySessionIdToolApprovalByRequestIdData = {
+    body: {
+        approved: boolean;
+        reason?: string;
+    };
+    path: {
+        sessionId: string;
+        requestId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/tool-approval/{requestId}';
+};
+
+export type PostChatSessionsBySessionIdToolApprovalByRequestIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        requestId: string;
+        approved: boolean;
+        reason?: string;
+    };
+};
+
+export type PostChatSessionsBySessionIdToolApprovalByRequestIdResponse = PostChatSessionsBySessionIdToolApprovalByRequestIdResponses[keyof PostChatSessionsBySessionIdToolApprovalByRequestIdResponses];
 
 export type PostChatSideConversationsBySideConversationIdResponseData = {
     body: {
