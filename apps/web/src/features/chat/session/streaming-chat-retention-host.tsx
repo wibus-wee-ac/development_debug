@@ -2,20 +2,16 @@ import { useQuery } from '@tanstack/react-query'
 import { shallow } from 'zustand/shallow'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
-import { chatSelectors, useChatStore } from '~/store/chat'
+import { useChatStore } from '~/store/chat'
 import { chatSessionIdForSurface } from '~/navigation/surface-identity'
 import { useSurfaceStore } from '~/navigation/surface-store'
 
 import type { ChatSessionFrameDescriptor } from './chat-session-frame-host'
 import { ChatSessionFrameHost } from './chat-session-frame-host'
+import { readRetainableStreamingSessionIds } from './streaming-session-retention'
 
 function useStreamingSessionIds(): string[] {
-  return useChatStore((state) => {
-    const sessionIds = Array.from(state.messagesMap.keys())
-      .filter(sessionId => chatSelectors.isSessionStreaming(sessionId)(state))
-      .sort()
-    return sessionIds
-  }, shallow)
+  return useChatStore(readRetainableStreamingSessionIds, shallow)
 }
 
 function useActiveChatSessionId(): string | null {
