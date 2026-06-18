@@ -185,6 +185,10 @@ const config = {
     ],
   },
 
+  dmg: {
+    writeUpdateInfo: false,
+  },
+
   win: {
     target: [
       'nsis',
