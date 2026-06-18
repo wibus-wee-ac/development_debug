@@ -217,11 +217,7 @@ function iconSlugFromMetadata(metadata: Record<string, unknown>): string | null 
 }
 
 function sourceIconSlugFromMetadata(record: ParsedExternalProviderRecord): string | null {
-  const iconSlug = iconSlugFromMetadata(record.metadata)
-  if (record.app === 'codex' && record.providerKind === 'openai-compatible' && iconSlug === 'codex') {
-    return null
-  }
-  return iconSlug
+  return iconSlugFromMetadata(record.metadata)
 }
 
 function sourceStatusFromWarnings(warnings: ExternalProviderWarning[]): 'ok' | 'warning' | 'error' {

@@ -112,17 +112,12 @@ export function presetForProfile(profile: AgentProfile): ProviderPreset {
 }
 
 export function providerTargetDisplayIconSlug({
-  kind,
-  providerKind,
   iconSlug,
 }: {
   kind?: ProviderTargetKind
   providerKind: ProviderKind
   iconSlug: string | null
 }): string | null {
-  if (kind === 'external' && providerKind === 'openai-compatible' && iconSlug === 'codex') {
-    return null
-  }
   return iconSlug
 }
 

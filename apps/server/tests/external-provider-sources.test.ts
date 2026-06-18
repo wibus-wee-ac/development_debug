@@ -329,7 +329,7 @@ describe('external provider sources capability', () => {
           externalRecordId: 'codex:test-openai',
           providerKind: 'openai-compatible',
           displayName: 'Fixture OpenAI',
-          iconSlug: null,
+          iconSlug: 'codex',
         }),
       )
 

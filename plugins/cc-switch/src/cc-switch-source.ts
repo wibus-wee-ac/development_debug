@@ -475,6 +475,7 @@ function metadataBase(provider: CcSwitchProviderRow): JsonObject {
 
 function providerIconSlug(provider: CcSwitchProviderRow): string | undefined {
   if (provider.appType === 'claude') { return 'claude' }
+  if (provider.appType === 'codex') { return 'codex' }
   if (provider.appType === 'gemini') { return 'gemini' }
   return undefined
 }

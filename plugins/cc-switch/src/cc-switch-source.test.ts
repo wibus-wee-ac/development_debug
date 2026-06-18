@@ -279,7 +279,7 @@ describe('cC Switch external provider source', () => {
             model: 'gpt-test',
             apiMode: 'responses',
           }),
-          metadata: expect.objectContaining({ model: 'gpt-test', apiFormat: 'openai_responses' }),
+          metadata: expect.objectContaining({ model: 'gpt-test', apiFormat: 'openai_responses', iconSlug: 'codex' }),
           credential: expect.objectContaining({ value: 'test-openai-key' }),
         }),
       ]))
