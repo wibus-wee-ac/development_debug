@@ -61,6 +61,7 @@ import {
   registerChatComposerFileIngressHandler,
   registerChatPromptIngressHandler,
 } from './prompt-ingress'
+import type { MessageTextTransform } from './rendering/message-bubble'
 import { MessageBubbleById } from './rendering/message-bubble'
 import { RuntimeDiagnosticsPopover } from './runtime/runtime-diagnostics-popover'
 import { RuntimeSettingsControl } from './runtime/runtime-settings-control'
@@ -102,7 +103,7 @@ function readPlanSlotContent(state: ChatRuntimePlanUiSlotState): string {
   )
 }
 
-interface ChatViewProps {
+export interface ChatViewProps {
   sessionId: string | null
   /** Available files for @ mention */
   availableFiles?: MentionItem[]
@@ -114,6 +115,8 @@ interface ChatViewProps {
   searchSkills?: (query: string, signal?: AbortSignal) => Promise<SkillMentionItem[]>
   /** Custom toolbar rendered in the composer left slot */
   composerToolbar?: React.ReactNode
+  /** Additional toolbar content rendered after the default composer toolbar */
+  composerToolbarAddon?: React.ReactNode
   /** Ref to read per-message overrides (modelId, thinkingEffort) before sending */
   sendOverridesRef?: React.MutableRefObject<{
     providerTargetId?: string
@@ -128,6 +131,18 @@ interface ChatViewProps {
   placeholder?: string
   runtimeKind?: RuntimeKind
   workspaceId?: string | null
+  messageTextTransform?: MessageTextTransform
+  prepareSend?: (input: {
+    text: Parameters<ChatComposerRuntime['send']>[0]
+    files: Parameters<ChatComposerRuntime['send']>[1]
+    contextParts: Parameters<ChatComposerRuntime['send']>[2]
+    options?: Parameters<ChatComposerRuntime['send']>[3]
+  }) => {
+    text: Parameters<ChatComposerRuntime['send']>[0]
+    files?: Parameters<ChatComposerRuntime['send']>[1]
+    contextParts?: Parameters<ChatComposerRuntime['send']>[2]
+    options?: Parameters<ChatComposerRuntime['send']>[3]
+  }
 }
 
 const EMPTY_FILES: MentionItem[] = []
@@ -151,6 +166,7 @@ const ChatMessageListPane = memo(
     onScrollToOffset,
     onToolApprovalResponse,
     composerStack,
+    messageTextTransform,
   }: {
     sessionId: string | null
     messageIds: ReturnType<typeof useChatSession>['messageIds']
@@ -169,6 +185,7 @@ const ChatMessageListPane = memo(
     onScrollToOffset: ChatScrollRuntime['scrollToOffset']
     onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
     composerStack: React.ReactNode
+    messageTextTransform?: MessageTextTransform
   }) => {
     const { t } = useTranslation('chat')
 
@@ -201,6 +218,7 @@ const ChatMessageListPane = memo(
                     sessionId={sessionId}
                     messageId={messageId}
                     onToolApprovalResponse={onToolApprovalResponse}
+                    textTransform={messageTextTransform}
                   />
                 ))}
               </Virtualizer>
@@ -589,12 +607,15 @@ export function ChatView({
   searchPlugins,
   searchSkills,
   composerToolbar,
+  composerToolbarAddon,
   composerContextBar,
   sendOverridesRef,
   composerModel,
   placeholder,
   runtimeKind: _runtimeKind,
   workspaceId,
+  messageTextTransform,
+  prepareSend,
 }: ChatViewProps) {
   const queryClient = useQueryClient()
   const {
@@ -662,13 +683,31 @@ export function ChatView({
       sessionId,
     ],
   )
-  const composerSend = composerRuntime.send
   const navigableComposerRuntime = useMemo<ChatComposerRuntime>(
     () => ({
       ...composerRuntime,
     }),
     [composerRuntime],
   )
+  const preparedComposerRuntime = useMemo<ChatComposerRuntime>(() => {
+    if (!prepareSend) {
+      return navigableComposerRuntime
+    }
+
+    return {
+      ...navigableComposerRuntime,
+      send: (text, files, contextParts, options) => {
+        const prepared = prepareSend({ text, files, contextParts, options })
+        return navigableComposerRuntime.send(
+          prepared.text,
+          prepared.files ?? files,
+          prepared.contextParts ?? contextParts,
+          prepared.options ?? options,
+        )
+      },
+    }
+  }, [navigableComposerRuntime, prepareSend])
+  const composerSend = preparedComposerRuntime.send
 
   useEffect(() => {
     if (!sessionId) {
@@ -712,18 +751,17 @@ export function ChatView({
           throwOnError: true,
         })
         refreshGoalRuntimeState()
+        setGoalActionBusy(false)
         return true
       }
- catch (error) {
+      catch (error) {
         toastManager.add({
           type: 'error',
           title: failureTitle,
           description: error instanceof Error ? error.message : 'Unknown goal action error.',
         })
-        return false
-      }
- finally {
         setGoalActionBusy(false)
+        return false
       }
     },
     [refreshGoalRuntimeState, sessionId],
@@ -931,7 +969,12 @@ export function ChatView({
 
   const runtimeSettingsToolbar = useMemo(() => {
     if (!sessionId) {
-      return composerToolbar
+      return (
+        <div className="flex min-w-0 items-center gap-1">
+          {composerToolbar}
+          {composerToolbarAddon}
+        </div>
+      )
     }
     return (
       <div className="flex min-w-0 items-center gap-1">
@@ -943,9 +986,11 @@ export function ChatView({
           onChange={updateRuntimeSettings}
         />
         {composerToolbar}
+        {composerToolbarAddon}
       </div>
     )
   }, [
+    composerToolbarAddon,
     composerToolbar,
     isReady,
     runtimeSettings.applied,
@@ -1009,6 +1054,7 @@ export function ChatView({
         onScrollToMessageIndex={scrollRuntime.scrollToMessageIndex}
         onScrollToOffset={scrollRuntime.scrollToOffset}
         onToolApprovalResponse={respondToToolApproval}
+        messageTextTransform={messageTextTransform}
         composerStack={(
           <ChatComposerSection
             sessionId={sessionId}
@@ -1017,7 +1063,7 @@ export function ChatView({
             onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
             onReorderQueueItems={queueItemIds => void reorderQueueItems(queueItemIds)}
             onSlashCommandAction={handleSlashCommandAction}
-            composerRuntime={navigableComposerRuntime}
+            composerRuntime={preparedComposerRuntime}
             appshotRuntime={appshotRuntime}
             placeholder={placeholder}
             availableFiles={availableFiles}

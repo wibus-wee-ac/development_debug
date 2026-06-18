@@ -8,7 +8,7 @@ import {
   HashIcon,
   ImageIcon,
   TargetIcon,
-  TimerIcon
+  TimerIcon,
 } from 'lucide-react'
 import { m } from 'motion/react'
 import type { AnchorHTMLAttributes } from 'react'
@@ -24,44 +24,52 @@ import { formatShortDurationMs } from '~/lib/number-format'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { STREAMDOWN_RENDER_OPTIONS } from '~/store/streamdown'
+
 import { readChatContinuationMetadata } from '../capabilities/chat-continuation-metadata'
-import {
+import type {
   BangCommandMetadata,
   BangResultMetadata,
+} from '../commands/bang-command-metadata'
+import {
   readBangCommandMetadata,
-  readBangResultMetadata
+  readBangResultMetadata,
 } from '../commands/bang-command-metadata'
 import { AppshotAttachmentCard } from '../composer/appshot-attachment'
 import { readCradleAppshotMetadata } from '../composer/appshot-attachment-model'
-import {
-  ChatSkillContextMessagePart,
-  readSkillContextPart,
-  readSkillContextLabel,
+import type {
   ChatPluginContextMessagePart,
-  readPluginContextPart,
-  readPluginContextLabel,
+  ChatSkillContextMessagePart,
+} from '../context/chat-context-parts'
+import {
+  isChatPluginContextPart,
   isChatSkillContextPart,
-  isChatPluginContextPart
+  readPluginContextLabel,
+  readPluginContextPart,
+  readSkillContextLabel,
+  readSkillContextPart,
 } from '../context/chat-context-parts'
 import { PluginMentionIcon } from '../mentions/plugin-mention-icon'
 import { SkillMentionToken } from '../mentions/skill-mention-token'
-import { ToolCallBlock, GroupedToolCallBlock } from './blocks'
-import { BangCommandPromptBlock, BangCommandBlock } from './blocks/bang-command-block'
-import {
-  FileMessagePart,
+import { GroupedToolCallBlock, ToolCallBlock } from './blocks'
+import { BangCommandBlock, BangCommandPromptBlock } from './blocks/bang-command-block'
+import { ReasoningBlock } from './blocks/reasoning-block'
+import type {
   ChatRenderItem,
   ChatRenderSegment,
-  groupMessageParts,
+  FileMessagePart,
+} from './chat-render-plan'
+import {
   groupMessagePartRefs,
+  groupMessageParts,
   readRenderableToolPart,
+  splitExecutionPhase,
   splitSegmentExecutionPhase,
-  splitExecutionPhase
 } from './chat-render-plan'
 import { readSubagentOutputMessage, toolNameFromPart } from './chat-tool-entities'
 import { ImageLightbox } from './image-lightbox'
 import { MarkdownFileLink } from './markdown-file-link'
-import { ReasoningBlock } from './blocks/reasoning-block'
-import { RenderableToolPart, describeToolCall } from './tool-ui-classifier'
+import type { RenderableToolPart } from './tool-ui-classifier'
+import { describeToolCall } from './tool-ui-classifier'
 
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
 const IS_DEV = import.meta.env.DEV
@@ -71,11 +79,13 @@ const SUBAGENT_STREAMING_ANIMATION_MAX_CHARS = 4000
 const ACTIVE_TOOL_STATES = new Set(['input-streaming', 'input-available', 'approval-requested'])
 const CODEX_GOAL_COMMAND_PREFIX = '/goal '
 const STEER_MESSAGE_CONTAINER_CLASS = 'max-w-[78%]'
-const STEER_MESSAGE_BUBBLE_CLASS =
-  'rounded-br-sm bg-background px-3 py-2 text-muted-foreground shadow-[inset_0_0_0_1px_hsl(var(--border)/0.45)]'
-const FILE_ATTACHMENT_CLASS =
-  'my-1 block w-full min-w-0 max-w-full overflow-hidden rounded-md border border-border/60 bg-background/60'
+const STEER_MESSAGE_BUBBLE_CLASS
+  = 'rounded-br-sm bg-background px-3 py-2 text-muted-foreground shadow-[inset_0_0_0_1px_hsl(var(--border)/0.45)]'
+const FILE_ATTACHMENT_CLASS
+  = 'my-1 block w-full min-w-0 max-w-full overflow-hidden rounded-md border border-border/60 bg-background/60'
 const IMAGE_ATTACHMENT_GRID_ITEM_CLASS = 'min-w-0 max-w-[300px] flex-1 basis-[calc(50%-0.25rem)]'
+
+export type MessageTextTransform = (text: string) => string
 
 function SteerMessageLabel() {
   const { t } = useTranslation('chat')
@@ -122,17 +132,40 @@ function readUserDisplayText(text: string): string {
   return readCodexGoalObjective(text) ?? text
 }
 
-function readMessageDisplayText(message: UIMessage): string {
+function projectMessageText(message: UIMessage, textTransform?: MessageTextTransform): UIMessage {
+  if (!textTransform) {
+    return message
+  }
+
+  let changed = false
+  const parts = message.parts.map((part) => {
+    if (part.type !== 'text') {
+      return part
+    }
+
+    const text = textTransform(part.text)
+    if (text === part.text) {
+      return part
+    }
+
+    changed = true
+    return { ...part, text }
+  })
+
+  return changed ? { ...message, parts } : message
+}
+
+function readMessageDisplayText(message: UIMessage, textTransform?: MessageTextTransform): string {
+  const projected = projectMessageText(message, textTransform)
   const goalObjective = readGoalMetadataObjective(message)
-  if (message.role === 'user' && goalObjective) {
+  if (projected.role === 'user' && goalObjective) {
     return goalObjective
   }
-  return message.parts
-    .flatMap((part) =>
+  return projected.parts
+    .flatMap(part =>
       part.type === 'text'
-        ? [message.role === 'user' ? readUserDisplayText(part.text) : part.text]
-        : []
-    )
+        ? [projected.role === 'user' ? readUserDisplayText(part.text) : part.text]
+        : [])
     .join('\n')
 }
 
@@ -141,14 +174,14 @@ function isCodexGoalUserMessage(message: UIMessage): boolean {
     return true
   }
   return (
-    message.role === 'user' &&
-    readCodexGoalObjective(
-      message.parts.flatMap((part) => (part.type === 'text' ? [part.text] : [])).join('\n')
+    message.role === 'user'
+    && readCodexGoalObjective(
+      message.parts.flatMap(part => (part.type === 'text' ? [part.text] : [])).join('\n'),
     ) !== null
   )
 }
 
-function FileAttachmentBlock({ part, onClick }: { part: FileMessagePart; onClick?: () => void }) {
+function FileAttachmentBlock({ part, onClick }: { part: FileMessagePart, onClick?: () => void }) {
   const label = part.filename ?? part.mediaType
   const isImage = part.mediaType.startsWith('image/')
   const appshotMetadata = readCradleAppshotMetadata(part)
@@ -169,9 +202,11 @@ function FileAttachmentBlock({ part, onClick }: { part: FileMessagePart; onClick
         />
       )}
       <div className="flex min-w-0 items-center gap-2 px-2.5 py-2 text-xs">
-        {isImage ? (
+        {isImage
+? (
           <ImageIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-        ) : (
+        )
+: (
           <FileIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
         )}
         <div className="min-w-0 flex-1">
@@ -218,8 +253,9 @@ function PluginContextBlock({ part }: { part: ChatPluginContextMessagePart }) {
   }
   return (
     <span className="mx-0.5 inline-flex items-center gap-0.5 align-baseline text-[0.8125em] font-medium text-sky-600 dark:text-sky-400">
-      <PluginMentionIcon iconUrl={plugin.iconUrl} className="size-3" />@
-      {readPluginContextLabel(plugin)}
+      <PluginMentionIcon iconUrl={plugin.iconUrl} className="size-3" />
+@
+{readPluginContextLabel(plugin)}
     </span>
   )
 }
@@ -230,14 +266,14 @@ function RunDebugCaption({ messageId }: { messageId: string }) {
     return null
   }
 
-  const ttfbMs =
-    meta.firstEventAtMs === null ? null : Math.max(0, meta.firstEventAtMs - meta.requestStartedAtMs)
-  const ttftMs =
-    meta.firstContentAtMs === null
+  const ttfbMs
+    = meta.firstEventAtMs === null ? null : Math.max(0, meta.firstEventAtMs - meta.requestStartedAtMs)
+  const ttftMs
+    = meta.firstContentAtMs === null
       ? null
       : Math.max(0, meta.firstContentAtMs - meta.requestStartedAtMs)
-  const totalMs =
-    meta.completedAtMs === null ? null : Math.max(0, meta.completedAtMs - meta.requestStartedAtMs)
+  const totalMs
+    = meta.completedAtMs === null ? null : Math.max(0, meta.completedAtMs - meta.requestStartedAtMs)
   const shortRunId = meta.runId ? `${meta.runId.slice(0, 8)}…` : 'pending'
 
   return (
@@ -245,7 +281,7 @@ function RunDebugCaption({ messageId }: { messageId: string }) {
       <div className="mt-1.5 flex flex-wrap items-center gap-1.5 text-[11px] text-muted-foreground">
         <Tooltip>
           <TooltipTrigger
-            render={
+            render={(
               <Badge
                 variant="outline"
                 className="h-5 max-w-full gap-1 border-border/50 bg-muted/25 px-1.5 font-mono font-normal text-[10px] text-muted-foreground tabular-nums"
@@ -253,7 +289,7 @@ function RunDebugCaption({ messageId }: { messageId: string }) {
                 <HashIcon className="size-3" aria-hidden="true" />
                 <span className="truncate">{shortRunId}</span>
               </Badge>
-            }
+            )}
           />
           <TooltipContent sideOffset={6}>
             {meta.runId ?? 'Run has not been assigned yet'}
@@ -284,7 +320,7 @@ function RunDebugCaption({ messageId }: { messageId: string }) {
 function MetricBadge({
   icon,
   label,
-  value
+  value,
 }: {
   icon: React.ReactNode
   label: string
@@ -318,7 +354,7 @@ function ThinkingPlaceholder() {
           'inline-flex items-center font-medium',
           '[mask-image:linear-gradient(90deg,rgba(0,0,0,0.4)_0%,black_36%,black_64%,rgba(0,0,0,0.4)_100%)] [mask-size:220%_100%]',
           '[-webkit-mask-image:linear-gradient(90deg,rgba(0,0,0,0.4)_0%,black_36%,black_64%,rgba(0,0,0,0.4)_100%)] [-webkit-mask-size:220%_100%]',
-          'animate-[shimmer_2.8s_linear_infinite]'
+          'animate-[shimmer_2.8s_linear_infinite]',
         )}
       >
         {t('status.thinking')}
@@ -366,7 +402,7 @@ function hasActiveNonTextProgress(items: ChatRenderItem[]): boolean {
       return isToolPartActive(item.part)
     }
     if (item.kind === 'tool-group') {
-      return item.items.some((toolItem) => isToolPartActive(toolItem.part))
+      return item.items.some(toolItem => isToolPartActive(toolItem.part))
     }
     return false
   })
@@ -380,23 +416,22 @@ function hasActiveNonTextSegmentProgress(
   state: ChatStoreSnapshot,
   sessionId: string,
   messageId: string,
-  segments: ChatRenderSegment[]
+  segments: ChatRenderSegment[],
 ): boolean {
   return segments.some((segment) => {
     if (segment.kind === 'reasoning') {
       const part = readMessageFromState(state, sessionId, messageId)?.parts[segment.partIndex]
       return (
-        part?.type === 'reasoning' &&
-        (part as { state?: 'streaming' | 'done' }).state === 'streaming'
+        part?.type === 'reasoning'
+        && (part as { state?: 'streaming' | 'done' }).state === 'streaming'
       )
     }
     if (segment.kind === 'tool-call') {
       return isToolPartActiveInState(state, sessionId, segment.messageId, segment.partIndex)
     }
     if (segment.kind === 'tool-group') {
-      return segment.items.some((toolItem) =>
-        isToolPartActiveInState(state, sessionId, toolItem.messageId, toolItem.partIndex)
-      )
+      return segment.items.some(toolItem =>
+        isToolPartActiveInState(state, sessionId, toolItem.messageId, toolItem.partIndex))
     }
     return false
   })
@@ -406,7 +441,7 @@ function isToolPartActiveInState(
   state: ChatStoreSnapshot,
   sessionId: string,
   messageId: string,
-  partIndex: number
+  partIndex: number,
 ): boolean {
   const part = readRenderableToolPartFromState(state, sessionId, messageId, partIndex)
   return part ? isToolPartActive(part) : false
@@ -423,7 +458,7 @@ function renderSubagentItem(
     animateMode: 'char' | 'word'
     showCursor: boolean
   },
-  sessionId?: string
+  sessionId?: string,
 ) {
   switch (item.kind) {
     case 'text':
@@ -439,9 +474,9 @@ function renderSubagentItem(
           showCursor={streamdownSettings.showCursor}
           animated={item.text.length <= SUBAGENT_STREAMING_ANIMATION_MAX_CHARS}
           components={{
-            a: (props) => (
+            a: props => (
               <MarkdownFileLink {...readMarkdownAnchorProps(props)} sessionId={sessionId} />
-            )
+            ),
           }}
         />
       )
@@ -488,7 +523,7 @@ function groupSubagentMessageParts(messageId: string, parts: UIMessage['parts'])
   return groupMessageParts({
     parts,
     messageId,
-    describeToolKind: (part) => describeToolCall(part).kind
+    describeToolKind: part => describeToolCall(part).kind,
   })
 }
 
@@ -498,7 +533,7 @@ function SubagentMessageContent({
   animationPreset,
   animateMode,
   showCursor,
-  sessionId
+  sessionId,
 }: {
   message: UIMessage
   isStreaming: boolean
@@ -511,27 +546,26 @@ function SubagentMessageContent({
   const streamdownSettings = {
     animationPreset,
     animateMode,
-    showCursor
+    showCursor,
   }
   const activeStreamingItemKey = isStreaming ? readActiveStreamingItemKey(groupedParts) : null
   const streamingTailItemKey = isStreaming ? readStreamingTailItemKey(groupedParts) : null
 
-  return groupedParts.map((groupedItem) =>
+  return groupedParts.map(groupedItem =>
     renderSubagentItem(
       groupedItem,
       groupedItem.key === activeStreamingItemKey,
       isStreaming && groupedItem.key === streamingTailItemKey,
       streamdownSettings,
-      sessionId
-    )
-  )
+      sessionId,
+    ))
 }
 
 /* ─── Execution Phase Fold ──────────────────────────────────────── */
 
 function ExecutionPhaseFold({
   children,
-  defaultOpen = false
+  defaultOpen = false,
 }: {
   children: React.ReactNode
   defaultOpen?: boolean
@@ -544,7 +578,7 @@ function ExecutionPhaseFold({
         type="button"
         variant="ghost"
         size="xs"
-        onClick={() => setExpanded((v) => !v)}
+        onClick={() => setExpanded(v => !v)}
         className="h-6 px-1.5 text-[11px] text-muted-foreground/60 hover:text-muted-foreground"
       >
         {expanded ? 'Hide execution details' : 'Show execution details'}
@@ -604,17 +638,20 @@ interface MessageFrame {
 function readMessageFromState(
   state: ChatStoreSnapshot,
   sessionId: string,
-  messageId: string
+  messageId: string,
+  textTransform?: MessageTextTransform,
 ): UIMessage | undefined {
-  return (state.messagesMap.get(sessionId) ?? []).find((message) => message.id === messageId)
+  const message = (state.messagesMap.get(sessionId) ?? []).find(message => message.id === messageId)
+  return message ? projectMessageText(message, textTransform) : undefined
 }
 
 function readMessageFrameFromState(
   state: ChatStoreSnapshot,
   sessionId: string,
-  messageId: string
+  messageId: string,
+  textTransform?: MessageTextTransform,
 ): MessageFrame | null {
-  const message = readMessageFromState(state, sessionId, messageId)
+  const message = readMessageFromState(state, sessionId, messageId, textTransform)
   if (!message) {
     return null
   }
@@ -625,49 +662,50 @@ function readMessageFrameFromState(
     isSteerMessage: message.role === 'user' && continuationMetadata?.mode === 'steer',
     isGoalMessage: isCodexGoalUserMessage(message),
     bangCommand: message.role === 'user' ? readBangCommandMetadata(message) : null,
-    bangResult: message.role === 'user' ? readBangResultMetadata(message) : null
+    bangResult: message.role === 'user' ? readBangResultMetadata(message) : null,
   }
 }
 
 function areMessageFramesEqual(left: MessageFrame | null, right: MessageFrame | null): boolean {
   return (
-    left?.id === right?.id &&
-    left?.role === right?.role &&
-    left?.isSteerMessage === right?.isSteerMessage &&
-    left?.isGoalMessage === right?.isGoalMessage &&
-    left?.bangCommand?.command === right?.bangCommand?.command &&
-    areBangResultsEqual(left?.bangResult ?? null, right?.bangResult ?? null)
+    left?.id === right?.id
+    && left?.role === right?.role
+    && left?.isSteerMessage === right?.isSteerMessage
+    && left?.isGoalMessage === right?.isGoalMessage
+    && left?.bangCommand?.command === right?.bangCommand?.command
+    && areBangResultsEqual(left?.bangResult ?? null, right?.bangResult ?? null)
   )
 }
 
 function areBangResultsEqual(
   left: BangResultMetadata | null,
-  right: BangResultMetadata | null
+  right: BangResultMetadata | null,
 ): boolean {
   return (
-    left?.command === right?.command &&
-    left?.stdout === right?.stdout &&
-    left?.stderr === right?.stderr &&
-    left?.exitCode === right?.exitCode &&
-    left?.durationMs === right?.durationMs &&
-    left?.timedOut === right?.timedOut &&
-    left?.truncated === right?.truncated
+    left?.command === right?.command
+    && left?.stdout === right?.stdout
+    && left?.stderr === right?.stderr
+    && left?.exitCode === right?.exitCode
+    && left?.durationMs === right?.durationMs
+    && left?.timedOut === right?.timedOut
+    && left?.truncated === right?.truncated
   )
 }
 
 function readRenderSegmentsFromState(
   state: ChatStoreSnapshot,
   sessionId: string,
-  messageId: string
+  messageId: string,
+  textTransform?: MessageTextTransform,
 ): ChatRenderSegment[] {
-  const message = readMessageFromState(state, sessionId, messageId)
+  const message = readMessageFromState(state, sessionId, messageId, textTransform)
   if (!message) {
     return EMPTY_RENDER_SEGMENTS
   }
   return groupMessagePartRefs({
     parts: message.parts,
     messageId: message.id,
-    describeToolKind: (part) => describeToolCall(part).kind
+    describeToolKind: part => describeToolCall(part).kind,
   })
 }
 
@@ -693,36 +731,36 @@ function areRenderSegmentEqual(left: ChatRenderSegment, right: ChatRenderSegment
   switch (left.kind) {
     case 'text':
       return (
-        right.kind === 'text' &&
-        left.messageId === right.messageId &&
-        left.partIndex === right.partIndex &&
-        left.hasText === right.hasText
+        right.kind === 'text'
+        && left.messageId === right.messageId
+        && left.partIndex === right.partIndex
+        && left.hasText === right.hasText
       )
     case 'reasoning':
     case 'file-attachment':
     case 'skill-context':
     case 'plugin-context':
       return (
-        (right.kind === 'reasoning' ||
-          right.kind === 'file-attachment' ||
-          right.kind === 'skill-context' ||
-          right.kind === 'plugin-context') &&
-        left.kind === right.kind &&
-        left.messageId === right.messageId &&
-        left.partIndex === right.partIndex
+        (right.kind === 'reasoning'
+          || right.kind === 'file-attachment'
+          || right.kind === 'skill-context'
+          || right.kind === 'plugin-context')
+        && left.kind === right.kind
+        && left.messageId === right.messageId
+        && left.partIndex === right.partIndex
       )
     case 'tool-call':
       return (
-        right.kind === 'tool-call' &&
-        left.messageId === right.messageId &&
-        left.partIndex === right.partIndex &&
-        left.toolCallId === right.toolCallId
+        right.kind === 'tool-call'
+        && left.messageId === right.messageId
+        && left.partIndex === right.partIndex
+        && left.toolCallId === right.toolCallId
       )
     case 'tool-group':
       return (
-        right.kind === 'tool-group' &&
-        left.uiKind === right.uiKind &&
-        areToolItemRefsEqual(left.items, right.items)
+        right.kind === 'tool-group'
+        && left.uiKind === right.uiKind
+        && areToolItemRefsEqual(left.items, right.items)
       )
     default:
       return false
@@ -730,18 +768,18 @@ function areRenderSegmentEqual(left: ChatRenderSegment, right: ChatRenderSegment
 }
 
 function areToolItemRefsEqual(
-  left: Array<{ key: string; messageId: string; partIndex: number; toolCallId: string }>,
-  right: Array<{ key: string; messageId: string; partIndex: number; toolCallId: string }>
+  left: Array<{ key: string, messageId: string, partIndex: number, toolCallId: string }>,
+  right: Array<{ key: string, messageId: string, partIndex: number, toolCallId: string }>,
 ): boolean {
   if (left.length !== right.length) {
     return false
   }
   for (let i = 0; i < left.length; i++) {
     if (
-      left[i].key !== right[i].key ||
-      left[i].messageId !== right[i].messageId ||
-      left[i].partIndex !== right[i].partIndex ||
-      left[i].toolCallId !== right[i].toolCallId
+      left[i].key !== right[i].key
+      || left[i].messageId !== right[i].messageId
+      || left[i].partIndex !== right[i].partIndex
+      || left[i].toolCallId !== right[i].toolCallId
     ) {
       return false
     }
@@ -753,9 +791,10 @@ function readTextPartFromState(
   state: ChatStoreSnapshot,
   sessionId: string,
   messageId: string,
-  partIndex: number
+  partIndex: number,
+  textTransform?: MessageTextTransform,
 ): string {
-  const part = readMessageFromState(state, sessionId, messageId)?.parts[partIndex]
+  const part = readMessageFromState(state, sessionId, messageId, textTransform)?.parts[partIndex]
   return part?.type === 'text' ? part.text : ''
 }
 
@@ -763,21 +802,21 @@ function readReasoningPartFromState(
   state: ChatStoreSnapshot,
   sessionId: string,
   messageId: string,
-  partIndex: number
-): { text: string; state?: 'streaming' | 'done' } {
+  partIndex: number,
+): { text: string, state?: 'streaming' | 'done' } {
   const part = readMessageFromState(state, sessionId, messageId)?.parts[partIndex]
   if (part?.type !== 'reasoning') {
     return { text: '', state: 'done' }
   }
   return {
     text: part.text,
-    state: (part as { state?: 'streaming' | 'done' }).state
+    state: (part as { state?: 'streaming' | 'done' }).state,
   }
 }
 
 function areReasoningPartsEqual(
-  left: { text: string; state?: 'streaming' | 'done' },
-  right: { text: string; state?: 'streaming' | 'done' }
+  left: { text: string, state?: 'streaming' | 'done' },
+  right: { text: string, state?: 'streaming' | 'done' },
 ): boolean {
   return left.text === right.text && left.state === right.state
 }
@@ -786,7 +825,7 @@ function readFilePartFromState(
   state: ChatStoreSnapshot,
   sessionId: string,
   messageId: string,
-  partIndex: number
+  partIndex: number,
 ): FileMessagePart | null {
   const part = readMessageFromState(state, sessionId, messageId)?.parts[partIndex]
   return part?.type === 'file' ? part : null
@@ -796,7 +835,7 @@ function readSkillContextPartFromState(
   state: ChatStoreSnapshot,
   sessionId: string,
   messageId: string,
-  partIndex: number
+  partIndex: number,
 ): ChatSkillContextMessagePart | null {
   const part = readMessageFromState(state, sessionId, messageId)?.parts[partIndex]
   return isChatSkillContextPart(part) ? part : null
@@ -806,7 +845,7 @@ function readPluginContextPartFromState(
   state: ChatStoreSnapshot,
   sessionId: string,
   messageId: string,
-  partIndex: number
+  partIndex: number,
 ): ChatPluginContextMessagePart | null {
   const part = readMessageFromState(state, sessionId, messageId)?.parts[partIndex]
   return isChatPluginContextPart(part) ? part : null
@@ -816,7 +855,7 @@ function readRenderableToolPartFromState(
   state: ChatStoreSnapshot,
   sessionId: string,
   messageId: string,
-  partIndex: number
+  partIndex: number,
 ): RenderableToolPart | null {
   const part = readMessageFromState(state, sessionId, messageId)?.parts[partIndex]
   return part ? readRenderableToolPart(part) : null
@@ -824,14 +863,14 @@ function readRenderableToolPartFromState(
 
 function areRenderableToolPartsEqual(
   left: RenderableToolPart | null,
-  right: RenderableToolPart | null
+  right: RenderableToolPart | null,
 ): boolean {
   return left === right
 }
 
 function areGroupedRenderableToolItemsEqual(
-  left: Array<{ key: string; part: RenderableToolPart }>,
-  right: Array<{ key: string; part: RenderableToolPart }>
+  left: Array<{ key: string, part: RenderableToolPart }>,
+  right: Array<{ key: string, part: RenderableToolPart }>,
 ): boolean {
   if (left === right) {
     return true
@@ -850,9 +889,10 @@ function areGroupedRenderableToolItemsEqual(
 function readPlainTextFromState(
   state: ChatStoreSnapshot,
   sessionId: string,
-  messageId: string
+  messageId: string,
+  textTransform?: MessageTextTransform,
 ): string {
-  const message = readMessageFromState(state, sessionId, messageId)
+  const message = readMessageFromState(state, sessionId, messageId, textTransform)
   if (!message) {
     return ''
   }
@@ -862,18 +902,20 @@ function readPlainTextFromState(
 function readPlainTextPresenceFromState(
   state: ChatStoreSnapshot,
   sessionId: string,
-  messageId: string
+  messageId: string,
+  textTransform?: MessageTextTransform,
 ): boolean {
-  const message = readMessageFromState(state, sessionId, messageId)
-  return message?.parts.some((part) => part.type === 'text' && part.text.length > 0) ?? false
+  const message = readMessageFromState(state, sessionId, messageId, textTransform)
+  return message?.parts.some(part => part.type === 'text' && part.text.length > 0) ?? false
 }
 
 function readPlainTextLengthFromState(
   state: ChatStoreSnapshot,
   sessionId: string,
-  messageId: string
+  messageId: string,
+  textTransform?: MessageTextTransform,
 ): number {
-  const message = readMessageFromState(state, sessionId, messageId)
+  const message = readMessageFromState(state, sessionId, messageId, textTransform)
   if (!message) {
     return 0
   }
@@ -905,9 +947,9 @@ function readStreamingTailSegmentKey(segments: ChatRenderSegment[]): string | nu
 }
 
 function readToolApproval(
-  part: RenderableToolPart
-): { id: string; approved?: boolean; reason?: string } | undefined {
-  const approval = (part as { approval?: { id?: unknown; approved?: unknown; reason?: unknown } })
+  part: RenderableToolPart,
+): { id: string, approved?: boolean, reason?: string } | undefined {
+  const approval = (part as { approval?: { id?: unknown, approved?: unknown, reason?: unknown } })
     .approval
   if (!approval || typeof approval.id !== 'string') {
     return undefined
@@ -915,7 +957,7 @@ function readToolApproval(
   return {
     id: approval.id,
     ...(typeof approval.approved === 'boolean' ? { approved: approval.approved } : {}),
-    ...(typeof approval.reason === 'string' ? { reason: approval.reason } : {})
+    ...(typeof approval.reason === 'string' ? { reason: approval.reason } : {}),
   }
 }
 
@@ -930,7 +972,7 @@ function ToolCallBlockFromPart({
   children,
   animated,
   sessionId,
-  isMessageStreaming = false
+  isMessageStreaming = false,
 }: {
   messageId: string
   part: RenderableToolPart
@@ -947,7 +989,7 @@ function ToolCallBlockFromPart({
       }
       const workspaceId = state.sessions[sessionId]?.workspaceId
       return workspaceId ? { workspaceId } : undefined
-    })
+    }),
   )
   const subagentMessage = readSubagentOutputMessage(part.output)
   const approval = readToolApproval(part)
@@ -966,16 +1008,17 @@ function ToolCallBlockFromPart({
       workspaceDiffTarget={workspaceDiffTarget}
       onApprovalResponse={
         approval && onToolApprovalResponse
-          ? (approval) =>
+          ? approval =>
               onToolApprovalResponse({
                 messageId,
                 approvalId: approval.id,
-                approved: approval.approved
+                approved: approval.approved,
               })
           : undefined
       }
     >
-      {subagentMessage ? (
+      {subagentMessage
+? (
         <SubagentMessageContent
           message={subagentMessage}
           isStreaming={isMessageStreaming && readToolPreliminary(part)}
@@ -984,7 +1027,8 @@ function ToolCallBlockFromPart({
           showCursor={STREAMDOWN_RENDER_OPTIONS.showCursor}
           sessionId={sessionId ?? undefined}
         />
-      ) : null}
+      )
+: null}
       {children}
     </ToolCallBlock>
   )
@@ -995,7 +1039,7 @@ function ToolCallBlockByPartIndex({
   messageId,
   partIndex,
   onToolApprovalResponse,
-  isMessageStreaming
+  isMessageStreaming,
 }: {
   sessionId: string
   messageId: string
@@ -1004,8 +1048,8 @@ function ToolCallBlockByPartIndex({
   isMessageStreaming: boolean
 }) {
   const part = useChatStore(
-    (state) => readRenderableToolPartFromState(state, sessionId, messageId, partIndex),
-    areRenderableToolPartsEqual
+    state => readRenderableToolPartFromState(state, sessionId, messageId, partIndex),
+    areRenderableToolPartsEqual,
   )
   if (!part) {
     return null
@@ -1025,9 +1069,9 @@ function GroupedToolCallBlockFromParts({
   items,
   uiKind,
   animated,
-  sessionId
+  sessionId,
 }: {
-  items: Array<{ key: string; part: RenderableToolPart }>
+  items: Array<{ key: string, part: RenderableToolPart }>
   uiKind: ReturnType<typeof describeToolCall>['kind']
   animated?: boolean
   sessionId?: string | null
@@ -1039,7 +1083,7 @@ function GroupedToolCallBlockFromParts({
       }
       const workspaceId = state.sessions[sessionId]?.workspaceId
       return workspaceId ? { workspaceId } : undefined
-    })
+    }),
   )
   if (items.length === 0) {
     return null
@@ -1058,24 +1102,24 @@ function GroupedToolCallBlockFromParts({
 function GroupedToolCallBlockByPartIndexes({
   items,
   uiKind,
-  sessionId
+  sessionId,
 }: {
-  items: Array<{ key: string; messageId: string; partIndex: number }>
+  items: Array<{ key: string, messageId: string, partIndex: number }>
   uiKind: ReturnType<typeof describeToolCall>['kind']
   sessionId: string
 }) {
   const parts = useChatStore(
-    (state) =>
+    state =>
       items.flatMap((item) => {
         const part = readRenderableToolPartFromState(
           state,
           sessionId,
           item.messageId,
-          item.partIndex
+          item.partIndex,
         )
         return part ? [{ key: item.key, part }] : []
       }),
-    areGroupedRenderableToolItemsEqual
+    areGroupedRenderableToolItemsEqual,
   )
   return <GroupedToolCallBlockFromParts items={parts} uiKind={uiKind} sessionId={sessionId} />
 }
@@ -1085,17 +1129,18 @@ const MessageTextPartById = ({
   messageId,
   partIndex,
   isUser,
-  isActiveStreamingSegment
+  isActiveStreamingSegment,
+  textTransform,
 }: {
   sessionId: string
   messageId: string
   partIndex: number
   isUser: boolean
   isActiveStreamingSegment: boolean
+  textTransform?: MessageTextTransform
 }) => {
-  const text = useChatStore((state) =>
-    readTextPartFromState(state, sessionId, messageId, partIndex)
-  )
+  const text = useChatStore(state =>
+    readTextPartFromState(state, sessionId, messageId, partIndex, textTransform))
   const displayText = isUser ? readUserDisplayText(text) : text
   const animated = displayText.length <= MESSAGE_STREAMING_ANIMATION_MAX_CHARS
 
@@ -1112,7 +1157,7 @@ const MessageTextPartById = ({
       showCursor={STREAMDOWN_RENDER_OPTIONS.showCursor}
       animated={animated}
       components={{
-        a: (props) => <MarkdownFileLink {...readMarkdownAnchorProps(props)} sessionId={sessionId} />
+        a: props => <MarkdownFileLink {...readMarkdownAnchorProps(props)} sessionId={sessionId} />,
       }}
     />
   )
@@ -1123,7 +1168,7 @@ const MessageReasoningPartById = ({
   sessionId,
   messageId,
   partIndex,
-  isActiveStreamingSegment
+  isActiveStreamingSegment,
 }: {
   sessionId: string
   messageId: string
@@ -1131,8 +1176,8 @@ const MessageReasoningPartById = ({
   isActiveStreamingSegment: boolean
 }) => {
   const part = useChatStore(
-    (state) => readReasoningPartFromState(state, sessionId, messageId, partIndex),
-    areReasoningPartsEqual
+    state => readReasoningPartFromState(state, sessionId, messageId, partIndex),
+    areReasoningPartsEqual,
   )
   const state = isActiveStreamingSegment && part.state === 'streaming' ? 'streaming' : 'done'
 
@@ -1144,16 +1189,15 @@ const MessageFilePartById = ({
   sessionId,
   messageId,
   partIndex,
-  onImageClick
+  onImageClick,
 }: {
   sessionId: string
   messageId: string
   partIndex: number
   onImageClick?: () => void
 }) => {
-  const part = useChatStore((state) =>
-    readFilePartFromState(state, sessionId, messageId, partIndex)
-  )
+  const part = useChatStore(state =>
+    readFilePartFromState(state, sessionId, messageId, partIndex))
   if (!part) {
     return null
   }
@@ -1164,15 +1208,14 @@ MessageFilePartById.displayName = 'MessageFilePartById'
 const MessageSkillContextPartById = ({
   sessionId,
   messageId,
-  partIndex
+  partIndex,
 }: {
   sessionId: string
   messageId: string
   partIndex: number
 }) => {
-  const part = useChatStore((state) =>
-    readSkillContextPartFromState(state, sessionId, messageId, partIndex)
-  )
+  const part = useChatStore(state =>
+    readSkillContextPartFromState(state, sessionId, messageId, partIndex))
   if (!part) {
     return null
   }
@@ -1183,15 +1226,14 @@ MessageSkillContextPartById.displayName = 'MessageSkillContextPartById'
 const MessagePluginContextPartById = ({
   sessionId,
   messageId,
-  partIndex
+  partIndex,
 }: {
   sessionId: string
   messageId: string
   partIndex: number
 }) => {
-  const part = useChatStore((state) =>
-    readPluginContextPartFromState(state, sessionId, messageId, partIndex)
-  )
+  const part = useChatStore(state =>
+    readPluginContextPartFromState(state, sessionId, messageId, partIndex))
   if (!part) {
     return null
   }
@@ -1205,7 +1247,8 @@ const MessageThinkingPlaceholderById = ({
   isAssistant,
   isStreaming,
   segmentCount,
-  segments
+  segments,
+  textTransform,
 }: {
   sessionId: string
   messageId: string
@@ -1213,20 +1256,19 @@ const MessageThinkingPlaceholderById = ({
   isStreaming: boolean
   segmentCount: number
   segments: ChatRenderSegment[]
+  textTransform?: MessageTextTransform
 }) => {
-  const textLength = useChatStore((state) =>
-    readPlainTextLengthFromState(state, sessionId, messageId)
-  )
-  const hasActiveProgress = useChatStore((state) =>
-    hasActiveNonTextSegmentProgress(state, sessionId, messageId, segments)
-  )
+  const textLength = useChatStore(state =>
+    readPlainTextLengthFromState(state, sessionId, messageId, textTransform))
+  const hasActiveProgress = useChatStore(state =>
+    hasActiveNonTextSegmentProgress(state, sessionId, messageId, segments))
   const streamTextIdle = useTextStreamIdle(isAssistant && isStreaming, textLength)
 
   if (
-    !isAssistant ||
-    !isStreaming ||
-    hasActiveProgress ||
-    (segmentCount !== 0 && !streamTextIdle)
+    !isAssistant
+    || !isStreaming
+    || hasActiveProgress
+    || (segmentCount !== 0 && !streamTextIdle)
   ) {
     return null
   }
@@ -1238,15 +1280,16 @@ MessageThinkingPlaceholderById.displayName = 'MessageThinkingPlaceholderById'
 const MessageCopyActionById = ({
   sessionId,
   messageId,
-  isUser
+  isUser,
+  textTransform,
 }: {
   sessionId: string
   messageId: string
   isUser: boolean
+  textTransform?: MessageTextTransform
 }) => {
-  const hasPlainText = useChatStore((state) =>
-    readPlainTextPresenceFromState(state, sessionId, messageId)
-  )
+  const hasPlainText = useChatStore(state =>
+    readPlainTextPresenceFromState(state, sessionId, messageId, textTransform))
   const [copied, setCopied] = useState(false)
   const copyFeedbackTimerRef = useRef<number | null>(null)
 
@@ -1259,7 +1302,7 @@ const MessageCopyActionById = ({
   }, [])
 
   const handleCopy = async () => {
-    const plainText = readPlainTextFromState(useChatStore.getState(), sessionId, messageId)
+    const plainText = readPlainTextFromState(useChatStore.getState(), sessionId, messageId, textTransform)
     await navigator.clipboard.writeText(plainText)
     setCopied(true)
 
@@ -1281,7 +1324,7 @@ const MessageCopyActionById = ({
     <div
       className={cn(
         'mt-1 flex items-center gap-0.5 opacity-0 translate-y-0.5 group-hover:opacity-100 group-hover:translate-y-0 transition-[opacity,transform] duration-150',
-        isUser && 'justify-end'
+        isUser && 'justify-end',
       )}
     >
       <Button
@@ -1292,9 +1335,11 @@ const MessageCopyActionById = ({
         className="text-muted-foreground/50 hover:text-foreground"
         aria-label="Copy message"
       >
-        {copied ? (
+        {copied
+? (
           <CheckIcon className="size-3.5 text-emerald-500" aria-hidden="true" />
-        ) : (
+        )
+: (
           <CopyIcon className="size-3.5" aria-hidden="true" />
         )}
       </Button>
@@ -1310,7 +1355,8 @@ const MessageSegmentView = ({
   isActiveStreamingSegment,
   isMessageStreaming,
   onToolApprovalResponse,
-  onImageClick
+  onImageClick,
+  textTransform,
 }: {
   segment: ChatRenderSegment
   sessionId: string
@@ -1319,6 +1365,7 @@ const MessageSegmentView = ({
   isMessageStreaming: boolean
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
   onImageClick?: () => void
+  textTransform?: MessageTextTransform
 }) => {
   switch (segment.kind) {
     case 'text':
@@ -1329,6 +1376,7 @@ const MessageSegmentView = ({
           partIndex={segment.partIndex}
           isUser={isUser}
           isActiveStreamingSegment={isActiveStreamingSegment}
+          textTransform={textTransform}
         />
       )
     case 'reasoning':
@@ -1394,13 +1442,15 @@ const MessageBubbleSegmentsView = ({
   frame,
   segments,
   isStreaming,
-  onToolApprovalResponse
+  onToolApprovalResponse,
+  textTransform,
 }: {
   sessionId: string
   frame: MessageFrame
   segments: ChatRenderSegment[]
   isStreaming: boolean
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
+  textTransform?: MessageTextTransform
 }) => {
   const isUser = frame.role === 'user'
   const isAssistant = frame.role === 'assistant'
@@ -1423,7 +1473,7 @@ const MessageBubbleSegmentsView = ({
           useChatStore.getState(),
           sessionId,
           segment.messageId,
-          segment.partIndex
+          segment.partIndex,
         )
         return part?.mediaType.startsWith('image/')
       })
@@ -1438,11 +1488,11 @@ const MessageBubbleSegmentsView = ({
         useChatStore.getState(),
         sessionId,
         segment.messageId,
-        segment.partIndex
+        segment.partIndex,
       )
       return {
         url: part?.url ?? '',
-        alt: part?.filename ?? part?.mediaType ?? 'Image'
+        alt: part?.filename ?? part?.mediaType ?? 'Image',
       }
     })
   })()
@@ -1468,18 +1518,19 @@ const MessageBubbleSegmentsView = ({
         onImageClick={
           segment.kind === 'file-attachment' ? () => handleImageClick(index) : undefined
         }
+        textTransform={textTransform}
       />
     )
   }
 
   function renderSegmentsWithImageGrid(segs: ChatRenderSegment[]) {
     const result: React.ReactNode[] = []
-    let imageBuffer: Array<{ segment: ChatRenderSegment; index: number }> = []
+    let imageBuffer: Array<{ segment: ChatRenderSegment, index: number }> = []
 
     segs.forEach((segment, index) => {
-      const isImage =
-        segment.kind === 'file-attachment' &&
-        (() => {
+      const isImage
+        = segment.kind === 'file-attachment'
+          && (() => {
           if (segment.kind !== 'file-attachment') {
             return false
           }
@@ -1487,14 +1538,15 @@ const MessageBubbleSegmentsView = ({
             useChatStore.getState(),
             sessionId,
             segment.messageId,
-            segment.partIndex
+            segment.partIndex,
           )
           return part?.mediaType.startsWith('image/')
         })()
 
       if (isImage) {
         imageBuffer.push({ segment, index })
-      } else {
+      }
+ else {
         if (imageBuffer.length > 0) {
           result.push(
             <div
@@ -1506,7 +1558,7 @@ const MessageBubbleSegmentsView = ({
                   {renderSegment(imgSegment, imgIndex)}
                 </div>
               ))}
-            </div>
+            </div>,
           )
           imageBuffer = []
         }
@@ -1525,7 +1577,7 @@ const MessageBubbleSegmentsView = ({
               {renderSegment(imgSegment, imgIndex)}
             </div>
           ))}
-        </div>
+        </div>,
       )
     }
 
@@ -1549,8 +1601,7 @@ const MessageBubbleSegmentsView = ({
       <>
         <ExecutionPhaseFold>
           {executionPhaseSplit.executionItems.map((segment, index) =>
-            renderSegment(segment, index)
-          )}
+            renderSegment(segment, index))}
         </ExecutionPhaseFold>
         {renderSegmentsWithImageGrid(executionPhaseSplit.finalItems)}
       </>
@@ -1572,14 +1623,14 @@ const MessageBubbleSegmentsView = ({
         <div
           className={cn(
             'min-w-0',
-            isUser &&
-              !frame.isSteerMessage &&
-              !frame.bangCommand &&
-              !frame.bangResult &&
-              'max-w-[70%]',
+            isUser
+            && !frame.isSteerMessage
+            && !frame.bangCommand
+            && !frame.bangResult
+            && 'max-w-[70%]',
             (frame.bangCommand || frame.bangResult) && 'max-w-[78%]',
             frame.isSteerMessage && STEER_MESSAGE_CONTAINER_CLASS,
-            !isUser && 'w-full'
+            !isUser && 'w-full',
           )}
         >
           {frame.isSteerMessage && <SteerMessageLabel />}
@@ -1587,14 +1638,14 @@ const MessageBubbleSegmentsView = ({
           <div
             className={cn(
               'rounded-lg text-sm leading-relaxed',
-              isUser &&
-                !frame.isSteerMessage &&
-                !frame.bangCommand &&
-                !frame.bangResult &&
-                'bg-muted text-foreground rounded-br-sm px-3 py-2',
+              isUser
+              && !frame.isSteerMessage
+              && !frame.bangCommand
+              && !frame.bangResult
+              && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
               (frame.bangCommand || frame.bangResult) && 'rounded-br-sm',
               frame.isSteerMessage && STEER_MESSAGE_BUBBLE_CLASS,
-              isAssistant && 'text-foreground'
+              isAssistant && 'text-foreground',
             )}
           >
             {renderContent()}
@@ -1605,13 +1656,19 @@ const MessageBubbleSegmentsView = ({
               isStreaming={isStreaming}
               segmentCount={segments.length}
               segments={segments}
+              textTransform={textTransform}
             />
           </div>
 
           {isAssistant && <RunDebugCaption messageId={frame.id} />}
 
           {!isStreaming && (
-            <MessageCopyActionById sessionId={sessionId} messageId={frame.id} isUser={isUser} />
+            <MessageCopyActionById
+              sessionId={sessionId}
+              messageId={frame.id}
+              isUser={isUser}
+              textTransform={textTransform}
+            />
           )}
         </div>
       </m.div>
@@ -1632,24 +1689,26 @@ MessageBubbleSegmentsView.displayName = 'MessageBubbleSegmentsView'
 export const MessageBubbleById = ({
   sessionId,
   messageId,
-  onToolApprovalResponse
+  onToolApprovalResponse,
+  textTransform,
 }: {
   sessionId: string | null
   messageId: string
   onToolApprovalResponse?: MessageBubbleProps['onToolApprovalResponse']
+  textTransform?: MessageTextTransform
 }) => {
   const storeSessionId = sessionId ?? ''
   const frame = useChatStore(
-    (state) => readMessageFrameFromState(state, storeSessionId, messageId),
-    areMessageFramesEqual
+    state => readMessageFrameFromState(state, storeSessionId, messageId, textTransform),
+    areMessageFramesEqual,
   )
   const segments = useChatStore(
-    (state) => readRenderSegmentsFromState(state, storeSessionId, messageId),
-    areRenderSegmentsEqual
+    state => readRenderSegmentsFromState(state, storeSessionId, messageId, textTransform),
+    areRenderSegmentsEqual,
   )
   const isStreaming = useChatStore(
     chatSelectors.isVisibleStreamingMessage(storeSessionId, messageId),
-    (a, b) => a === b
+    (a, b) => a === b,
   )
 
   if (!frame) {
@@ -1663,6 +1722,7 @@ export const MessageBubbleById = ({
       segments={segments}
       isStreaming={isStreaming}
       onToolApprovalResponse={onToolApprovalResponse}
+      textTransform={textTransform}
     />
   )
 }
@@ -1674,7 +1734,7 @@ function MessageBubbleView({
   executionDetailsDefaultOpen = false,
   presentation = 'thread',
   sessionId,
-  onToolApprovalResponse
+  onToolApprovalResponse,
 }: MessageBubbleProps) {
   const isUser = message.role === 'user'
   const isAssistant = message.role === 'assistant'
@@ -1696,18 +1756,18 @@ function MessageBubbleView({
   const groupedItems = groupMessageParts({
     parts: message.parts,
     messageId: message.id,
-    describeToolKind: (part) => describeToolCall(part).kind
+    describeToolKind: part => describeToolCall(part).kind,
   })
   const activeStreamingItemKey = isStreaming ? readActiveStreamingItemKey(groupedItems) : null
   const streamingTailItemKey = isStreaming ? readStreamingTailItemKey(groupedItems) : null
 
   const executionPhaseSplit = isStreaming ? null : splitExecutionPhase(groupedItems)
   const hasActiveProgress = hasActiveNonTextProgress(groupedItems)
-  const showThinkingPlaceholder =
-    isAssistant &&
-    isStreaming &&
-    !hasActiveProgress &&
-    (groupedItems.length === 0 || streamTextIdle)
+  const showThinkingPlaceholder
+    = isAssistant
+      && isStreaming
+      && !hasActiveProgress
+      && (groupedItems.length === 0 || streamTextIdle)
 
   useEffect(() => {
     return () => {
@@ -1753,9 +1813,9 @@ function MessageBubbleView({
             showCursor={STREAMDOWN_RENDER_OPTIONS.showCursor}
             animated={item.text.length <= MESSAGE_STREAMING_ANIMATION_MAX_CHARS}
             components={{
-              a: (props) => (
+              a: props => (
                 <MarkdownFileLink {...readMarkdownAnchorProps(props)} sessionId={sessionId} />
-              )
+              ),
             }}
           />
         )
@@ -1847,7 +1907,7 @@ function MessageBubbleView({
           isUser && !isSteerMessage && !bangCommand && !bangResult && 'max-w-[70%]',
           (bangCommand || bangResult) && 'max-w-[78%]',
           isSteerMessage && STEER_MESSAGE_CONTAINER_CLASS,
-          !isUser && 'w-full'
+          !isUser && 'w-full',
         )}
       >
         {isSteerMessage && <SteerMessageLabel />}
@@ -1856,14 +1916,14 @@ function MessageBubbleView({
         <div
           className={cn(
             'rounded-lg text-sm leading-relaxed',
-            isUser &&
-              !isSteerMessage &&
-              !bangCommand &&
-              !bangResult &&
-              'bg-muted text-foreground rounded-br-sm px-3 py-2',
+            isUser
+            && !isSteerMessage
+            && !bangCommand
+            && !bangResult
+            && 'bg-muted text-foreground rounded-br-sm px-3 py-2',
             (bangCommand || bangResult) && 'rounded-br-sm',
             isSteerMessage && STEER_MESSAGE_BUBBLE_CLASS,
-            isAssistant && 'text-foreground'
+            isAssistant && 'text-foreground',
           )}
         >
           {renderContent()}
@@ -1877,7 +1937,7 @@ function MessageBubbleView({
           <div
             className={cn(
               'mt-1 flex items-center gap-0.5 opacity-0 translate-y-0.5 group-hover:opacity-100 group-hover:translate-y-0 transition-[opacity,transform] duration-150',
-              isUser && 'justify-end'
+              isUser && 'justify-end',
             )}
           >
             <Button
@@ -1888,9 +1948,11 @@ function MessageBubbleView({
               className="text-muted-foreground/50 hover:text-foreground"
               aria-label="Copy message"
             >
-              {copied ? (
+              {copied
+? (
                 <CheckIcon className="size-3.5 text-emerald-500" aria-hidden="true" />
-              ) : (
+              )
+: (
                 <CopyIcon className="size-3.5" aria-hidden="true" />
               )}
             </Button>

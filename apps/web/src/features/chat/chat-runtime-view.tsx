@@ -1,17 +1,19 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { lazy, Suspense, useEffect, useLayoutEffect, useRef, useState } from 'react'
+import type { ReactNode } from 'react'
+import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react'
 
 import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { getSkills, patchSessionsById } from '~/api-gen/sdk.gen'
+import type { RuntimeKind } from '~/features/agent-runtime/types'
 import type { MentionItem } from '~/features/chat'
-import type { SkillMentionItem } from './mentions/skill-mention-panel'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
+import type { SkillInventoryEntry } from '~/features/skills/types'
 import { updateSessionInSessionLists } from '~/features/workspace/use-session'
 import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
-import type { RuntimeKind } from '~/features/agent-runtime/types'
-import type { SkillInventoryEntry } from '~/features/skills/types'
 
+import type { ChatViewProps } from './chat-view'
 import { searchSessionPluginMentions } from './mentions/plugin-mentions'
+import type { SkillMentionItem } from './mentions/skill-mention-panel'
 import type { SendMessageOptions } from './session/use-chat-session'
 
 const ChatView = lazy(() => import('./chat-view').then(module => ({ default: module.ChatView })))
@@ -33,6 +35,11 @@ export function ChatRuntimeView({
   runtimeKind,
   workspaceId,
   agentId,
+  composerContextBar,
+  composerToolbarAddon,
+  placeholder,
+  messageTextTransform,
+  prepareSend,
 }: {
   sessionId: string
   sessionProviderTargetId: string | null
@@ -40,6 +47,11 @@ export function ChatRuntimeView({
   runtimeKind: RuntimeKind | undefined
   workspaceId: string | null
   agentId: string | null
+  composerContextBar?: ReactNode
+  composerToolbarAddon?: ReactNode
+  placeholder?: string
+  messageTextTransform?: ChatViewProps['messageTextTransform']
+  prepareSend?: ChatViewProps['prepareSend']
 }) {
   const queryClient = useQueryClient()
   const composerResetKey = [
@@ -112,7 +124,7 @@ export function ChatRuntimeView({
     }
   }, [composerState.selection.modelId, composerState.selection.profileId, composerState.selection.thinkingEffort])
 
-  const persistSessionProviderModel = (body: SessionProviderModelPatch) => {
+  const persistSessionProviderModel = useCallback((body: SessionProviderModelPatch) => {
     const targetSessionId = sessionId
     const previousSessionKey = getSessionsByIdQueryKey({ path: { id: targetSessionId } })
     const previousSession = queryClient.getQueryData(previousSessionKey)
@@ -170,36 +182,45 @@ export function ChatRuntimeView({
 
     saveState.queue = saveTask.catch(() => undefined)
     return saveTask
-  }
+  }, [queryClient, sessionId])
+
+  const {
+    modelsByProfileId,
+    resetManualSelection,
+    selection,
+    setModelId,
+    successfulProfileIds,
+  } = composerState
+  const selectedProfileId = selection.profileId
 
   useEffect(() => {
     if (!pendingProviderTargetId) {
       return
     }
-    if (composerState.selection.profileId !== pendingProviderTargetId) {
+    if (selectedProfileId !== pendingProviderTargetId) {
       setPendingProviderTargetId(null)
       return
     }
-    const nextModels = composerState.modelsByProfileId[pendingProviderTargetId] ?? []
+    const nextModels = modelsByProfileId[pendingProviderTargetId] ?? []
     if (nextModels.length === 0) {
-      if (composerState.successfulProfileIds.has(pendingProviderTargetId)) {
-        composerState.resetManualSelection()
+      if (successfulProfileIds.has(pendingProviderTargetId)) {
+        resetManualSelection()
         setPendingProviderTargetId(null)
       }
       return
     }
     const nextModelId = nextModels[0]!.id
-    composerState.setModelId(nextModelId, pendingProviderTargetId)
+    setModelId(nextModelId, pendingProviderTargetId)
     void persistSessionProviderModel({ providerTargetId: pendingProviderTargetId, modelId: nextModelId })
     setPendingProviderTargetId(null)
   }, [
-    composerState.modelsByProfileId,
-    composerState.selection.profileId,
-    composerState.setModelId,
-    composerState.resetManualSelection,
-    composerState.successfulProfileIds,
+    modelsByProfileId,
     pendingProviderTargetId,
     persistSessionProviderModel,
+    resetManualSelection,
+    selectedProfileId,
+    setModelId,
+    successfulProfileIds,
   ])
 
   const sessionComposerState = ({
@@ -241,8 +262,13 @@ export function ChatRuntimeView({
         searchPlugins={searchPlugins}
         searchSkills={searchSkills}
         composerToolbar={composerToolbar}
+        composerToolbarAddon={composerToolbarAddon}
+        composerContextBar={composerContextBar}
         sendOverridesRef={sendOverridesRef}
         composerModel={sessionComposerState.effectiveModel}
+        placeholder={placeholder}
+        messageTextTransform={messageTextTransform}
+        prepareSend={prepareSend}
       />
     </Suspense>
   )
