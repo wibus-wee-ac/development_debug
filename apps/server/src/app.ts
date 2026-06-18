@@ -48,6 +48,11 @@ interface CreateServerContractAppOptions {
   includeRuntimeHttpPlugins?: boolean
 }
 
+const HOSTED_WEB_APP_ORIGINS = new Set([
+  'http://app.cradle.wibus.ren',
+  'https://app.cradle.wibus.ren',
+])
+
 function isAllowedCorsOrigin({ headers }: { headers: Headers }): boolean {
   const origin = headers.get('origin')
   if (!origin || origin === 'null') {
@@ -55,6 +60,10 @@ function isAllowedCorsOrigin({ headers }: { headers: Headers }): boolean {
   }
 
   try {
+    if (HOSTED_WEB_APP_ORIGINS.has(origin)) {
+      return true
+    }
+
     const parsed = new URL(origin)
     return (
       (parsed.protocol === 'http:' || parsed.protocol === 'https:')

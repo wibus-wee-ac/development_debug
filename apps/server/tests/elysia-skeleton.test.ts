@@ -67,6 +67,26 @@ describe('elysia migration skeleton', () => {
     expect(body.timestamp).toBeTypeOf('number')
   })
 
+  it('allows the hosted web app origins through CORS', async () => {
+    const app = await createServerApp()
+
+    for (const origin of ['http://app.cradle.wibus.ren', 'https://app.cradle.wibus.ren']) {
+      const response = await app.handle(new Request('http://localhost/health', {
+        headers: { origin },
+      }))
+
+      expect(response.status).toBe(200)
+      expect(response.headers.get('access-control-allow-origin')).toBe(origin)
+    }
+
+    const rejected = await app.handle(new Request('http://localhost/health', {
+      headers: { origin: 'https://example.com' },
+    }))
+
+    expect(rejected.status).toBe(200)
+    expect(rejected.headers.get('access-control-allow-origin')).toBeNull()
+  })
+
   it('serves OpenAPI JSON plus the legacy /docs alias', async () => {
     const app = await createServerApp()
 
