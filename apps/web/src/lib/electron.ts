@@ -238,6 +238,7 @@ interface WindowServiceMethods {
   getOpenSessions: () => Promise<string[]>
   startPointerMonitor: () => Promise<void>
   stopPointerMonitor: () => Promise<void>
+  close: () => Promise<void>
 }
 
 export interface DesktopUpdateFile {

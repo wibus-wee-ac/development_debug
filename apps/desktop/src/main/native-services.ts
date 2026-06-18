@@ -643,7 +643,8 @@ class WindowService extends IpcService {
 
   @IpcMethod()
   async close(): Promise<void> {
-    getWindowManager()?.getMainWindow()?.close()
+    const ctx = getIpcContext()
+    BrowserWindow.fromWebContents(ctx.sender)?.close()
   }
 }
 

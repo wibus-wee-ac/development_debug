@@ -9,6 +9,7 @@ import { runtimeSettingsQueryKey } from '~/features/chat/commands/runtime-settin
 import { runtimeSessionStatusQueryKey } from '~/features/chat/runtime/use-runtime-session-status'
 import { onAnyChatRunEvent, onChatRunSettled } from '~/features/chat/transport/sse-chat-transport'
 import { isSessionsQueryKey, updateSessionReadState } from '~/features/workspace/use-session'
+import { isTearoffWindow, nativeIpc } from '~/lib/electron'
 import { activateAdjacentSurface, closeActiveSurface, openNewChat } from '~/navigation/navigation-commands'
 import { useSurfaceStore } from '~/navigation/surface-store'
 import {
@@ -92,7 +93,15 @@ export function useGlobalEventListeners() {
       // Cmd+W -> close active surface
       if (e.metaKey && !e.altKey && !e.ctrlKey && !e.shiftKey && e.key === 'w') {
         e.preventDefault()
+        if (isTearoffWindow) {
+          void nativeIpc?.window.close().catch(() => {})
+          return
+        }
         closeActiveSurface()
+        return
+      }
+
+      if (isTearoffWindow) {
         return
       }
 
