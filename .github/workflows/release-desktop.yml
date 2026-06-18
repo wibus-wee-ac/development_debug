@@ -105,7 +105,6 @@ jobs:
         run: pnpm --filter @cradle/desktop ${{ matrix.script }}
         env:
           CRADLE_DESKTOP_UPDATE_URL: ${{ needs.release-inputs.outputs.update-url }}
-          CRADLE_DESKTOP_UPDATE_ARTIFACTS: '1'
           CRADLE_ELECTRON_REBUILD_ARCH: ${{ matrix.arch }}
           CSC_IDENTITY_AUTO_DISCOVERY: 'false'
 

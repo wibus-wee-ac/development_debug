@@ -10,23 +10,20 @@ import { defineConfig } from 'electron-vite'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const webRoot = resolve(__dirname, '../web')
-const desktopUpdateUrl =
-  process.env.CRADLE_DESKTOP_UPDATE_ARTIFACTS === '1'
-    ? (process.env.CRADLE_DESKTOP_UPDATE_URL ?? '')
-    : ''
+const desktopUpdateUrl = process.env.CRADLE_DESKTOP_UPDATE_URL ?? ''
 const nodeRuntimeExternals = [
   ...builtinModules,
-  ...builtinModules.map((moduleName) => `node:${moduleName}`),
-  'electron'
+  ...builtinModules.map(moduleName => `node:${moduleName}`),
+  'electron',
 ]
 
 export default defineConfig({
   main: {
     ssr: {
-      noExternal: true
+      noExternal: true,
     },
     define: {
-      __CRADLE_DESKTOP_UPDATE_URL__: JSON.stringify(desktopUpdateUrl)
+      __CRADLE_DESKTOP_UPDATE_URL__: JSON.stringify(desktopUpdateUrl),
     },
     build: {
       externalizeDeps: false,
@@ -34,10 +31,10 @@ export default defineConfig({
       rollupOptions: {
         external: nodeRuntimeExternals,
         input: {
-          index: resolve(__dirname, 'src/main/index.ts')
-        }
-      }
-    }
+          index: resolve(__dirname, 'src/main/index.ts'),
+        },
+      },
+    },
   },
   preload: {
     build: {
@@ -47,14 +44,14 @@ export default defineConfig({
         external: nodeRuntimeExternals,
         input: {
           index: resolve(__dirname, 'src/preload/index.ts'),
-          'browser-panel': resolve(__dirname, 'src/preload/browser-panel.ts')
+          'browser-panel': resolve(__dirname, 'src/preload/browser-panel.ts'),
         },
         output: {
           format: 'cjs',
-          entryFileNames: '[name].js'
-        }
-      }
-    }
+          entryFileNames: '[name].js',
+        },
+      },
+    },
   },
   renderer: {
     root: webRoot,
@@ -62,31 +59,31 @@ export default defineConfig({
       tailwindcss(),
       tanstackRouter({
         target: 'react',
-        autoCodeSplitting: true
+        autoCodeSplitting: true,
       }),
       viteReact({
         babel: {
-          plugins: ['babel-plugin-react-compiler']
-        }
+          plugins: ['babel-plugin-react-compiler'],
+        },
       }),
-      pluginImportMap()
+      pluginImportMap(),
     ],
     resolve: {
       alias: {
-        '~': resolve(webRoot, 'src')
-      }
+        '~': resolve(webRoot, 'src'),
+      },
     },
     build: {
       outDir: resolve(__dirname, 'dist/renderer'),
       rollupOptions: {
         input: {
           main: resolve(webRoot, 'index.html'),
-          tearoff: resolve(webRoot, 'tearoff.html')
-        }
-      }
+          tearoff: resolve(webRoot, 'tearoff.html'),
+        },
+      },
     },
     worker: {
-      format: 'es'
-    }
-  }
+      format: 'es',
+    },
+  },
 })

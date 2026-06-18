@@ -7,7 +7,6 @@ import { copyCodexRuntimeToPackagedResources } from './scripts/sync-codex-runtim
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const updateServerUrl = process.env.CRADLE_DESKTOP_UPDATE_URL?.trim()
-const buildUpdateArtifacts = process.env.CRADLE_DESKTOP_UPDATE_ARTIFACTS === '1'
 const hasAppleSigningIdentity = Boolean(process.env.CSC_LINK || process.env.CSC_NAME)
 
 if (!hasAppleSigningIdentity) {
@@ -22,19 +21,19 @@ const keepElectronFrameworkLocales = new Set([
   'es',
   'ja',
   'zh_CN',
-  'zh_TW'
+  'zh_TW',
 ])
 
 function getPublishConfig() {
-  if (!buildUpdateArtifacts || !updateServerUrl) {
+  if (!updateServerUrl) {
     return undefined
   }
 
   return [
     {
       provider: 'generic',
-      url: updateServerUrl
-    }
+      url: updateServerUrl,
+    },
   ]
 }
 
@@ -51,13 +50,14 @@ async function removeUnusedMacFrameworkLocales(context) {
     'Electron Framework.framework',
     'Versions',
     'A',
-    'Resources'
+    'Resources',
   )
 
   let entries
   try {
     entries = await fs.readdir(frameworkResources)
-  } catch {
+  }
+  catch {
     return
   }
 
@@ -75,16 +75,14 @@ async function removeUnusedMacFrameworkLocales(context) {
 
       await fs.rm(path.join(frameworkResources, entry), { recursive: true, force: true })
       removed = true
-    })
+    }),
   )
 
   if (removed) {
     // Remove stale code signature so electron-builder regenerates it during re-signing.
     // _CodeSignature lives at Electron Framework.framework/_CodeSignature (3 levels above Resources).
     const frameworkRoot = path.resolve(frameworkResources, '..', '..', '..')
-    await fs
-      .rm(path.join(frameworkRoot, '_CodeSignature'), { recursive: true, force: true })
-      .catch(() => {})
+    await fs.rm(path.join(frameworkRoot, '_CodeSignature'), { recursive: true, force: true }).catch(() => {})
   }
 }
 
@@ -104,62 +102,73 @@ const config = {
   afterPack,
 
   asar: true,
-  asarUnpack: ['**/*.node', '**/*.wasm'],
+  asarUnpack: [
+    '**/*.node',
+    '**/*.wasm',
+  ],
 
   compression: 'maximum',
-  detectUpdateChannel: buildUpdateArtifacts,
-  generateUpdatesFilesForAllChannels: buildUpdateArtifacts,
+  detectUpdateChannel: true,
+  generateUpdatesFilesForAllChannels: true,
   npmRebuild: false,
   publish: getPublishConfig(),
 
   directories: {
     buildResources: '../../resources',
-    output: 'release'
+    output: 'release',
   },
 
-  files: ['dist/main/**/*', 'dist/preload/**/*', 'dist/renderer/**/*', '!node_modules'],
+  files: [
+    'dist/main/**/*',
+    'dist/preload/**/*',
+    'dist/renderer/**/*',
+    '!node_modules',
+  ],
 
   extraResources: [
     {
       from: '../server/dist/desktop-runtime',
       to: 'server',
-      filter: ['**/*', '!node_modules/**']
+      filter: [
+        '**/*',
+        '!node_modules/**',
+      ],
     },
     {
       from: '../server/dist/desktop-runtime/node_modules',
       to: 'server/node_modules',
-      filter: ['**/*']
+      filter: ['**/*'],
     },
     {
       from: '../../packages/cli/dist',
       to: 'cli',
-      filter: ['**/*']
+      filter: ['**/*'],
     },
     {
       from: 'resources/bin',
       to: 'bin',
-      filter: ['**/*']
+      filter: ['**/*'],
     },
     {
       from: '../../packages/db/drizzle',
       to: 'drizzle',
-      filter: ['**/*']
+      filter: ['**/*'],
     },
     {
       from: '../../resources/skills',
       to: 'resources/skills',
-      filter: ['**/*']
+      filter: ['**/*'],
     },
     {
       from: '../server/dist/desktop-plugins',
       to: 'server/plugins',
-      filter: ['**/*']
+      filter: ['**/*'],
     },
     {
       from: 'native/macos/mac-bridge/.build/cradle-dist',
       to: 'mac-bridge',
-      filter: ['**/*']
-    }
+      filter: ['**/*'],
+    },
   ],
 
   mac: {
@@ -170,25 +179,33 @@ const config = {
     gatekeeperAssess: false,
     hardenedRuntime: hasAppleSigningIdentity,
     ...(hasAppleSigningIdentity ? {} : { identity: null }),
-    target: buildUpdateArtifacts ? ['dmg', 'zip'] : ['dmg']
+    target: [
+      'dmg',
+      'zip',
+    ],
   },
 
   win: {
-    target: ['nsis', 'zip'],
-    artifactName: '${productName}-${version}-${os}-${arch}.${ext}'
+    target: [
+      'nsis',
+      'zip',
+    ],
+    artifactName: '${productName}-${version}-${os}-${arch}.${ext}',
   },
 
   linux: {
-    target: buildUpdateArtifacts ? ['AppImage', 'deb'] : ['deb'],
-    category: 'Development'
+    target: [
+      'AppImage',
+      'deb',
+    ],
+    category: 'Development',
   },
 
   nsis: {
     oneClick: false,
     allowToChangeInstallationDirectory: true,
     artifactName: '${productName}-${version}-setup.${ext}',
-    differentialPackage: buildUpdateArtifacts
-  }
+  },
 }
 
 export default config
