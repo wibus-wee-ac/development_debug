@@ -53,6 +53,7 @@ export class NotificationCenterManager {
   private readonly nowSeconds: () => number
   private readonly platform: NodeJS.Platform
   private seenRunIds = new Set<string>()
+  private activeNotifications = new Set<NativeNotification>()
   private timer: ReturnType<typeof setInterval> | null = null
   private lastFinishedAt = 0
   private polling = false
@@ -84,6 +85,10 @@ export class NotificationCenterManager {
       clearInterval(this.timer)
       this.timer = null
     }
+    for (const notification of this.activeNotifications) {
+      notification.close()
+    }
+    this.activeNotifications.clear()
   }
 
   async poll(): Promise<void> {
@@ -130,13 +135,28 @@ export class NotificationCenterManager {
         : [{ type: 'button', text: 'Reply' }],
       closeButtonText: 'Close',
     })
+    this.activeNotifications.add(notification)
+    const releaseNotification = () => {
+      this.activeNotifications.delete(notification)
+    }
 
     notification.on('reply', (_event, reply) => {
       void this.handleReply(run.sessionId, reply)
+        .then((submitted) => {
+          if (submitted) {
+            this.notifyChatSessionUpdated(run.sessionId)
+          }
+        })
+        .finally(() => {
+          notification.close()
+          releaseNotification()
+        })
     })
     notification.on('click', () => {
       this.handleNotificationClick(run.sessionId, notification)
+      releaseNotification()
     })
+    notification.on('close', releaseNotification)
     notification.show()
   }
 
@@ -163,10 +183,22 @@ export class NotificationCenterManager {
     notification.close()
   }
 
-  private async handleReply(sessionId: string, rawReply: string | undefined): Promise<void> {
+  private notifyChatSessionUpdated(sessionId: string): void {
+    const mainWindow = this.getMainWindow()
+    if (!mainWindow || mainWindow.isDestroyed()) {
+      return
+    }
+
+    mainWindow.webContents.send('desktop-tray:action-requested', {
+      actionId: 'chat-session-updated',
+      payload: { sessionId },
+    })
+  }
+
+  private async handleReply(sessionId: string, rawReply: string | undefined): Promise<boolean> {
     const text = rawReply?.trim()
     if (!text) {
-      return
+      return false
     }
 
     try {
@@ -176,12 +208,14 @@ export class NotificationCenterManager {
           sessionId,
           body: { text },
         })
-        return
+        return true
       }
       await this.enqueueReply(sessionId, text)
+      return true
     }
     catch (error) {
       console.warn('[notification-center] failed to submit notification reply:', error)
+      return false
     }
   }
 

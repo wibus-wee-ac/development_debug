@@ -10,6 +10,8 @@
 - `browser-ipc.ts`：注册 native BrowserPanel IPC contract；renderer 通过 preload 调用 open/close/hide/bounds/navigation/tab/screenshot/CDP 方法，main process 推送 browser state snapshots。
 - `chat-stream-broker.ts`：拥有 Electron main process 的 long-lived chat stream transport；main process 对 server SSE 保持每个 chat session 一个上游 stream，并通过 renderer IPC events fan out 已接受的 AI SDK chunk frames；response start request 透传 Cradle-owned `runtimeSettings`，late subscriber 只接收有界 replay tail，避免 Desktop bridge 为长流缓存完整 chunk 历史。
 - `chat-stream-broker.test.ts`：覆盖 desktop chat stream broker 的单上游 fanout、有界 replay tail、delta replay coalescing、per-WebContents subscriber lifecycle cleanup、passive stream final unsubscribe abort，以及 response stream sender unsubscribe retention。
+- `notification-center-manager.ts`：拥有 Electron native notification polling 和 Notification Center quick reply；只读取 server-owned completed-run projection，reply 成功提交后通过 desktop action bridge 刷新对应 chat session。
+- `notification-center-manager.test.ts`：覆盖 completed-run native notification、idle-session quick reply detached response、busy-session queue reply，以及 notification lifecycle cleanup。
 - `desktop-app-badge-manager.ts`：拥有 Electron app icon badge IPC；renderer 只投影 unread count，main process 负责 macOS Dock badge 写入和清理。
 - `desktop-app-badge-manager.test.ts`：覆盖 unread count 正规化、macOS Dock badge 投影、IPC handler 注册/移除，以及非 macOS 平台 no-op 行为。
 - `desktop-assets.ts`：解析 Electron main process 在 dev 和 packaged runtime 中使用的 preload、main renderer、tear-off renderer asset 路径，兼容 electron-vite main chunk 输出目录。

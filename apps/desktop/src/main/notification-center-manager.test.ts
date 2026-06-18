@@ -91,6 +91,10 @@ describe('notificationCenterManager', () => {
   it('starts a detached response when replying to an idle completed session', async () => {
     const notifications: FakeNotification[] = []
     const broker = { startResponseDetached: vi.fn(async () => ({ streamId: 'stream-1' })) }
+    const mainWindow = {
+      isDestroyed: vi.fn(() => false),
+      webContents: { send: vi.fn() },
+    }
     const fetchFn = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input)
       if (url.includes('/runtime-status')) {
@@ -118,6 +122,7 @@ describe('notificationCenterManager', () => {
         notifications.push(notification)
         return notification
       },
+      getMainWindow: () => mainWindow as never,
       platform: 'darwin',
     })
 
@@ -130,6 +135,11 @@ describe('notificationCenterManager', () => {
         body: { text: 'continue from here' },
       })
     })
+    expect(mainWindow.webContents.send).toHaveBeenCalledWith('desktop-tray:action-requested', {
+      actionId: 'chat-session-updated',
+      payload: { sessionId: 'session-2' },
+    })
+    expect(notifications[0]?.close).toHaveBeenCalledTimes(1)
   })
 
   it('queues a reply when the session is already busy', async () => {
@@ -182,5 +192,39 @@ describe('notificationCenterManager', () => {
       )
     })
     expect(broker.startResponseDetached).not.toHaveBeenCalled()
+    expect(notifications[0]?.close).toHaveBeenCalledTimes(1)
+  })
+
+  it('closes active notifications when the manager stops', async () => {
+    const notifications: FakeNotification[] = []
+    const broker = { startResponseDetached: vi.fn() }
+    const fetchFn = vi.fn(async () => createJsonResponse({
+      runs: [{
+        runId: 'run-4',
+        sessionId: 'session-4',
+        sessionTitle: 'Stopped task',
+        messageId: 'message-4',
+        responseBody: 'Done',
+        messagePreview: 'Done',
+        startedAt: 100,
+        finishedAt: 105,
+      }],
+    }))
+    const manager = new NotificationCenterManager({
+      serverUrl: 'http://127.0.0.1:21423',
+      chatStreamBroker: broker as never,
+      fetchFn: fetchFn as typeof fetch,
+      createNotification: (options) => {
+        const notification = new FakeNotification(options)
+        notifications.push(notification)
+        return notification
+      },
+      platform: 'darwin',
+    })
+
+    await manager.poll()
+    manager.stop()
+
+    expect(notifications[0]?.close).toHaveBeenCalledTimes(1)
   })
 })
