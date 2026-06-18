@@ -1,0 +1,2640 @@
+import { randomUUID } from 'node:crypto'
+
+import type {
+  DiffReview,
+  DiffReviewAgentFix,
+  DiffReviewComment,
+  DiffReviewCommitPlan,
+  DiffReviewEvent,
+  DiffReviewFile,
+  DiffReviewGuide,
+  DiffReviewPreference,
+  DiffReviewRevision,
+  DiffReviewSourceOperation,
+  DiffReviewSubmission,
+  DiffReviewThread,
+  DiffReviewThreadReaction,
+} from '@cradle/db'
+import {
+  agents,
+  diffReviewSources,
+  diffReviewAgentFixes,
+  diffReviewComments,
+  diffReviewCommitPlans,
+  diffReviewEvents,
+  diffReviewFiles,
+  diffReviewFileViewState,
+  diffReviewGuides,
+  diffReviewPreferences,
+  diffReviewRevisions,
+  diffReviewSourceOperations,
+  diffReviews,
+  diffReviewSubmissions,
+  diffReviewThreadReactions,
+  diffReviewThreads,
+  workspaces,
+} from '@cradle/db'
+import type { UIMessageChunk } from 'ai'
+import { and, asc, desc, eq } from 'drizzle-orm'
+
+import { AppError } from '../../errors/app-error'
+import { currentUnixSeconds } from '../../helpers/time'
+import { db } from '../../infra'
+import { getRuntimeRegistry } from '../chat-runtime/chat-runtime-provider-registry'
+import type { ChatRuntimeSettings, RuntimeProviderTargetProfile, RuntimeSession } from '../chat-runtime/runtime-provider-types'
+import * as ChatRuntime from '../chat-runtime/service'
+import { createUserMessage } from '../chat-runtime/ui-message'
+import * as Git from '../git/service'
+import * as ModelRegistry from '../model-registry/service'
+import * as Session from '../session/service'
+import { resolveProviderTarget } from '../provider-targets/service'
+import { buildAgentFixArtifact } from './agent-fix-artifacts'
+import { isRangeAnchorInput, normalizeAnchor, remapAnchorToRevision, toAnchorView } from './anchors'
+import { buildCommitPlanGroups, commitGroupsForPlan, normalizeCommitPlanGroups } from './commit-plans'
+import { isGeneratedReviewFile, parsePatchFileSummaries } from './patch'
+import type {
+  BranchCompareBinding,
+  DiffReviewPreferenceView,
+  DiffReviewView,
+  DiffRevisionView,
+  ReviewActorKind,
+  ReviewAgentFixArtifactView,
+  ReviewAgentFixView,
+  ReviewCommentView,
+  ReviewCommitPlanGroupInput,
+  ReviewCommitPlanGroupView,
+  ReviewCommitPlanView,
+  ReviewEventKind,
+  ReviewEventView,
+  ReviewFileDiffView,
+  ReviewGuideStepView,
+  ReviewGuideView,
+  ReviewRangeAnchorInput,
+  ReviewRangeAnchorView,
+  ReviewSourceKind,
+  ReviewSourceReadinessView,
+  ReviewSubmissionView,
+  ReviewThreadReactionView,
+  ReviewThreadView,
+} from './types'
+import { hashText, jsonStringify, safeJsonParse, shortHash, titleForRepository } from './utils'
+
+export type {
+  DiffReviewPreferenceView,
+  DiffReviewView,
+  DiffRevisionView,
+  ReviewAgentFixArtifactView,
+  ReviewAgentFixView,
+  ReviewCommentView,
+  ReviewCommitPlanGroupView,
+  ReviewCommitPlanView,
+  ReviewEventView,
+  ReviewFileDiffView,
+  ReviewGuideStepView,
+  ReviewGuideView,
+  ReviewRangeAnchorView,
+  ReviewSourceReadinessView,
+  ReviewSubmissionView,
+  ReviewThreadReactionView,
+  ReviewThreadView,
+} from './types'
+
+const LOCAL_USER_ID = 'local-user'
+const GUIDE_ARTIFACT_START = '<cradle_guide>'
+const GUIDE_ARTIFACT_END = '</cradle_guide>'
+const GUIDE_RUNTIME_SETTINGS: ChatRuntimeSettings = {
+  accessMode: 'full-access',
+  interactionMode: 'default',
+}
+
+type GuideRuntimeKind = 'codex' | 'claude-agent'
+
+function toRevisionView(row: DiffReviewRevision): DiffRevisionView {
+  return {
+    id: row.id,
+    reviewId: row.reviewId,
+    sourceVersion: row.sourceVersion,
+    patchHash: row.patchHash,
+    fileCount: row.fileCount,
+    additions: row.additions,
+    deletions: row.deletions,
+    generatedAt: row.generatedAt,
+    patch: row.patch,
+  }
+}
+
+function toFileView(row: DiffReviewFile): ReviewFileDiffView {
+  return {
+    id: row.id,
+    revisionId: row.revisionId,
+    path: row.path,
+    previousPath: row.previousPath,
+    status: row.status,
+    additions: row.additions,
+    deletions: row.deletions,
+    isGenerated: row.isGenerated,
+    isBinary: row.isBinary,
+    isViewed: row.isViewed,
+  }
+}
+
+function toCommentView(row: DiffReviewComment): ReviewCommentView {
+  return {
+    id: row.id,
+    threadId: row.threadId,
+    authorKind: row.authorKind,
+    authorId: row.authorId,
+    bodyMarkdown: row.bodyMarkdown,
+    externalUrl: row.externalUrl,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+}
+
+function toReactionView(row: DiffReviewThreadReaction): ReviewThreadReactionView {
+  return {
+    id: row.id,
+    threadId: row.threadId,
+    userId: row.userId,
+    reaction: row.reaction,
+    createdAt: row.createdAt,
+  }
+}
+
+function toSubmissionView(row: DiffReviewSubmission): ReviewSubmissionView {
+  return {
+    id: row.id,
+    reviewId: row.reviewId,
+    revisionId: row.revisionId,
+    actorId: row.actorId,
+    decision: row.decision,
+    bodyMarkdown: row.bodyMarkdown,
+    submittedAt: row.submittedAt,
+    sourceSyncState: row.sourceSyncState,
+  }
+}
+
+function toPreferenceView(row: DiffReviewPreference): DiffReviewPreferenceView {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    userId: row.userId,
+    diffStyle: row.diffStyle,
+    codeTheme: row.codeTheme,
+    fontSize: row.fontSize,
+    lineHeight: row.lineHeight,
+    hideWhitespaceOnly: row.hideWhitespaceOnly,
+    structuralHighlighting: row.structuralHighlighting,
+    collapseGeneratedFiles: row.collapseGeneratedFiles,
+    notificationMode: row.notificationMode,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+}
+
+function toEventView(row: DiffReviewEvent): ReviewEventView {
+  return {
+    id: row.id,
+    reviewId: row.reviewId,
+    eventKind: row.eventKind,
+    actorKind: row.actorKind,
+    actorId: row.actorId,
+    payload: safeJsonParse(row.payloadJson) ?? {},
+    createdAt: row.createdAt,
+  }
+}
+
+function toAgentFixView(row: DiffReviewAgentFix): ReviewAgentFixView {
+  return {
+    id: row.id,
+    reviewId: row.reviewId,
+    threadId: row.threadId,
+    anchor: toAnchorView(safeJsonParse(row.anchorJson)),
+    instruction: row.instruction,
+    profileId: row.profileId,
+    expectedOutput: row.expectedOutput,
+    status: row.status,
+    sessionId: row.sessionId,
+    runId: row.runId,
+    artifactId: row.artifactId,
+    resultRevisionId: row.resultRevisionId,
+    errorMessage: row.errorMessage,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+}
+
+function toCommitPlanView(row: DiffReviewCommitPlan): ReviewCommitPlanView {
+  const parsed = safeJsonParse(row.groupsJson)
+  return {
+    id: row.id,
+    reviewId: row.reviewId,
+    revisionId: row.revisionId,
+    actorId: row.actorId,
+    strategy: row.strategy,
+    status: row.status,
+    groups: Array.isArray(parsed) ? parsed as ReviewCommitPlanGroupView[] : [],
+    rationale: row.rationale,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  }
+}
+
+function ensurePreferences(workspaceId: string, userId = LOCAL_USER_ID): DiffReviewPreference {
+  const existing = db().select().from(diffReviewPreferences).where(and(
+    eq(diffReviewPreferences.workspaceId, workspaceId),
+    eq(diffReviewPreferences.userId, userId),
+  )).get()
+  if (existing) {
+    return existing
+  }
+  const now = currentUnixSeconds()
+  return db().insert(diffReviewPreferences).values({
+    id: randomUUID(),
+    workspaceId,
+    userId,
+    createdAt: now,
+    updatedAt: now,
+  }).returning().get()
+}
+
+function recordEvent(input: {
+  reviewId: string
+  eventKind: ReviewEventKind
+  actorKind?: ReviewActorKind
+  actorId?: string | null
+  payload?: unknown
+  createdAt?: number
+}): DiffReviewEvent {
+  return db().insert(diffReviewEvents).values({
+    id: randomUUID(),
+    reviewId: input.reviewId,
+    eventKind: input.eventKind,
+    actorKind: input.actorKind ?? 'system',
+    actorId: input.actorId ?? null,
+    payloadJson: jsonStringify(input.payload ?? {}),
+    createdAt: input.createdAt ?? currentUnixSeconds(),
+  }).returning().get()
+}
+
+function reviewStateForDecision(decision: ReviewSubmissionView['decision']): DiffReviewView['reviewState'] {
+  if (decision === 'approve') {
+    return 'approved'
+  }
+  if (decision === 'request-changes') {
+    return 'changes-requested'
+  }
+  return 'commented'
+}
+
+function loadThreads(reviewId: string): ReviewThreadView[] {
+  const threads = db().select().from(diffReviewThreads)
+    .where(eq(diffReviewThreads.reviewId, reviewId))
+    .orderBy(asc(diffReviewThreads.createdAt))
+    .all()
+  if (threads.length === 0) {
+    return []
+  }
+  const comments = db().select().from(diffReviewComments)
+    .orderBy(asc(diffReviewComments.createdAt))
+    .all()
+  const reactions = db().select().from(diffReviewThreadReactions)
+    .orderBy(asc(diffReviewThreadReactions.createdAt))
+    .all()
+  return threads.map(thread => ({
+    id: thread.id,
+    reviewId: thread.reviewId,
+    originalRevisionId: thread.originalRevisionId,
+    currentRevisionId: thread.currentRevisionId,
+    fileId: thread.fileId,
+    anchor: toAnchorView(safeJsonParse(thread.anchorJson)),
+    state: thread.state,
+    createdBy: thread.createdBy,
+    createdAt: thread.createdAt,
+    updatedAt: thread.updatedAt,
+    resolvedBy: thread.resolvedBy,
+    resolvedAt: thread.resolvedAt,
+    comments: comments.filter(comment => comment.threadId === thread.id).map(toCommentView),
+    reactions: reactions.filter(reaction => reaction.threadId === thread.id).map(toReactionView),
+  }))
+}
+
+function toGuideView(row: DiffReviewGuide | null | undefined, revision: DiffReviewRevision | null): ReviewGuideView {
+  if (!revision || !row || row.status !== 'ready') {
+    return { revisionId: revision?.id ?? null, steps: [] }
+  }
+  const parsed = safeJsonParse(row.stepsJson)
+  return {
+    revisionId: revision.id,
+    steps: normalizeStoredGuideSteps(parsed),
+  }
+}
+
+function normalizeStoredGuideSteps(parsed: unknown): ReviewGuideStepView[] {
+  if (!Array.isArray(parsed)) {
+    return []
+  }
+
+  const riskLevels = new Set(['low', 'medium', 'high', 'unknown'])
+  return parsed.flatMap((rawStep, index): ReviewGuideStepView[] => {
+    const step = rawStep && typeof rawStep === 'object' ? rawStep as Record<string, unknown> : null
+    if (!step) {
+      return []
+    }
+
+    const title = readString(step.title)
+    const rationale = readString(step.rationale)
+    if (!title || !rationale) {
+      return []
+    }
+
+    const rawRiskLevel = readString(step.riskLevel) || 'unknown'
+    const fileIds = readStringArray(step.fileIds)
+    const threadIds = readStringArray(step.threadIds)
+    const anchors = Array.isArray(step.anchors)
+      ? step.anchors.flatMap(anchor => toAnchorView(anchor) ?? [])
+      : []
+    const order = typeof step.order === 'number' && Number.isFinite(step.order) ? step.order : index
+    return [{
+      id: readString(step.id) || `step-${index + 1}-${shortHash(JSON.stringify({ title, fileIds }))}`,
+      title,
+      rationale,
+      fileIds,
+      threadIds,
+      anchors,
+      riskLevel: riskLevels.has(rawRiskLevel) ? rawRiskLevel as ReviewGuideStepView['riskLevel'] : 'unknown',
+      order,
+    }]
+  }).toSorted((left, right) => left.order - right.order)
+}
+
+function loadCurrentGuide(reviewId: string, revision: DiffReviewRevision | null): ReviewGuideView {
+  if (!revision) {
+    return { revisionId: null, steps: [] }
+  }
+  const row = db().select().from(diffReviewGuides).where(and(
+    eq(diffReviewGuides.reviewId, reviewId),
+    eq(diffReviewGuides.revisionId, revision.id),
+  )).get()
+  return toGuideView(row, revision)
+}
+
+function buildReviewView(
+  review: DiffReview,
+  revision: DiffReviewRevision | null,
+  files: DiffReviewFile[],
+  options: { userId?: string } = {},
+): DiffReviewView {
+  const userId = options.userId ?? LOCAL_USER_ID
+  const viewStates = revision
+    ? db().select().from(diffReviewFileViewState).where(and(
+      eq(diffReviewFileViewState.reviewId, review.id),
+      eq(diffReviewFileViewState.revisionId, revision.id),
+      eq(diffReviewFileViewState.userId, userId),
+    )).all()
+    : []
+  const viewedFileIds = new Set(viewStates.filter(state => state.viewed).map(state => state.fileId))
+  const filesWithViewed = files.map(file => ({
+    ...file,
+    isViewed: file.isViewed || viewedFileIds.has(file.id),
+  }))
+  const threads = loadThreads(review.id)
+  const submissions = db().select().from(diffReviewSubmissions)
+    .where(eq(diffReviewSubmissions.reviewId, review.id))
+    .orderBy(desc(diffReviewSubmissions.submittedAt))
+    .all()
+    .map(toSubmissionView)
+  const events = db().select().from(diffReviewEvents)
+    .where(eq(diffReviewEvents.reviewId, review.id))
+    .orderBy(desc(diffReviewEvents.createdAt))
+    .limit(100)
+    .all()
+    .map(toEventView)
+  const agentFixes = db().select().from(diffReviewAgentFixes)
+    .where(eq(diffReviewAgentFixes.reviewId, review.id))
+    .orderBy(desc(diffReviewAgentFixes.createdAt))
+    .all()
+    .map(toAgentFixView)
+  const commitPlans = db().select().from(diffReviewCommitPlans)
+    .where(eq(diffReviewCommitPlans.reviewId, review.id))
+    .orderBy(desc(diffReviewCommitPlans.createdAt))
+    .all()
+    .map(toCommitPlanView)
+
+  return {
+    id: review.id,
+    workspaceId: review.workspaceId,
+    sourceId: review.sourceId,
+    repositoryPath: review.repositoryPath,
+    sourceKind: review.sourceKind,
+    title: review.title,
+    status: review.status,
+    reviewState: review.reviewState,
+    currentRevisionId: review.currentRevisionId,
+    createdAt: review.createdAt,
+    updatedAt: review.updatedAt,
+    currentRevision: revision ? toRevisionView(revision) : null,
+    files: filesWithViewed.map(toFileView),
+    threads,
+    submissions,
+    events,
+    preferences: toPreferenceView(ensurePreferences(review.workspaceId, userId)),
+    guide: loadCurrentGuide(review.id, revision),
+    agentFixes,
+    commitPlans,
+  }
+}
+
+function findReviewBySource(workspaceId: string, sourceId: string): DiffReview | undefined {
+  return db().select().from(diffReviews).where(and(
+    eq(diffReviews.workspaceId, workspaceId),
+    eq(diffReviews.sourceId, sourceId),
+  )).get()
+}
+
+function ensureReviewSource(input: {
+  workspaceId: string
+  kind: ReviewSourceKind
+  binding: unknown
+  refreshPolicy: 'manual' | 'webhook' | 'watch-worktree' | 'session-event'
+}): string {
+  const bindingJson = jsonStringify(input.binding)
+  const existing = db().select().from(diffReviewSources).where(and(
+    eq(diffReviewSources.workspaceId, input.workspaceId),
+    eq(diffReviewSources.kind, input.kind),
+  )).all().find(source => safeJsonParse(source.bindingJson) && source.bindingJson === bindingJson)
+  if (existing) {
+    return existing.id
+  }
+  const now = currentUnixSeconds()
+  return db().insert(diffReviewSources).values({
+    id: randomUUID(),
+    workspaceId: input.workspaceId,
+    kind: input.kind,
+    ownerNamespace: 'diff-review',
+    bindingJson,
+    refreshPolicy: input.refreshPolicy,
+    createdAt: now,
+    updatedAt: now,
+  }).returning().get().id
+}
+
+function ensureLocalWorkingTreeSource(workspaceId: string, repositoryPath: string): string {
+  return ensureReviewSource({
+    workspaceId,
+    kind: 'local-working-tree',
+    binding: { repositoryPath, includeUntracked: true },
+    refreshPolicy: 'manual',
+  })
+}
+
+function ensureBranchCompareSource(workspaceId: string, binding: BranchCompareBinding): string {
+  return ensureReviewSource({
+    workspaceId,
+    kind: 'local-branch-compare',
+    binding,
+    refreshPolicy: 'manual',
+  })
+}
+
+function getReviewRow(workspaceId: string, reviewId: string): DiffReview {
+  const review = db().select().from(diffReviews).where(and(
+    eq(diffReviews.id, reviewId),
+    eq(diffReviews.workspaceId, workspaceId),
+  )).get()
+  if (!review) {
+    throw new AppError({
+      code: 'diff_review_not_found',
+      status: 404,
+      message: 'Diff review not found',
+      details: { workspaceId, reviewId },
+    })
+  }
+  return review
+}
+
+function loadReviewView(review: DiffReview, options: { userId?: string } = {}): DiffReviewView {
+  const revision = review.currentRevisionId
+    ? db().select().from(diffReviewRevisions).where(eq(diffReviewRevisions.id, review.currentRevisionId)).get() ?? null
+    : null
+  const files = revision
+    ? db().select().from(diffReviewFiles)
+      .where(eq(diffReviewFiles.revisionId, revision.id))
+      .orderBy(asc(diffReviewFiles.path))
+      .all()
+    : []
+  return buildReviewView(review, revision, files, options)
+}
+
+function remapReviewThreads(reviewId: string, newRevision: DiffReviewRevision): void {
+  const threads = db().select().from(diffReviewThreads)
+    .where(eq(diffReviewThreads.reviewId, reviewId))
+    .all()
+  if (threads.length === 0) {
+    return
+  }
+
+  const newFiles = db().select().from(diffReviewFiles)
+    .where(eq(diffReviewFiles.revisionId, newRevision.id))
+    .all()
+
+  for (const thread of threads) {
+    const anchor = toAnchorView(safeJsonParse(thread.anchorJson))
+    if (!anchor || thread.state === 'resolved') {
+      continue
+    }
+    const oldFile = db().select().from(diffReviewFiles)
+      .where(eq(diffReviewFiles.id, anchor.fileId))
+      .get()
+    const remapped = remapAnchorToRevision({
+      anchor,
+      oldFile,
+      newRevision,
+      newFiles,
+    })
+    if (!remapped) {
+      db().update(diffReviewThreads)
+        .set({
+          currentRevisionId: null,
+          state: 'stale',
+          updatedAt: currentUnixSeconds(),
+        })
+        .where(eq(diffReviewThreads.id, thread.id))
+        .run()
+      continue
+    }
+    db().update(diffReviewThreads)
+      .set({
+        currentRevisionId: newRevision.id,
+        fileId: remapped.fileId,
+        anchorJson: jsonStringify(remapped.anchor),
+        state: 'open',
+        updatedAt: currentUnixSeconds(),
+      })
+      .where(eq(diffReviewThreads.id, thread.id))
+      .run()
+  }
+}
+
+function markOpenAnchoredThreadsStale(reviewId: string): void {
+  const now = currentUnixSeconds()
+  const threads = db().select().from(diffReviewThreads)
+    .where(eq(diffReviewThreads.reviewId, reviewId))
+    .all()
+  for (const thread of threads) {
+    if (thread.state === 'resolved' || !thread.anchorJson) {
+      continue
+    }
+    db().update(diffReviewThreads)
+      .set({ currentRevisionId: null, state: 'stale', updatedAt: now })
+      .where(eq(diffReviewThreads.id, thread.id))
+      .run()
+  }
+}
+
+export async function refreshLocalWorkingTree(
+  workspaceId: string,
+  repositoryPath?: string,
+): Promise<DiffReviewView> {
+  const status = await Git.getStatus(workspaceId, repositoryPath)
+  const patch = await Git.getDiff(workspaceId, undefined, status.repositoryPath)
+  const patchHash = hashText(patch)
+  const sourceVersion = hashText(JSON.stringify({
+    repositoryPath: status.repositoryPath,
+    branch: status.branch,
+    files: status.files,
+    patchHash,
+  }))
+  const now = currentUnixSeconds()
+  const title = titleForRepository(status.repositoryName)
+
+  const sourceId = ensureLocalWorkingTreeSource(workspaceId, status.repositoryPath)
+  let review = findReviewBySource(workspaceId, sourceId)
+  if (!review) {
+    review = db().insert(diffReviews).values({
+      id: randomUUID(),
+      workspaceId,
+      sourceId,
+      repositoryPath: status.repositoryPath,
+      sourceKind: 'local-working-tree',
+      title,
+      status: 'open',
+      reviewState: 'unreviewed',
+      currentRevisionId: null,
+      createdAt: now,
+      updatedAt: now,
+    }).returning().get()
+    recordEvent({
+      reviewId: review.id,
+      eventKind: 'review_created',
+      payload: { sourceKind: 'local-working-tree', repositoryPath: status.repositoryPath },
+      createdAt: now,
+    })
+  }
+
+  if (patch.trim().length === 0) {
+    markOpenAnchoredThreadsStale(review.id)
+    const updated = db().update(diffReviews)
+      .set({ title, sourceId, currentRevisionId: null, updatedAt: now })
+      .where(eq(diffReviews.id, review.id))
+      .returning()
+      .get()
+    return loadReviewView(updated)
+  }
+
+  const currentRevision = review.currentRevisionId
+    ? db().select().from(diffReviewRevisions).where(eq(diffReviewRevisions.id, review.currentRevisionId)).get()
+    : undefined
+  if (currentRevision?.patchHash === patchHash) {
+    const updated = db().update(diffReviews)
+      .set({ title, sourceId, updatedAt: now })
+      .where(eq(diffReviews.id, review.id))
+      .returning()
+      .get()
+    return loadReviewView(updated)
+  }
+
+  const summaries = parsePatchFileSummaries(patch, status.files)
+  const additions = summaries.reduce((total, file) => total + file.additions, 0)
+  const deletions = summaries.reduce((total, file) => total + file.deletions, 0)
+  const revision = db().transaction((tx) => {
+    const existing = tx.select().from(diffReviewRevisions).where(and(
+      eq(diffReviewRevisions.reviewId, review.id),
+      eq(diffReviewRevisions.patchHash, patchHash),
+    )).get()
+    if (existing) {
+      return existing
+    }
+
+    const inserted = tx.insert(diffReviewRevisions).values({
+      id: randomUUID(),
+      reviewId: review.id,
+      sourceVersion,
+      patchHash,
+      fileCount: summaries.length,
+      additions,
+      deletions,
+      patch,
+      generatedAt: now,
+    }).returning().get()
+    for (const file of summaries) {
+      tx.insert(diffReviewFiles).values({
+        id: randomUUID(),
+        revisionId: inserted.id,
+        path: file.path,
+        previousPath: file.previousPath,
+        status: file.status,
+        additions: file.additions,
+        deletions: file.deletions,
+        isGenerated: isGeneratedReviewFile(file),
+        isBinary: file.isBinary,
+        isViewed: false,
+      }).run()
+    }
+    return inserted
+  })
+
+  const updated = db().update(diffReviews)
+    .set({ title, sourceId, currentRevisionId: revision.id, updatedAt: now })
+    .where(eq(diffReviews.id, review.id))
+    .returning()
+    .get()
+  remapReviewThreads(review.id, revision)
+  recordEvent({
+    reviewId: review.id,
+    eventKind: 'revision_updated',
+    payload: {
+      revisionId: revision.id,
+      patchHash: revision.patchHash,
+      fileCount: revision.fileCount,
+    },
+    createdAt: now,
+  })
+  return loadReviewView(updated)
+}
+
+export async function refreshLocalBranchCompare(input: {
+  workspaceId: string
+  repositoryPath?: string
+  baseRef: string
+  headRef: string
+}): Promise<DiffReviewView> {
+  const compare = await Git.getBranchCompare(input.workspaceId, input.baseRef, input.headRef, input.repositoryPath)
+  const patch = compare.patch
+  const patchHash = hashText(patch)
+  const sourceVersion = `${compare.baseSha}...${compare.headSha}:${patchHash}`
+  const now = currentUnixSeconds()
+  const sourceId = ensureBranchCompareSource(input.workspaceId, {
+    repositoryPath: compare.repositoryPath,
+    baseRef: input.baseRef,
+    headRef: input.headRef,
+  })
+  const title = `${compare.headRef} into ${compare.baseRef}`
+  let review = findReviewBySource(input.workspaceId, sourceId)
+  if (!review) {
+    review = db().insert(diffReviews).values({
+      id: randomUUID(),
+      workspaceId: input.workspaceId,
+      sourceId,
+      repositoryPath: compare.repositoryPath,
+      sourceKind: 'local-branch-compare',
+      title,
+      status: 'open',
+      reviewState: 'unreviewed',
+      currentRevisionId: null,
+      createdAt: now,
+      updatedAt: now,
+    }).returning().get()
+    recordEvent({
+      reviewId: review.id,
+      eventKind: 'review_created',
+      payload: {
+        sourceKind: 'local-branch-compare',
+        repositoryPath: compare.repositoryPath,
+        baseRef: input.baseRef,
+        headRef: input.headRef,
+      },
+      createdAt: now,
+    })
+  }
+
+  if (patch.trim().length === 0) {
+    markOpenAnchoredThreadsStale(review.id)
+    const updated = db().update(diffReviews)
+      .set({ title, sourceId, currentRevisionId: null, updatedAt: now })
+      .where(eq(diffReviews.id, review.id))
+      .returning()
+      .get()
+    return loadReviewView(updated)
+  }
+
+  const currentRevision = review.currentRevisionId
+    ? db().select().from(diffReviewRevisions).where(eq(diffReviewRevisions.id, review.currentRevisionId)).get()
+    : undefined
+  if (currentRevision?.patchHash === patchHash) {
+    const updated = db().update(diffReviews)
+      .set({ title, sourceId, updatedAt: now })
+      .where(eq(diffReviews.id, review.id))
+      .returning()
+      .get()
+    return loadReviewView(updated)
+  }
+
+  const summaries = parsePatchFileSummaries(patch, [])
+  const additions = summaries.reduce((total, file) => total + file.additions, 0)
+  const deletions = summaries.reduce((total, file) => total + file.deletions, 0)
+  const revision = db().transaction((tx) => {
+    const existing = tx.select().from(diffReviewRevisions).where(and(
+      eq(diffReviewRevisions.reviewId, review.id),
+      eq(diffReviewRevisions.patchHash, patchHash),
+    )).get()
+    if (existing) {
+      return existing
+    }
+
+    const inserted = tx.insert(diffReviewRevisions).values({
+      id: randomUUID(),
+      reviewId: review.id,
+      sourceVersion,
+      patchHash,
+      fileCount: summaries.length,
+      additions,
+      deletions,
+      patch,
+      generatedAt: now,
+    }).returning().get()
+    for (const file of summaries) {
+      tx.insert(diffReviewFiles).values({
+        id: randomUUID(),
+        revisionId: inserted.id,
+        path: file.path,
+        previousPath: file.previousPath,
+        status: file.status,
+        additions: file.additions,
+        deletions: file.deletions,
+        isGenerated: isGeneratedReviewFile(file),
+        isBinary: file.isBinary,
+        isViewed: false,
+      }).run()
+    }
+    return inserted
+  })
+
+  const updated = db().update(diffReviews)
+    .set({ title, sourceId, currentRevisionId: revision.id, updatedAt: now })
+    .where(eq(diffReviews.id, review.id))
+    .returning()
+    .get()
+  remapReviewThreads(review.id, revision)
+  recordEvent({
+    reviewId: review.id,
+    eventKind: 'revision_updated',
+    payload: {
+      revisionId: revision.id,
+      patchHash: revision.patchHash,
+      fileCount: revision.fileCount,
+      baseRef: input.baseRef,
+      headRef: input.headRef,
+      mergeBaseSha: compare.mergeBaseSha,
+    },
+    createdAt: now,
+  })
+  return loadReviewView(updated)
+}
+
+export function get(workspaceId: string, reviewId: string): DiffReviewView {
+  return loadReviewView(getReviewRow(workspaceId, reviewId))
+}
+
+export function list(workspaceId: string): DiffReviewView[] {
+  return db().select().from(diffReviews)
+    .where(eq(diffReviews.workspaceId, workspaceId))
+    .orderBy(desc(diffReviews.updatedAt))
+    .all()
+    .map(review => loadReviewView(review))
+}
+
+export async function refresh(workspaceId: string, reviewId: string): Promise<DiffReviewView> {
+  const review = getReviewRow(workspaceId, reviewId)
+  if (review.sourceKind !== 'local-working-tree') {
+    if (review.sourceKind === 'local-branch-compare' && review.sourceId) {
+      const source = db().select().from(diffReviewSources).where(eq(diffReviewSources.id, review.sourceId)).get()
+      const binding = safeJsonParse(source?.bindingJson)
+      if (
+        binding
+        && typeof binding === 'object'
+        && typeof (binding as BranchCompareBinding).baseRef === 'string'
+        && typeof (binding as BranchCompareBinding).headRef === 'string'
+      ) {
+        const branchBinding = binding as BranchCompareBinding
+        return refreshLocalBranchCompare({
+          workspaceId,
+          repositoryPath: branchBinding.repositoryPath,
+          baseRef: branchBinding.baseRef,
+          headRef: branchBinding.headRef,
+        })
+      }
+    }
+    throw new AppError({
+      code: 'diff_review_refresh_not_supported',
+      status: 400,
+      message: 'Diff review source cannot be refreshed in this build',
+      details: { workspaceId, reviewId, sourceKind: review.sourceKind },
+    })
+  }
+  return refreshLocalWorkingTree(workspaceId, review.repositoryPath)
+}
+
+function getCurrentRevision(review: DiffReview): DiffReviewRevision {
+  if (!review.currentRevisionId) {
+    throw new AppError({
+      code: 'diff_review_revision_missing',
+      status: 409,
+      message: 'Diff review has no current revision',
+      details: { reviewId: review.id },
+    })
+  }
+  const revision = db().select().from(diffReviewRevisions)
+    .where(eq(diffReviewRevisions.id, review.currentRevisionId))
+    .get()
+  if (!revision) {
+    throw new AppError({
+      code: 'diff_review_revision_missing',
+      status: 409,
+      message: 'Diff review current revision is missing',
+      details: { reviewId: review.id, revisionId: review.currentRevisionId },
+    })
+  }
+  return revision
+}
+
+function getFileForReview(review: DiffReview, fileId: string): DiffReviewFile {
+  const revision = getCurrentRevision(review)
+  const file = db().select().from(diffReviewFiles).where(and(
+    eq(diffReviewFiles.id, fileId),
+    eq(diffReviewFiles.revisionId, revision.id),
+  )).get()
+  if (!file) {
+    throw new AppError({
+      code: 'diff_review_file_not_found',
+      status: 404,
+      message: 'Diff review file not found',
+      details: { reviewId: review.id, fileId },
+    })
+  }
+  return file
+}
+
+function getThreadForReview(reviewId: string, threadId: string): DiffReviewThread {
+  const thread = db().select().from(diffReviewThreads).where(and(
+    eq(diffReviewThreads.id, threadId),
+    eq(diffReviewThreads.reviewId, reviewId),
+  )).get()
+  if (!thread) {
+    throw new AppError({
+      code: 'diff_review_thread_not_found',
+      status: 404,
+      message: 'Diff review thread not found',
+      details: { reviewId, threadId },
+    })
+  }
+  return thread
+}
+
+function getCommitPlanForReview(reviewId: string, commitPlanId: string): DiffReviewCommitPlan {
+  const plan = db().select().from(diffReviewCommitPlans).where(and(
+    eq(diffReviewCommitPlans.id, commitPlanId),
+    eq(diffReviewCommitPlans.reviewId, reviewId),
+  )).get()
+  if (!plan) {
+    throw new AppError({
+      code: 'diff_review_commit_plan_not_found',
+      status: 404,
+      message: 'Diff review commit plan not found',
+      details: { reviewId, commitPlanId },
+    })
+  }
+  return plan
+}
+
+function createOrResetSourceOperation(input: {
+  sourceId: string
+  reviewId: string
+  operationKind: string
+  idempotencyKey: string
+  request: unknown
+}): DiffReviewSourceOperation {
+  const existing = db().select().from(diffReviewSourceOperations).where(and(
+    eq(diffReviewSourceOperations.sourceId, input.sourceId),
+    eq(diffReviewSourceOperations.operationKind, input.operationKind),
+    eq(diffReviewSourceOperations.idempotencyKey, input.idempotencyKey),
+  )).get()
+  const now = currentUnixSeconds()
+  if (existing) {
+    if (existing.status === 'succeeded') {
+      return existing
+    }
+    return db().update(diffReviewSourceOperations).set({
+      status: 'pending',
+      requestJson: jsonStringify(input.request),
+      responseJson: null,
+      errorMessage: null,
+      updatedAt: now,
+    }).where(eq(diffReviewSourceOperations.id, existing.id)).returning().get()
+  }
+
+  return db().insert(diffReviewSourceOperations).values({
+    id: randomUUID(),
+    sourceId: input.sourceId,
+    reviewId: input.reviewId,
+    operationKind: input.operationKind,
+    idempotencyKey: input.idempotencyKey,
+    status: 'pending',
+    requestJson: jsonStringify(input.request),
+    createdAt: now,
+    updatedAt: now,
+  }).returning().get()
+}
+
+function finishSourceOperation(input: {
+  operationId: string
+  status: 'succeeded' | 'failed'
+  response?: unknown
+  errorMessage?: string | null
+}): void {
+  db().update(diffReviewSourceOperations).set({
+    status: input.status,
+    responseJson: input.response === undefined ? null : jsonStringify(input.response),
+    errorMessage: input.errorMessage ?? null,
+    updatedAt: currentUnixSeconds(),
+  }).where(eq(diffReviewSourceOperations.id, input.operationId)).run()
+}
+
+export function setFileViewed(
+  workspaceId: string,
+  reviewId: string,
+  fileId: string,
+  viewed: boolean,
+  userId = LOCAL_USER_ID,
+): DiffReviewView {
+  const review = getReviewRow(workspaceId, reviewId)
+  const file = getFileForReview(review, fileId)
+  const revision = getCurrentRevision(review)
+  const now = currentUnixSeconds()
+  db().insert(diffReviewFileViewState).values({
+    id: randomUUID(),
+    reviewId,
+    revisionId: revision.id,
+    fileId: file.id,
+    userId,
+    viewed,
+    viewedAt: now,
+  }).onConflictDoUpdate({
+    target: [
+      diffReviewFileViewState.reviewId,
+      diffReviewFileViewState.revisionId,
+      diffReviewFileViewState.fileId,
+      diffReviewFileViewState.userId,
+    ],
+    set: { viewed, viewedAt: now },
+  }).run()
+  recordEvent({
+    reviewId,
+    eventKind: 'file_viewed',
+    actorKind: 'user',
+    actorId: userId,
+    payload: { fileId: file.id, path: file.path, viewed },
+    createdAt: now,
+  })
+  return loadReviewView(review, { userId })
+}
+
+export function createThread(input: {
+  workspaceId: string
+  reviewId: string
+  fileId?: string | null
+  anchor?: ReviewRangeAnchorInput | ReviewRangeAnchorView | null
+  bodyMarkdown: string
+  userId?: string
+}): DiffReviewView {
+  const review = getReviewRow(input.workspaceId, input.reviewId)
+  const revision = getCurrentRevision(review)
+  const userId = input.userId ?? LOCAL_USER_ID
+  const anchorFileId = input.anchor && isRangeAnchorInput(input.anchor) ? input.anchor.fileId : null
+  const fileId = input.fileId ?? anchorFileId
+  const file = fileId ? getFileForReview(review, fileId) : null
+  const anchor = file
+    ? normalizeAnchor({ revision, file, anchor: input.anchor })
+    : null
+  const now = currentUnixSeconds()
+  const thread = db().insert(diffReviewThreads).values({
+    id: randomUUID(),
+    reviewId: review.id,
+    originalRevisionId: revision.id,
+    currentRevisionId: revision.id,
+    fileId: file?.id ?? null,
+    anchorJson: anchor ? jsonStringify(anchor) : null,
+    state: 'open',
+    createdBy: userId,
+    createdAt: now,
+    updatedAt: now,
+  }).returning().get()
+  db().insert(diffReviewComments).values({
+    id: randomUUID(),
+    threadId: thread.id,
+    authorKind: 'user',
+    authorId: userId,
+    bodyMarkdown: input.bodyMarkdown,
+    createdAt: now,
+    updatedAt: now,
+  }).run()
+  db().update(diffReviews)
+    .set({ reviewState: 'in-review', updatedAt: now })
+    .where(eq(diffReviews.id, review.id))
+    .run()
+  recordEvent({
+    reviewId: review.id,
+    eventKind: 'thread_created',
+    actorKind: 'user',
+    actorId: userId,
+    payload: { threadId: thread.id, fileId: file?.id ?? null, path: file?.path ?? null, anchor },
+    createdAt: now,
+  })
+  recordEvent({
+    reviewId: review.id,
+    eventKind: 'comment_created',
+    actorKind: 'user',
+    actorId: userId,
+    payload: { threadId: thread.id },
+    createdAt: now,
+  })
+  return loadReviewView(getReviewRow(input.workspaceId, input.reviewId), { userId })
+}
+
+export function addComment(input: {
+  workspaceId: string
+  reviewId: string
+  threadId: string
+  bodyMarkdown: string
+  userId?: string
+}): DiffReviewView {
+  const review = getReviewRow(input.workspaceId, input.reviewId)
+  const thread = getThreadForReview(review.id, input.threadId)
+  const userId = input.userId ?? LOCAL_USER_ID
+  const now = currentUnixSeconds()
+  db().insert(diffReviewComments).values({
+    id: randomUUID(),
+    threadId: thread.id,
+    authorKind: 'user',
+    authorId: userId,
+    bodyMarkdown: input.bodyMarkdown,
+    createdAt: now,
+    updatedAt: now,
+  }).run()
+  db().update(diffReviewThreads)
+    .set({ state: 'open', updatedAt: now, resolvedBy: null, resolvedAt: null })
+    .where(eq(diffReviewThreads.id, thread.id))
+    .run()
+  recordEvent({
+    reviewId: review.id,
+    eventKind: 'comment_created',
+    actorKind: 'user',
+    actorId: userId,
+    payload: { threadId: thread.id },
+    createdAt: now,
+  })
+  return loadReviewView(review, { userId })
+}
+
+export function addReaction(input: {
+  workspaceId: string
+  reviewId: string
+  threadId: string
+  reaction: string
+  userId?: string
+}): DiffReviewView {
+  const review = getReviewRow(input.workspaceId, input.reviewId)
+  const thread = getThreadForReview(review.id, input.threadId)
+  const userId = input.userId ?? LOCAL_USER_ID
+  db().insert(diffReviewThreadReactions).values({
+    id: randomUUID(),
+    threadId: thread.id,
+    userId,
+    reaction: input.reaction,
+    createdAt: currentUnixSeconds(),
+  }).onConflictDoNothing({
+    target: [
+      diffReviewThreadReactions.threadId,
+      diffReviewThreadReactions.userId,
+      diffReviewThreadReactions.reaction,
+    ],
+  }).run()
+  return loadReviewView(review, { userId })
+}
+
+export function resolveThread(
+  workspaceId: string,
+  reviewId: string,
+  threadId: string,
+  userId = LOCAL_USER_ID,
+): DiffReviewView {
+  const review = getReviewRow(workspaceId, reviewId)
+  const thread = getThreadForReview(review.id, threadId)
+  const now = currentUnixSeconds()
+  db().update(diffReviewThreads)
+    .set({ state: 'resolved', resolvedBy: userId, resolvedAt: now, updatedAt: now })
+    .where(eq(diffReviewThreads.id, thread.id))
+    .run()
+  recordEvent({
+    reviewId: review.id,
+    eventKind: 'thread_resolved',
+    actorKind: 'user',
+    actorId: userId,
+    payload: { threadId: thread.id },
+    createdAt: now,
+  })
+  return loadReviewView(review, { userId })
+}
+
+export function submitReview(input: {
+  workspaceId: string
+  reviewId: string
+  decision: 'approve' | 'request-changes' | 'comment'
+  bodyMarkdown?: string | null
+  userId?: string
+}): DiffReviewView {
+  const review = getReviewRow(input.workspaceId, input.reviewId)
+  const revision = getCurrentRevision(review)
+  const userId = input.userId ?? LOCAL_USER_ID
+  const now = currentUnixSeconds()
+  db().insert(diffReviewSubmissions).values({
+    id: randomUUID(),
+    reviewId: review.id,
+    revisionId: revision.id,
+    actorId: userId,
+    decision: input.decision,
+    bodyMarkdown: input.bodyMarkdown ?? null,
+    submittedAt: now,
+    sourceSyncState: 'local-only',
+  }).run()
+  db().update(diffReviews)
+    .set({ reviewState: reviewStateForDecision(input.decision), updatedAt: now })
+    .where(eq(diffReviews.id, review.id))
+    .run()
+  recordEvent({
+    reviewId: review.id,
+    eventKind: 'review_submitted',
+    actorKind: 'user',
+    actorId: userId,
+    payload: { revisionId: revision.id, decision: input.decision, sourceSyncState: 'local-only' },
+    createdAt: now,
+  })
+  return loadReviewView(getReviewRow(input.workspaceId, input.reviewId), { userId })
+}
+
+export function updatePreferences(input: {
+  workspaceId: string
+  userId?: string
+  diffStyle?: 'split' | 'unified'
+  codeTheme?: string
+  fontSize?: number
+  lineHeight?: number
+  hideWhitespaceOnly?: boolean
+  structuralHighlighting?: boolean
+  collapseGeneratedFiles?: boolean
+  notificationMode?: DiffReviewPreferenceView['notificationMode']
+}): DiffReviewPreferenceView {
+  const userId = input.userId ?? LOCAL_USER_ID
+  const existing = ensurePreferences(input.workspaceId, userId)
+  const now = currentUnixSeconds()
+  const updated = db().update(diffReviewPreferences)
+    .set({
+      diffStyle: input.diffStyle ?? existing.diffStyle,
+      codeTheme: input.codeTheme ?? existing.codeTheme,
+      fontSize: input.fontSize ?? existing.fontSize,
+      lineHeight: input.lineHeight ?? existing.lineHeight,
+      hideWhitespaceOnly: input.hideWhitespaceOnly ?? existing.hideWhitespaceOnly,
+      structuralHighlighting: input.structuralHighlighting ?? existing.structuralHighlighting,
+      collapseGeneratedFiles: input.collapseGeneratedFiles ?? existing.collapseGeneratedFiles,
+      notificationMode: input.notificationMode ?? existing.notificationMode,
+      updatedAt: now,
+    })
+    .where(eq(diffReviewPreferences.id, existing.id))
+    .returning()
+    .get()
+  return toPreferenceView(updated)
+}
+
+export function sourceReadiness(workspaceId: string): ReviewSourceReadinessView[] {
+  return [
+    {
+      sourceKind: 'local-working-tree',
+      workspaceId,
+      state: 'ready',
+      actions: [],
+    },
+    {
+      sourceKind: 'local-branch-compare',
+      workspaceId,
+      state: 'ready',
+      actions: [],
+    },
+    {
+      sourceKind: 'github-pull-request',
+      workspaceId,
+      state: 'workspace-integration-missing',
+      actions: [
+        {
+          label: 'Connect GitHub integration',
+          ownerKind: 'workspace-admin',
+        },
+      ],
+    },
+  ]
+}
+
+function resolveGuideRuntimeKind(input: {
+  providerKind: RuntimeProviderTargetProfile['providerKind']
+  runtimeKind?: GuideRuntimeKind
+  providerTargetId: string
+}): GuideRuntimeKind {
+  if (input.runtimeKind) {
+    return input.runtimeKind
+  }
+  if (input.providerKind === 'openai-compatible') {
+    return 'codex'
+  }
+  if (input.providerKind === 'anthropic') {
+    return 'claude-agent'
+  }
+  throw new AppError({
+    code: 'diff_review_guide_runtime_required',
+    status: 400,
+    message: 'Universal provider targets require an explicit guided review runtime',
+    details: { providerTargetId: input.providerTargetId, providerKind: input.providerKind },
+  })
+}
+
+function assertGuideRuntimeSupportsProvider(input: {
+  runtimeKind: GuideRuntimeKind
+  providerKind: RuntimeProviderTargetProfile['providerKind']
+  providerTargetId: string
+}): void {
+  const supported = input.runtimeKind === 'codex'
+    ? input.providerKind === 'openai-compatible' || input.providerKind === 'universal'
+    : input.providerKind === 'anthropic' || input.providerKind === 'universal'
+  if (supported) {
+    return
+  }
+  throw new AppError({
+    code: 'diff_review_guide_runtime_incompatible',
+    status: 400,
+    message: 'Provider target is not compatible with the requested guided review runtime',
+    details: {
+      providerTargetId: input.providerTargetId,
+      providerKind: input.providerKind,
+      runtimeKind: input.runtimeKind,
+    },
+  })
+}
+
+function buildGuideProfile(providerTargetId: string): RuntimeProviderTargetProfile {
+  const target = resolveProviderTarget(providerTargetId)
+  if (!target.enabled) {
+    throw new AppError({
+      code: 'diff_review_guide_provider_disabled',
+      status: 409,
+      message: 'Guided review provider target is disabled',
+      details: { providerTargetId },
+    })
+  }
+  return {
+    id: target.id,
+    name: target.label,
+    providerKind: target.providerKind,
+    enabled: target.enabled,
+    configJson: JSON.stringify({
+      ...((safeJsonParse(target.configJson) as Record<string, unknown> | null) ?? {}),
+      modelRegistryMappings: ModelRegistry.listMappingEntries(),
+    }),
+    credentialRef: target.credentialRef,
+    customModels: target.customModelsJson,
+    iconSlug: target.iconSlug,
+    providerTargetKind: target.target.kind,
+    providerTargetId: target.target.id,
+  }
+}
+
+function getWorkspacePath(workspaceId: string): string {
+  const workspace = db().select().from(workspaces).where(eq(workspaces.id, workspaceId)).get()
+  if (!workspace) {
+    throw new AppError({
+      code: 'workspace_not_found',
+      status: 404,
+      message: 'Workspace not found',
+      details: { workspaceId },
+    })
+  }
+  return workspace.path
+}
+
+function buildGuideRuntimeSession(input: {
+  workspaceId: string
+  providerTargetId: string
+  runtimeKind: GuideRuntimeKind
+  workspacePath: string
+  modelId?: string | null
+}): RuntimeSession {
+  return {
+    id: `diff-review-guide-${randomUUID()}`,
+    chatSessionId: `diff-review-guide-${input.workspaceId}-${randomUUID()}`,
+    providerTargetId: input.providerTargetId,
+    runtimeKind: input.runtimeKind,
+    providerSessionId: null,
+    providerStateSnapshot: JSON.stringify({
+      workspacePath: input.workspacePath,
+      agentId: null,
+      models: { currentModelId: input.modelId ?? null },
+    }),
+  }
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replace(/'/g, "'\\''")}'`
+}
+
+function buildGuideAgentInstruction(input: {
+  review: DiffReview
+  revision: DiffReviewRevision
+  files: DiffReviewFile[]
+  threads: ReviewThreadView[]
+}): string {
+  const files = input.files.map(file => ({
+    id: file.id,
+    path: file.path,
+    status: file.status,
+    additions: file.additions,
+    deletions: file.deletions,
+    isGenerated: file.isGenerated,
+    isBinary: file.isBinary,
+  }))
+  const threads = input.threads.map(thread => ({
+    id: thread.id,
+    state: thread.state,
+    fileId: thread.fileId,
+    anchor: thread.anchor
+      ? {
+          fileId: thread.anchor.fileId,
+          path: thread.anchor.path,
+          side: thread.anchor.side,
+          startLine: thread.anchor.startLine,
+          endLine: thread.anchor.endLine,
+        }
+      : null,
+    comments: thread.comments.map(comment => ({
+      authorKind: comment.authorKind,
+      bodyMarkdown: comment.bodyMarkdown,
+    })),
+  }))
+  const gitTarget = input.review.repositoryPath === '.'
+    ? 'the current directory'
+    : `repository path ${input.review.repositoryPath}`
+  const gitPrefix = input.review.repositoryPath === '.'
+    ? 'git'
+    : `git -C ${shellQuote(input.review.repositoryPath)}`
+
+  return [
+    'You are generating a Cradle guided review map for the current local working tree.',
+    '',
+    'This is not a code review and not a fix task. Build the reading path a human reviewer should follow.',
+    'Use the available shell and file tools to inspect the repository. Do not rely only on the file inventory below.',
+    'Do not modify files, do not apply patches, do not commit, and do not run formatting or install commands.',
+    '',
+    'Repository:',
+    `- Workspace command cwd starts at the Cradle workspace root.`,
+    `- The diff review repository is ${gitTarget}.`,
+    `- Use commands with this prefix when inspecting git state: ${gitPrefix}`,
+    '',
+    'Useful read-only commands:',
+    `- ${gitPrefix} status --short`,
+    `- ${gitPrefix} diff --stat HEAD`,
+    `- ${gitPrefix} diff --name-status HEAD`,
+    `- ${gitPrefix} diff --unified=80 HEAD -- <path>`,
+    '- rg / sed / cat for surrounding source context.',
+    '',
+    'Final output contract:',
+    `- Emit the final artifact between ${GUIDE_ARTIFACT_START} and ${GUIDE_ARTIFACT_END}.`,
+    '- The text inside those tags must be one JSON object.',
+    '- Do not put Markdown fences inside the tags.',
+    '- Do not generate ids, order numbers, fileIds, or Cradle anchors. Cradle will derive those.',
+    '',
+    'Artifact shape:',
+    '{"steps":[{"title":"string","rationale":"string","riskLevel":"low|medium|high|unknown","threadIds":["thread-id"],"paths":["path"],"ranges":[{"path":"path","side":"head|base","startLine":1,"endLine":1}]}]}',
+    '',
+    'Rules:',
+    '- Prefer 2 to 8 steps. Use fewer for small diffs.',
+    '- Each step must reference at least one changed path or changed range.',
+    '- Use only paths from the provided changed files list.',
+    '- Use only threadIds from the provided threads list.',
+    '- Order steps by semantic review flow, not alphabetically and not necessarily patch order.',
+    '- Prefer exact ranges for the important changed regions. Use file-level paths only when line ranges would be misleading.',
+    '- For deleted lines use side "base". For added or current lines use side "head".',
+    '- Public API, schema, config, and migration surfaces usually come before implementation details.',
+    '- Files with active comments should come early when they affect review decisions.',
+    '- Generated files and binary files should be late unless they define the contract being reviewed.',
+    '- Rationale explains why this belongs at that point in the reading order, not whether the code is correct.',
+    '',
+    'Review:',
+    JSON.stringify({
+      id: input.review.id,
+      title: input.review.title,
+      sourceKind: input.review.sourceKind,
+      repositoryPath: input.review.repositoryPath,
+      revision: {
+        id: input.revision.id,
+        patchHash: input.revision.patchHash,
+        fileCount: input.revision.fileCount,
+        additions: input.revision.additions,
+        deletions: input.revision.deletions,
+      },
+      files,
+      threads,
+    }),
+  ].join('\n')
+}
+
+function collectTextDelta(chunk: UIMessageChunk): string {
+  if (chunk.type === 'text-delta') {
+    return chunk.delta
+  }
+  return ''
+}
+
+async function runGuideAgentTurn(input: {
+  runtimeKind: GuideRuntimeKind
+  profile: RuntimeProviderTargetProfile
+  runtimeSession: RuntimeSession
+  workspaceId: string
+  workspacePath: string
+  instruction: string
+  modelId?: string | null
+}): Promise<string> {
+  const runtime = getRuntimeRegistry().get(input.runtimeKind)
+  if (!runtime) {
+    throw new AppError({
+      code: 'diff_review_guide_provider_unsupported',
+      status: 400,
+      message: 'Provider target runtime does not support guided review generation',
+      details: { runtimeKind: input.runtimeKind, providerTargetId: input.profile.providerTargetId },
+    })
+  }
+
+  let output = ''
+  for await (const chunk of runtime.streamTurn({
+    runId: `diff-review-guide-${randomUUID()}`,
+    runtimeSession: input.runtimeSession,
+    profile: input.profile,
+    message: createUserMessage(randomUUID(), input.instruction),
+    modelId: input.modelId ?? undefined,
+    workspaceId: input.workspaceId,
+    workspacePath: input.workspacePath,
+    providerOptions: {
+      runtimeSettings: GUIDE_RUNTIME_SETTINGS,
+    },
+  })) {
+    output += collectTextDelta(chunk)
+  }
+  return output.trim()
+}
+
+function parseGuideJson(raw: string): unknown {
+  const taggedStart = raw.indexOf(GUIDE_ARTIFACT_START)
+  const taggedEnd = raw.lastIndexOf(GUIDE_ARTIFACT_END)
+  if (taggedStart >= 0 && taggedEnd > taggedStart) {
+    const tagged = raw.slice(taggedStart + GUIDE_ARTIFACT_START.length, taggedEnd).trim()
+    const parsed = safeJsonParse(tagged)
+    if (parsed) {
+      return parsed
+    }
+  }
+
+  const direct = safeJsonParse(raw.trim())
+  if (direct) {
+    return direct
+  }
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(raw)
+  if (fenced?.[1]) {
+    const parsed = safeJsonParse(fenced[1].trim())
+    if (parsed) {
+      return parsed
+    }
+  }
+  const start = raw.indexOf('{')
+  const end = raw.lastIndexOf('}')
+  if (start >= 0 && end > start) {
+    return safeJsonParse(raw.slice(start, end + 1))
+  }
+  return null
+}
+
+function readString(value: unknown): string {
+  return typeof value === 'string' ? value.trim() : ''
+}
+
+function readStringArray(value: unknown): string[] {
+  return Array.isArray(value)
+    ? value.filter((item): item is string => typeof item === 'string' && item.trim().length > 0).map(item => item.trim())
+    : []
+}
+
+function readPositiveInteger(value: unknown): number | null {
+  return typeof value === 'number' && Number.isInteger(value) && value > 0 ? value : null
+}
+
+function readGuideStepRecords(parsed: unknown): Record<string, unknown>[] {
+  const record = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null
+  const rawSteps = Array.isArray(record?.steps) ? record.steps : null
+  if (!rawSteps) {
+    throw new Error('Guide output is missing steps[]')
+  }
+  return rawSteps.map(rawStep => rawStep && typeof rawStep === 'object' ? rawStep as Record<string, unknown> : {})
+}
+
+function buildFileLookup(files: DiffReviewFile[]): Map<string, DiffReviewFile> {
+  const lookup = new Map<string, DiffReviewFile>()
+  for (const file of files) {
+    lookup.set(file.id, file)
+    lookup.set(file.path, file)
+    if (file.previousPath) {
+      lookup.set(file.previousPath, file)
+    }
+  }
+  return lookup
+}
+
+function resolveGuideFile(value: unknown, lookup: Map<string, DiffReviewFile>): DiffReviewFile | null {
+  const key = readString(value)
+  return key ? lookup.get(key) ?? null : null
+}
+
+function readGuidePathFiles(step: Record<string, unknown>, lookup: Map<string, DiffReviewFile>): DiffReviewFile[] {
+  const candidates = [
+    ...readStringArray(step.fileIds),
+    ...readStringArray(step.paths),
+    ...readStringArray(step.files),
+    ...readStringArray(step.filePaths),
+  ]
+  const files = candidates.flatMap((candidate) => {
+    const file = lookup.get(candidate)
+    return file ? [file] : []
+  })
+  return Array.from(new Map(files.map(file => [file.id, file])).values())
+}
+
+function readGuideRangeRecords(step: Record<string, unknown>): Record<string, unknown>[] {
+  const ranges = Array.isArray(step.ranges)
+    ? step.ranges
+    : Array.isArray(step.anchors)
+      ? step.anchors
+      : Array.isArray(step.locations)
+        ? step.locations
+        : []
+  return ranges.flatMap(range => range && typeof range === 'object' ? [range as Record<string, unknown>] : [])
+}
+
+function resolveGuideRangeAnchor(input: {
+  revision: DiffReviewRevision
+  range: Record<string, unknown>
+  lookup: Map<string, DiffReviewFile>
+}): ReviewRangeAnchorView | null {
+  const file = resolveGuideFile(input.range.path ?? input.range.fileId, input.lookup)
+  if (!file) {
+    return null
+  }
+  const startLine = readPositiveInteger(input.range.startLine)
+  if (!startLine) {
+    return null
+  }
+  const endLine = readPositiveInteger(input.range.endLine) ?? startLine
+  if (endLine < startLine) {
+    return null
+  }
+  const sideValue = readString(input.range.side)
+  const side = sideValue === 'base' || sideValue === 'head'
+    ? sideValue
+    : file.status === 'deleted'
+      ? 'base'
+      : 'head'
+  try {
+    return normalizeAnchor({
+      revision: input.revision,
+      file,
+      anchor: {
+        fileId: file.id,
+        side,
+        startLine,
+        endLine,
+      },
+    })
+  }
+  catch {
+    return null
+  }
+}
+
+function normalizeGuideSteps(input: {
+  parsed: unknown
+  revision: DiffReviewRevision
+  files: DiffReviewFile[]
+  threads: ReviewThreadView[]
+}): ReviewGuideStepView[] {
+  const rawSteps = readGuideStepRecords(input.parsed)
+  const lookup = buildFileLookup(input.files)
+  const threadIds = new Set(input.threads.map(thread => thread.id))
+  const riskLevels = new Set(['low', 'medium', 'high', 'unknown'])
+  return rawSteps.map((step, index): ReviewGuideStepView => {
+    const title = readString(step.title)
+    const rationale = readString(step.rationale)
+    const rawRiskLevel = readString(step.riskLevel) || 'unknown'
+    const rangeRecords = readGuideRangeRecords(step)
+    const pathFiles = readGuidePathFiles(step, lookup)
+    const rangeFiles = rangeRecords.flatMap((range) => {
+      const file = resolveGuideFile(range.path ?? range.fileId, lookup)
+      return file ? [file] : []
+    })
+    const anchors = rangeRecords
+      .flatMap(range => resolveGuideRangeAnchor({ revision: input.revision, range, lookup }) ?? [])
+    const stepFileIds = [...new Set([
+      ...pathFiles.map(file => file.id),
+      ...rangeFiles.map(file => file.id),
+      ...anchors.map(anchor => anchor.fileId),
+    ])]
+    const stepThreadIds = [...new Set(readStringArray(step.threadIds))].filter(threadId => threadIds.has(threadId))
+    if (!title) {
+      throw new Error(`Guide step ${index + 1} is missing title`)
+    }
+    if (!rationale) {
+      throw new Error(`Guide step ${index + 1} is missing rationale`)
+    }
+    if (stepFileIds.length === 0) {
+      throw new Error(`Guide step ${index + 1} must reference at least one current revision file`)
+    }
+    const order = index
+    return {
+      id: `step-${index + 1}-${shortHash(JSON.stringify({ title, fileIds: stepFileIds }))}`,
+      title,
+      rationale,
+      fileIds: stepFileIds,
+      threadIds: stepThreadIds,
+      anchors,
+      riskLevel: riskLevels.has(rawRiskLevel) ? rawRiskLevel as ReviewGuideStepView['riskLevel'] : 'unknown',
+      order,
+    }
+  })
+}
+
+function upsertGuide(input: {
+  reviewId: string
+  revisionId: string
+  providerTargetId: string
+  runtimeKind: GuideRuntimeKind
+  modelId?: string | null
+  inputHash: string
+  status: 'ready' | 'failed'
+  steps: ReviewGuideStepView[]
+  errorMessage?: string | null
+}): void {
+  const now = currentUnixSeconds()
+  db().insert(diffReviewGuides).values({
+    id: randomUUID(),
+    reviewId: input.reviewId,
+    revisionId: input.revisionId,
+    providerTargetId: input.providerTargetId,
+    runtimeKind: input.runtimeKind,
+    modelId: input.modelId ?? null,
+    inputHash: input.inputHash,
+    status: input.status,
+    stepsJson: jsonStringify(input.steps),
+    errorMessage: input.errorMessage ?? null,
+    createdAt: now,
+    updatedAt: now,
+  }).onConflictDoUpdate({
+    target: [diffReviewGuides.reviewId, diffReviewGuides.revisionId],
+    set: {
+      providerTargetId: input.providerTargetId,
+      runtimeKind: input.runtimeKind,
+      modelId: input.modelId ?? null,
+      inputHash: input.inputHash,
+      status: input.status,
+      stepsJson: jsonStringify(input.steps),
+      errorMessage: input.errorMessage ?? null,
+      updatedAt: now,
+    },
+  }).run()
+}
+
+async function assertGuideWorktreeMatchesRevision(input: {
+  workspaceId: string
+  review: DiffReview
+  revision: DiffReviewRevision
+}): Promise<void> {
+  if (input.review.sourceKind !== 'local-working-tree') {
+    throw new AppError({
+      code: 'diff_review_guide_source_unsupported',
+      status: 400,
+      message: 'Guided review generation currently supports local working tree reviews only',
+      details: {
+        reviewId: input.review.id,
+        sourceKind: input.review.sourceKind,
+      },
+    })
+  }
+  const currentPatch = await Git.getDiff(input.workspaceId, undefined, input.review.repositoryPath)
+  const currentPatchHash = hashText(currentPatch)
+  if (currentPatchHash !== input.revision.patchHash) {
+    throw new AppError({
+      code: 'diff_review_guide_source_changed',
+      status: 409,
+      message: 'Diff review source changed; refresh the review before generating a guide',
+      details: {
+        reviewId: input.review.id,
+        revisionId: input.revision.id,
+        revisionPatchHash: input.revision.patchHash,
+        currentPatchHash,
+      },
+    })
+  }
+}
+
+export async function generateGuide(input: {
+  workspaceId: string
+  reviewId: string
+  providerTargetId: string
+  runtimeKind?: GuideRuntimeKind
+  modelId?: string | null
+  force?: boolean
+  userId?: string
+}): Promise<DiffReviewView> {
+  const review = getReviewRow(input.workspaceId, input.reviewId)
+  const revision = getCurrentRevision(review)
+  const files = db().select().from(diffReviewFiles)
+    .where(eq(diffReviewFiles.revisionId, revision.id))
+    .orderBy(asc(diffReviewFiles.path))
+    .all()
+  if (files.length === 0) {
+    throw new AppError({
+      code: 'diff_review_guide_empty_revision',
+      status: 409,
+      message: 'Guided review generation requires a revision with changed files',
+      details: { reviewId: review.id, revisionId: revision.id },
+    })
+  }
+  await assertGuideWorktreeMatchesRevision({
+    workspaceId: input.workspaceId,
+    review,
+    revision,
+  })
+
+  const existing = db().select().from(diffReviewGuides).where(and(
+    eq(diffReviewGuides.reviewId, review.id),
+    eq(diffReviewGuides.revisionId, revision.id),
+  )).get()
+  if (existing?.status === 'ready' && !input.force) {
+    return loadReviewView(review, { userId: input.userId })
+  }
+
+  const profile = buildGuideProfile(input.providerTargetId)
+  const runtimeKind = resolveGuideRuntimeKind({
+    providerKind: profile.providerKind,
+    runtimeKind: input.runtimeKind,
+    providerTargetId: input.providerTargetId,
+  })
+  assertGuideRuntimeSupportsProvider({
+    runtimeKind,
+    providerKind: profile.providerKind,
+    providerTargetId: input.providerTargetId,
+  })
+
+  const workspacePath = getWorkspacePath(input.workspaceId)
+  const threads = loadThreads(review.id)
+  const instruction = buildGuideAgentInstruction({ review, revision, files, threads })
+  const inputHash = hashText(JSON.stringify({
+    revisionId: revision.id,
+    patchHash: revision.patchHash,
+    providerTargetId: input.providerTargetId,
+    runtimeKind,
+    modelId: input.modelId ?? null,
+    instructionHash: hashText(instruction),
+  }))
+  const runtimeSession = buildGuideRuntimeSession({
+    workspaceId: input.workspaceId,
+    providerTargetId: input.providerTargetId,
+    runtimeKind,
+    workspacePath,
+    modelId: input.modelId,
+  })
+  const runtime = getRuntimeRegistry().get(runtimeKind)
+  if (!runtime) {
+    throw new AppError({
+      code: 'diff_review_guide_provider_unsupported',
+      status: 400,
+      message: 'Provider target runtime does not support guided review generation',
+      details: { runtimeKind, providerTargetId: input.providerTargetId },
+    })
+  }
+
+  try {
+    const startedRuntimeSession = await runtime.startChatSession({
+      chatSessionId: runtimeSession.chatSessionId,
+      profile,
+      workspacePath,
+      modelId: input.modelId ?? undefined,
+      previousProviderStateSnapshot: runtimeSession.providerStateSnapshot,
+    })
+    const rawOutput = await runGuideAgentTurn({
+      runtimeKind,
+      profile,
+      runtimeSession: startedRuntimeSession,
+      workspaceId: input.workspaceId,
+      workspacePath,
+      instruction,
+      modelId: input.modelId,
+    })
+    await assertGuideWorktreeMatchesRevision({
+      workspaceId: input.workspaceId,
+      review,
+      revision,
+    })
+    const steps = normalizeGuideSteps({
+      parsed: parseGuideJson(rawOutput),
+      revision,
+      files,
+      threads,
+    })
+    upsertGuide({
+      reviewId: review.id,
+      revisionId: revision.id,
+      providerTargetId: input.providerTargetId,
+      runtimeKind,
+      modelId: input.modelId,
+      inputHash,
+      status: 'ready',
+      steps,
+      errorMessage: null,
+    })
+  }
+  catch (error) {
+    if (error instanceof AppError && error.code === 'diff_review_guide_source_changed') {
+      throw error
+    }
+    const message = error instanceof Error ? error.message : String(error)
+    upsertGuide({
+      reviewId: review.id,
+      revisionId: revision.id,
+      providerTargetId: input.providerTargetId,
+      runtimeKind,
+      modelId: input.modelId,
+      inputHash,
+      status: 'failed',
+      steps: [],
+      errorMessage: message,
+    })
+    throw new AppError({
+      code: 'diff_review_guide_generation_failed',
+      status: 502,
+      message: 'Guided review generation failed',
+      details: { reviewId: review.id, revisionId: revision.id, runtimeKind, providerTargetId: input.providerTargetId, cause: message },
+    })
+  }
+
+  return loadReviewView(review, { userId: input.userId })
+}
+
+export function createAgentFix(input: {
+  workspaceId: string
+  reviewId: string
+  threadId?: string | null
+  anchor?: ReviewRangeAnchorInput | ReviewRangeAnchorView | null
+  instruction: string
+  profileId?: string | null
+  expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact'
+  userId?: string
+}): DiffReviewView {
+  const review = getReviewRow(input.workspaceId, input.reviewId)
+  let threadAnchor: ReviewRangeAnchorView | null = null
+  if (input.threadId) {
+    const thread = getThreadForReview(review.id, input.threadId)
+    threadAnchor = toAnchorView(safeJsonParse(thread.anchorJson))
+  }
+  const revision = getCurrentRevision(review)
+  const anchorFileId = input.anchor && isRangeAnchorInput(input.anchor) ? input.anchor.fileId : null
+  const file = anchorFileId ? getFileForReview(review, anchorFileId) : null
+  const anchor = file
+    ? normalizeAnchor({ revision, file, anchor: input.anchor })
+    : threadAnchor
+  const userId = input.userId ?? LOCAL_USER_ID
+  const now = currentUnixSeconds()
+  const agentFix = db().insert(diffReviewAgentFixes).values({
+    id: randomUUID(),
+    reviewId: review.id,
+    threadId: input.threadId ?? null,
+    anchorJson: anchor ? jsonStringify(anchor) : null,
+    instruction: input.instruction,
+    profileId: input.profileId ?? null,
+    expectedOutput: input.expectedOutput,
+    status: 'pending',
+    createdAt: now,
+    updatedAt: now,
+  }).returning().get()
+  recordEvent({
+    reviewId: review.id,
+    eventKind: 'agent_fix_created',
+    actorKind: 'user',
+    actorId: userId,
+    payload: { agentFixId: agentFix.id, threadId: input.threadId ?? null, expectedOutput: input.expectedOutput, anchor },
+    createdAt: now,
+  })
+  return loadReviewView(review, { userId })
+}
+
+function getAgentFixForReview(reviewId: string, agentFixId: string): DiffReviewAgentFix {
+  const agentFix = db().select().from(diffReviewAgentFixes)
+    .where(and(eq(diffReviewAgentFixes.id, agentFixId), eq(diffReviewAgentFixes.reviewId, reviewId)))
+    .get()
+  if (!agentFix) {
+    throw new AppError({
+      code: 'diff_review_agent_fix_not_found',
+      status: 404,
+      message: 'Diff review agent fix was not found',
+      details: { reviewId, agentFixId },
+    })
+  }
+  return agentFix
+}
+
+function formatAgentFixAnchor(anchor: ReviewRangeAnchorView | null): string {
+  if (!anchor) {
+    return 'No specific diff range was provided.'
+  }
+  return [
+    `File: ${anchor.path}`,
+    `Side: ${anchor.side}`,
+    `Lines: ${anchor.startLine}-${anchor.endLine}`,
+    `Hunk: ${anchor.hunkHeader}`,
+  ].join('\n')
+}
+
+function buildAgentFixPrompt(input: {
+  review: DiffReview
+  revision: DiffReviewRevision | null
+  agentFix: DiffReviewAgentFix
+  thread: DiffReviewThread | null
+  comments: DiffReviewComment[]
+  files: DiffReviewFile[]
+}): string {
+  const anchor = toAnchorView(safeJsonParse(input.agentFix.anchorJson))
+  const changedFiles = input.files.length > 0
+    ? input.files.map(file => `- ${file.status}: ${file.path}`).join('\n')
+    : '- No current changed files are recorded.'
+  const comments = input.comments.length > 0
+    ? input.comments.map(comment => `- ${comment.authorKind}:${comment.authorId}: ${comment.bodyMarkdown}`).join('\n')
+    : '- No review thread comments were provided.'
+  const threadState = input.thread ? input.thread.state : 'not attached'
+  const patchSummary = input.revision
+    ? `Revision ${input.revision.id} has patch hash ${input.revision.patchHash}, ${input.revision.fileCount} files, +${input.revision.additions}/-${input.revision.deletions}.`
+    : 'The review currently has no active revision.'
+
+  return [
+    'You are working on a Cradle Diffs review fix request.',
+    '',
+    'Use the workspace repository as the source of truth. Address the requested review feedback with the smallest coherent change.',
+    '',
+    '## Review',
+    `Review id: ${input.review.id}`,
+    `Title: ${input.review.title}`,
+    `Source: ${input.review.sourceKind}`,
+    `Repository path: ${input.review.repositoryPath}`,
+    patchSummary,
+    '',
+    '## Requested Output',
+    input.agentFix.expectedOutput === 'commit'
+      ? 'Create a commit only if that is the natural result of the fix. Keep the review feedback traceable in your final summary.'
+      : input.agentFix.expectedOutput === 'patch-artifact'
+        ? 'Produce a patch-style change artifact or leave the working tree changes clearly summarized.'
+        : 'Apply the fix to the working tree and summarize the changed files.',
+    '',
+    '## User Instruction',
+    input.agentFix.instruction,
+    '',
+    '## Anchor',
+    formatAgentFixAnchor(anchor),
+    '',
+    '## Thread',
+    `State: ${threadState}`,
+    comments,
+    '',
+    '## Changed Files',
+    changedFiles,
+    '',
+    'After finishing, summarize exactly what changed and call out anything you could not complete.',
+  ].join('\n')
+}
+
+function readAgentFixArtifact(input: {
+  reviewId: string
+  agentFix: DiffReviewAgentFix
+}): ReviewAgentFixArtifactView | null {
+  if (!input.agentFix.sessionId || !input.agentFix.runId) {
+    return null
+  }
+
+  const content = Session.getRunMessageContents([input.agentFix.runId])[0]?.content
+  if (!content) {
+    return null
+  }
+  return buildAgentFixArtifact({
+    reviewId: input.reviewId,
+    agentFixId: input.agentFix.id,
+    sessionId: input.agentFix.sessionId,
+    runId: input.agentFix.runId,
+    content,
+    createdAt: input.agentFix.updatedAt,
+  })
+}
+
+function markAgentFixFailed(input: {
+  reviewId: string
+  agentFixId: string
+  errorMessage: string
+  actorKind?: 'system' | 'agent'
+  actorId?: string | null
+}): void {
+  const now = currentUnixSeconds()
+  db().update(diffReviewAgentFixes)
+    .set({
+      status: 'failed',
+      errorMessage: input.errorMessage,
+      updatedAt: now,
+    })
+    .where(eq(diffReviewAgentFixes.id, input.agentFixId))
+    .run()
+  recordEvent({
+    reviewId: input.reviewId,
+    eventKind: 'agent_fix_failed',
+    actorKind: input.actorKind ?? 'system',
+    actorId: input.actorId ?? null,
+    payload: { agentFixId: input.agentFixId, errorMessage: input.errorMessage },
+    createdAt: now,
+  })
+}
+
+async function watchAgentFixRunCompletion(input: {
+  workspaceId: string
+  reviewId: string
+  agentFixId: string
+  runId: string
+  sessionId: string
+}): Promise<void> {
+  try {
+    const run = await ChatRuntime.waitForRunCompletion(input.runId)
+    const current = db().select().from(diffReviewAgentFixes)
+      .where(eq(diffReviewAgentFixes.id, input.agentFixId))
+      .get()
+    if (!current || current.runId !== input.runId || current.status !== 'running') {
+      return
+    }
+
+    if (run.status !== 'complete') {
+      const now = currentUnixSeconds()
+      db().update(diffReviewAgentFixes)
+        .set({
+          status: run.status === 'aborted' ? 'cancelled' : 'failed',
+          errorMessage: run.errorText ?? (run.status === 'aborted' ? 'Agent fix run was aborted' : 'Agent fix run failed'),
+          updatedAt: now,
+        })
+        .where(eq(diffReviewAgentFixes.id, input.agentFixId))
+        .run()
+      recordEvent({
+        reviewId: input.reviewId,
+        eventKind: 'agent_fix_failed',
+        actorKind: 'system',
+        actorId: null,
+        payload: { agentFixId: input.agentFixId, sessionId: input.sessionId, runId: input.runId, runStatus: run.status },
+        createdAt: now,
+      })
+      return
+    }
+
+    const refreshed = await refresh(input.workspaceId, input.reviewId)
+    const now = currentUnixSeconds()
+    const artifact = readAgentFixArtifact({
+      reviewId: input.reviewId,
+      agentFix: {
+        ...current,
+        sessionId: input.sessionId,
+        runId: input.runId,
+        updatedAt: now,
+      },
+    })
+    db().update(diffReviewAgentFixes)
+      .set({
+        status: 'completed',
+        artifactId: artifact?.id ?? null,
+        resultRevisionId: refreshed.currentRevisionId,
+        errorMessage: null,
+        updatedAt: now,
+      })
+      .where(eq(diffReviewAgentFixes.id, input.agentFixId))
+      .run()
+    recordEvent({
+      reviewId: input.reviewId,
+      eventKind: 'agent_fix_completed',
+      actorKind: 'agent',
+      actorId: current.profileId,
+      payload: {
+        agentFixId: input.agentFixId,
+        sessionId: input.sessionId,
+        runId: input.runId,
+        artifactId: artifact?.id ?? null,
+        artifactKind: artifact?.kind ?? null,
+        artifactContentHash: artifact?.contentHash ?? null,
+        resultRevisionId: refreshed.currentRevisionId,
+      },
+      createdAt: now,
+    })
+  }
+  catch (error) {
+    markAgentFixFailed({
+      reviewId: input.reviewId,
+      agentFixId: input.agentFixId,
+      errorMessage: error instanceof Error ? error.message : String(error),
+    })
+  }
+}
+
+export async function startAgentFix(input: {
+  workspaceId: string
+  reviewId: string
+  agentFixId: string
+  agentId?: string | null
+  providerTargetId?: string | null
+  modelId?: string | null
+  userId?: string
+}): Promise<DiffReviewView> {
+  return startAgentFixRun(input, { rerun: false })
+}
+
+async function startAgentFixRun(input: {
+  workspaceId: string
+  reviewId: string
+  agentFixId: string
+  agentId?: string | null
+  providerTargetId?: string | null
+  modelId?: string | null
+  userId?: string
+}, options: { rerun: boolean }): Promise<DiffReviewView> {
+  const review = getReviewRow(input.workspaceId, input.reviewId)
+  const agentFix = getAgentFixForReview(review.id, input.agentFixId)
+  if (agentFix.status === 'running') {
+    return loadReviewView(review, { userId: input.userId })
+  }
+  if (agentFix.status === 'completed' && !options.rerun) {
+    return loadReviewView(review, { userId: input.userId })
+  }
+  if (agentFix.status === 'cancelled' && !options.rerun) {
+    throw new AppError({
+      code: 'diff_review_agent_fix_cancelled',
+      status: 409,
+      message: 'Cancelled agent fix work orders cannot be started',
+      details: { reviewId: review.id, agentFixId: agentFix.id },
+    })
+  }
+
+  const agentId = input.agentId?.trim() || agentFix.profileId || undefined
+  const providerTargetId = input.providerTargetId?.trim() || undefined
+  if (!agentId && !providerTargetId) {
+    throw new AppError({
+      code: 'diff_review_agent_fix_target_missing',
+      status: 400,
+      message: 'Starting a diff review agent fix requires an agentId or providerTargetId',
+      details: { reviewId: review.id, agentFixId: agentFix.id },
+    })
+  }
+
+  const revision = review.currentRevisionId
+    ? db().select().from(diffReviewRevisions).where(eq(diffReviewRevisions.id, review.currentRevisionId)).get() ?? null
+    : null
+  const files = revision
+    ? db().select().from(diffReviewFiles).where(eq(diffReviewFiles.revisionId, revision.id)).orderBy(asc(diffReviewFiles.path)).all()
+    : []
+  const thread = agentFix.threadId
+    ? db().select().from(diffReviewThreads).where(eq(diffReviewThreads.id, agentFix.threadId)).get() ?? null
+    : null
+  const comments = agentFix.threadId
+    ? db().select().from(diffReviewComments).where(eq(diffReviewComments.threadId, agentFix.threadId)).orderBy(asc(diffReviewComments.createdAt)).all()
+    : []
+
+  try {
+    const agentRow = agentId
+      ? db().select({ modelId: agents.modelId, thinkingEffort: agents.thinkingEffort }).from(agents).where(eq(agents.id, agentId)).get()
+      : null
+    const session = Session.create({
+      workspaceId: review.workspaceId,
+      title: `Diff fix: ${review.title}`,
+      agentId,
+      providerTargetId,
+      modelId: input.modelId ?? agentRow?.modelId ?? null,
+      runtimeSettings: { accessMode: 'full-access' },
+    })
+    const run = await ChatRuntime.createRun({
+      sessionId: session.id,
+      text: buildAgentFixPrompt({ review, revision, agentFix, thread, comments, files }),
+      modelId: input.modelId ?? agentRow?.modelId ?? undefined,
+      thinkingEffort: agentRow?.thinkingEffort ?? undefined,
+    })
+    const now = currentUnixSeconds()
+    db().update(diffReviewAgentFixes)
+      .set({
+        status: 'running',
+        sessionId: session.id,
+        runId: run.runId,
+        profileId: agentId ?? providerTargetId ?? agentFix.profileId,
+        artifactId: null,
+        resultRevisionId: null,
+        errorMessage: null,
+        updatedAt: now,
+      })
+      .where(eq(diffReviewAgentFixes.id, agentFix.id))
+      .run()
+    recordEvent({
+      reviewId: review.id,
+      eventKind: 'agent_fix_started',
+      actorKind: 'system',
+      actorId: null,
+      payload: {
+        agentFixId: agentFix.id,
+        sessionId: session.id,
+        runId: run.runId,
+        status: 'running',
+        rerun: options.rerun,
+      },
+      createdAt: now,
+    })
+    void watchAgentFixRunCompletion({
+      workspaceId: review.workspaceId,
+      reviewId: review.id,
+      agentFixId: agentFix.id,
+      sessionId: session.id,
+      runId: run.runId,
+    })
+    return loadReviewView(getReviewRow(input.workspaceId, input.reviewId), { userId: input.userId })
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    markAgentFixFailed({
+      reviewId: review.id,
+      agentFixId: agentFix.id,
+      errorMessage: message,
+    })
+    throw error
+  }
+}
+
+export async function rerunAgentFix(input: {
+  workspaceId: string
+  reviewId: string
+  agentFixId: string
+  agentId?: string | null
+  providerTargetId?: string | null
+  modelId?: string | null
+  userId?: string
+}): Promise<DiffReviewView> {
+  return startAgentFixRun(input, { rerun: true })
+}
+
+export function getAgentFixArtifact(input: {
+  workspaceId: string
+  reviewId: string
+  agentFixId: string
+}): ReviewAgentFixArtifactView {
+  const review = getReviewRow(input.workspaceId, input.reviewId)
+  const agentFix = getAgentFixForReview(review.id, input.agentFixId)
+  const artifact = readAgentFixArtifact({ reviewId: review.id, agentFix })
+  if (!artifact || artifact.id !== agentFix.artifactId) {
+    throw new AppError({
+      code: 'diff_review_agent_fix_artifact_not_found',
+      status: 404,
+      message: 'Diff review agent fix artifact was not found',
+      details: {
+        reviewId: review.id,
+        agentFixId: agentFix.id,
+        artifactId: agentFix.artifactId,
+      },
+    })
+  }
+  return artifact
+}
+
+export async function cancelAgentFix(input: {
+  workspaceId: string
+  reviewId: string
+  agentFixId: string
+  userId?: string
+}): Promise<DiffReviewView> {
+  const review = getReviewRow(input.workspaceId, input.reviewId)
+  const agentFix = getAgentFixForReview(review.id, input.agentFixId)
+  if (agentFix.status === 'completed') {
+    throw new AppError({
+      code: 'diff_review_agent_fix_completed',
+      status: 409,
+      message: 'Completed agent fix work orders cannot be cancelled',
+      details: { reviewId: review.id, agentFixId: agentFix.id },
+    })
+  }
+  if (agentFix.status === 'cancelled') {
+    return loadReviewView(review, { userId: input.userId })
+  }
+  if (agentFix.status === 'running' && agentFix.sessionId) {
+    await ChatRuntime.cancelSession(agentFix.sessionId)
+  }
+
+  const now = currentUnixSeconds()
+  db().update(diffReviewAgentFixes)
+    .set({
+      status: 'cancelled',
+      errorMessage: null,
+      updatedAt: now,
+    })
+    .where(eq(diffReviewAgentFixes.id, agentFix.id))
+    .run()
+  recordEvent({
+    reviewId: review.id,
+    eventKind: 'agent_fix_cancelled',
+    actorKind: 'user',
+    actorId: input.userId ?? LOCAL_USER_ID,
+    payload: {
+      agentFixId: agentFix.id,
+      sessionId: agentFix.sessionId,
+      runId: agentFix.runId,
+      previousStatus: agentFix.status,
+    },
+    createdAt: now,
+  })
+  return loadReviewView(getReviewRow(input.workspaceId, input.reviewId), { userId: input.userId })
+}
+
+export function createCommitPlan(input: {
+  workspaceId: string
+  reviewId: string
+  strategy?: 'single' | 'rule-based-groups'
+  userId?: string
+}): DiffReviewView {
+  const review = getReviewRow(input.workspaceId, input.reviewId)
+  const revision = getCurrentRevision(review)
+  const userId = input.userId ?? LOCAL_USER_ID
+  const strategy = input.strategy ?? 'rule-based-groups'
+  const files = db().select().from(diffReviewFiles)
+    .where(eq(diffReviewFiles.revisionId, revision.id))
+    .orderBy(asc(diffReviewFiles.path))
+    .all()
+  const groups = buildCommitPlanGroups(review, files, strategy)
+  const now = currentUnixSeconds()
+  const plan = db().insert(diffReviewCommitPlans).values({
+    id: randomUUID(),
+    reviewId: review.id,
+    revisionId: revision.id,
+    actorId: userId,
+    strategy,
+    status: 'draft',
+    groupsJson: jsonStringify(groups),
+    rationale: strategy === 'single'
+      ? 'A single commit keeps all working tree changes together.'
+      : 'The plan is rule-based and ordered so foundational schema/config changes land before implementation, tests, docs, and generated artifacts.',
+    createdAt: now,
+    updatedAt: now,
+  }).returning().get()
+  recordEvent({
+    reviewId: review.id,
+    eventKind: 'commit_plan_created',
+    actorKind: 'user',
+    actorId: userId,
+    payload: { commitPlanId: plan.id, strategy, groupCount: groups.length },
+    createdAt: now,
+  })
+  return loadReviewView(review, { userId })
+}
+
+export function updateCommitPlan(input: {
+  workspaceId: string
+  reviewId: string
+  commitPlanId: string
+  groups?: ReviewCommitPlanGroupInput[]
+  rationale?: string
+  status?: 'draft' | 'accepted' | 'abandoned'
+  userId?: string
+}): DiffReviewView {
+  const review = getReviewRow(input.workspaceId, input.reviewId)
+  const revision = getCurrentRevision(review)
+  const plan = getCommitPlanForReview(review.id, input.commitPlanId)
+  if (plan.revisionId !== revision.id) {
+    throw new AppError({
+      code: 'diff_review_commit_plan_revision_stale',
+      status: 409,
+      message: 'Diff review commit plan cannot be edited after the review revision changes',
+      details: { reviewId: review.id, commitPlanId: plan.id, planRevisionId: plan.revisionId, currentRevisionId: revision.id },
+    })
+  }
+  if (plan.status === 'applied') {
+    throw new AppError({
+      code: 'diff_review_commit_plan_applied',
+      status: 409,
+      message: 'Diff review commit plan has already been applied',
+      details: { reviewId: review.id, commitPlanId: plan.id },
+    })
+  }
+
+  const groups = input.groups
+    ? normalizeCommitPlanGroups(plan.revisionId, input.groups)
+    : toCommitPlanView(plan).groups
+  const now = currentUnixSeconds()
+  const userId = input.userId ?? LOCAL_USER_ID
+  db().update(diffReviewCommitPlans).set({
+    groupsJson: jsonStringify(groups),
+    rationale: input.rationale ?? plan.rationale,
+    status: input.status ?? plan.status,
+    strategy: input.groups ? 'manual' : plan.strategy,
+    updatedAt: now,
+  }).where(eq(diffReviewCommitPlans.id, plan.id)).run()
+
+  recordEvent({
+    reviewId: review.id,
+    eventKind: 'commit_plan_updated',
+    actorKind: 'user',
+    actorId: userId,
+    payload: {
+      commitPlanId: plan.id,
+      status: input.status ?? plan.status,
+      groupCount: groups.length,
+      strategy: input.groups ? 'manual' : plan.strategy,
+    },
+    createdAt: now,
+  })
+  return loadReviewView(review, { userId })
+}
+
+export async function applyCommitPlan(input: {
+  workspaceId: string
+  reviewId: string
+  commitPlanId: string
+  idempotencyKey?: string
+  userId?: string
+}): Promise<DiffReviewView> {
+  const review = getReviewRow(input.workspaceId, input.reviewId)
+  if (review.sourceKind !== 'local-working-tree') {
+    throw new AppError({
+      code: 'diff_review_commit_plan_apply_unsupported_source',
+      status: 400,
+      message: 'Diff review commit plans can only be applied for local working tree reviews',
+      details: { reviewId: review.id, sourceKind: review.sourceKind },
+    })
+  }
+  if (!review.sourceId) {
+    throw new AppError({
+      code: 'diff_review_source_missing',
+      status: 409,
+      message: 'Diff review source is missing',
+      details: { reviewId: review.id },
+    })
+  }
+
+  const plan = getCommitPlanForReview(review.id, input.commitPlanId)
+  if (plan.status === 'applied') {
+    return loadReviewView(review, { userId: input.userId })
+  }
+  const revision = getCurrentRevision(review)
+  if (plan.status !== 'accepted') {
+    throw new AppError({
+      code: 'diff_review_commit_plan_not_accepted',
+      status: 409,
+      message: 'Diff review commit plan must be accepted before it can be applied',
+      details: { reviewId: review.id, commitPlanId: plan.id, status: plan.status },
+    })
+  }
+  if (plan.revisionId !== revision.id) {
+    throw new AppError({
+      code: 'diff_review_commit_plan_revision_stale',
+      status: 409,
+      message: 'Diff review commit plan cannot be applied after the review revision changes',
+      details: { reviewId: review.id, commitPlanId: plan.id, planRevisionId: plan.revisionId, currentRevisionId: revision.id },
+    })
+  }
+
+  const currentPatch = await Git.getDiff(input.workspaceId, undefined, review.repositoryPath)
+  const currentPatchHash = hashText(currentPatch)
+  if (currentPatchHash !== revision.patchHash) {
+    throw new AppError({
+      code: 'diff_review_commit_plan_source_changed',
+      status: 409,
+      message: 'Diff review commit plan source changed; refresh the review before applying',
+      details: { reviewId: review.id, commitPlanId: plan.id, planPatchHash: revision.patchHash, currentPatchHash },
+    })
+  }
+
+  const planView = toCommitPlanView(plan)
+  const groups = commitGroupsForPlan(plan.revisionId, planView.groups)
+  const idempotencyKey = input.idempotencyKey ?? `commit-plan:${plan.id}:apply`
+  const operation = createOrResetSourceOperation({
+    sourceId: review.sourceId,
+    reviewId: review.id,
+    operationKind: 'commit_plan_apply',
+    idempotencyKey,
+    request: { commitPlanId: plan.id, revisionId: revision.id, groupCount: groups.length },
+  })
+  if (operation.status === 'succeeded') {
+    return loadReviewView(review, { userId: input.userId })
+  }
+
+  const userId = input.userId ?? LOCAL_USER_ID
+  try {
+    const result = await Git.commitFileGroups(input.workspaceId, groups, review.repositoryPath)
+    const now = currentUnixSeconds()
+    db().update(diffReviewCommitPlans).set({
+      status: 'applied',
+      updatedAt: now,
+    }).where(eq(diffReviewCommitPlans.id, plan.id)).run()
+    finishSourceOperation({
+      operationId: operation.id,
+      status: 'succeeded',
+      response: result,
+    })
+    recordEvent({
+      reviewId: review.id,
+      eventKind: 'commit_plan_applied',
+      actorKind: 'user',
+      actorId: userId,
+      payload: {
+        commitPlanId: plan.id,
+        operationId: operation.id,
+        commits: result.commits,
+      },
+      createdAt: now,
+    })
+    return await refreshLocalWorkingTree(input.workspaceId, review.repositoryPath)
+  }
+  catch (error) {
+    const message = error instanceof Error ? error.message : String(error)
+    finishSourceOperation({
+      operationId: operation.id,
+      status: 'failed',
+      errorMessage: message,
+    })
+    recordEvent({
+      reviewId: review.id,
+      eventKind: 'commit_plan_apply_failed',
+      actorKind: 'user',
+      actorId: userId,
+      payload: { commitPlanId: plan.id, operationId: operation.id, errorMessage: message },
+    })
+    throw error
+  }
+}

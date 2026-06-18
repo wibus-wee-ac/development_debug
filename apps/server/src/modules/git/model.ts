@@ -52,6 +52,12 @@ export const GitModel = {
     baseBranch: t.String({ minLength: 1 }),
   }),
 
+  branchCompareQuery: t.Object({
+    repo: t.Optional(t.String({ minLength: 1 })),
+    baseRef: t.String({ minLength: 1 }),
+    headRef: t.String({ minLength: 1 }),
+  }),
+
   fileStatusView,
 
   statusView: t.Object({
@@ -109,5 +115,16 @@ export const GitModel = {
 
   mergeBaseView: t.Object({
     mergeBaseSha: nullableString,
+  }),
+
+  branchCompareView: t.Object({
+    repositoryPath: t.String(),
+    repositoryName: t.String(),
+    baseRef: t.String(),
+    headRef: t.String(),
+    baseSha: t.String(),
+    headSha: t.String(),
+    mergeBaseSha: nullableString,
+    patch: t.String(),
   }),
 }

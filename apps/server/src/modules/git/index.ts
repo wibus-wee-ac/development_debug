@@ -122,3 +122,13 @@ export const git = new Elysia({
     query: GitModel.mergeBaseQuery,
     response: { 200: GitModel.mergeBaseView },
   })
+  .get('/:id/git/branch-compare', ({ params, query }) => {
+    return Git.getBranchCompare(params.id, query.baseRef, query.headRef, query.repo)
+  }, {
+    detail: {
+      summary: 'Get git branch compare diff',
+    },
+    params: GitModel.idParams,
+    query: GitModel.branchCompareQuery,
+    response: { 200: GitModel.branchCompareView },
+  })

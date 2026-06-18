@@ -1,0 +1,23 @@
+<!-- Once this directory changes, update this README.md -->
+
+# Diff Review Module
+
+The diff-review module owns Cradle Diffs review records, local worktree and branch-compare revisions, review threads, guide generation, agent fix work orders, commit plans, and source readiness projections.
+
+## Files
+
+- **index.ts**: Elysia routes for workspace diff reviews and CLI-exposed diff commands.
+- **model.ts**: TypeBox schemas for review, revision, file, thread, guide, agent fix, commit plan, and readiness contracts.
+- **service.ts**: Business logic for refreshing review sources, comments, submissions, guided review generation, agent fixes, commit plans, and event recording.
+- **anchors.ts**: Diff range anchor normalization and revision remapping helpers.
+- **patch.ts**: Patch parsing, file summary extraction, generated-file detection, and line hashing.
+- **commit-plans.ts**: Commit plan grouping and normalization helpers.
+- **agent-fix-artifacts.ts**: Agent fix artifact projection from completed chat runs.
+- **types.ts**: Module view and input types.
+- **utils.ts**: JSON, hashing, and title helpers.
+
+## Guided Review
+
+`POST /workspaces/:id/diff-reviews/:reviewId/guide/generate` is owned by this module. For local working tree reviews it starts an ephemeral tool-enabled runtime turn, asks the provider to inspect the live repository with shell/file tools, then validates the final guide artifact against the current revision.
+
+The provider outputs path and line-range candidates only. Diff Review derives stable step ids, order, file ids, and `ReviewRangeAnchorView` anchors, and rejects stale worktree state by comparing the current `Git.getDiff()` hash with the revision `patchHash` before and after generation.

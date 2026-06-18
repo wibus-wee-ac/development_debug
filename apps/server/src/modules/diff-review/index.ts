@@ -1,0 +1,436 @@
+import { Elysia } from 'elysia'
+import { t } from 'elysia'
+
+import { DiffReviewModel } from './model'
+import * as DiffReview from './service'
+
+export const diffReview = new Elysia({
+  prefix: '/workspaces',
+  detail: { tags: ['diff-review'] },
+})
+  .get('/:id/diff-reviews', ({ params }) => DiffReview.list(params.id), {
+    detail: {
+      'summary': 'List diff reviews',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'list'],
+      },
+    },
+    params: DiffReviewModel.workspaceParams,
+    response: { 200: t.Array(DiffReviewModel.review) },
+  })
+  .get('/:id/diff-reviews/source-readiness', ({ params }) => DiffReview.sourceReadiness(params.id), {
+    detail: {
+      'summary': 'List diff review source readiness',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'readiness'],
+      },
+    },
+    params: DiffReviewModel.workspaceParams,
+    response: { 200: t.Array(DiffReviewModel.readiness) },
+  })
+  .post('/:id/diff-reviews/local-working-tree', ({ params, body }) => {
+    const input = body as { repo?: string }
+    return DiffReview.refreshLocalWorkingTree(params.id, input.repo)
+  }, {
+    detail: {
+      'summary': 'Create or refresh local working tree diff review',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'local-working-tree'],
+      },
+    },
+    params: DiffReviewModel.workspaceParams,
+    body: DiffReviewModel.localWorkingTreeBody,
+    response: { 200: DiffReviewModel.review },
+  })
+  .post('/:id/diff-reviews/local-branch-compare', ({ params, body }) => {
+    const input = body as { repo?: string, baseRef: string, headRef: string }
+    return DiffReview.refreshLocalBranchCompare({
+      workspaceId: params.id,
+      repositoryPath: input.repo,
+      baseRef: input.baseRef,
+      headRef: input.headRef,
+    })
+  }, {
+    detail: {
+      'summary': 'Create or refresh local branch compare diff review',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'branch-compare'],
+      },
+    },
+    params: DiffReviewModel.workspaceParams,
+    body: DiffReviewModel.localBranchCompareBody,
+    response: { 200: DiffReviewModel.review },
+  })
+  .get('/:id/diff-reviews/:reviewId', ({ params }) => DiffReview.get(params.id, params.reviewId), {
+    detail: {
+      'summary': 'Get diff review',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'get'],
+      },
+    },
+    params: DiffReviewModel.reviewParams,
+    response: { 200: DiffReviewModel.review },
+  })
+  .post('/:id/diff-reviews/:reviewId/refresh', ({ params }) => DiffReview.refresh(params.id, params.reviewId), {
+    detail: {
+      'summary': 'Refresh diff review source',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'refresh'],
+      },
+    },
+    params: DiffReviewModel.reviewParams,
+    response: { 200: DiffReviewModel.review },
+  })
+  .post('/:id/diff-reviews/:reviewId/files/:fileId/viewed', ({ params, body }) => {
+    const input = body as { viewed: boolean }
+    return DiffReview.setFileViewed(params.id, params.reviewId, params.fileId, input.viewed)
+  }, {
+    detail: {
+      'summary': 'Set diff review file viewed state',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'file', 'viewed'],
+      },
+    },
+    params: DiffReviewModel.fileParams,
+    body: DiffReviewModel.setViewedBody,
+    response: { 200: DiffReviewModel.review },
+  })
+  .post('/:id/diff-reviews/:reviewId/threads', ({ params, body }) => {
+    const input = body as {
+      fileId?: string | null
+      anchor?: {
+        fileId: string
+        side?: 'base' | 'head'
+        startLine: number
+        endLine?: number
+        startColumn?: number
+        endColumn?: number
+      } | null
+      bodyMarkdown: string
+    }
+    return DiffReview.createThread({
+      workspaceId: params.id,
+      reviewId: params.reviewId,
+      fileId: input.fileId,
+      anchor: input.anchor,
+      bodyMarkdown: input.bodyMarkdown,
+    })
+  }, {
+    detail: {
+      'summary': 'Create diff review thread',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'thread', 'create'],
+      },
+    },
+    params: DiffReviewModel.reviewParams,
+    body: DiffReviewModel.createThreadBody,
+    response: { 200: DiffReviewModel.review },
+  })
+  .post('/:id/diff-reviews/:reviewId/threads/:threadId/comments', ({ params, body }) => {
+    const input = body as { bodyMarkdown: string }
+    return DiffReview.addComment({
+      workspaceId: params.id,
+      reviewId: params.reviewId,
+      threadId: params.threadId,
+      bodyMarkdown: input.bodyMarkdown,
+    })
+  }, {
+    detail: {
+      'summary': 'Add diff review comment',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'thread', 'comment'],
+      },
+    },
+    params: DiffReviewModel.threadParams,
+    body: DiffReviewModel.addCommentBody,
+    response: { 200: DiffReviewModel.review },
+  })
+  .post('/:id/diff-reviews/:reviewId/threads/:threadId/reactions', ({ params, body }) => {
+    const input = body as { reaction: string }
+    return DiffReview.addReaction({
+      workspaceId: params.id,
+      reviewId: params.reviewId,
+      threadId: params.threadId,
+      reaction: input.reaction,
+    })
+  }, {
+    detail: {
+      'summary': 'Add diff review thread reaction',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'thread', 'reaction'],
+      },
+    },
+    params: DiffReviewModel.threadParams,
+    body: DiffReviewModel.addReactionBody,
+    response: { 200: DiffReviewModel.review },
+  })
+  .post('/:id/diff-reviews/:reviewId/threads/:threadId/resolve', ({ params }) => {
+    return DiffReview.resolveThread(params.id, params.reviewId, params.threadId)
+  }, {
+    detail: {
+      'summary': 'Resolve diff review thread',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'thread', 'resolve'],
+      },
+    },
+    params: DiffReviewModel.threadParams,
+    response: { 200: DiffReviewModel.review },
+  })
+  .post('/:id/diff-reviews/:reviewId/submit', ({ params, body }) => {
+    const input = body as { decision: 'approve' | 'request-changes' | 'comment', bodyMarkdown?: string | null }
+    return DiffReview.submitReview({
+      workspaceId: params.id,
+      reviewId: params.reviewId,
+      decision: input.decision,
+      bodyMarkdown: input.bodyMarkdown,
+    })
+  }, {
+    detail: {
+      'summary': 'Submit local diff review decision',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'submit'],
+      },
+    },
+    params: DiffReviewModel.reviewParams,
+    body: DiffReviewModel.submitBody,
+    response: { 200: DiffReviewModel.review },
+  })
+  .put('/:id/diff-reviews/preferences', ({ params, body }) => {
+    return DiffReview.updatePreferences({
+      workspaceId: params.id,
+      ...(body as {
+        diffStyle?: 'split' | 'unified'
+        codeTheme?: string
+        fontSize?: number
+        lineHeight?: number
+        hideWhitespaceOnly?: boolean
+        structuralHighlighting?: boolean
+        collapseGeneratedFiles?: boolean
+        notificationMode?: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none'
+      }),
+    })
+  }, {
+    detail: {
+      'summary': 'Update diff review preferences',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'preferences', 'set'],
+      },
+    },
+    params: DiffReviewModel.workspaceParams,
+    body: DiffReviewModel.updatePreferencesBody,
+    response: { 200: DiffReviewModel.preferences },
+  })
+  .post('/:id/diff-reviews/:reviewId/guide/generate', async ({ params, body }) => {
+    const input = body as {
+      providerTargetId: string
+      runtimeKind?: 'codex' | 'claude-agent'
+      modelId?: string | null
+      force?: boolean
+    }
+    return await DiffReview.generateGuide({
+      workspaceId: params.id,
+      reviewId: params.reviewId,
+      providerTargetId: input.providerTargetId,
+      runtimeKind: input.runtimeKind,
+      modelId: input.modelId,
+      force: input.force,
+    })
+  }, {
+    detail: {
+      'summary': 'Generate a guided diff review',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'guide', 'generate'],
+      },
+    },
+    params: DiffReviewModel.reviewParams,
+    body: DiffReviewModel.generateGuideBody,
+    response: { 200: DiffReviewModel.review },
+  })
+  .post('/:id/diff-reviews/:reviewId/agent-fixes', ({ params, body }) => {
+    const input = body as {
+      threadId?: string | null
+      anchor?: {
+        fileId: string
+        side?: 'base' | 'head'
+        startLine: number
+        endLine?: number
+        startColumn?: number
+        endColumn?: number
+      } | null
+      instruction: string
+      profileId?: string | null
+      expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact'
+    }
+    return DiffReview.createAgentFix({
+      workspaceId: params.id,
+      reviewId: params.reviewId,
+      threadId: input.threadId,
+      anchor: input.anchor,
+      instruction: input.instruction,
+      profileId: input.profileId,
+      expectedOutput: input.expectedOutput,
+    })
+  }, {
+    detail: {
+      'summary': 'Create diff review agent fix work order',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'agent-fix', 'create'],
+      },
+    },
+    params: DiffReviewModel.reviewParams,
+    body: DiffReviewModel.createAgentFixBody,
+    response: { 200: DiffReviewModel.review },
+  })
+  .post('/:id/diff-reviews/:reviewId/agent-fixes/:agentFixId/start', async ({ params, body }) => {
+    const input = body as {
+      agentId?: string | null
+      providerTargetId?: string | null
+      modelId?: string | null
+    }
+    return await DiffReview.startAgentFix({
+      workspaceId: params.id,
+      reviewId: params.reviewId,
+      agentFixId: params.agentFixId,
+      agentId: input.agentId,
+      providerTargetId: input.providerTargetId,
+      modelId: input.modelId,
+    })
+  }, {
+    detail: {
+      'summary': 'Start diff review agent fix run',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'agent-fix', 'start'],
+      },
+    },
+    params: DiffReviewModel.agentFixParams,
+    body: DiffReviewModel.startAgentFixBody,
+    response: { 200: DiffReviewModel.review },
+  })
+  .get('/:id/diff-reviews/:reviewId/agent-fixes/:agentFixId/artifact', ({ params }) => {
+    return DiffReview.getAgentFixArtifact({
+      workspaceId: params.id,
+      reviewId: params.reviewId,
+      agentFixId: params.agentFixId,
+    })
+  }, {
+    detail: {
+      'summary': 'Get diff review agent fix artifact',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'agent-fix', 'artifact'],
+      },
+    },
+    params: DiffReviewModel.agentFixParams,
+    response: { 200: DiffReviewModel.agentFixArtifact },
+  })
+  .post('/:id/diff-reviews/:reviewId/agent-fixes/:agentFixId/cancel', async ({ params }) => {
+    return await DiffReview.cancelAgentFix({
+      workspaceId: params.id,
+      reviewId: params.reviewId,
+      agentFixId: params.agentFixId,
+    })
+  }, {
+    detail: {
+      'summary': 'Cancel diff review agent fix run',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'agent-fix', 'cancel'],
+      },
+    },
+    params: DiffReviewModel.agentFixParams,
+    body: DiffReviewModel.cancelAgentFixBody,
+    response: { 200: DiffReviewModel.review },
+  })
+  .post('/:id/diff-reviews/:reviewId/agent-fixes/:agentFixId/rerun', async ({ params, body }) => {
+    const input = body as {
+      agentId?: string | null
+      providerTargetId?: string | null
+      modelId?: string | null
+    }
+    return await DiffReview.rerunAgentFix({
+      workspaceId: params.id,
+      reviewId: params.reviewId,
+      agentFixId: params.agentFixId,
+      agentId: input.agentId,
+      providerTargetId: input.providerTargetId,
+      modelId: input.modelId,
+    })
+  }, {
+    detail: {
+      'summary': 'Rerun diff review agent fix',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'agent-fix', 'rerun'],
+      },
+    },
+    params: DiffReviewModel.agentFixParams,
+    body: DiffReviewModel.startAgentFixBody,
+    response: { 200: DiffReviewModel.review },
+  })
+  .post('/:id/diff-reviews/:reviewId/commit-plan', ({ params, body }) => {
+    const input = body as { strategy?: 'single' | 'rule-based-groups' }
+    return DiffReview.createCommitPlan({
+      workspaceId: params.id,
+      reviewId: params.reviewId,
+      strategy: input.strategy,
+    })
+  }, {
+    detail: {
+      'summary': 'Create diff review commit plan',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'commit-plan', 'create'],
+      },
+    },
+    params: DiffReviewModel.reviewParams,
+    body: DiffReviewModel.createCommitPlanBody,
+    response: { 200: DiffReviewModel.review },
+  })
+  .put('/:id/diff-reviews/:reviewId/commit-plans/:commitPlanId', ({ params, body }) => {
+    const input = body as {
+      groups?: Array<{
+        id: string
+        title: string
+        message: string
+        rationale: string
+        fileIds: string[]
+        paths?: string[]
+        dependsOn: string[]
+      }>
+      rationale?: string
+      status?: 'draft' | 'accepted' | 'abandoned'
+    }
+    return DiffReview.updateCommitPlan({
+      workspaceId: params.id,
+      reviewId: params.reviewId,
+      commitPlanId: params.commitPlanId,
+      groups: input.groups,
+      rationale: input.rationale,
+      status: input.status,
+    })
+  }, {
+    detail: {
+      'summary': 'Update diff review commit plan',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'commit-plan', 'update'],
+      },
+    },
+    params: DiffReviewModel.commitPlanParams,
+    body: DiffReviewModel.updateCommitPlanBody,
+    response: { 200: DiffReviewModel.review },
+  })
+  .post('/:id/diff-reviews/:reviewId/commit-plans/:commitPlanId/apply', ({ params, body }) => {
+    const input = body as { idempotencyKey?: string }
+    return DiffReview.applyCommitPlan({
+      workspaceId: params.id,
+      reviewId: params.reviewId,
+      commitPlanId: params.commitPlanId,
+      idempotencyKey: input.idempotencyKey,
+    })
+  }, {
+    detail: {
+      'summary': 'Apply diff review commit plan',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'commit-plan', 'apply'],
+      },
+    },
+    params: DiffReviewModel.commitPlanParams,
+    body: DiffReviewModel.applyCommitPlanBody,
+    response: { 200: DiffReviewModel.review },
+  })

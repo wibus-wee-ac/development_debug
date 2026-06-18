@@ -11,6 +11,7 @@ import { automation } from './modules/automation'
 import { chatRuntime } from './modules/chat-runtime'
 import { chronicle } from './modules/chronicle'
 import { desktop } from './modules/desktop'
+import { diffReview } from './modules/diff-review'
 import { externalIssueSources } from './modules/external-issue-sources'
 import { externalProviderSources } from './modules/external-provider-sources'
 import { externalWorkImport } from './modules/external-work-import'
@@ -117,6 +118,7 @@ export async function createServerContractApp(options: CreateServerContractAppOp
   app.use(skills)
   app.use(workflowRules)
   app.use(git)
+  app.use(diffReview)
   app.use(acp)
   app.use(chatRuntime)
   app.use(chronicle)
