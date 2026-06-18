@@ -77,6 +77,19 @@ describe('elysia migration skeleton', () => {
 
       expect(response.status).toBe(200)
       expect(response.headers.get('access-control-allow-origin')).toBe(origin)
+
+      const preflight = await app.handle(new Request('http://localhost/health', {
+        method: 'OPTIONS',
+        headers: {
+          origin,
+          'access-control-request-method': 'GET',
+          'access-control-request-private-network': 'true',
+        },
+      }))
+
+      expect(preflight.status).toBe(204)
+      expect(preflight.headers.get('access-control-allow-origin')).toBe(origin)
+      expect(preflight.headers.get('access-control-allow-private-network')).toBe('true')
     }
 
     const rejected = await app.handle(new Request('http://localhost/health', {
@@ -85,6 +98,18 @@ describe('elysia migration skeleton', () => {
 
     expect(rejected.status).toBe(200)
     expect(rejected.headers.get('access-control-allow-origin')).toBeNull()
+
+    const rejectedPreflight = await app.handle(new Request('http://localhost/health', {
+      method: 'OPTIONS',
+      headers: {
+        origin: 'https://example.com',
+        'access-control-request-method': 'GET',
+        'access-control-request-private-network': 'true',
+      },
+    }))
+
+    expect(rejectedPreflight.status).toBe(204)
+    expect(rejectedPreflight.headers.get('access-control-allow-private-network')).toBeNull()
   })
 
   it('serves OpenAPI JSON plus the legacy /docs alias', async () => {

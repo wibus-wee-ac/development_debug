@@ -53,8 +53,7 @@ const HOSTED_WEB_APP_ORIGINS = new Set([
   'https://app.cradle.wibus.ren',
 ])
 
-function isAllowedCorsOrigin({ headers }: { headers: Headers }): boolean {
-  const origin = headers.get('origin')
+function isAllowedCorsOriginValue(origin: string | null): boolean {
   if (!origin || origin === 'null') {
     return true
   }
@@ -75,6 +74,10 @@ function isAllowedCorsOrigin({ headers }: { headers: Headers }): boolean {
   }
 }
 
+function isAllowedCorsOrigin({ headers }: { headers: Headers }): boolean {
+  return isAllowedCorsOriginValue(headers.get('origin'))
+}
+
 export async function createServerContractApp(options: CreateServerContractAppOptions = {}) {
   const { includeRuntimeHttpPlugins = false } = options
   const app = new Elysia({
@@ -83,6 +86,14 @@ export async function createServerContractApp(options: CreateServerContractAppOp
     normalize: 'typebox',
   })
 
+  app.onRequest(({ request, set }) => {
+    if (
+      request.headers.get('access-control-request-private-network') === 'true'
+      && isAllowedCorsOriginValue(request.headers.get('origin'))
+    ) {
+      set.headers['access-control-allow-private-network'] = 'true'
+    }
+  })
   app.use(
     cors({
       origin: isAllowedCorsOrigin,
