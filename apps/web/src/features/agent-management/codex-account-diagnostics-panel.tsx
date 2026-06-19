@@ -221,7 +221,7 @@ function DiagnosticsBody({
         />
       </div>
       {diagnostics.tokenUsage && diagnostics.tokenUsage.dailyUsageBuckets.length > 0 && (
-        <DailyUsageRows buckets={diagnostics.tokenUsage.dailyUsageBuckets.slice(0, 7)} />
+        <DailyUsageRows buckets={diagnostics.tokenUsage.dailyUsageBuckets.slice(-7)} />
       )}
     </div>
   )
