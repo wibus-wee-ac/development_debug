@@ -27,6 +27,7 @@ export const PreferencesModel = {
     featureFlags: t.Object({
       multiWorkspacePoc: t.Boolean({ default: false }),
       localAuthForDangerousActions: t.Optional(t.Boolean({ default: false })),
+      continueBlockedCodexGoals: t.Optional(t.Boolean({ default: false })),
     }, { additionalProperties: false }),
   }, { additionalProperties: false }),
   chatPreferences: t.Object({
@@ -108,14 +109,17 @@ export const AppPreferencesJsonSchema = z.union([
   featureFlags: z.object({
     multiWorkspacePoc: z.boolean().default(false),
     localAuthForDangerousActions: z.boolean().default(false),
+    continueBlockedCodexGoals: z.boolean().default(false),
   }).default({
     multiWorkspacePoc: false,
     localAuthForDangerousActions: false,
+    continueBlockedCodexGoals: false,
   }),
 }).default({
   featureFlags: {
     multiWorkspacePoc: false,
     localAuthForDangerousActions: false,
+    continueBlockedCodexGoals: false,
   },
 }))
 

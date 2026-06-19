@@ -184,6 +184,8 @@ export default {
   'chat.archive.searchPlaceholder': 'Search archived sessions...',
   'chat.archive.untitled': 'Untitled session',
   'features.loading': 'Loading feature flags...',
+  'features.continueBlockedCodexGoals.description': 'Resume Codex Goals that Codex marked blocked through Cradle\'s internal continuation path.',
+  'features.continueBlockedCodexGoals.label': 'Continue blocked Codex Goals',
   'features.localAuthForDangerousActions.description': 'Ask the desktop app for system verification before deleting agents, issues, or workspaces.',
   'features.localAuthForDangerousActions.label': 'System verification for destructive actions',
   'features.multiWorkspace.description': 'Enable the CRA-026 symlink workspace POC. New multi-folder workspaces are created under ~/Documents/Cradle/workspaces and registered as normal workspaces.',

@@ -1,14 +1,14 @@
 import type { BackendSessionBinding } from '@cradle/db'
 import type { UIMessageChunk } from 'ai'
 
-import { readProviderStateSnapshot } from '../../chat-runtime-providers/provider-state-snapshot'
 import { readObjectRecord } from '../../../helpers/json-record'
 import { createChildLogger } from '../../../logging/logger'
+import { readProviderStateSnapshot } from '../../chat-runtime-providers/provider-state-snapshot'
 
 const CODEX_GOAL_CONTINUATION_DELAY_MS = 250
 
 const codexGoalContinuationLogger = createChildLogger({
-  module: 'chat-runtime.codex-goal-continuation'
+  module: 'chat-runtime.codex-goal-continuation',
 })
 
 const pendingTimers = new Map<string, ReturnType<typeof setTimeout>>()
@@ -27,38 +27,55 @@ export interface CodexGoalContinuationDecisionInput {
   binding: BackendSessionBinding | undefined
   providerTargetAvailable: boolean
   pendingQueueItemCount: number
+  continueBlockedGoals?: boolean
 }
 
 export interface CodexGoalContinuationSchedulerDeps {
-  hasActiveOrPendingRun(sessionId: string): boolean
-  pendingQueueItemCount(sessionId: string): number
-  scheduleQueueDrain(sessionId: string): void
-  readRuntimeBinding(sessionId: string): BackendSessionBinding | undefined
-  isProviderTargetAvailable(providerTargetId: string | null | undefined): boolean
-  createContinuationRun(input: {
+  hasActiveOrPendingRun: (sessionId: string) => boolean
+  pendingQueueItemCount: (sessionId: string) => number
+  scheduleQueueDrain: (sessionId: string) => void
+  readRuntimeBinding: (sessionId: string) => BackendSessionBinding | undefined
+  isProviderTargetAvailable: (providerTargetId: string | null | undefined) => boolean
+  createContinuationRun: (input: {
     sessionId: string
     providerTargetId?: string
     modelId?: string
-  }): Promise<void>
+  }) => Promise<void>
 }
 
 export interface CodexGoalContinuationScheduleInput {
   sessionId: string
   providerTargetId?: string
   modelId?: string
+  continueBlockedGoals?: boolean
 }
 
-export function hasActiveCodexGoal(rawProviderStateSnapshot: string | null | undefined): boolean {
+export interface CodexGoalContinuationOptions {
+  continueBlockedGoals?: boolean
+}
+
+export function isContinuableCodexGoalStatus(
+  status: unknown,
+  options: CodexGoalContinuationOptions = {},
+): boolean {
+  return status === 'active' || (options.continueBlockedGoals === true && status === 'blocked')
+}
+
+export function hasContinuableCodexGoal(
+  rawProviderStateSnapshot: string | null | undefined,
+  options: CodexGoalContinuationOptions = {},
+): boolean {
   try {
     const snapshot = readProviderStateSnapshot(rawProviderStateSnapshot)
     const codex = readObjectRecord(snapshot.codex)
     const goal = readObjectRecord(codex.goal)
     return (
-      goal.status === 'active' &&
-      typeof goal.objective === 'string' &&
-      goal.objective.trim().length > 0
+      isContinuableCodexGoalStatus(goal.status, options)
+      && typeof goal.objective === 'string'
+      && goal.objective.trim().length > 0
     )
-  } catch {
+  }
+ catch {
     return false
   }
 }
@@ -74,7 +91,7 @@ export function cancelPendingCodexGoalContinuation(sessionId: string): void {
 
 export function updateCodexGoalContinuationBackoff(
   activeRun: CodexGoalContinuationRunContext,
-  finalChunk: UIMessageChunk
+  finalChunk: UIMessageChunk,
 ): void {
   if (activeRun.internalContinuation !== 'codexGoal') {
     return
@@ -87,7 +104,7 @@ export function updateCodexGoalContinuationBackoff(
 }
 
 export function shouldScheduleCodexGoalContinuation(
-  input: CodexGoalContinuationDecisionInput
+  input: CodexGoalContinuationDecisionInput,
 ): boolean {
   if (input.run.runtimeKind !== 'codex') {
     return false
@@ -96,8 +113,10 @@ export function shouldScheduleCodexGoalContinuation(
     return false
   }
   if (
-    input.binding?.runtimeKind !== 'codex' ||
-    !hasActiveCodexGoal(input.binding.backendStateSnapshot)
+    input.binding?.runtimeKind !== 'codex'
+    || !hasContinuableCodexGoal(input.binding.backendStateSnapshot, {
+      continueBlockedGoals: input.continueBlockedGoals,
+    })
   ) {
     return false
   }
@@ -112,7 +131,7 @@ export function shouldScheduleCodexGoalContinuation(
 
 export function scheduleCodexGoalContinuation(
   input: CodexGoalContinuationScheduleInput,
-  deps: CodexGoalContinuationSchedulerDeps
+  deps: CodexGoalContinuationSchedulerDeps,
 ): void {
   if (pendingTimers.has(input.sessionId)) {
     return
@@ -121,7 +140,7 @@ export function scheduleCodexGoalContinuation(
   const failureCount = failureCounts.get(input.sessionId) ?? 0
   const delayMs = Math.min(
     CODEX_GOAL_CONTINUATION_DELAY_MS * 2 ** Math.min(failureCount, 7),
-    30_000
+    30_000,
   )
 
   const timer = setTimeout(() => {
@@ -133,7 +152,7 @@ export function scheduleCodexGoalContinuation(
 
 async function startScheduledCodexGoalContinuation(
   input: CodexGoalContinuationScheduleInput,
-  deps: CodexGoalContinuationSchedulerDeps
+  deps: CodexGoalContinuationSchedulerDeps,
 ): Promise<void> {
   if (deps.hasActiveOrPendingRun(input.sessionId)) {
     return
@@ -143,7 +162,12 @@ async function startScheduledCodexGoalContinuation(
     return
   }
   const binding = deps.readRuntimeBinding(input.sessionId)
-  if (binding?.runtimeKind !== 'codex' || !hasActiveCodexGoal(binding.backendStateSnapshot)) {
+  if (
+    binding?.runtimeKind !== 'codex'
+    || !hasContinuableCodexGoal(binding.backendStateSnapshot, {
+      continueBlockedGoals: input.continueBlockedGoals,
+    })
+  ) {
     return
   }
   if (!deps.isProviderTargetAvailable(input.providerTargetId ?? binding.providerTargetId)) {
@@ -154,21 +178,24 @@ async function startScheduledCodexGoalContinuation(
     await deps.createContinuationRun({
       sessionId: input.sessionId,
       providerTargetId: input.providerTargetId,
-      modelId: input.modelId
+      modelId: input.modelId,
     })
-  } catch (error) {
+  }
+ catch (error) {
     failureCounts.set(input.sessionId, (failureCounts.get(input.sessionId) ?? 0) + 1)
     codexGoalContinuationLogger.warn('failed to start Codex goal continuation run', {
       error,
-      sessionId: input.sessionId
+      sessionId: input.sessionId,
     })
     const latestBinding = deps.readRuntimeBinding(input.sessionId)
     if (
-      !deps.hasActiveOrPendingRun(input.sessionId) &&
-      latestBinding?.runtimeKind === 'codex' &&
-      hasActiveCodexGoal(latestBinding.backendStateSnapshot) &&
-      deps.isProviderTargetAvailable(input.providerTargetId ?? latestBinding.providerTargetId) &&
-      deps.pendingQueueItemCount(input.sessionId) === 0
+      !deps.hasActiveOrPendingRun(input.sessionId)
+      && latestBinding?.runtimeKind === 'codex'
+      && hasContinuableCodexGoal(latestBinding.backendStateSnapshot, {
+        continueBlockedGoals: input.continueBlockedGoals,
+      })
+      && deps.isProviderTargetAvailable(input.providerTargetId ?? latestBinding.providerTargetId)
+      && deps.pendingQueueItemCount(input.sessionId) === 0
     ) {
       scheduleCodexGoalContinuation(input, deps)
     }

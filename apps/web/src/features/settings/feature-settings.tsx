@@ -65,6 +65,18 @@ export function FeatureSettings() {
                 aria-label={t('features.localAuthForDangerousActions.label' as SettingsKey)}
               />
             </SettingsRow>
+            <SettingsRow
+              label={t('features.continueBlockedCodexGoals.label' as SettingsKey)}
+              description={t('features.continueBlockedCodexGoals.description' as SettingsKey)}
+            >
+              <Switch
+                size="sm"
+                checked={prefs.featureFlags.continueBlockedCodexGoals}
+                disabled={isSaving}
+                onCheckedChange={checked => saveFeatureFlags({ continueBlockedCodexGoals: checked })}
+                aria-label={t('features.continueBlockedCodexGoals.label' as SettingsKey)}
+              />
+            </SettingsRow>
           </SettingsGroup>
         )}
     </SettingsPage>

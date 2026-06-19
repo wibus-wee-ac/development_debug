@@ -10,9 +10,12 @@ import {
   AgentRuntimeConfigJsonSchema,
   buildSessionRuntimeConfigJson,
 } from '../../helpers/agent-runtime-config'
-import { parseJsonObjectOrEmpty, readObjectRecord } from '../../helpers/json-record'
+import { parseJsonObjectOrEmpty } from '../../helpers/json-record'
 import { db } from '../../infra'
-import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-state-snapshot'
+import {
+  hasContinuableCodexGoal,
+} from '../chat-runtime/run/codex-goal-continuation'
+import { isAppFeatureFlagEnabled } from '../preferences/service'
 import {
   mergeRuntimeSettings,
   normalizeRuntimeSettingsPatch,
@@ -113,24 +116,16 @@ function writeSessionModelPreferenceConfigJson(
   })
 }
 
-function hasActiveCodexGoal(binding: {
+function hasContinuableCodexGoalBinding(binding: {
   runtimeKind: string
   backendStateSnapshot: string | null
 } | null | undefined): boolean {
   if (binding?.runtimeKind !== 'codex') {
     return false
   }
-  try {
-    const snapshot = readProviderStateSnapshot(binding.backendStateSnapshot)
-    const codex = readObjectRecord(snapshot.codex)
-    const goal = readObjectRecord(codex.goal)
-    return goal.status === 'active'
-      && typeof goal.objective === 'string'
-      && goal.objective.trim().length > 0
-  }
-  catch {
-    return false
-  }
+  return hasContinuableCodexGoal(binding.backendStateSnapshot, {
+    continueBlockedGoals: isAppFeatureFlagEnabled('continueBlockedCodexGoals'),
+  })
 }
 
 function projectSessionStatus(input: {
@@ -140,7 +135,7 @@ function projectSessionStatus(input: {
     backendStateSnapshot: string | null
   } | null
 }): SessionStatus {
-  if (input.runStatus === 'streaming' || hasActiveCodexGoal(input.binding)) {
+  if (input.runStatus === 'streaming' || hasContinuableCodexGoalBinding(input.binding)) {
     return 'streaming'
   }
   if (input.runStatus === 'failed') {

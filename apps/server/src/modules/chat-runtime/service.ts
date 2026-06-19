@@ -16,6 +16,7 @@ import { readProviderStateSnapshot } from '../chat-runtime-providers/provider-st
 import * as ModelRegistry from '../model-registry/service'
 import { createDedupeKey, OBSERVABILITY_CODES } from '../observability/contract'
 import * as Observability from '../observability/service'
+import { isAppFeatureFlagEnabled } from '../preferences/service'
 import type { RuntimeKind } from '../provider-contracts/types'
 import {
   readDurableProviderRuntimeBinding,
@@ -66,7 +67,7 @@ import type {
 } from './run/final-message-projection'
 import {
   cancelPendingCodexGoalContinuation,
-  hasActiveCodexGoal,
+  hasContinuableCodexGoal,
   scheduleCodexGoalContinuation,
   shouldScheduleCodexGoalContinuation,
   updateCodexGoalContinuationBackoff
@@ -257,6 +258,10 @@ const chatLogger = createChildLogger({ module: 'chat-runtime' })
 const DEFAULT_STORED_MESSAGE_TEXT_MAX_CHARS = 256_000
 const DEFAULT_STORED_MESSAGE_REASONING_MAX_CHARS = 64_000
 const DEFAULT_STORED_TOOL_PAYLOAD_MAX_CHARS = 128_000
+
+function shouldContinueBlockedCodexGoals(): boolean {
+  return isAppFeatureFlagEnabled('continueBlockedCodexGoals')
+}
 const DEFAULT_STORED_MESSAGE_REPAIR_MIN_CHARS = 512 * 1024
 const DEFAULT_RUN_DELTA_FLUSH_MS = 16
 const DEFAULT_RUN_DELTA_FLUSH_CHARS = 8_192
@@ -313,6 +318,7 @@ export interface ActiveRun {
   finalMessage: UIMessage
   finalProjection: FinalMessageProjectionState
   startChunkPublished?: boolean
+  firstTextDeltaSnapshotRecorded?: boolean
   terminalStatus?: TerminalChatMessageStatus
   cancelRequested?: boolean
   queueItemId?: string
@@ -897,7 +903,9 @@ export async function getRuntimeSessionStatus(
   const providerTargetAvailable = activeRun ? true : isProviderTargetAvailable(providerTargetId)
   const hasActiveGoal =
     binding?.runtimeKind === 'codex' &&
-    hasActiveCodexGoal(binding.backendStateSnapshot) &&
+    hasContinuableCodexGoal(binding.backendStateSnapshot, {
+      continueBlockedGoals: shouldContinueBlockedCodexGoals(),
+    }) &&
     providerTargetAvailable
   const status: RuntimeSessionStatusKind = activeRun
     ? activeRun.cancelRequested
@@ -911,7 +919,8 @@ export async function getRuntimeSessionStatus(
       {
         sessionId,
         providerTargetId: providerTargetId ?? undefined,
-        modelId: modelId ?? undefined
+        modelId: modelId ?? undefined,
+        continueBlockedGoals: shouldContinueBlockedCodexGoals(),
       },
       codexGoalContinuationDeps
     )
@@ -1644,6 +1653,7 @@ export async function createRun(input: {
           ? lastRequestMessage
           : createAssistantMessage(draft.assistantMessageId),
       finalProjection: createFinalMessageProjectionState(),
+      firstTextDeltaSnapshotRecorded: false,
       queueItemId: input.queueItemId,
       runtimeSettings,
       internalContinuation: input.internalContinuation,
@@ -2488,6 +2498,13 @@ async function pumpRuntimeStream(
         })
       }
       accumulateDiagnostics(diagnostics, chunk)
+      if (chunk.type === 'text-delta' && !activeRun.firstTextDeltaSnapshotRecorded) {
+        activeRun.firstTextDeltaSnapshotRecorded = true
+        recordActiveRunSnapshotEvent(activeRun, {
+          phase: 'model_text_first_delta',
+          chunk
+        })
+      }
       if (shouldRecordHarnessSnapshotChunk(chunk)) {
         recordActiveRunSnapshotEvent(activeRun, {
           phase: readHarnessSnapshotPhase(chunk),
@@ -2668,7 +2685,7 @@ function completeRun(
       sessionId: activeRun.sessionId,
       runtimeKind: activeRun.runtimeSession.runtimeKind,
       cancelRequested: activeRun.cancelRequested === true,
-      internalContinuation: activeRun.internalContinuation
+      internalContinuation: activeRun.internalContinuation,
     },
     finalChunk
   )
@@ -2678,12 +2695,13 @@ function completeRun(
       sessionId: activeRun.sessionId,
       runtimeKind: activeRun.runtimeSession.runtimeKind,
       cancelRequested: activeRun.cancelRequested === true,
-      internalContinuation: activeRun.internalContinuation
+      internalContinuation: activeRun.internalContinuation,
     },
     finalChunk,
     binding,
     providerTargetAvailable: Boolean(binding && isProviderTargetAvailable(binding.providerTargetId)),
-    pendingQueueItemCount: listPendingQueueRows(activeRun.sessionId).length
+    pendingQueueItemCount: listPendingQueueRows(activeRun.sessionId).length,
+    continueBlockedGoals: shouldContinueBlockedCodexGoals(),
   })
   finalizeActiveRunSnapshot(activeRun, finalChunk, {
     modelId: actualModelId,
@@ -2712,7 +2730,8 @@ function completeRun(
       {
         sessionId: activeRun.sessionId,
         providerTargetId: activeRun.providerTargetId,
-        modelId: actualModelId ?? undefined
+        modelId: actualModelId ?? undefined,
+        continueBlockedGoals: shouldContinueBlockedCodexGoals(),
       },
       codexGoalContinuationDeps
     )
