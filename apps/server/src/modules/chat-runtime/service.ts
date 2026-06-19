@@ -100,6 +100,7 @@ import {
   readRunDeltaCoalesceKey,
   readTerminalStatus
 } from './run/stream-chunks'
+import { readRunWriteFence } from './run/run-write-fence'
 import {
   finalizeActiveRunSnapshot as finalizeRunSnapshotEvent,
   readChunkTraceToolCallId,
@@ -2743,13 +2744,43 @@ function snapshotActiveRun(activeRun: ActiveRun): void {
     return
   }
   flushFinalMessageProjection(activeRun)
-  persistMessageSnapshot({
-    sessionId: activeRun.sessionId,
-    messageId: activeRun.messageId,
-    message: activeRun.finalMessage,
-    messageStatus: 'streaming',
-    errorText: null
-  })
+  persistStreamingMessageSnapshot(activeRun)
+}
+
+// Fenced streaming message writer. The only path that writes `messages` with
+// `status = 'streaming'`. It checks the persisted run row first: once a terminal
+// fact exists the run row is terminal, the fence returns non-streaming, and this
+// releases the stale active run instead of overwriting a terminal message.
+// `persistMessageSnapshot()` stays fence-free with no run id; it serves only the
+// event-derived terminal projection and non-streaming record mutations.
+function persistStreamingMessageSnapshot(activeRun: ActiveRun): void {
+  const fence = readRunWriteFence(activeRun.runId)
+  if (fence.status === 'streaming') {
+    const message = compactStoredMessageSnapshot(normalizeMessageSnapshot(activeRun.finalMessage))
+    const messageJson = JSON.stringify(message)
+    db().transaction((tx) => {
+      tx.update(messages)
+        .set({
+          content: extractMessageText(message),
+          messageJson,
+          status: 'streaming',
+          errorText: null,
+          updatedAt: currentUnixSeconds()
+        })
+        .where(and(eq(messages.id, activeRun.messageId), eq(messages.sessionId, activeRun.sessionId)))
+        .run()
+
+      tx.update(sessions).set({ updatedAt: currentUnixSeconds() }).where(eq(sessions.id, activeRun.sessionId)).run()
+    })
+    return
+  }
+
+  // Run is already terminal (or gone): a stale active run continued after
+  // recovery. Stop writing and release it. The persisted terminal fact wins.
+  if (fence.status !== 'missing') {
+    activeRun.terminalStatus ??= fence.status
+  }
+  releaseActiveRun(activeRun)
 }
 
 function startSnapshotTimer(activeRun: ActiveRun): void {
