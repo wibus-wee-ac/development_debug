@@ -5,6 +5,7 @@ import {
   postWorkspacesByIdDiffReviewsByReviewIdCommitPlan,
   postWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdApply,
   postWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewed,
+  postWorkspacesByIdDiffReviewsByReviewIdGuideCancel,
   postWorkspacesByIdDiffReviewsByReviewIdGuideGenerate,
   postWorkspacesByIdDiffReviewsByReviewIdRefresh,
   postWorkspacesByIdDiffReviewsByReviewIdSubmit,
@@ -317,6 +318,24 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
     },
   })
 
+  const cancelGuideMutation = useMutation({
+    mutationFn: async () => {
+      const review = reviewQuery.data
+      if (!review) {
+        throw new Error('Review not loaded')
+      }
+      const { data } = await postWorkspacesByIdDiffReviewsByReviewIdGuideCancel({
+        path: { id: workspaceId, reviewId: review.id },
+        throwOnError: true,
+      })
+      return data
+    },
+    onSuccess: (data) => {
+      applyReview(data)
+      invalidateList()
+    },
+  })
+
   return {
     review: reviewQuery.data ?? null,
     isLoading: reviewQuery.isLoading,
@@ -333,5 +352,6 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
     commitPlanUpdateMutation,
     commitPlanApplyMutation,
     generateGuideMutation,
+    cancelGuideMutation,
   }
 }

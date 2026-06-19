@@ -6945,6 +6945,8 @@ export type GetWorkspacesByIdDiffReviewsResponses = {
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -7187,6 +7189,8 @@ export type PostWorkspacesByIdDiffReviewsLocalWorkingTreeResponses = {
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -7404,6 +7408,8 @@ export type PostWorkspacesByIdDiffReviewsLocalBranchCompareResponses = {
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -7620,6 +7626,8 @@ export type PostWorkspacesByIdDiffReviewsLocalCommitResponses = {
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -7834,6 +7842,8 @@ export type GetWorkspacesByIdDiffReviewsByReviewIdResponses = {
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -8048,6 +8058,8 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdRefreshResponses = {
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -8265,6 +8277,8 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewedResponses 
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -8490,6 +8504,8 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsResponses = {
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -8707,6 +8723,8 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdCommentsResp
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -8924,6 +8942,8 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdReactionsRes
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -9139,6 +9159,8 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdResolveRespo
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -9356,6 +9378,8 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdSubmitResponses = {
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -9616,6 +9640,8 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateResponses = {
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -9696,6 +9722,222 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateResponses = {
 };
 
 export type PostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateResponse = PostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateResponses];
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdGuideCancelData = {
+    body?: never;
+    path: {
+        id: string;
+        reviewId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/guide/cancel';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdGuideCancelResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'local-commit' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdGuideCancelResponse = PostWorkspacesByIdDiffReviewsByReviewIdGuideCancelResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdGuideCancelResponses];
 
 export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesData = {
     body: {
@@ -9843,6 +10085,8 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesResponses = {
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -10062,6 +10306,8 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStartRe
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -10310,6 +10556,8 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCancelR
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -10529,6 +10777,8 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerunRe
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -10745,6 +10995,8 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdCommitPlanResponses = {
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -10972,6 +11224,8 @@ export type PutWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdRespo
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
@@ -11189,6 +11443,8 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdAppl
             providerTargetId: string | null;
             runtimeKind: string | null;
             modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;

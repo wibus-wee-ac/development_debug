@@ -6,7 +6,8 @@ export const zPutPreferencesAppBody = z.object({
     featureFlags: z.object({
         multiWorkspacePoc: z.boolean().default(false),
         localAuthForDangerousActions: z.boolean().optional().default(false),
-        continueBlockedCodexGoals: z.boolean().optional().default(false)
+        continueBlockedCodexGoals: z.boolean().optional().default(false),
+        blockCodexAppServerLogInserts: z.boolean().optional().default(false)
     })
 });
 
@@ -1687,6 +1688,11 @@ export const zPostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateBody = z.objec
 });
 
 export const zPostWorkspacesByIdDiffReviewsByReviewIdGuideGeneratePath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsByReviewIdGuideCancelPath = z.object({
     id: z.string().min(1),
     reviewId: z.string().min(1)
 });

@@ -1,6 +1,8 @@
+import { Streamdown } from '@cradle/streamdown'
 import type { CodeViewItem, FileDiffMetadata } from '@pierre/diffs'
 import type { CodeViewHandle } from '@pierre/diffs/react'
 import { CodeView } from '@pierre/diffs/react'
+import { useQuery } from '@tanstack/react-query'
 import {
   ActivityIcon,
   AlertCircleIcon,
@@ -14,15 +16,19 @@ import {
   Loader2Icon,
   RotateCcwIcon,
   SparklesIcon,
+  XCircleIcon,
 } from 'lucide-react'
 import type { CSSProperties } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
+import { getChatSessionsBySessionIdMessagesOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { Button } from '~/components/ui/button'
+import type { ChatSessionMessageRow } from '~/features/chat/session/use-chat-session-types'
 import { ProviderModelSelector, RuntimeSelector, useComposerState } from '~/features/composer-toolbar'
 import type { RuntimeKindOption } from '~/features/composer-toolbar/constants'
 import { useNow } from '~/hooks/use-now'
 import { cn } from '~/lib/cn'
+import { STREAMDOWN_RENDER_OPTIONS } from '~/store/streamdown'
 
 import type { CodeViewLineSelection, DiffData, ThreadAnnotation } from '../shared/diff-items'
 import {
@@ -50,7 +56,7 @@ const GUIDE_RUNTIME_OPTIONS: RuntimeKindOption[] = [
 ]
 
 export function GuideView({ workspaceId, repositoryPath, reviewId, onBack }: GuideViewProps) {
-  const { review, isLoading, generateGuideMutation } = useReview({ workspaceId, repositoryPath, reviewId })
+  const { review, isLoading, generateGuideMutation, cancelGuideMutation } = useReview({ workspaceId, repositoryPath, reviewId })
   const [regenerating, setRegenerating] = useState(false)
 
   const handleGenerate = (input: GenerateGuideInput) => {
@@ -120,8 +126,10 @@ export function GuideView({ workspaceId, repositoryPath, reviewId, onBack }: Gui
               review={review}
               force={regenerating}
               pending={generateGuideMutation.isPending}
+              cancelling={cancelGuideMutation.isPending}
               requestError={generateGuideMutation.error}
               onCancel={regenerating ? () => setRegenerating(false) : undefined}
+              onCancelGeneration={() => cancelGuideMutation.mutate()}
               onGenerate={handleGenerate}
             />
           )
@@ -139,15 +147,19 @@ function GuideGenerateGate({
   review,
   force = false,
   pending,
+  cancelling,
   onCancel,
+  onCancelGeneration,
   onGenerate,
   requestError,
 }: {
   review: NonNullable<ReturnType<typeof useReview>['review']>
   force?: boolean
   pending: boolean
+  cancelling: boolean
   requestError: Error | null
   onCancel?: () => void
+  onCancelGeneration: () => void
   onGenerate: (input: GenerateGuideInput) => void
 }) {
   const composer = useComposerState({ context: 'new-chat' })
@@ -231,7 +243,9 @@ function GuideGenerateGate({
           <GuideGenerationStatusPanel
             guide={review.guide}
             requestPending={pending}
+            cancelPending={cancelling}
             requestError={requestError}
+            onCancel={onCancelGeneration}
           />
         )}
 
@@ -281,11 +295,15 @@ function formatElapsed(seconds: number): string {
 function GuideGenerationStatusPanel({
   guide,
   requestPending,
+  cancelPending,
   requestError,
+  onCancel,
 }: {
   guide: NonNullable<ReturnType<typeof useReview>['review']>['guide']
   requestPending: boolean
+  cancelPending: boolean
   requestError: Error | null
+  onCancel: () => void
 }) {
   const active = requestPending || isGuideGenerationActive(guide.status)
   const now = useNow(1_000, active)
@@ -293,6 +311,29 @@ function GuideGenerationStatusPanel({
   const elapsedSeconds = Math.max(0, Math.floor((now - startedAtMs) / 1_000))
   const errorText = requestError?.message ?? guide.errorMessage
   const failed = Boolean(errorText) || guide.status === 'failed'
+  const cancelled = guide.status === 'cancelled'
+  const sessionMessagesOptions = useMemo(
+    () => getChatSessionsBySessionIdMessagesOptions({ path: { sessionId: guide.sessionId ?? '' } }),
+    [guide.sessionId],
+  )
+  const messagesQuery = useQuery<
+    unknown,
+    Error,
+    ChatSessionMessageRow[],
+    ReturnType<typeof getChatSessionsBySessionIdMessagesOptions>['queryKey']
+  >({
+    queryKey: sessionMessagesOptions.queryKey,
+    queryFn: sessionMessagesOptions.queryFn,
+    enabled: Boolean(guide.sessionId),
+    select: data => data as ChatSessionMessageRow[],
+    refetchInterval: active ? 1_500 : false,
+  })
+  const assistantOutput = useMemo(() => {
+    const row = [...(messagesQuery.data ?? [])]
+      .reverse()
+      .find(message => message.role === 'assistant' && !message.parentToolCallId)
+    return row?.content.trim() || null
+  }, [messagesQuery.data])
 
   return (
     <div
@@ -300,19 +341,27 @@ function GuideGenerationStatusPanel({
         'mt-4 rounded-lg px-3 py-3 text-[11px]',
         failed
           ? 'bg-red-500/10 text-red-700 dark:text-red-300'
-          : 'bg-orange-500/10 text-orange-700 dark:text-orange-300',
+          : cancelled
+            ? 'bg-muted text-muted-foreground'
+            : 'bg-orange-500/10 text-orange-700 dark:text-orange-300',
       )}
     >
       <div className="flex items-start gap-2">
         {failed
           ? <AlertCircleIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
-          : active
+          : cancelled
+            ? <XCircleIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
+            : active
             ? <ActivityIcon className="mt-0.5 size-3.5 shrink-0" aria-hidden />
             : <Clock3Icon className="mt-0.5 size-3.5 shrink-0" aria-hidden />}
         <div className="min-w-0 flex-1">
           <div className="flex items-center justify-between gap-3">
             <p className="font-medium">
-              {failed ? 'Generation failed' : requestPending ? 'Starting generation' : 'Generation running'}
+              {failed
+                ? 'Generation failed'
+                : cancelled
+                  ? 'Generation cancelled'
+                  : requestPending ? 'Starting generation' : 'Generation running'}
             </p>
             {active && (
               <span className="shrink-0 tabular-nums text-current/70">
@@ -323,16 +372,18 @@ function GuideGenerationStatusPanel({
           <p className="mt-1 leading-relaxed text-current/80">
             {failed
               ? 'The backend saved the failure so you can adjust the model or retry.'
-              : requestPending
-                ? 'Cradle is checking the diff revision and provider before starting the runtime turn.'
-                : 'The runtime turn is reading changed files with tools and producing the guide artifact in the background.'}
+              : cancelled
+                ? 'The runtime turn was stopped and any late guide artifact will be ignored.'
+                : requestPending
+                  ? 'Cradle is checking the diff revision and provider before starting the runtime turn.'
+                  : 'The runtime turn is reading changed files with tools and producing the guide artifact in the background.'}
           </p>
           {errorText && (
             <p className="mt-2 break-words rounded-md bg-background/70 px-2 py-1.5 font-mono text-[10px] leading-relaxed text-current/90">
               {errorText}
             </p>
           )}
-          {!failed && (
+          {!failed && !cancelled && (
             <div className="mt-3 space-y-1.5">
               <GuideGenerationStep
                 label="Preflight"
@@ -347,6 +398,49 @@ function GuideGenerationStatusPanel({
                 state="pending"
               />
             </div>
+          )}
+          {active && (
+            <div className="mt-3 flex justify-end">
+              <Button
+                type="button"
+                size="sm"
+                variant="outline"
+                className="h-7 gap-1.5 px-2 text-[11px]"
+                onClick={onCancel}
+                disabled={cancelPending}
+              >
+                {cancelPending ? <Loader2Icon className="size-3 animate-spin" /> : <XCircleIcon className="size-3" />}
+                Cancel generation
+              </Button>
+            </div>
+          )}
+          {assistantOutput && (
+            <div className="mt-3 overflow-hidden rounded-md border border-current/15 bg-background/80">
+              <div className="flex items-center justify-between border-b border-current/10 px-2.5 py-1.5">
+                <span className="text-[10px] font-medium uppercase tracking-normal text-current/60">
+                  Model output
+                </span>
+                {guide.modelId && (
+                  <span className="max-w-48 truncate text-[10px] text-current/50">
+                    {guide.modelId}
+                  </span>
+                )}
+              </div>
+              <div className="max-h-64 overflow-y-auto px-2.5 py-2 text-[11px] leading-relaxed text-foreground">
+                <Streamdown
+                  content={assistantOutput}
+                  streaming={active}
+                  animationPreset={STREAMDOWN_RENDER_OPTIONS.animationPreset}
+                  animateMode={STREAMDOWN_RENDER_OPTIONS.animateMode}
+                  showCursor={STREAMDOWN_RENDER_OPTIONS.showCursor}
+                />
+              </div>
+            </div>
+          )}
+          {!assistantOutput && guide.sessionId && (
+            <p className="mt-3 rounded-md border border-current/15 bg-background/70 px-2.5 py-2 text-[10px] leading-relaxed text-current/65">
+              Waiting for the first assistant token from this runtime turn.
+            </p>
           )}
         </div>
       </div>
@@ -430,7 +524,7 @@ function GuideReading({
           </p>
         </header>
 
-        <div className="space-y-12">
+        <div className="space-y-14">
           {steps.map((step, index) => (
             <GuideSection
               key={step.id}
@@ -567,7 +661,7 @@ function GuideSection({
       </div>
 
       {/* File group: collapsed blocks by default; a bounded CodeView mounts only for expanded files. */}
-      <div className="min-h-0 h-[32rem] overflow-y-auto [overflow-anchor:none] space-y-2">
+      <div className="min-h-0 max-h-128 overflow-y-auto [overflow-anchor:none] space-y-2">
         {fileItems.length === 0
           ? (
               <div className="flex h-full items-center justify-center p-4 text-center">

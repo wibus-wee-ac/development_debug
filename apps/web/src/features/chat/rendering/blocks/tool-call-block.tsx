@@ -46,6 +46,7 @@ import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 
 import { projectChatTodos, readTodoCompletion } from '../../capabilities/chat-todo-projection'
+import { readBuiltinToolCallInputPayload } from '../chat-tool-entities'
 import { readTerminalOutputSections } from '../terminal-tool-details'
 import type {
   RenderableToolPart,
@@ -108,6 +109,18 @@ const STATUS_LABELS: Record<ToolState, string> = {
 
 const CODE_TEXT_CLASS = 'font-mono text-[11px] leading-relaxed text-muted-foreground'
 const BACKSLASH_PATTERN = /\\/g
+
+function readApprovalReason(input: unknown, approval?: { reason?: string }): string | null {
+  if (approval?.reason) {
+    return approval.reason
+  }
+  const args = readBuiltinToolCallInputPayload(input)?.args
+  if (!args || typeof args !== 'object' || Array.isArray(args)) {
+    return null
+  }
+  const reason = (args as { reason?: unknown }).reason
+  return typeof reason === 'string' && reason.trim().length > 0 ? reason : null
+}
 
 function isRunning(state: ToolState): boolean {
   return (
@@ -1191,6 +1204,7 @@ export function ToolCallBlock({
   const planImplementationApproval =
     descriptor.kind === 'plan-implementation' && state === 'approval-requested'
   const retainNestedActivity = descriptor.kind === 'subagent' && hasChildren
+  const approvalReason = readApprovalReason(input, approval)
 
   useEffect(() => {
     if (errored && (hasTerminalPanel || hasDiffPanel)) {
@@ -1396,26 +1410,31 @@ export function ToolCallBlock({
 
         {state === 'approval-requested' && approval && onApprovalResponse && (
           <div
-            className="flex items-center justify-end gap-1.5 border-t border-border/60 px-3 py-2"
+            className="flex items-center justify-between gap-3 border-t border-border/60 px-3 py-2"
             data-testid="approval-card"
           >
-            <Button
-              type="button"
-              variant="ghost"
-              size="xs"
-              data-testid="approval-deny-btn"
-              onClick={() => onApprovalResponse({ id: approval.id, approved: false })}
-            >
-              {planImplementationApproval ? 'Dismiss' : 'Deny'}
-            </Button>
-            <Button
-              type="button"
-              size="xs"
-              data-testid="approval-allow-btn"
-              onClick={() => onApprovalResponse({ id: approval.id, approved: true })}
-            >
-              {planImplementationApproval ? 'Yes, implement this plan' : 'Approve'}
-            </Button>
+            <div className="min-w-0 text-xs leading-snug text-muted-foreground">
+              {approvalReason ?? 'Approval required'}
+            </div>
+            <div className="flex shrink-0 items-center gap-1.5">
+              <Button
+                type="button"
+                variant="ghost"
+                size="xs"
+                data-testid="approval-deny-btn"
+                onClick={() => onApprovalResponse({ id: approval.id, approved: false })}
+              >
+                {planImplementationApproval ? 'Dismiss' : 'Deny'}
+              </Button>
+              <Button
+                type="button"
+                size="xs"
+                data-testid="approval-allow-btn"
+                onClick={() => onApprovalResponse({ id: approval.id, approved: true })}
+              >
+                {planImplementationApproval ? 'Yes, implement this plan' : 'Approve'}
+              </Button>
+            </div>
           </div>
         )}
       </div>

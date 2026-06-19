@@ -245,6 +245,11 @@ function groupConsecutiveToolCalls(
       continue
     }
     const uiKind = 'part' in item ? describeToolKind(item.part) : null
+    if ('part' in item && item.part.state === 'approval-requested') {
+      result.push(item)
+      i++
+      continue
+    }
     if (!uiKind || !GROUPABLE_KINDS.has(uiKind)) {
       result.push(item)
       i++
@@ -266,6 +271,9 @@ function groupConsecutiveToolCalls(
         { kind: 'tool-call' }
       >
       const nextKind = 'part' in nextItem ? describeToolKind(nextItem.part) : null
+      if ('part' in nextItem && nextItem.part.state === 'approval-requested') {
+        break
+      }
       if (nextKind !== uiKind) {
         break
       }
