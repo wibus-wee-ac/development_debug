@@ -1,24 +1,24 @@
 import { useQuery } from '@tanstack/react-query'
 import { ActivityIcon, CircleDotIcon, FileDiffIcon, FolderTreeIcon, GitBranchIcon, RssIcon, SlidersHorizontalIcon } from 'lucide-react'
 import { AnimatePresence, LayoutGroup, m } from 'motion/react'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getWorkspacesById } from '~/api-gen/sdk.gen'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
+import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { BrowserAnnotationAdjustmentPanel } from '~/features/browser/browser-annotation-adjustment-panel'
+import { RuntimeSessionPanel } from '~/features/chat/runtime/runtime-session-panel'
+import { useSessionAwaitSummary } from '~/features/chat/session/use-session-await'
 import { ChangesPanel, GitPanel } from '~/features/git'
 import { IssueAsidePanel } from '~/features/kanban/issue-aside-panel'
 import { AwaitPanel } from '~/features/session-await/await-panel'
 import { FileTree } from '~/features/workspace/file-tree'
-import { cn } from '~/lib/cn'
-import type { RuntimeKind } from '~/features/agent-runtime/types'
 import type { Workspace } from '~/features/workspace/types'
+import { cn } from '~/lib/cn'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
-import { RuntimeSessionPanel } from '~/features/chat/runtime/runtime-session-panel'
-import { useSessionAwaitSummary } from '~/features/chat/session/use-session-await'
 
 interface Tab {
   id: string
@@ -94,6 +94,30 @@ const PANEL_SLIDE_VARIANTS = {
     x: direction > 0 ? '-100%' : '100%',
     opacity: 0.96,
   }),
+} as const
+
+const PANEL_INSTANT_VARIANTS = {
+  enter: {
+    x: '0%',
+    opacity: 1,
+  },
+  center: {
+    x: '0%',
+    opacity: 1,
+  },
+  exit: {
+    x: '0%',
+    opacity: 1,
+  },
+} as const
+
+const PANEL_INSTANT_TRANSITION = { duration: 0 } as const
+
+const TAB_INSTANT_LABEL_TRANSITION = {
+  width: PANEL_INSTANT_TRANSITION,
+  opacity: PANEL_INSTANT_TRANSITION,
+  x: PANEL_INSTANT_TRANSITION,
+  filter: PANEL_INSTANT_TRANSITION,
 } as const
 
 interface RightAsideProps {
@@ -230,6 +254,7 @@ export function RightAside({
   const activeTab = useLayoutStore(s => s.asideActiveTab)
   const setActiveTab = useLayoutStore(s => s.setAsideActiveTab)
   const [panelDirection, setPanelDirection] = useState(1)
+  const userInitiatedPanelTabRef = useRef<string | null>(null)
 
   // Derive workspaceId from session
   const { data: sessionMeta } = useQuery({
@@ -281,6 +306,15 @@ export function RightAside({
   const resolvedActiveTab = visibleTabs.some(tab => tab.id === activeTab)
     ? activeTab
     : 'files'
+  const animatePanelTransition = userInitiatedPanelTabRef.current === resolvedActiveTab
+  const tabTransition = animatePanelTransition ? TAB_SPRING : PANEL_INSTANT_TRANSITION
+  const tabLabelTransition = animatePanelTransition
+    ? TAB_LABEL_TRANSITION
+    : TAB_INSTANT_LABEL_TRANSITION
+
+  useEffect(() => {
+    userInitiatedPanelTabRef.current = null
+  }, [resolvedActiveTab])
 
   const activateTab = (tabId: string) => {
     if (tabId === resolvedActiveTab) {
@@ -294,6 +328,7 @@ export function RightAside({
     }
 
     setPanelDirection(nextIndex >= activeIndex ? 1 : -1)
+    userInitiatedPanelTabRef.current = tabId
     setActiveTab(tabId)
   }
 
@@ -322,7 +357,7 @@ export function RightAside({
                   data-testid={`right-aside-tab-${id}`}
                   data-active={isActive ? 'true' : 'false'}
                   initial={false}
-                  transition={TAB_SPRING}
+                  transition={tabTransition}
                   className={cn(
                     'relative z-10 grid h-7 place-items-center overflow-hidden rounded-md px-2 text-xs select-none',
                     'transition-[color] duration-150 ease-out',
@@ -336,7 +371,7 @@ export function RightAside({
                     <m.span
                       layoutId="right-aside-tab-pill"
                       className="absolute inset-0 rounded-md bg-accent"
-                      transition={TAB_SPRING}
+                      transition={tabTransition}
                     />
                   )}
                   <span className="relative flex min-w-0 items-center justify-center">
@@ -348,7 +383,7 @@ export function RightAside({
                         width: isActive ? 'auto' : 0,
                       }}
                       transition={{
-                        width: TAB_LABEL_TRANSITION.width,
+                        width: tabLabelTransition.width,
                       }}
                       className="block overflow-hidden"
                     >
@@ -360,9 +395,9 @@ export function RightAside({
                           filter: isActive ? 'blur(0px)' : 'blur(3px)',
                         }}
                         transition={{
-                          opacity: TAB_LABEL_TRANSITION.opacity,
-                          x: TAB_LABEL_TRANSITION.x,
-                          filter: TAB_LABEL_TRANSITION.filter,
+                          opacity: tabLabelTransition.opacity,
+                          x: tabLabelTransition.x,
+                          filter: tabLabelTransition.filter,
                         }}
                         className="ml-1.5 block whitespace-nowrap text-left will-change-transform"
                       >
@@ -400,11 +435,11 @@ export function RightAside({
           <m.div
             key={resolvedActiveTab}
             custom={panelDirection}
-            variants={PANEL_SLIDE_VARIANTS}
+            variants={animatePanelTransition ? PANEL_SLIDE_VARIANTS : PANEL_INSTANT_VARIANTS}
             initial="enter"
             animate="center"
             exit="exit"
-            transition={PANEL_SLIDE_TRANSITION}
+            transition={animatePanelTransition ? PANEL_SLIDE_TRANSITION : PANEL_INSTANT_TRANSITION}
             className="absolute inset-0 flex flex-col overflow-hidden will-change-transform"
           >
             <RightAsidePanelContent

@@ -1,5 +1,6 @@
 import { Outlet, useLocation, useNavigate, useRouterState } from '@tanstack/react-router'
 import { lazy, Suspense, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useShallow } from 'zustand/react/shallow'
 
 import { useThemeClass } from '~/app-providers'
 import { AppLayout } from '~/components/layout/app-layout'
@@ -12,18 +13,15 @@ import { useGlobalSearchStore } from '~/features/search/global-search-store'
 import { useUnreadSessionIds } from '~/features/workspace/use-session'
 import { isWorkspaceFileShortcutScopeEvent } from '~/features/workspace/workspace-file-shortcuts'
 import { isTearoffWindow, tearoffSessionId } from '~/lib/electron'
-import { installSurfaceResourceLifecycle } from '~/navigation/surface-resource-lifecycle'
-import { installTearoffSessionRestore } from '~/navigation/tearoff-sessions'
 import {
   createRouteSurfaceSyncRouteKey,
   isRouteSurfaceSyncSuppressed,
 } from '~/navigation/route-surface-sync-guard'
-import {
-  layoutSlotIdForSurface,
-  surfaceDraftFromRoute,
-} from '~/navigation/surface-identity'
-import { useSurfaceStore } from '~/navigation/surface-store'
 import { SurfaceActivityProvider } from '~/navigation/surface-activity-context'
+import { layoutSlotIdForSurface, surfaceDraftFromRoute } from '~/navigation/surface-identity'
+import { installSurfaceResourceLifecycle } from '~/navigation/surface-resource-lifecycle'
+import { useSurfaceStore } from '~/navigation/surface-store'
+import { installTearoffSessionRestore } from '~/navigation/tearoff-sessions'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
 const loadGlobalSearchDialog = () =>
@@ -195,20 +193,30 @@ function MainAppRuntime() {
 
   const sidebarInSheet = useSidebarSheetMode()
   const [sidebarSheetOpen, setSidebarSheetOpen] = useState(false)
-  const surfaces = useSurfaceStore(state => state.surfaces)
-  const activeSurfaceId = useSurfaceStore(state => state.activeSurfaceId)
-  const activeSlotId = useMemo(() => {
-    const activeSurface = surfaces.find(surface => surface.id === activeSurfaceId)
-    return layoutSlotIdForSurface(activeSurface)
-  }, [activeSurfaceId, surfaces])
+  const layoutSlotScope = useSurfaceStore(
+    useShallow((state) => {
+      const activeSurface = state.surfaces.find(surface => surface.id === state.activeSurfaceId)
+      const validSlotIds = state.surfaces
+        .map(layoutSlotIdForSurface)
+        .filter((id): id is string => id !== null)
+      return {
+        activeSlotId: layoutSlotIdForSurface(activeSurface),
+        validSurfaceIdsKey: state.surfaces.map(surface => surface.id).join('\0'),
+        validSlotIdsKey: validSlotIds.join('\0'),
+      }
+    }),
+  )
+  const validSurfaceIds = useMemo(
+    () =>
+      layoutSlotScope.validSurfaceIdsKey ? layoutSlotScope.validSurfaceIdsKey.split('\0') : [],
+    [layoutSlotScope.validSurfaceIdsKey],
+  )
   const validSlotIds = useMemo(
-    () => surfaces
-      .map(layoutSlotIdForSurface)
-      .filter((id): id is string => id !== null),
-    [surfaces],
+    () => (layoutSlotScope.validSlotIdsKey ? layoutSlotScope.validSlotIdsKey.split('\0') : []),
+    [layoutSlotScope.validSlotIdsKey],
   )
 
-  useSyncLayoutSlotScope(activeSlotId, validSlotIds)
+  useSyncLayoutSlotScope(layoutSlotScope.activeSlotId, validSlotIds)
 
   const openGlobalSearch = useCallback(() => {
     void loadGlobalSearchDialog()
@@ -253,6 +261,7 @@ function MainAppRuntime() {
         sidebarSheetOpen={sidebarSheetOpen}
         onOpenSidebarSheet={openSidebarSheet}
         onToggleSidebarSheet={toggleSidebarSheet}
+        validChromeOwnerIds={validSurfaceIds}
       >
         <div className="relative h-full w-full overflow-hidden">
           <SurfaceActivityProvider active>

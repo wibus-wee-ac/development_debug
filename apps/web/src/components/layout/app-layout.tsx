@@ -1,26 +1,32 @@
 import type { AnimationPlaybackControls, Transition } from 'motion/react'
 import { animate, m, useMotionValue } from 'motion/react'
 import type { ReactNode } from 'react'
-import { Activity, lazy, memo, Suspense, useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
+import {
+  Activity,
+  lazy,
+  memo,
+  Suspense,
+  useCallback,
+  useEffect,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react'
 import { useShallow } from 'zustand/react/shallow'
 
 import { AppFooter } from '~/components/layout/app-footer'
 import { AppHeader } from '~/components/layout/app-header'
-import { ChromeSideSheet } from '~/components/layout/chrome-side-sheet'
 import { DevBottomBar } from '~/components/layout/dev-bottom-bar'
 import { deriveActiveLayoutContract } from '~/components/layout/layout-contract'
 import {
   LayoutGeometryProvider,
   useLayoutGeometry,
 } from '~/components/layout/layout-geometry-context'
-import { CENTER_COLUMN_EXPANDED_SCALE, CENTER_COLUMN_EXPANDED_Y } from '~/components/layout/layout-motion'
 import {
-  // CHROME_CENTER_MIN_WIDTH,
-  // CHROME_COLLAPSED_SIDEBAR_WIDTH,
-  // CHROME_RESPONSIVE_GUTTER_WIDTH,
-  useViewportWidth,
-} from '~/components/layout/layout-responsive'
+  CENTER_COLUMN_EXPANDED_SCALE,
+  CENTER_COLUMN_EXPANDED_Y,
+} from '~/components/layout/layout-motion'
 import { ResizeHandle } from '~/components/layout/resize-handle'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
 import { useJarvisUiStore } from '~/features/system-agent/jarvis-ui-store'
@@ -66,16 +72,22 @@ function useAnimatedSize(initialSize: number) {
     animationRef.current = null
   }, [])
 
-  const setSize = useCallback((nextSize: number) => {
-    stopAnimation()
-    size.set(nextSize)
-  }, [size, stopAnimation])
+  const setSize = useCallback(
+    (nextSize: number) => {
+      stopAnimation()
+      size.set(nextSize)
+    },
+    [size, stopAnimation],
+  )
 
-  const animateSize = useCallback((nextSize: number, transition: Transition) => {
-    stopAnimation()
-    animationRef.current = animate(size, nextSize, transition)
-    return animationRef.current
-  }, [size, stopAnimation])
+  const animateSize = useCallback(
+    (nextSize: number, transition: Transition) => {
+      stopAnimation()
+      animationRef.current = animate(size, nextSize, transition)
+      return animationRef.current
+    },
+    [size, stopAnimation],
+  )
 
   useEffect(
     () => () => {
@@ -84,7 +96,10 @@ function useAnimatedSize(initialSize: number) {
     [stopAnimation],
   )
 
-  return useMemo(() => ({ size, setSize, animateSize, stopAnimation }), [animateSize, setSize, size, stopAnimation])
+  return useMemo(
+    () => ({ size, setSize, animateSize, stopAnimation }),
+    [animateSize, setSize, size, stopAnimation],
+  )
 }
 
 function parseBrowserTabRequest(payload: unknown): string | undefined {
@@ -218,6 +233,8 @@ interface AppLayoutProps {
   onOpenSidebarSheet?: () => void
   /** Toggles the transient left sidebar sheet. */
   onToggleSidebarSheet?: () => void
+  /** Surface-owned chrome cache scope. Owners not listed here are released. */
+  validChromeOwnerIds?: readonly string[]
 }
 
 export function AppLayout({
@@ -231,6 +248,7 @@ export function AppLayout({
   sidebarSheetOpen = false,
   onOpenSidebarSheet,
   onToggleSidebarSheet,
+  validChromeOwnerIds,
 }: AppLayoutProps) {
   return (
     <LayoutGeometryProvider>
@@ -244,10 +262,180 @@ export function AppLayout({
         sidebarSheetOpen={sidebarSheetOpen}
         onOpenSidebarSheet={onOpenSidebarSheet}
         onToggleSidebarSheet={onToggleSidebarSheet}
+        validChromeOwnerIds={validChromeOwnerIds}
       >
         {children}
       </AppLayoutContent>
     </LayoutGeometryProvider>
+  )
+}
+
+function ownerIsInScope(ownerId: string, validOwnerIds: readonly string[] | undefined): boolean {
+  return !validOwnerIds || validOwnerIds.includes(ownerId)
+}
+
+interface BrowserPanelDescriptor {
+  ownerId: string
+  activeSessionId: string | null
+  activeSessionTitle: string | null
+  terminalCwd: string | null
+}
+
+function areBrowserPanelDescriptorsEqual(
+  left: BrowserPanelDescriptor,
+  right: BrowserPanelDescriptor,
+): boolean {
+  return (
+    left.ownerId === right.ownerId
+    && left.activeSessionId === right.activeSessionId
+    && left.activeSessionTitle === right.activeSessionTitle
+    && left.terminalCwd === right.terminalCwd
+  )
+}
+
+function RetainedBrowserPanels({
+  active,
+  activeSessionId,
+  activeSessionTitle,
+  nativeBoundsPaused,
+  onCloseLastTab,
+  ownerId,
+  terminalCwd,
+  validOwnerIds,
+  visible,
+}: {
+  active: boolean
+  activeSessionId: string | null
+  activeSessionTitle: string | null
+  nativeBoundsPaused: boolean
+  onCloseLastTab: (ownerId: string) => void
+  ownerId: string | null
+  terminalCwd: string | null
+  validOwnerIds?: readonly string[]
+  visible: boolean
+}) {
+  const validOwnerIdsKey = validOwnerIds?.join('\0') ?? null
+  const [descriptors, setDescriptors] = useState<BrowserPanelDescriptor[]>([])
+
+  useLayoutEffect(() => {
+    setDescriptors((current) => {
+      const next = current.filter(descriptor => ownerIsInScope(descriptor.ownerId, validOwnerIds))
+      if (active && ownerId) {
+        const descriptor: BrowserPanelDescriptor = {
+          ownerId,
+          activeSessionId,
+          activeSessionTitle,
+          terminalCwd,
+        }
+        const index = next.findIndex(item => item.ownerId === ownerId)
+        if (index === -1) {
+          next.push(descriptor)
+        }
+        else if (!areBrowserPanelDescriptorsEqual(next[index]!, descriptor)) {
+          next[index] = descriptor
+        }
+      }
+      return next.length === current.length
+        && next.every((descriptor, index) => descriptor === current[index])
+        ? current
+        : next
+    })
+  }, [
+    active,
+    activeSessionId,
+    activeSessionTitle,
+    ownerId,
+    terminalCwd,
+    validOwnerIds,
+    validOwnerIdsKey,
+  ])
+
+  return (
+    <>
+      {descriptors.map((descriptor) => {
+        const panelVisible = visible && descriptor.ownerId === ownerId
+        return (
+          <Activity
+            key={descriptor.ownerId}
+            mode={panelVisible ? 'visible' : 'hidden'}
+            name={`browser-panel:${descriptor.ownerId}`}
+          >
+            <Suspense fallback={null}>
+              <LazyBrowserPanel
+                ownerId={descriptor.ownerId}
+                activeSessionId={descriptor.activeSessionId}
+                activeSessionTitle={descriptor.activeSessionTitle}
+                terminalCwd={descriptor.terminalCwd}
+                nativeBoundsPaused={nativeBoundsPaused}
+                nativeSurfaceVisible={panelVisible}
+                onCloseLastTab={onCloseLastTab}
+              />
+            </Suspense>
+          </Activity>
+        )
+      })}
+    </>
+  )
+}
+
+interface BottomPanelDescriptor {
+  ownerId: string
+  panel: ReactNode
+}
+
+function RetainedBottomPanels({
+  active,
+  ownerId,
+  panel,
+  validOwnerIds,
+  visible,
+}: {
+  active: boolean
+  ownerId: string | null
+  panel: ReactNode | undefined
+  validOwnerIds?: readonly string[]
+  visible: boolean
+}) {
+  const validOwnerIdsKey = validOwnerIds?.join('\0') ?? null
+  const [descriptors, setDescriptors] = useState<BottomPanelDescriptor[]>([])
+
+  useLayoutEffect(() => {
+    setDescriptors((current) => {
+      const next = current.filter(descriptor => ownerIsInScope(descriptor.ownerId, validOwnerIds))
+      if (active && ownerId && panel) {
+        const descriptor: BottomPanelDescriptor = { ownerId, panel }
+        const index = next.findIndex(item => item.ownerId === ownerId)
+        if (index === -1) {
+          next.push(descriptor)
+        }
+        else if (!Object.is(next[index]!.panel, panel)) {
+          next[index] = descriptor
+        }
+      }
+      return next.length === current.length
+        && next.every((descriptor, index) => descriptor === current[index])
+        ? current
+        : next
+    })
+  }, [active, ownerId, panel, validOwnerIds, validOwnerIdsKey])
+
+  return (
+    <>
+      {descriptors.map((descriptor) => {
+        const panelVisible = visible && descriptor.ownerId === ownerId
+        return (
+          <Activity
+            key={descriptor.ownerId}
+            mode={panelVisible ? 'visible' : 'hidden'}
+            name={`bottom-panel:${descriptor.ownerId}`}
+          >
+            <div className="h-full" aria-hidden={panelVisible ? undefined : 'true'}>
+              {descriptor.panel}
+            </div>
+          </Activity>
+        )
+      })}
+    </>
   )
 }
 
@@ -262,10 +450,9 @@ function AppLayoutContent({
   sidebarSheetOpen = false,
   onOpenSidebarSheet,
   onToggleSidebarSheet,
+  validChromeOwnerIds,
 }: AppLayoutProps) {
-  const { t } = useTranslation('chrome')
   const [dragging, setDragging] = useState<string | null>(null)
-  const [rightAsideSheetOpen, setRightAsideSheetOpen] = useState(false)
   const [browserNativeBoundsPaused, setBrowserNativeBoundsPaused] = useState(false)
   const [browserPanelClosing, setBrowserPanelClosing] = useState(false)
   const mainElementRef = useRef<HTMLElement | null>(null)
@@ -304,16 +491,15 @@ function AppLayoutContent({
   )
   const activeTab = activeSurface
     ? {
-        type: activeSurface.kind === 'workspace'
-          ? 'workspace-detail'
-          : activeSurface.kind,
+        type: activeSurface.kind === 'workspace' ? 'workspace-detail' : activeSurface.kind,
         label: activeSurface.title,
         params: activeSurface.route.params ?? {},
       }
     : undefined
   const activeSessionId = chatSessionIdForSurface(activeSurface)
   const activeSessionTitle = activeTab?.type === 'chat' ? activeTab.label : null
-  const activeBrowserPanelOwnerId = activeSurface?.id ?? null
+  const activeChromeOwnerId = activeSurface?.id ?? null
+  const activeBrowserPanelOwnerId = activeChromeOwnerId
   const activeSessionLayout = useSessionLayoutStore(state =>
     activeSessionId ? state.sessions[activeSessionId] : undefined)
   const layoutContract = deriveActiveLayoutContract({
@@ -344,9 +530,6 @@ function AppLayoutContent({
   const bottomPanelHeight = useLayoutStore(state => state.bottomPanelHeight)
   const setBottomPanelHeight = useLayoutStore(state => state.setBottomPanelHeight)
   const bottomPanelOpen = useLayoutStore(state => state.bottomPanelOpen)
-  const sidebarWidth = useLayoutStore(state => state.sidebarWidth)
-  const sidebarCollapsed = useLayoutStore(state => state.sidebarCollapsed)
-  const asideWidth = useLayoutStore(state => state.asideWidth)
   const browserPanelOpen = useLayoutStore(state =>
     activeBrowserPanelOwnerId
       ? (state.browserPanelOpenByOwnerId[activeBrowserPanelOwnerId] ?? false)
@@ -358,13 +541,12 @@ function AppLayoutContent({
   const isSettings = activeSurface?.kind === 'settings'
   const canUseRightAside
     = !isSettings && !!resolvedHasAside && (!!resolvedAsideSessionId || !!resolvedAsideWorkspaceId)
-  const viewportWidth = useViewportWidth()
-  // const rightAsideInSheet = canUseRightAside
-    // && viewportWidth < dockedSidebarWidth + asideWidth + CHROME_CENTER_MIN_WIDTH + CHROME_RESPONSIVE_GUTTER_WIDTH
   const resolvedBrowserPanelOpen = !isSettings && !!resolvedHasBrowserPanel && browserPanelOpen
   const browserPanelMounted = !!resolvedHasBrowserPanel
   const browserPanelVisible = browserPanelMounted && resolvedBrowserPanelOpen
-  const browserPanelWidth = useAnimatedSize(browserPanelVisible ? browserPanelRatio * readMainWidth() : 0)
+  const browserPanelWidth = useAnimatedSize(
+    browserPanelVisible ? browserPanelRatio * readMainWidth() : 0,
+  )
   useLayoutEffect(() => {
     const previousBrowserPanelVisible = previousBrowserPanelVisibleRef.current
     previousBrowserPanelVisibleRef.current = browserPanelVisible
@@ -384,9 +566,12 @@ function AppLayoutContent({
       sessionTitle: activeSessionTitle,
     }
   }, [activeSessionId, activeSessionTitle])
-  const handleCloseLastBrowserPanelTab = useCallback((ownerId: string) => {
-    setBrowserPanelOpen(false, ownerId)
-  }, [setBrowserPanelOpen])
+  const handleCloseLastBrowserPanelTab = useCallback(
+    (ownerId: string) => {
+      setBrowserPanelOpen(false, ownerId)
+    },
+    [setBrowserPanelOpen],
+  )
   const clearBrowserNativeBoundsResumeTimer = useCallback(() => {
     if (browserNativeBoundsResumeTimerRef.current === null) {
       return
@@ -405,29 +590,38 @@ function AppLayoutContent({
     clearBrowserNativeBoundsResumeTimer()
     setBrowserNativeBoundsPaused(false)
   }, [clearBrowserNativeBoundsResumeTimer])
-  const pauseBrowserNativeBoundsForLayout = useCallback((force = false) => {
-    if (!force && !browserPanelVisible) {
-      return
-    }
-    clearBrowserNativeBoundsResumeTimer()
-    setBrowserNativeBoundsPaused(true)
-    browserNativeBoundsResumeTimerRef.current = window.setTimeout(() => {
-      browserNativeBoundsResumeTimerRef.current = null
-      setBrowserNativeBoundsPaused(false)
-    }, BROWSER_NATIVE_BOUNDS_SETTLE_MS)
-  }, [browserPanelVisible, clearBrowserNativeBoundsResumeTimer])
-  const handleBrowserPanelResize = useCallback((px: number) => {
-    browserPanelWidth.setSize(px)
-  }, [browserPanelWidth])
-  const handleBrowserPanelResizeEnd = useCallback((px: number) => {
-    const mainWidth = readMainWidth()
-    const ratio = Math.max(0.2, Math.min(0.7, px / mainWidth))
-    browserPanelWidthAnimationIdRef.current += 1
-    browserPanelWidthAnimatingRef.current = false
-    browserPanelWidth.setSize(px)
-    setBrowserPanelRatio(ratio)
-    updateDragging(null)
-  }, [browserPanelWidth, readMainWidth, setBrowserPanelRatio, updateDragging])
+  const pauseBrowserNativeBoundsForLayout = useCallback(
+    (force = false) => {
+      if (!force && !browserPanelVisible) {
+        return
+      }
+      clearBrowserNativeBoundsResumeTimer()
+      setBrowserNativeBoundsPaused(true)
+      browserNativeBoundsResumeTimerRef.current = window.setTimeout(() => {
+        browserNativeBoundsResumeTimerRef.current = null
+        setBrowserNativeBoundsPaused(false)
+      }, BROWSER_NATIVE_BOUNDS_SETTLE_MS)
+    },
+    [browserPanelVisible, clearBrowserNativeBoundsResumeTimer],
+  )
+  const handleBrowserPanelResize = useCallback(
+    (px: number) => {
+      browserPanelWidth.setSize(px)
+    },
+    [browserPanelWidth],
+  )
+  const handleBrowserPanelResizeEnd = useCallback(
+    (px: number) => {
+      const mainWidth = readMainWidth()
+      const ratio = Math.max(0.2, Math.min(0.7, px / mainWidth))
+      browserPanelWidthAnimationIdRef.current += 1
+      browserPanelWidthAnimatingRef.current = false
+      browserPanelWidth.setSize(px)
+      setBrowserPanelRatio(ratio)
+      updateDragging(null)
+    },
+    [browserPanelWidth, readMainWidth, setBrowserPanelRatio, updateDragging],
+  )
   const handleBrowserPanelDragStart = useCallback(() => {
     browserPanelWidthAnimationIdRef.current += 1
     browserPanelWidthAnimatingRef.current = false
@@ -468,16 +662,18 @@ function AppLayoutContent({
     pauseBrowserNativeBoundsForLayout(true)
 
     const controls = browserPanelWidth.animateSize(nextWidth, SPRING)
-    void controls.finished.then(() => {
-      if (browserPanelWidthAnimationIdRef.current !== animationId) {
-        return
-      }
-      browserPanelWidthAnimatingRef.current = false
-      if (!browserPanelVisible) {
-        setBrowserPanelClosing(false)
-      }
-      resumeBrowserNativeBounds()
-    }).catch(() => { })
+    void controls.finished
+      .then(() => {
+        if (browserPanelWidthAnimationIdRef.current !== animationId) {
+          return
+        }
+        browserPanelWidthAnimatingRef.current = false
+        if (!browserPanelVisible) {
+          setBrowserPanelClosing(false)
+        }
+        resumeBrowserNativeBounds()
+      })
+      .catch(() => {})
   }, [
     browserPanelRatio,
     browserPanelVisible,
@@ -564,17 +760,11 @@ function AppLayoutContent({
     }
   }, [canUseRightAside])
 
-  useShortcut('toggle-zen-sidebars', { meta: true, key: '.', allowInEditable: true }, handleToggleZenSidebars)
-
-  const handleToggleRightAsideSheet = useCallback(() => {
-    setRightAsideSheetOpen(open => !open)
-  }, [])
-
-  // useEffect(() => {
-    // if (!rightAsideInSheet || !canUseRightAside) {
-      // setRightAsideSheetOpen(false)
-    // }
-  // }, [canUseRightAside, rightAsideInSheet])
+  useShortcut(
+    'toggle-zen-sidebars',
+    { meta: true, key: '.', allowInEditable: true },
+    handleToggleZenSidebars,
+  )
 
   useEffect(() => {
     useBrowserPanelStore.getState().setActiveOwner(activeBrowserPanelOwnerId)
@@ -608,8 +798,6 @@ function AppLayoutContent({
         sidebarSheetOpen={sidebarSheetOpen}
         onOpenSidebarSheet={onOpenSidebarSheet}
         onToggleSidebarSheet={onToggleSidebarSheet}
-        asideSheetOpen={rightAsideSheetOpen}
-        onToggleAsideSheet={handleToggleRightAsideSheet}
       />
 
       {/* ── Content area ───────────────────────────────────────────────── */}
@@ -656,23 +844,17 @@ function AppLayoutContent({
               data-testid="app-layout-browser-panel"
               data-panel-open={browserPanelVisible ? 'true' : 'false'}
             >
-              {browserPanelMounted && (
-                <Activity
-                  mode={browserPanelActivityVisible ? 'visible' : 'hidden'}
-                  name="browser-panel"
-                >
-                  <Suspense fallback={null}>
-                    <LazyBrowserPanel
-                      ownerId={activeBrowserPanelOwnerId}
-                      activeSessionId={activeSessionId}
-                      activeSessionTitle={activeSessionTitle}
-                      terminalCwd={resolvedAsideWorkspacePath}
-                      nativeBoundsPaused={browserPanelNativeBoundsPaused}
-                      onCloseLastTab={handleCloseLastBrowserPanelTab}
-                    />
-                  </Suspense>
-                </Activity>
-              )}
+              <RetainedBrowserPanels
+                active={browserPanelMounted}
+                ownerId={activeBrowserPanelOwnerId}
+                activeSessionId={activeSessionId}
+                activeSessionTitle={activeSessionTitle}
+                terminalCwd={resolvedAsideWorkspacePath}
+                nativeBoundsPaused={browserPanelNativeBoundsPaused}
+                onCloseLastTab={handleCloseLastBrowserPanelTab}
+                validOwnerIds={validChromeOwnerIds}
+                visible={browserPanelActivityVisible}
+              />
             </m.div>
           </main>
 
@@ -690,38 +872,45 @@ function AppLayoutContent({
               className="bg-background"
             />
           )}
-          {/* Bottom panel — always mounted to preserve xterm state */}
-          {!isSettings && resolvedHasPanel && (
-            <m.div
-              initial={{
-                height: bottomPanelOpen ? bottomPanelHeight : 0,
-                opacity: bottomPanelOpen ? 1 : 0,
-              }}
-              animate={{
-                height: bottomPanelOpen ? bottomPanelHeight : 0,
-                opacity: bottomPanelOpen ? 1 : 0,
-              }}
-              transition={dragging === 'panel' ? INSTANT : SPRING}
-              className="bg-background border-t border-border overflow-hidden shrink-0"
-              data-testid="app-layout-bottom-panel"
-              data-panel-open={bottomPanelOpen ? 'true' : 'false'}
-            >
-              <div style={{ height: bottomPanelHeight }}>{resolvedPanel}</div>
-            </m.div>
-          )}
+          <m.div
+            initial={{
+              height: !isSettings && resolvedHasPanel && bottomPanelOpen ? bottomPanelHeight : 0,
+              opacity: !isSettings && resolvedHasPanel && bottomPanelOpen ? 1 : 0,
+            }}
+            animate={{
+              height: !isSettings && resolvedHasPanel && bottomPanelOpen ? bottomPanelHeight : 0,
+              opacity: !isSettings && resolvedHasPanel && bottomPanelOpen ? 1 : 0,
+            }}
+            transition={dragging === 'panel' ? INSTANT : SPRING}
+            className={cn(
+              'bg-background overflow-hidden shrink-0',
+              !isSettings && resolvedHasPanel && 'border-t border-border',
+            )}
+            data-testid="app-layout-bottom-panel"
+            data-panel-open={!isSettings && resolvedHasPanel && bottomPanelOpen ? 'true' : 'false'}
+          >
+            <div style={{ height: bottomPanelHeight }}>
+              <RetainedBottomPanels
+                active={!isSettings && !!resolvedHasPanel}
+                ownerId={activeChromeOwnerId}
+                panel={resolvedPanel}
+                validOwnerIds={validChromeOwnerIds}
+                visible={!isSettings && !!resolvedHasPanel && bottomPanelOpen}
+              />
+            </div>
+          </m.div>
         </m.div>
 
         {/* Right Aside — layout-owned, independent of tab lifecycle */}
-        {canUseRightAside && (
-          <AppRightAside
-            sessionId={resolvedAsideSessionId}
-            workspaceId={resolvedAsideWorkspaceId}
-            workspaceName={resolvedAsideWorkspaceName}
-            workspacePath={resolvedAsideWorkspacePath}
-            onResizeStart={handleAsideLayoutResizeStart}
-            onResizeEnd={handleAsideLayoutResizeEnd}
-          />
-        )}
+        <AppRightAside
+          active={!isSettings}
+          sessionId={resolvedAsideSessionId}
+          workspaceId={resolvedAsideWorkspaceId}
+          workspaceName={resolvedAsideWorkspaceName}
+          workspacePath={resolvedAsideWorkspacePath}
+          onResizeStart={handleAsideLayoutResizeStart}
+          onResizeEnd={handleAsideLayoutResizeEnd}
+        />
       </div>
 
       {/* Footer */}
@@ -732,6 +921,7 @@ function AppLayoutContent({
 }
 
 interface AppRightAsideProps {
+  active: boolean
   sessionId?: string | null
   workspaceId?: string | null
   workspaceName?: string | null
@@ -740,87 +930,78 @@ interface AppRightAsideProps {
   onResizeEnd?: () => void
 }
 
-const AppRightAside = memo(({
-  sessionId,
-  workspaceId,
-  workspaceName,
-  workspacePath,
-  onResizeStart,
-  onResizeEnd,
-}: AppRightAsideProps) => {
-  const asideWidth = useLayoutStore(state => state.asideWidth)
-  const setAsideWidth = useLayoutStore(state => state.setAsideWidth)
-  const asideOpen = useLayoutStore(state => state.asideOpen)
-  const asideMotionWidth = useAnimatedSize(asideOpen ? asideWidth : 0)
-  const [asideContentMounted, setAsideContentMounted] = useState(asideOpen)
-  const asideAnimationIdRef = useRef(0)
-  const shouldRenderAsideContent = asideOpen || asideContentMounted
+const AppRightAside = memo(
+  ({
+    active,
+    sessionId,
+    workspaceId,
+    workspaceName,
+    workspacePath,
+    onResizeStart,
+    onResizeEnd,
+  }: AppRightAsideProps) => {
+    const asideWidth = useLayoutStore(state => state.asideWidth)
+    const setAsideWidth = useLayoutStore(state => state.setAsideWidth)
+    const asideOpen = useLayoutStore(state => state.asideOpen)
+    const asideVisible = active && asideOpen
+    const asideMotionWidth = useAnimatedSize(asideVisible ? asideWidth : 0)
+    const asideAnimationIdRef = useRef(0)
 
-  const handleAsideResize = useCallback((width: number) => {
-    asideMotionWidth.setSize(width)
-  }, [asideMotionWidth])
-  const handleAsideResizeStart = useCallback(() => {
-    asideMotionWidth.setSize(asideMotionWidth.size.get())
-    onResizeStart?.()
-  }, [asideMotionWidth, onResizeStart])
-  const handleAsideResizeEnd = useCallback((width: number) => {
-    asideMotionWidth.setSize(width)
-    setAsideWidth(width)
-    onResizeEnd?.()
-  }, [asideMotionWidth, onResizeEnd, setAsideWidth])
+    const handleAsideResize = useCallback(
+      (width: number) => {
+        asideMotionWidth.setSize(width)
+      },
+      [asideMotionWidth],
+    )
+    const handleAsideResizeStart = useCallback(() => {
+      asideMotionWidth.setSize(asideMotionWidth.size.get())
+      onResizeStart?.()
+    }, [asideMotionWidth, onResizeStart])
+    const handleAsideResizeEnd = useCallback(
+      (width: number) => {
+        asideMotionWidth.setSize(width)
+        setAsideWidth(width)
+        onResizeEnd?.()
+      },
+      [asideMotionWidth, onResizeEnd, setAsideWidth],
+    )
 
-  useEffect(() => {
-    const nextWidth = asideOpen ? asideWidth : 0
-    if (asideOpen) {
-      setAsideContentMounted(true)
-    }
-    if (Math.abs(asideMotionWidth.size.get() - nextWidth) < 0.5) {
-      if (!asideOpen) {
-        setAsideContentMounted(false)
+    useEffect(() => {
+      const nextWidth = asideVisible ? asideWidth : 0
+      if (Math.abs(asideMotionWidth.size.get() - nextWidth) < 0.5) {
+        return
       }
-      return
-    }
-    const animationId = asideAnimationIdRef.current + 1
-    asideAnimationIdRef.current = animationId
-    const controls = asideMotionWidth.animateSize(nextWidth, SPRING)
-    if (!asideOpen) {
-      void controls.finished.then(() => {
-        if (asideAnimationIdRef.current === animationId) {
-          setAsideContentMounted(false)
-        }
-      }).catch(() => { })
-    }
-  }, [asideMotionWidth, asideOpen, asideWidth])
+      const animationId = asideAnimationIdRef.current + 1
+      asideAnimationIdRef.current = animationId
+      const controls = asideMotionWidth.animateSize(nextWidth, SPRING)
+      void controls.finished.catch(() => undefined)
+    }, [asideMotionWidth, asideVisible, asideWidth])
 
-  return (
-    <>
-      {asideOpen && (
-        <ResizeHandle
-          direction="horizontal"
-          value={() => asideMotionWidth.size.get()}
-          onChange={handleAsideResize}
-          onDragStart={handleAsideResizeStart}
-          onChangeEnd={handleAsideResizeEnd}
-          min={ASIDE.min}
-          max={ASIDE.max}
-          inverted
-        />
-      )}
-      <m.aside
-        initial={false}
-        animate={{ opacity: asideOpen ? 1 : 0 }}
-        transition={SPRING}
-        style={{ width: asideMotionWidth.size }}
-        className="flex shrink-0 overflow-hidden bg-sidebar"
-        data-testid="app-layout-right-aside"
-        data-aside-open={asideOpen ? 'true' : 'false'}
-        aria-hidden={asideOpen ? undefined : 'true'}
-      >
-        <m.div
-          className="flex flex-col flex-1 overflow-hidden"
-          style={{ width: asideWidth }}
+    return (
+      <>
+        {asideVisible && (
+          <ResizeHandle
+            direction="horizontal"
+            value={() => asideMotionWidth.size.get()}
+            onChange={handleAsideResize}
+            onDragStart={handleAsideResizeStart}
+            onChangeEnd={handleAsideResizeEnd}
+            min={ASIDE.min}
+            max={ASIDE.max}
+            inverted
+          />
+        )}
+        <m.aside
+          initial={false}
+          animate={{ opacity: asideVisible ? 1 : 0 }}
+          transition={SPRING}
+          style={{ width: asideMotionWidth.size }}
+          className="flex shrink-0 overflow-hidden bg-sidebar"
+          data-testid="app-layout-right-aside"
+          data-aside-open={asideVisible ? 'true' : 'false'}
+          aria-hidden={asideVisible ? undefined : 'true'}
         >
-          {shouldRenderAsideContent && (
+          <m.div className="flex flex-col flex-1 overflow-hidden" style={{ width: asideWidth }}>
             <Suspense fallback={null}>
               <MemoizedRightAside
                 sessionId={sessionId}
@@ -829,10 +1010,10 @@ const AppRightAside = memo(({
                 workspacePath={workspacePath}
               />
             </Suspense>
-          )}
-        </m.div>
-      </m.aside>
-    </>
-  )
-})
+          </m.div>
+        </m.aside>
+      </>
+    )
+  },
+)
 AppRightAside.displayName = 'AppRightAside'

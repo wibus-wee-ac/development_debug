@@ -3,7 +3,7 @@ import { createJSONStorage, persist } from 'zustand/middleware'
 
 import { isTearoffWindow } from '~/lib/electron'
 
-import type { AppSurface, SurfaceDraft } from './surface-identity'
+import type { AppSurface, SurfaceDraft, SurfaceRoute } from './surface-identity'
 import { HOME_SURFACE, HOME_SURFACE_ID, sortSurfaces } from './surface-identity'
 
 const SURFACE_STORAGE_KEY = 'cradle:surfaces:v1'
@@ -44,38 +44,81 @@ function normalizeSurfaces(surfaces: readonly AppSurface[]): AppSurface[] {
   }))
 }
 
-function appendOrUpdateSurface(surfaces: readonly AppSurface[], surface: SurfaceDraft): AppSurface[] {
-  const currentSurfaces = normalizeSurfaces(surfaces)
-  const existing = currentSurfaces.find(item => item.id === surface.id)
+function routeRecordsEqual(
+  left: Record<string, string | undefined> | undefined,
+  right: Record<string, string | undefined> | undefined,
+): boolean {
+  if (left === right) {
+    return true
+  }
+  if (!left || !right) {
+    return false
+  }
+
+  const leftKeys = Object.keys(left)
+  const rightKeys = Object.keys(right)
+  return leftKeys.length === rightKeys.length && leftKeys.every(key => left[key] === right[key])
+}
+
+function routesEqual(left: SurfaceRoute, right: SurfaceRoute): boolean {
+  return (
+    left.to === right.to
+    && routeRecordsEqual(left.params, right.params)
+    && routeRecordsEqual(left.search, right.search)
+  )
+}
+
+function surfaceMatchesDraft(existing: AppSurface, surface: SurfaceDraft): boolean {
+  return (
+    existing.kind === surface.kind
+    && existing.title === (existing.title || surface.title)
+    && routesEqual(existing.route, surface.route)
+    && existing.closable === surface.closable
+  )
+}
+
+function appendOrUpdateSurface(
+  surfaces: readonly AppSurface[],
+  surface: SurfaceDraft,
+): AppSurface[] {
+  const existing = surfaces.find(item => item.id === surface.id)
   if (!existing) {
     return normalizeSurfaces([
-      ...currentSurfaces,
+      ...surfaces,
       {
         ...surface,
-        order: currentSurfaces.length,
+        order: surfaces.length,
       },
     ])
   }
 
-  return normalizeSurfaces(currentSurfaces.map(item => item.id === surface.id
-    ? {
-        ...item,
-        kind: surface.kind,
-        title: item.title || surface.title,
-        route: surface.route,
-        closable: surface.closable,
-      }
-    : item))
+  if (surfaceMatchesDraft(existing, surface)) {
+    return surfaces as AppSurface[]
+  }
+
+  return normalizeSurfaces(
+    surfaces.map(item =>
+      item.id === surface.id
+        ? {
+            ...item,
+            kind: surface.kind,
+            title: item.title || surface.title,
+            route: surface.route,
+            closable: surface.closable,
+          }
+        : item),
+  )
 }
 
 function mergeSurface(existing: AppSurface, surface: SurfaceDraft): AppSurface {
-  return {
+  const merged = {
     ...existing,
     kind: surface.kind,
     title: existing.title || surface.title,
     route: surface.route,
     closable: surface.closable,
   }
+  return surfaceMatchesDraft(existing, surface) ? existing : merged
 }
 
 function replaceActiveSurface(
@@ -83,25 +126,39 @@ function replaceActiveSurface(
   activeSurfaceId: string | null,
   surface: SurfaceDraft,
 ): AppSurface[] {
-  const currentSurfaces = normalizeSurfaces(surfaces)
-  const activeSurface = currentSurfaces.find(item => item.id === activeSurfaceId)
+  const activeSurface = surfaces.find(item => item.id === activeSurfaceId)
   if (!activeSurface || !activeSurface.closable) {
-    return appendOrUpdateSurface(currentSurfaces, surface)
+    return appendOrUpdateSurface(surfaces, surface)
   }
 
-  const existingTarget = currentSurfaces.find(item => item.id === surface.id)
+  const existingTarget = surfaces.find(item => item.id === surface.id)
   if (existingTarget) {
-    return normalizeSurfaces(currentSurfaces
-      .filter(item => item.id !== activeSurface.id || item.id === surface.id)
-      .map(item => item.id === surface.id ? mergeSurface(item, surface) : item))
+    if (existingTarget.id === activeSurface.id) {
+      const merged = mergeSurface(existingTarget, surface)
+      if (merged === existingTarget) {
+        return surfaces as AppSurface[]
+      }
+      return normalizeSurfaces(
+        surfaces.map(item => (item.id === surface.id ? merged : item)),
+      )
+    }
+
+    return normalizeSurfaces(
+      surfaces
+        .filter(item => item.id !== activeSurface.id || item.id === surface.id)
+        .map(item => (item.id === surface.id ? mergeSurface(item, surface) : item)),
+    )
   }
 
-  return normalizeSurfaces(currentSurfaces.map(item => item.id === activeSurface.id
-    ? {
-        ...surface,
-        order: activeSurface.order,
-      }
-    : item))
+  return normalizeSurfaces(
+    surfaces.map(item =>
+      item.id === activeSurface.id
+        ? {
+            ...surface,
+            order: activeSurface.order,
+          }
+        : item),
+  )
 }
 
 function readFallbackSurfaceId(
@@ -120,8 +177,8 @@ function readFallbackSurfaceId(
   }
 
   const closedIndex = orderedPrevious.findIndex(surface => surface.id === closedSurfaceId)
-  const next = orderedNext[Math.min(Math.max(closedIndex, 0), orderedNext.length - 1)]
-    ?? orderedNext.at(-1)
+  const next
+    = orderedNext[Math.min(Math.max(closedIndex, 0), orderedNext.length - 1)] ?? orderedNext.at(-1)
   return next?.id ?? HOME_SURFACE_ID
 }
 
@@ -138,60 +195,112 @@ export const useSurfaceStore = create<SurfaceState>()(
       surfaces: [HOME_SURFACE],
       activeSurfaceId: HOME_SURFACE_ID,
 
-      syncSurface: surface => set(state => ({
-        surfaces: appendOrUpdateSurface(state.surfaces, surface),
-        activeSurfaceId: surface.id,
-      })),
+      syncSurface: surface =>
+        set((state) => {
+          const surfaces = appendOrUpdateSurface(state.surfaces, surface)
+          if (surfaces === state.surfaces && state.activeSurfaceId === surface.id) {
+            return state
+          }
+          return {
+            surfaces,
+            activeSurfaceId: surface.id,
+          }
+        }),
 
-      replaceActiveSurface: surface => set(state => ({
-        surfaces: replaceActiveSurface(state.surfaces, state.activeSurfaceId, surface),
-        activeSurfaceId: surface.id,
-      })),
+      replaceActiveSurface: surface =>
+        set((state) => {
+          const surfaces = replaceActiveSurface(state.surfaces, state.activeSurfaceId, surface)
+          if (surfaces === state.surfaces && state.activeSurfaceId === surface.id) {
+            return state
+          }
+          return {
+            surfaces,
+            activeSurfaceId: surface.id,
+          }
+        }),
 
-      setActiveSurfaceId: surfaceId => set(state => ({
-        activeSurfaceId: state.surfaces.some(surface => surface.id === surfaceId)
-          ? surfaceId
-          : state.activeSurfaceId,
-      })),
+      setActiveSurfaceId: surfaceId =>
+        set((state) => {
+          if (
+            state.activeSurfaceId === surfaceId
+            || !state.surfaces.some(surface => surface.id === surfaceId)
+          ) {
+            return state
+          }
+          return { activeSurfaceId: surfaceId }
+        }),
 
-      closeSurface: surfaceId => set((state) => {
-        const target = state.surfaces.find(surface => surface.id === surfaceId)
-        if (!target || !target.closable) {
-          return state
-        }
+      closeSurface: surfaceId =>
+        set((state) => {
+          const target = state.surfaces.find(surface => surface.id === surfaceId)
+          if (!target || !target.closable) {
+            return state
+          }
 
-        const nextSurfaces = normalizeSurfaces(state.surfaces.filter(surface => surface.id !== surfaceId))
-        return {
-          surfaces: nextSurfaces,
-          activeSurfaceId: readFallbackSurfaceId(state.surfaces, nextSurfaces, surfaceId, state.activeSurfaceId),
-        }
-      }),
+          const nextSurfaces = normalizeSurfaces(
+            state.surfaces.filter(surface => surface.id !== surfaceId),
+          )
+          const activeSurfaceId = readFallbackSurfaceId(
+            state.surfaces,
+            nextSurfaces,
+            surfaceId,
+            state.activeSurfaceId,
+          )
+          return {
+            surfaces: nextSurfaces,
+            activeSurfaceId,
+          }
+        }),
 
-      reorderSurfaces: orderedIds => set((state) => {
-        const rank = new Map(orderedIds.map((id, index) => [id, index]))
-        return {
-          surfaces: normalizeSurfaces([...state.surfaces].sort((left, right) => {
-            const leftRank = rank.get(left.id) ?? Number.MAX_SAFE_INTEGER
-            const rightRank = rank.get(right.id) ?? Number.MAX_SAFE_INTEGER
-            return leftRank - rightRank || left.order - right.order
-          })),
-        }
-      }),
+      reorderSurfaces: orderedIds =>
+        set((state) => {
+          const rank = new Map(orderedIds.map((id, index) => [id, index]))
+          const surfaces = normalizeSurfaces(
+            [...state.surfaces].sort((left, right) => {
+              const leftRank = rank.get(left.id) ?? Number.MAX_SAFE_INTEGER
+              const rightRank = rank.get(right.id) ?? Number.MAX_SAFE_INTEGER
+              return leftRank - rightRank || left.order - right.order
+            }),
+          )
+          const unchanged
+            = surfaces.length === state.surfaces.length
+              && surfaces.every((surface, index) => surface.id === state.surfaces[index]?.id)
+          return unchanged ? state : { surfaces }
+        }),
 
-      updateSurfaceTitle: (surfaceId, title) => set(state => ({
-        surfaces: state.surfaces.map(surface => surface.id === surfaceId && title
-          ? { ...surface, title }
-          : surface),
-      })),
+      updateSurfaceTitle: (surfaceId, title) =>
+        set((state) => {
+          if (!title) {
+            return state
+          }
+          const target = state.surfaces.find(surface => surface.id === surfaceId)
+          if (!target || target.title === title) {
+            return state
+          }
+          return {
+            surfaces: state.surfaces.map(surface =>
+              surface.id === surfaceId ? { ...surface, title } : surface),
+          }
+        }),
 
-      resetSurfaces: () => set({
-        surfaces: [HOME_SURFACE],
-        activeSurfaceId: HOME_SURFACE_ID,
-      }),
+      resetSurfaces: () =>
+        set((state) => {
+          if (
+            state.activeSurfaceId === HOME_SURFACE_ID
+            && state.surfaces.length === 1
+            && state.surfaces[0]?.id === HOME_SURFACE_ID
+          ) {
+            return state
+          }
+          return {
+            surfaces: [HOME_SURFACE],
+            activeSurfaceId: HOME_SURFACE_ID,
+          }
+        }),
     }),
     {
       name: SURFACE_STORAGE_KEY,
-      storage: createJSONStorage(() => isTearoffWindow ? sessionStorage : localStorage),
+      storage: createJSONStorage(() => (isTearoffWindow ? sessionStorage : localStorage)),
       partialize: (state): PersistedSurfaceState => ({
         surfaces: normalizeSurfaces(state.surfaces),
         activeSurfaceId: state.activeSurfaceId,
@@ -202,7 +311,10 @@ export const useSurfaceStore = create<SurfaceState>()(
           return
         }
         state.surfaces = normalizeSurfaces(state.surfaces)
-        if (!state.activeSurfaceId || !state.surfaces.some(surface => surface.id === state.activeSurfaceId)) {
+        if (
+          !state.activeSurfaceId
+          || !state.surfaces.some(surface => surface.id === state.activeSurfaceId)
+        ) {
           state.activeSurfaceId = HOME_SURFACE_ID
         }
       },

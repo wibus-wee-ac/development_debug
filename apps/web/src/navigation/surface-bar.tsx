@@ -23,8 +23,8 @@ import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { cn } from '~/lib/cn'
 
 import { activateSurface, closeSurfaceById, openNewChat } from './navigation-commands'
-import { getEventScreenCoordinates } from './screen-coordinates'
 import type { ScreenCoordinates } from './screen-coordinates'
+import { getEventScreenCoordinates } from './screen-coordinates'
 import type { AppSurface } from './surface-identity'
 import { sortSurfaces } from './surface-identity'
 import { useSurfaceStore } from './surface-store'
@@ -226,6 +226,7 @@ export const SurfaceBar = memo(({
   const surfaces = useSurfaceStore(state => state.surfaces)
   const activeSurfaceId = useSurfaceStore(state => state.activeSurfaceId)
   const reorderSurfaces = useSurfaceStore(state => state.reorderSurfaces)
+  const surfacesRef = useRef(surfaces)
   const dragStartPointerRef = useRef<ScreenCoordinates | null>(null)
   const dragReleasePointerRef = useRef<ScreenCoordinates | null>(null)
   const dragCleanupRef = useRef<(() => void) | null>(null)
@@ -236,6 +237,7 @@ export const SurfaceBar = memo(({
     useSensor(MouseSensor, { activationConstraint: { distance: 5 } }),
   )
   const surfaceIds = useMemo(() => surfaces.map(surface => surface.id), [surfaces])
+  surfacesRef.current = surfaces
 
   const releaseCurrentDrag = useCallback(() => {
     dragCleanupRef.current?.()
@@ -290,7 +292,7 @@ export const SurfaceBar = memo(({
         return
       }
 
-      const targetSurface = surfaces[shortcutIndex]
+      const targetSurface = surfacesRef.current[shortcutIndex]
       if (!targetSurface) {
         return
       }
@@ -315,7 +317,7 @@ export const SurfaceBar = memo(({
       window.removeEventListener('blur', hideMetaTabHints)
       clearMetaHintTimer()
     }
-  }, [handleActivate, surfaces])
+  }, [handleActivate])
 
   const checkTearOff = useCallback((surfaceId: string | number) => {
     dragCleanupRef.current?.()

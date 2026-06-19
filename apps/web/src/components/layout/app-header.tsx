@@ -24,9 +24,6 @@ interface AppHeaderProps {
   sidebarSheetOpen?: boolean
   onOpenSidebarSheet?: () => void
   onToggleSidebarSheet?: () => void
-  // asideInSheet?: boolean
-  asideSheetOpen?: boolean
-  onToggleAsideSheet?: () => void
 }
 
 export function AppHeader({
@@ -41,9 +38,6 @@ export function AppHeader({
   sidebarSheetOpen = false,
   onOpenSidebarSheet,
   onToggleSidebarSheet,
-  // asideInSheet = false,
-  asideSheetOpen = false,
-  onToggleAsideSheet,
 }: AppHeaderProps) {
   'use no memo'
   const { t } = useTranslation('chrome')
@@ -55,7 +49,7 @@ export function AppHeader({
   const toggleSidebar = useLayoutStore(s => s.toggleSidebar)
   const toggleBrowserPanel = useLayoutStore(s => s.toggleBrowserPanel)
   const unreadSessionIds = useUnreadSessionIds()
-  const isSettingsActive = useSurfaceStore(s => {
+  const isSettingsActive = useSurfaceStore((s) => {
     const activeSurface = s.surfaces.find(surface => surface.id === s.activeSurfaceId)
     return activeSurface?.kind === 'settings'
   })
@@ -84,13 +78,8 @@ export function AppHeader({
   }, [onOpenSidebarSheet, onToggleSidebarSheet, sidebarInSheet, toggleSidebar])
 
   const handleAsideToggle = useCallback(() => {
-    // if (asideInSheet) {
-    //   onToggleAsideSheet?.()
-    //   return
-    // }
-
     toggleAside()
-  }, [onToggleAsideSheet, toggleAside])
+  }, [toggleAside])
 
   return (
     <div
@@ -173,7 +162,7 @@ export function AppHeader({
             <PanelBottomIcon aria-hidden="true" />
           </Button>
         )}
-        {!isSettingsActive && hasAside && (
+        {!isSettingsActive && (hasAside || asidePresentationOpen) && (
           <Button
             variant="ghost"
             size="icon-xs"
@@ -183,7 +172,6 @@ export function AppHeader({
             aria-pressed={asidePresentationOpen}
             title={t('header.action.toggleRightPanel')}
             data-testid="app-header-aside-toggle"
-            // data-chrome-side-sheet-trigger={asideInSheet ? 'right' : undefined}
           >
             <PanelRightIcon aria-hidden="true" />
           </Button>
