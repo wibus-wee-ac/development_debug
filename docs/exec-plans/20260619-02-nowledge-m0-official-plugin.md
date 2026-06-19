@@ -16,10 +16,13 @@ M0 intentionally does not claim automatic pre-turn recall, automatic turn captur
 - [x] (2026-06-19T03:19:37Z) Confirmed the next plan filename for the day is `docs/exec-plans/20260619-02-nowledge-m0-official-plugin.md`.
 - [x] (2026-06-19T03:19:37Z) Researched existing first-party plugin patterns in `plugins/system-info`, `plugins/browser-use`, and `plugins/github-issues`.
 - [x] (2026-06-19T03:19:37Z) Confirmed the current plugin host supports server routes, plugin-scoped KV storage, skill registration, and stdio-shaped MCP registration, but not streamable HTTP MCP or wired chat lifecycle hooks.
-- [ ] Create the `plugins/nowledge-mem` package, manifest, Vite config, TypeScript config, server entry, client modules, tests, and bundled skill.
-- [ ] Update plugin manifest boundary coverage so `@cradle/nowledge-mem` is treated as a first-party plugin.
-- [ ] Build and test the new plugin against mocked Nowledge API responses.
-- [ ] Run focused server plugin tests and TypeScript checks that prove the new package fits the existing host.
+- [x] (2026-06-19T03:33:40Z) Created the `plugins/nowledge-mem` package, manifest, Vite config, TypeScript config, server entry, client modules, tests, and bundled skill.
+- [x] (2026-06-19T03:33:40Z) Confirmed plugin manifest boundary coverage includes `plugins/nowledge-mem/package.json` so `@cradle/nowledge-mem` is treated as a first-party plugin.
+- [x] (2026-06-19T03:33:40Z) Built and tested the new plugin against mocked Nowledge API responses. The final plugin tests report 2 files and 10 tests passed.
+- [x] (2026-06-19T03:33:40Z) Ran focused server plugin tests and TypeScript checks proving the new package fits the existing host.
+- [x] (2026-06-19T03:37:02Z) Ran targeted ESLint on the new plugin source and config files successfully.
+- [x] (2026-06-19T04:06:52Z) Cleaned dependency drift from `package.json`, `apps/server/package.json`, and `pnpm-lock.yaml`; the final lockfile diff only adds the `plugins/nowledge-mem` importer.
+- [x] (2026-06-19T04:06:52Z) Re-ran plugin tests, plugin typecheck, plugin build, targeted ESLint, server manifest/context tests, and server typecheck successfully after lockfile cleanup.
 
 ## Surprises & Discoveries
 
@@ -34,6 +37,9 @@ M0 intentionally does not claim automatic pre-turn recall, automatic turn captur
 
 - Observation: The existing Cradle plugin route segment for a first-party package named `@cradle/nowledge-mem` will be `nowledge-mem`.
   Evidence: `apps/server/src/plugins/runtime-registry.ts` calls `derivePluginRouteSegment(identity)`, and existing tests assert `@cradle/system-info` maps to `system-info`.
+
+- Observation: Adding a new workspace plugin package requires refreshing pnpm's workspace dependency links before standalone plugin typecheck can resolve `@cradle/plugin-sdk/server`, but a broad pnpm install can also refresh unrelated dependency resolutions.
+  Evidence: Before refreshing workspace links, `pnpm --filter @cradle/nowledge-mem exec tsc --noEmit` failed with `TS2307: Cannot find module '@cradle/plugin-sdk/server'`. A later lockfile audit showed unrelated `@openai/codex-sdk`, `@anthropic-ai/claude-agent-sdk`, React, Vite, and documentation dependency drift, so the lockfile was rebuilt from the current `HEAD:pnpm-lock.yaml` plus only the `plugins/nowledge-mem` importer. The final `git diff -- pnpm-lock.yaml` shows only a 22-line importer addition.
 
 ## Decision Log
 
@@ -59,7 +65,9 @@ M0 intentionally does not claim automatic pre-turn recall, automatic turn captur
 
 ## Outcomes & Retrospective
 
-No implementation has been completed yet. This plan defines M0 scope and the expected implementation path. At the end of M0, update this section with what was built, what tests passed, which routes were exercised, and which follow-up host capabilities remain for M1.
+M0 implementation is complete. The repository now contains `plugins/nowledge-mem` with a valid `@cradle/nowledge-mem` manifest, Vite build, TypeScript config, bundled `SKILL.md`, typed Nowledge HTTP client, plugin config helpers, server route registration, and focused tests. The plugin exposes guided status, config, Working Memory, Context Bundle, memory search/create, thread search/read/create/append, and skill registration. It deliberately does not implement automatic recall, automatic capture, streamable HTTP MCP, provider-neutral tools, or pre-compaction lifecycle.
+
+Validation passed with the focused plugin tests, plugin typecheck, plugin build, targeted ESLint, server manifest/context tests, and server typecheck. After dependency cleanup, the validation commands were re-run successfully at 2026-06-19T04:06:52Z. The remaining gap for M1 is host lifecycle infrastructure: plugin-safe pre-turn context injection, after-assistant-final capture hooks, transcript export for plugins, streamable HTTP MCP or provider-neutral tools, and provider-neutral compaction lifecycle.
 
 ## Context and Orientation
 
@@ -177,16 +185,16 @@ Run focused plugin tests:
 
     pnpm --filter @cradle/nowledge-mem exec vitest run src/nowledge-client.test.ts src/server.test.ts
 
-Expected result:
+Actual result:
 
     Test Files  2 passed
-    Tests       all passed
+    Tests       10 passed
 
 Run manifest boundary validation:
 
     pnpm --filter @cradle/server exec vitest run src/plugins/manifest-boundary.test.ts
 
-Expected result:
+Actual result:
 
     Test Files  1 passed
 
@@ -194,7 +202,7 @@ Run server plugin host context tests if `createServerPluginContext`, capability 
 
     pnpm --filter @cradle/server exec vitest run src/plugins/context.test.ts
 
-Expected result:
+Actual result:
 
     Test Files  1 passed
 
@@ -203,9 +211,27 @@ Run type checks:
     pnpm --filter @cradle/nowledge-mem exec tsc --noEmit
     pnpm --filter @cradle/server exec tsc --noEmit
 
-Expected result:
+Actual result:
 
     no TypeScript errors
+
+Run targeted ESLint for the new plugin source:
+
+    pnpm exec eslint plugins/nowledge-mem/src/config.ts plugins/nowledge-mem/src/nowledge-client.ts plugins/nowledge-mem/src/server.ts plugins/nowledge-mem/src/nowledge-client.test.ts plugins/nowledge-mem/src/server.test.ts plugins/nowledge-mem/vite.config.ts
+
+Actual result:
+
+    no ESLint errors
+
+Build the plugin:
+
+    pnpm --filter @cradle/nowledge-mem build
+
+Actual result:
+
+    dist/server.mjs was built
+    dist/SKILL.md was copied
+    the command exited with code 0
 
 Optionally run a local server with the plugin enabled and inspect discovery:
 
@@ -382,3 +408,11 @@ If tests need direct route registration without plugin host activation, define a
 Use `@cradle/plugin-sdk/server` for plugin context types, `zod` for route input parsing, built-in `fetch` for HTTP calls, and existing Cradle plugin host APIs for route and skill registration. Do not add a database schema or migration for M0.
 
 Revision note, 2026-06-19T03:19:37Z: Initial M0 ExecPlan created to define official plugin support for Nowledge Mem while explicitly deferring lifecycle-heavy native-feeling behavior to later plugin host milestones.
+
+Revision note, 2026-06-19T03:33:40Z: Updated after implementing M0. Progress, discoveries, outcomes, and validation now reflect the completed `plugins/nowledge-mem` package and passing focused verification commands.
+
+Revision note, 2026-06-19T03:37:02Z: Added targeted ESLint validation after fixing style issues in the new plugin files.
+
+Revision note, 2026-06-19T03:37:02Z: Updated final plugin test count to 10 after adding Context Bundle query parameter coverage.
+
+Revision note, 2026-06-19T04:06:52Z: Recorded lockfile cleanup after pnpm introduced unrelated dependency drift, and recorded the final post-cleanup validation pass.

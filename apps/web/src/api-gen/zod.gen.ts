@@ -341,6 +341,18 @@ export const zGetProviderTargetsByProviderTargetIdModelSettingsPath = z.object({
     providerTargetId: z.string().min(1)
 });
 
+export const zGetProviderTargetsByProviderTargetIdCodexAccountDiagnosticsPath = z.object({
+    providerTargetId: z.string().min(1)
+});
+
+export const zPostProviderTargetsByProviderTargetIdCodexRateLimitResetCreditConsumeBody = z.object({
+    idempotencyKey: z.string().min(1)
+});
+
+export const zPostProviderTargetsByProviderTargetIdCodexRateLimitResetCreditConsumePath = z.object({
+    providerTargetId: z.string().min(1)
+});
+
 export const zPatchProviderTargetsByProviderTargetIdModelVisibilityBody = z.object({
     enabledModels: z.array(z.string().min(1))
 });
@@ -2182,6 +2194,20 @@ export const zGetChatSessionsBySessionIdContextUsagePath = z.object({
     sessionId: z.string().min(1)
 });
 
+export const zGetChatSessionsBySessionIdBackgroundTerminalsPath = z.object({
+    sessionId: z.string().min(1)
+});
+
+export const zGetChatSessionsBySessionIdBackgroundTerminalsQuery = z.object({
+    cursor: z.string().optional(),
+    limit: z.number().optional()
+});
+
+export const zPostChatSessionsBySessionIdBackgroundTerminalsByProcessIdTerminatePath = z.object({
+    sessionId: z.string().min(1),
+    processId: z.string().min(1)
+});
+
 export const zGetChatSessionsBySessionIdProviderThreadsPath = z.object({
     sessionId: z.string().min(1)
 });
@@ -2194,6 +2220,11 @@ export const zGetChatSessionsBySessionIdProviderThreadsQuery = z.object({
     sourceKinds: z.string().optional(),
     archived: z.boolean().optional(),
     searchTerm: z.string().optional()
+});
+
+export const zDeleteChatSessionsBySessionIdProviderThreadsByThreadIdPath = z.object({
+    sessionId: z.string().min(1),
+    threadId: z.string().min(1)
 });
 
 export const zGetChatSessionsBySessionIdProviderThreadsByThreadIdPath = z.object({
@@ -3019,4 +3050,12 @@ export const zPostIssueAgentSessionsByAgentSessionIdRerunPath = z.object({
 
 export const zDeleteIssueAgentSessionsByAgentSessionIdPath = z.object({
     agentSessionId: z.string()
+});
+
+export const zGetApiPluginsNowledgeMemThreadsByThreadIdPath = z.object({
+    threadId: z.string()
+});
+
+export const zPostApiPluginsNowledgeMemThreadsByThreadIdAppendPath = z.object({
+    threadId: z.string()
 });

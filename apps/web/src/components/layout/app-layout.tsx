@@ -483,10 +483,7 @@ function RetainedRightAsides({
 
   useLayoutEffect(() => {
     setDescriptors((current) => {
-      const next = current.filter(descriptor =>
-        ownerIsInScope(descriptor.ownerId, validOwnerIds)
-        && (acceptCurrentOwner || descriptor.ownerId !== ownerId)
-      )
+      const next = current.filter(descriptor => ownerIsInScope(descriptor.ownerId, validOwnerIds) && (acceptCurrentOwner || descriptor.ownerId !== ownerId))
       if (acceptCurrentOwner && ownerId) {
         const descriptor: RightAsideDescriptor = {
           ownerId,

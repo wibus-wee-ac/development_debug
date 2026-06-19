@@ -14,6 +14,21 @@ ast-grep scan apps packages plugins \
 
 Current baseline results and review notes are recorded in `wrapper-compatibility-report.md`.
 
+Use the unified function-smell scan script when reviewing wrapper/facade cleanup:
+
+```sh
+ast-grep/scripts/scan-function-smells.sh all
+ast-grep/scripts/scan-function-smells.sh broad --count
+ast-grep/scripts/scan-function-smells.sh broad --path apps/web/src/navigation/active-surface.ts
+```
+
+Script modes:
+
+- `default`: strict cleanup rules from `sgconfig.yml`.
+- `audit`: narrower facade audit rules from `ast-grep/audit-sgconfig.yml`.
+- `broad`: broad single-return function facade rules from `ast-grep/broad-audit-sgconfig.yml`.
+- `all`: default, audit, and broad in that order.
+
 Default cleanup rule intent:
 
 - `compatibility-comment-marker`: comments that explicitly mention legacy/deprecated compatibility debt.

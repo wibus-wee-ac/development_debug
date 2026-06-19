@@ -1548,6 +1548,129 @@ export type GetProviderTargetsByProviderTargetIdModelSettingsResponses = {
 
 export type GetProviderTargetsByProviderTargetIdModelSettingsResponse = GetProviderTargetsByProviderTargetIdModelSettingsResponses[keyof GetProviderTargetsByProviderTargetIdModelSettingsResponses];
 
+export type GetProviderTargetsByProviderTargetIdCodexAccountDiagnosticsData = {
+    body?: never;
+    path: {
+        providerTargetId: string;
+    };
+    query?: never;
+    url: '/provider-targets/{providerTargetId}/codex/account-diagnostics';
+};
+
+export type GetProviderTargetsByProviderTargetIdCodexAccountDiagnosticsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        providerTargetId: string;
+        supported: boolean;
+        unavailableReason: string | null;
+        refreshedAt: number | null;
+        account: {
+            authMode: string;
+            planType: string | null;
+        } | null;
+        rateLimits: {
+            limitId: string | null;
+            limitName: string | null;
+            primary: {
+                usedPercent: number;
+                windowDurationMins: number | null;
+                resetsAt: number | null;
+            } | null;
+            secondary: {
+                usedPercent: number;
+                windowDurationMins: number | null;
+                resetsAt: number | null;
+            } | null;
+            credits: {
+                hasCredits: boolean;
+                unlimited: boolean;
+                balance: string | null;
+            } | null;
+            individualLimit: {
+                limit: string;
+                used: string;
+                remainingPercent: number;
+                resetsAt: number;
+            } | null;
+            planType: string | null;
+            rateLimitReachedType: string | null;
+        } | null;
+        rateLimitsByLimitId: {
+            [key: string]: {
+                limitId: string | null;
+                limitName: string | null;
+                primary: {
+                    usedPercent: number;
+                    windowDurationMins: number | null;
+                    resetsAt: number | null;
+                } | null;
+                secondary: {
+                    usedPercent: number;
+                    windowDurationMins: number | null;
+                    resetsAt: number | null;
+                } | null;
+                credits: {
+                    hasCredits: boolean;
+                    unlimited: boolean;
+                    balance: string | null;
+                } | null;
+                individualLimit: {
+                    limit: string;
+                    used: string;
+                    remainingPercent: number;
+                    resetsAt: number;
+                } | null;
+                planType: string | null;
+                rateLimitReachedType: string | null;
+            };
+        } | null;
+        rateLimitResetCredits: {
+            availableCount: string;
+        } | null;
+        tokenUsage: {
+            summary: {
+                lifetimeTokens: string | null;
+                peakDailyTokens: string | null;
+                longestRunningTurnSec: string | null;
+                currentStreakDays: string | null;
+                longestStreakDays: string | null;
+            };
+            dailyUsageBuckets: Array<{
+                startDate: string;
+                tokens: string;
+            }>;
+        } | null;
+    };
+};
+
+export type GetProviderTargetsByProviderTargetIdCodexAccountDiagnosticsResponse = GetProviderTargetsByProviderTargetIdCodexAccountDiagnosticsResponses[keyof GetProviderTargetsByProviderTargetIdCodexAccountDiagnosticsResponses];
+
+export type PostProviderTargetsByProviderTargetIdCodexRateLimitResetCreditConsumeData = {
+    body: {
+        idempotencyKey: string;
+    };
+    path: {
+        providerTargetId: string;
+    };
+    query?: never;
+    url: '/provider-targets/{providerTargetId}/codex/rate-limit-reset-credit/consume';
+};
+
+export type PostProviderTargetsByProviderTargetIdCodexRateLimitResetCreditConsumeResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        providerTargetId: string;
+        outcome: 'reset' | 'nothingToReset' | 'noCredit' | 'alreadyRedeemed';
+        consumedAt: number;
+    };
+};
+
+export type PostProviderTargetsByProviderTargetIdCodexRateLimitResetCreditConsumeResponse = PostProviderTargetsByProviderTargetIdCodexRateLimitResetCreditConsumeResponses[keyof PostProviderTargetsByProviderTargetIdCodexRateLimitResetCreditConsumeResponses];
+
 export type PatchProviderTargetsByProviderTargetIdModelVisibilityData = {
     body: {
         enabledModels: Array<string>;
@@ -6805,7 +6928,6 @@ export type GetWorkspacesByIdDiffReviewsResponses = {
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -7048,7 +7170,6 @@ export type PostWorkspacesByIdDiffReviewsLocalWorkingTreeResponses = {
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -7266,7 +7387,6 @@ export type PostWorkspacesByIdDiffReviewsLocalBranchCompareResponses = {
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -7483,7 +7603,6 @@ export type PostWorkspacesByIdDiffReviewsLocalCommitResponses = {
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -7698,7 +7817,6 @@ export type GetWorkspacesByIdDiffReviewsByReviewIdResponses = {
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -7913,7 +8031,6 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdRefreshResponses = {
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -8131,7 +8248,6 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewedResponses 
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -8357,7 +8473,6 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsResponses = {
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -8575,7 +8690,6 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdCommentsResp
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -8793,7 +8907,6 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdReactionsRes
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -9009,7 +9122,6 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdResolveRespo
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -9227,7 +9339,6 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdSubmitResponses = {
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -9488,7 +9599,6 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateResponses = {
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -9716,7 +9826,6 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesResponses = {
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -9936,7 +10045,6 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStartRe
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -10185,7 +10293,6 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCancelR
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -10405,7 +10512,6 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerunRe
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -10622,7 +10728,6 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdCommitPlanResponses = {
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -10850,7 +10955,6 @@ export type PutWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdRespo
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -11068,7 +11172,6 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdAppl
                     contextBeforeHash?: string;
                     contextAfterHash?: string;
                 }>;
-                riskLevel: 'low' | 'medium' | 'high' | 'unknown';
                 order: number;
             }>;
         };
@@ -12444,6 +12547,15 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
             failedCount: number;
             lastCommand: string | null;
             lastOutputPreview: string | null;
+            backgroundTerminals: Array<{
+                itemId: string;
+                processId: string;
+                command: string;
+                cwd: string;
+                osPid: number | null;
+                cpuPercent: number | null;
+                rssKb: number | null;
+            }>;
             updatedAt: number;
         } | {
             kind: string;
@@ -12658,6 +12770,64 @@ export type GetChatSessionsBySessionIdContextUsageResponses = {
 
 export type GetChatSessionsBySessionIdContextUsageResponse = GetChatSessionsBySessionIdContextUsageResponses[keyof GetChatSessionsBySessionIdContextUsageResponses];
 
+export type GetChatSessionsBySessionIdBackgroundTerminalsData = {
+    body?: never;
+    path: {
+        sessionId: string;
+    };
+    query?: {
+        cursor?: string;
+        limit?: number;
+    };
+    url: '/chat/sessions/{sessionId}/background-terminals';
+};
+
+export type GetChatSessionsBySessionIdBackgroundTerminalsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        runtimeKind: string;
+        providerSessionId: string | null;
+        terminals: Array<{
+            itemId: string;
+            processId: string;
+            command: string;
+            cwd: string;
+            osPid: number | null;
+            cpuPercent: number | null;
+            rssKb: number | null;
+        }>;
+        nextCursor: string | null;
+    };
+};
+
+export type GetChatSessionsBySessionIdBackgroundTerminalsResponse = GetChatSessionsBySessionIdBackgroundTerminalsResponses[keyof GetChatSessionsBySessionIdBackgroundTerminalsResponses];
+
+export type PostChatSessionsBySessionIdBackgroundTerminalsByProcessIdTerminateData = {
+    body?: never;
+    path: {
+        sessionId: string;
+        processId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/background-terminals/{processId}/terminate';
+};
+
+export type PostChatSessionsBySessionIdBackgroundTerminalsByProcessIdTerminateResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        runtimeKind: string;
+        providerSessionId: string | null;
+        processId: string;
+        terminated: boolean;
+    };
+};
+
+export type PostChatSessionsBySessionIdBackgroundTerminalsByProcessIdTerminateResponse = PostChatSessionsBySessionIdBackgroundTerminalsByProcessIdTerminateResponses[keyof PostChatSessionsBySessionIdBackgroundTerminalsByProcessIdTerminateResponses];
+
 export type GetChatSessionsBySessionIdProviderThreadsData = {
     body?: never;
     path: {
@@ -12706,6 +12876,30 @@ export type GetChatSessionsBySessionIdProviderThreadsResponses = {
 };
 
 export type GetChatSessionsBySessionIdProviderThreadsResponse = GetChatSessionsBySessionIdProviderThreadsResponses[keyof GetChatSessionsBySessionIdProviderThreadsResponses];
+
+export type DeleteChatSessionsBySessionIdProviderThreadsByThreadIdData = {
+    body?: never;
+    path: {
+        sessionId: string;
+        threadId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/provider-threads/{threadId}';
+};
+
+export type DeleteChatSessionsBySessionIdProviderThreadsByThreadIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        runtimeKind: string;
+        providerSessionId: string | null;
+        threadId: string;
+        deleted: boolean;
+    };
+};
+
+export type DeleteChatSessionsBySessionIdProviderThreadsByThreadIdResponse = DeleteChatSessionsBySessionIdProviderThreadsByThreadIdResponses[keyof DeleteChatSessionsBySessionIdProviderThreadsByThreadIdResponses];
 
 export type GetChatSessionsBySessionIdProviderThreadsByThreadIdData = {
     body?: never;
@@ -16707,6 +16901,87 @@ export type DeleteIssueAgentSessionsByAgentSessionIdResponses = {
 };
 
 export type DeleteIssueAgentSessionsByAgentSessionIdResponse = DeleteIssueAgentSessionsByAgentSessionIdResponses[keyof DeleteIssueAgentSessionsByAgentSessionIdResponses];
+
+export type GetApiPluginsNowledgeMemStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/plugins/nowledge-mem/status';
+};
+
+export type GetApiPluginsNowledgeMemConfigData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/plugins/nowledge-mem/config';
+};
+
+export type PutApiPluginsNowledgeMemConfigData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/plugins/nowledge-mem/config';
+};
+
+export type GetApiPluginsNowledgeMemWorkingMemoryData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/plugins/nowledge-mem/working-memory';
+};
+
+export type GetApiPluginsNowledgeMemContextBundleData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/plugins/nowledge-mem/context-bundle';
+};
+
+export type GetApiPluginsNowledgeMemMemoriesSearchData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/plugins/nowledge-mem/memories/search';
+};
+
+export type PostApiPluginsNowledgeMemMemoriesData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/plugins/nowledge-mem/memories';
+};
+
+export type GetApiPluginsNowledgeMemThreadsSearchData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/plugins/nowledge-mem/threads/search';
+};
+
+export type PostApiPluginsNowledgeMemThreadsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/api/plugins/nowledge-mem/threads';
+};
+
+export type GetApiPluginsNowledgeMemThreadsByThreadIdData = {
+    body?: never;
+    path: {
+        threadId: string;
+    };
+    query?: never;
+    url: '/api/plugins/nowledge-mem/threads/{threadId}';
+};
+
+export type PostApiPluginsNowledgeMemThreadsByThreadIdAppendData = {
+    body?: never;
+    path: {
+        threadId: string;
+    };
+    query?: never;
+    url: '/api/plugins/nowledge-mem/threads/{threadId}/append';
+};
 
 export type GetApiPluginsSystemInfoInfoData = {
     body?: never;
