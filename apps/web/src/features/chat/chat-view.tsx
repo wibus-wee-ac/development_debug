@@ -1,7 +1,7 @@
 import { useQueryClient } from '@tanstack/react-query'
 import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { memo, useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Virtualizer } from 'virtua'
 
@@ -147,122 +147,172 @@ export interface ChatViewProps {
 
 const EMPTY_FILES: MentionItem[] = []
 
-const ChatMessageListPane = memo(
-  ({
-    sessionId,
-    messageIds,
-    messageCount,
-    status,
-    error,
-    isReady,
-    scrollContainerRef,
-    viewportRef,
-    virtualizerRef,
-    minimapRef,
-    keepMountedIndices,
-    scrollMetrics,
-    onVirtualScroll,
-    onScrollToMessageIndex,
-    onScrollToOffset,
-    onToolApprovalResponse,
-    composerStack,
-    messageTextTransform,
-  }: {
-    sessionId: string | null
-    messageIds: ReturnType<typeof useChatSession>['messageIds']
-    messageCount: ReturnType<typeof useChatSession>['messageCount']
-    status: ReturnType<typeof useChatSession>['status']
-    error: ReturnType<typeof useChatSession>['error']
-    isReady: boolean
-    scrollContainerRef: ChatScrollRuntime['scrollContainerRef']
-    viewportRef: ChatScrollRuntime['viewportRef']
-    virtualizerRef: ChatScrollRuntime['virtualizerRef']
-    minimapRef: ChatScrollRuntime['minimapRef']
-    keepMountedIndices: ChatScrollRuntime['keepMountedIndices']
-    scrollMetrics: ChatScrollRuntime['metrics']
-    onVirtualScroll: ChatScrollRuntime['handleVirtualScroll']
-    onScrollToMessageIndex: ChatScrollRuntime['scrollToMessageIndex']
-    onScrollToOffset: ChatScrollRuntime['scrollToOffset']
-    onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
-    composerStack: React.ReactNode
-    messageTextTransform?: MessageTextTransform
-  }) => {
-    const { t } = useTranslation('chat')
+function ChatTranscriptContent({
+  sessionId,
+  messageIds,
+  messageCount,
+  status,
+  error,
+  isReady,
+  viewportRef,
+  virtualizerRef,
+  keepMountedIndices,
+  onVirtualScroll,
+  onToolApprovalResponse,
+  composerStack,
+  messageTextTransform,
+}: {
+  sessionId: string | null
+  messageIds: ReturnType<typeof useChatSession>['messageIds']
+  messageCount: ReturnType<typeof useChatSession>['messageCount']
+  status: ReturnType<typeof useChatSession>['status']
+  error: ReturnType<typeof useChatSession>['error']
+  isReady: boolean
+  viewportRef: ChatScrollRuntime['viewportRef']
+  virtualizerRef: ChatScrollRuntime['virtualizerRef']
+  keepMountedIndices: ChatScrollRuntime['keepMountedIndices']
+  onVirtualScroll: ChatScrollRuntime['handleVirtualScroll']
+  onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
+  composerStack: React.ReactNode
+  messageTextTransform?: MessageTextTransform
+}) {
+  const { t } = useTranslation('chat')
 
+  function renderMessage(messageId: string) {
     return (
-      <div ref={scrollContainerRef} className="relative min-h-0 flex-1 overflow-hidden">
-        <div
-          ref={viewportRef}
-          className="h-full overflow-x-hidden overflow-y-auto outline-none [scrollbar-gutter:stable]"
-        >
-          <div className="mx-auto flex min-h-full max-w-[90%] flex-col px-4 pr-12 pt-4">
-            <div className="flex-1">
-              {messageCount === 0 && isReady && (
-                <div className="flex h-full items-center justify-center py-32">
-                  <p className="select-none text-sm text-muted-foreground">
-                    {t('empty.startConversation')}
-                  </p>
-                </div>
-              )}
+      <MessageBubbleById
+        key={messageId}
+        sessionId={sessionId}
+        messageId={messageId}
+        onToolApprovalResponse={onToolApprovalResponse}
+        textTransform={messageTextTransform}
+      />
+    )
+  }
 
-              <Virtualizer
-                ref={virtualizerRef}
-                scrollRef={viewportRef}
-                startMargin={24}
-                keepMounted={keepMountedIndices}
-                onScroll={onVirtualScroll}
-              >
-                {messageIds.map(messageId => (
-                  <MessageBubbleById
-                    key={messageId}
-                    sessionId={sessionId}
-                    messageId={messageId}
-                    onToolApprovalResponse={onToolApprovalResponse}
-                    textTransform={messageTextTransform}
-                  />
-                ))}
-              </Virtualizer>
-
-              {status === 'error' && (
-                <m.div
-                  data-testid="chat-error-banner"
-                  initial={{ opacity: 0, y: 4 }}
-                  animate={{ opacity: 1, y: 0 }}
-                  exit={{ opacity: 0 }}
-                  transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
-                  className="flex items-start gap-2 pl-1 pt-4"
-                >
-                  <AlertCircleIcon
-                    className="size-3.5 shrink-0 text-destructive/70"
-                    aria-hidden="true"
-                  />
-                  <span className="min-w-0 break-all text-xs text-destructive/70">
-                    {error ?? t('error.loadMessages')}
-                  </span>
-                </m.div>
-              )}
+  return (
+    <div
+      ref={viewportRef}
+      className="h-full overflow-x-hidden overflow-y-auto outline-none [scrollbar-gutter:stable]"
+    >
+      <div className="mx-auto flex min-h-full max-w-[90%] flex-col px-4 pr-12 pt-4">
+        <div className="flex-1">
+          {messageCount === 0 && isReady && (
+            <div className="flex h-full items-center justify-center py-32">
+              <p className="select-none text-sm text-muted-foreground">
+                {t('empty.startConversation')}
+              </p>
             </div>
+          )}
 
-            <div className="pointer-events-none sticky bottom-0 z-10 pt-4 pb-3">
-              {composerStack}
-            </div>
-          </div>
+          <Virtualizer
+            ref={virtualizerRef}
+            data={messageIds}
+            scrollRef={viewportRef}
+            startMargin={24}
+            keepMounted={keepMountedIndices}
+            onScroll={onVirtualScroll}
+          >
+            {renderMessage}
+          </Virtualizer>
+
+          {status === 'error' && (
+            <m.div
+              data-testid="chat-error-banner"
+              initial={{ opacity: 0, y: 4 }}
+              animate={{ opacity: 1, y: 0 }}
+              exit={{ opacity: 0 }}
+              transition={{ type: 'spring', stiffness: 500, damping: 35, mass: 0.8 }}
+              className="flex items-start gap-2 pl-1 pt-4"
+            >
+              <AlertCircleIcon
+                className="size-3.5 shrink-0 text-destructive/70"
+                aria-hidden="true"
+              />
+              <span className="min-w-0 break-all text-xs text-destructive/70">
+                {error ?? t('error.loadMessages')}
+              </span>
+            </m.div>
+          )}
         </div>
 
-        <ChatMinimap
-          ref={minimapRef}
-          sessionId={sessionId}
-          messageIds={messageIds}
-          scrollHeight={scrollMetrics.scrollHeight}
-          viewportHeight={scrollMetrics.viewportHeight}
-          onScrollToIndex={onScrollToMessageIndex}
-          onScrollTo={onScrollToOffset}
-        />
+        <div className="pointer-events-none sticky bottom-0 z-10 pt-4 pb-3">
+          {composerStack}
+        </div>
       </div>
-    )
-  },
-)
-ChatMessageListPane.displayName = 'ChatMessageListPane'
+    </div>
+  )
+}
+
+function ChatMessageListPane({
+  sessionId,
+  messageIds,
+  messageCount,
+  status,
+  error,
+  isReady,
+  scrollContainerRef,
+  viewportRef,
+  virtualizerRef,
+  minimapRef,
+  keepMountedIndices,
+  scrollMetrics,
+  onVirtualScroll,
+  onScrollToMessageIndex,
+  onScrollToOffset,
+  onToolApprovalResponse,
+  composerStack,
+  messageTextTransform,
+}: {
+  sessionId: string | null
+  messageIds: ReturnType<typeof useChatSession>['messageIds']
+  messageCount: ReturnType<typeof useChatSession>['messageCount']
+  status: ReturnType<typeof useChatSession>['status']
+  error: ReturnType<typeof useChatSession>['error']
+  isReady: boolean
+  scrollContainerRef: ChatScrollRuntime['scrollContainerRef']
+  viewportRef: ChatScrollRuntime['viewportRef']
+  virtualizerRef: ChatScrollRuntime['virtualizerRef']
+  minimapRef: ChatScrollRuntime['minimapRef']
+  keepMountedIndices: ChatScrollRuntime['keepMountedIndices']
+  scrollMetrics: ChatScrollRuntime['metrics']
+  onVirtualScroll: ChatScrollRuntime['handleVirtualScroll']
+  onScrollToMessageIndex: ChatScrollRuntime['scrollToMessageIndex']
+  onScrollToOffset: ChatScrollRuntime['scrollToOffset']
+  onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
+  composerStack: React.ReactNode
+  messageTextTransform?: MessageTextTransform
+}) {
+  return (
+    <div ref={scrollContainerRef} className="relative min-h-0 flex-1 overflow-hidden">
+      <ChatTranscriptContent
+        sessionId={sessionId}
+        messageIds={messageIds}
+        messageCount={messageCount}
+        status={status}
+        error={error}
+        isReady={isReady}
+        viewportRef={viewportRef}
+        virtualizerRef={virtualizerRef}
+        keepMountedIndices={keepMountedIndices}
+        onVirtualScroll={onVirtualScroll}
+        onToolApprovalResponse={onToolApprovalResponse}
+        composerStack={composerStack}
+        messageTextTransform={messageTextTransform}
+      />
+
+      <ChatMinimap
+        ref={minimapRef}
+        sessionId={sessionId}
+        messageIds={messageIds}
+        scrollHeight={scrollMetrics.scrollHeight}
+        viewportHeight={scrollMetrics.viewportHeight}
+        onScrollToIndex={onScrollToMessageIndex}
+        onScrollTo={onScrollToOffset}
+      />
+    </div>
+  )
+}
 
 function ChatAwaitBanner({
   awaitSummary,
@@ -434,6 +484,7 @@ function ChatComposerSection({
       ) {
         return
       }
+      event.preventDefault()
       setComposerReplaceText(`${CODEX_PLAN_REFINE_PROMPT_PREFIX}\n${detail.markdown}`.trimEnd())
       setComposerReplaceTextKey(key => key + 1)
       setActivePlanRefineTabId(null)

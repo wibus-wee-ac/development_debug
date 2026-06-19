@@ -82,6 +82,9 @@ interface SessionBinding {
   runtimeKind?: string | null
 }
 
+const EMPTY_RUNTIME_UI_SLOTS: ChatRuntimeUiSlot[] = []
+const EMPTY_RUNTIME_UI_SLOT_STATES: ChatRuntimeUiSlotState[] = []
+
 function invertContinuationMode(
   mode: NonNullable<SendMessageOptions['continuationMode']>
 ): NonNullable<SendMessageOptions['continuationMode']> {
@@ -261,6 +264,8 @@ export function useChatComposerRuntime({
       contextWindow: compactSlotState.modelContextWindow
     }
   }, [compactSlotState])
+  const uiSlots = runtimeCapabilities?.uiSlots ?? EMPTY_RUNTIME_UI_SLOTS
+  const slotStates = runtimeUiSlotStates?.states ?? EMPTY_RUNTIME_UI_SLOT_STATES
 
   const send = useCallback(
     (
@@ -303,11 +308,11 @@ export function useChatComposerRuntime({
     send,
     stop,
     slashCommands,
-    uiSlots: runtimeCapabilities?.uiSlots ?? [],
-    slotStates: runtimeUiSlotStates?.states ?? [],
+    uiSlots,
+    slotStates,
     supportsAttachments,
     tokenUsage,
-    compactState: compactSlotState
+    compactState: compactSlotState,
   }
 }
 

@@ -121,7 +121,7 @@ function useNewChatPageOwner(active: boolean) {
         return
       }
     }
-    openChatSession(sessionId)
+    openChatSession(sessionId, { replace: true })
   }, [])
 
   const handleSendToTarget = useCallback(async (

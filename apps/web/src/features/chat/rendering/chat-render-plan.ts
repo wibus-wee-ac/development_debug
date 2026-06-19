@@ -1,6 +1,6 @@
 import type { UIMessage } from 'ai'
 
-import { toolNameFromPart } from './chat-tool-entities'
+import { readBuiltinToolCallInputPayload, readBuiltinToolCallResultPayload, toolNameFromPart } from './chat-tool-entities'
 import type { RenderableToolPart, ToolUiKind } from './tool-ui-classifier'
 import { normalizeToolName } from './tool-ui-classifier'
 import {
@@ -99,16 +99,9 @@ function isRuntimeUserInputToolPart(part: RenderableToolPart): boolean {
 }
 
 function readBuiltinToolApiName(value: unknown): string | null {
-  if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    return null
-  }
-  const record = value as Record<string, unknown>
-  return record.type === 'cradle.builtin-tool-call.input.v1' ||
-    record.type === 'cradle.builtin-tool-call.result.v1'
-    ? typeof record.apiName === 'string'
-      ? record.apiName
-      : null
-    : null
+  return readBuiltinToolCallInputPayload(value)?.apiName ??
+    readBuiltinToolCallResultPayload(value)?.apiName ??
+    null
 }
 
 export function groupMessagePartRefs(input: GroupMessagePartsInput): ChatRenderSegment[] {
