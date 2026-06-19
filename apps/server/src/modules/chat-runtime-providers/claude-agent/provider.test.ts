@@ -1253,7 +1253,7 @@ describe('claudeAgentProvider MCP integration', () => {
         toolName: 'bash',
         input: expect.objectContaining({
           identifier: 'claude-code',
-          apiName: 'bash',
+          apiName: 'Bash',
           args: { command: 'pwd' },
         }),
       },
@@ -1266,7 +1266,7 @@ describe('claudeAgentProvider MCP integration', () => {
         toolName: 'read_file',
         input: expect.objectContaining({
           identifier: 'claude-code',
-          apiName: 'read_file',
+          apiName: 'Read',
           args: { path: 'README.md' },
         }),
       },
