@@ -1,5 +1,12 @@
 import { formatCompactBytes } from '~/lib/number-format'
 
+import type { BuiltinToolCallIdentity } from './chat-tool-entities'
+import {
+  readBuiltinToolCallIdentity,
+  readBuiltinToolCallInputPayload,
+  readBuiltinToolCallResultPayload,
+} from './chat-tool-entities'
+
 export type ToolState
   = | 'input-streaming'
     | 'input-available'
@@ -55,7 +62,6 @@ export interface ToolUiDescriptor {
   summary: string | null
 }
 
-const TOOL_TYPE_PREFIX_PATTERN = /^tool-/
 const FUNCTIONS_PREFIX_PATTERN = /^functions\./
 const TOOL_NAME_SEPARATOR_PATTERN = /[-\s]/g
 const MCP_PREFIX_PATTERN = /^mcp__/
@@ -482,7 +488,7 @@ function toolPayloadFromObject(value: ToolObjectPayload): ToolPayload {
     pattern: value.pattern ?? value.query ?? value.glob,
     query: value.query,
     url: value.url,
-    subagentName: value.name ?? value.subagent_type ?? value.description ?? value.team_name,
+    subagentName: value.name ?? value.subagent_type ?? value.team_name,
     agentId: value.agentId,
     agentType: value.agentType,
     taskId: value.task_id ?? value.shell_id,
@@ -589,11 +595,10 @@ function hasNoToolInputPayload(input: unknown): boolean {
 
 export function describeToolCall(part: RenderableToolPart): ToolUiDescriptor {
   const builtinIdentity = readBuiltinToolCallIdentity(part.input, part.output)
-  const toolName = builtinIdentity?.apiName ?? part.toolName ?? part.type.replace(TOOL_TYPE_PREFIX_PATTERN, '')
+  const toolName = builtinIdentity?.apiName ?? part.toolName ?? part.type
   const input = readToolInputPayload(part.input, part.argumentsText)
   const output = readToolPayload(part.output)
-  const normalizedName = normalizeToolName(toolName)
-  const kind = classifyToolKind(normalizedName, input, output)
+  const kind = builtinIdentity ? classifyCanonicalToolKind(builtinIdentity) : 'generic'
   const displayName = formatToolName(toolName)
   const target = readToolTarget(kind, input, output)
   return {
@@ -603,52 +608,6 @@ export function describeToolCall(part: RenderableToolPart): ToolUiDescriptor {
     title: readToolTitle(kind, displayName, input, output),
     target,
     summary: readToolSummary(kind, input, output),
-  }
-}
-
-function readBuiltinToolCallIdentity(input: unknown, output: unknown): { identifier: string, apiName: string } | null {
-  const inputPayload = readBuiltinToolCallInputPayload(input)
-  if (inputPayload) {
-    return {
-      identifier: inputPayload.identifier,
-      apiName: inputPayload.apiName,
-    }
-  }
-  const resultPayload = readBuiltinToolCallResultPayload(output)
-  if (resultPayload) {
-    return {
-      identifier: resultPayload.identifier,
-      apiName: resultPayload.apiName,
-    }
-  }
-  return null
-}
-
-function readBuiltinToolCallInputPayload(value: unknown): { identifier: string, apiName: string, args: unknown } | null {
-  if (!isRecord(value) || value.type !== 'cradle.builtin-tool-call.input.v1') {
-    return null
-  }
-  if (typeof value.identifier !== 'string' || typeof value.apiName !== 'string') {
-    return null
-  }
-  return {
-    identifier: value.identifier,
-    apiName: value.apiName,
-    args: value.args,
-  }
-}
-
-function readBuiltinToolCallResultPayload(value: unknown): { identifier: string, apiName: string, result: unknown } | null {
-  if (!isRecord(value) || value.type !== 'cradle.builtin-tool-call.result.v1') {
-    return null
-  }
-  if (typeof value.identifier !== 'string' || typeof value.apiName !== 'string') {
-    return null
-  }
-  return {
-    identifier: value.identifier,
-    apiName: value.apiName,
-    result: value.result,
   }
 }
 
@@ -882,55 +841,71 @@ function readJsonContainer(text: string, start: number): { value: unknown, next:
 export function normalizeToolName(toolName: string): string {
   return toolName
     .trim()
-    .replace(TOOL_TYPE_PREFIX_PATTERN, '')
     .replace(FUNCTIONS_PREFIX_PATTERN, '')
     .replace(TOOL_NAME_SEPARATOR_PATTERN, '_')
     .toLowerCase()
 }
 
-export function classifyToolKind(toolName: string, input: ToolPayload, output: ToolPayload): ToolUiKind {
-  if (isWorktreeTool(toolName)) {
-    return 'worktree'
+function classifyCanonicalToolKind(identity: BuiltinToolCallIdentity): ToolUiKind {
+  const key = `${identity.identifier}/${identity.apiName}`
+  switch (key) {
+    case 'claude-code/Bash':
+    case 'claude-code/Monitor':
+    case 'codex/command_execution':
+    case 'codex/approval.command_execution':
+      return 'terminal'
+
+    case 'claude-code/Read':
+      return 'file-read'
+
+    case 'claude-code/Edit':
+    case 'claude-code/Write':
+    case 'codex/file_change':
+    case 'codex/approval.file_change':
+      return 'file-diff'
+
+    case 'claude-code/Glob':
+    case 'claude-code/Grep':
+    case 'claude-code/ToolSearch':
+      return 'search'
+
+    case 'claude-code/WebFetch':
+    case 'claude-code/WebSearch':
+    case 'codex/web_search':
+      return 'web'
+
+    case 'claude-code/Agent':
+    case 'codex/collab_agent':
+      return 'subagent'
+
+    case 'claude-code/TaskGet':
+    case 'claude-code/TaskOutput':
+    case 'claude-code/TaskStop':
+      return 'task-control'
+
+    case 'claude-code/TaskCreate':
+    case 'claude-code/TaskList':
+    case 'claude-code/TaskUpdate':
+    case 'claude-code/TodoWrite':
+      return 'todo'
+
+    case 'claude-code/ExitPlanMode':
+    case 'codex/plan':
+      return 'plan'
+
+    case 'claude-code/plan_implementation':
+    case 'codex/plan_implementation':
+      return 'plan-implementation'
+
+    case 'claude-code/askUserQuestion':
+      return 'question'
+
+    default:
+      return 'generic'
   }
-  if (isQuestionTool(toolName, input, output)) {
-    return 'question'
-  }
-  if (isPlanImplementationTool(toolName, input, output)) {
-    return 'plan-implementation'
-  }
-  if (isPlanTool(toolName, input, output)) {
-    return 'plan'
-  }
-  if (isTodoTool(toolName, input, output)) {
-    return 'todo'
-  }
-  if (isSubagentTool(toolName, input, output)) {
-    return 'subagent'
-  }
-  if (isTaskControlTool(toolName, input, output)) {
-    return 'task-control'
-  }
-  if (isNotebookTool(toolName, input, output)) {
-    return 'notebook-diff'
-  }
-  if (isDiffTool(toolName, input, output)) {
-    return 'file-diff'
-  }
-  if (isReadTool(toolName, input, output)) {
-    return 'file-read'
-  }
-  if (isTerminalTool(toolName, input, output)) {
-    return 'terminal'
-  }
-  if (isMcpTool(toolName, input, output)) {
-    return 'mcp'
-  }
-  if (isSearchTool(toolName, input, output)) {
-    return 'search'
-  }
-  if (isWebTool(toolName, input, output)) {
-    return 'web'
-  }
+}
+
+export function classifyToolKind(_toolName: string, _input: ToolPayload, _output: ToolPayload): ToolUiKind {
   return 'generic'
 }
 
@@ -1010,7 +985,7 @@ function readToolTarget(kind: ToolUiKind, input: ToolPayload, output: ToolPayloa
     case 'web':
       return input.url ?? input.query ?? output.url ?? output.query
     case 'subagent':
-      return input.subagentName ?? output.agentId ?? output.description
+      return input.subagentName ?? input.description ?? output.agentId ?? output.description
     case 'task-control':
       return input.taskId ?? output.taskId
     case 'todo': {
@@ -1073,153 +1048,6 @@ function readToolSummary(kind: ToolUiKind, input: ToolPayload, output: ToolPaylo
     case 'generic':
       return null
   }
-}
-
-function isReadTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
-  return toolName === 'read'
-    || toolName === 'read_file'
-    || toolName === 'fileread'
-    || toolName === 'file_read'
-    || output.filePath !== null
-    || input.pages !== null
-}
-
-function isDiffTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
-  return toolName === 'edit'
-    || toolName === 'edit_file'
-    || toolName === 'fileedit'
-    || toolName === 'file_edit'
-    || toolName === 'write'
-    || toolName === 'write_file'
-    || toolName === 'filewrite'
-    || toolName === 'file_write'
-    || toolName === 'multiedit'
-    || toolName === 'multi_edit'
-    || toolName === 'multi_edit_file'
-    || toolName === 'multi_file_edit'
-    || toolName === 'file_change'
-    || output.structuredPatch.length > 0
-    || output.gitDiff.additions !== 0
-    || output.gitDiff.deletions !== 0
-    || output.gitDiff.patch.length > 0
-    || input.filenames.length > 0
-    || input.oldString !== null
-    || input.newString !== null
-    || input.contentText !== null
-}
-
-function isNotebookTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
-  return toolName === 'notebookedit'
-    || toolName === 'notebook_edit'
-    || input.notebookPath !== null
-    || output.notebookPath !== null
-}
-
-function isTerminalTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
-  return toolName === 'bash'
-    || toolName === 'terminal'
-    || toolName === 'run_command'
-    || toolName === 'execute'
-    || toolName === 'command_execution'
-    || input.command !== null
-    || output.stdout !== null
-    || output.stderr !== null
-}
-
-function isSearchTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
-  return toolName === 'grep'
-    || toolName === 'glob'
-    || toolName === 'search'
-    || toolName === 'file_search'
-    || (input.pattern !== null && !isWebTool(toolName, input, output))
-    || output.filenames.length > 0
-}
-
-function isWebTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
-  return toolName === 'webfetch'
-    || toolName === 'web_fetch'
-    || toolName === 'websearch'
-    || toolName === 'web_search'
-    || input.url !== null
-    || (input.query !== null && (output.results.length > 0 || output.durationSeconds !== null))
-}
-
-function isSubagentTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
-  return toolName === 'agent'
-    || toolName === 'task'
-    || toolName === 'spawn_agent'
-    || input.subagentName !== null
-    || output.agentId !== null
-    || output.agentType !== null
-}
-
-function isTaskControlTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
-  return toolName === 'taskoutput'
-    || toolName === 'task_output'
-    || toolName === 'taskstop'
-    || toolName === 'task_stop'
-    || toolName === 'taskstatus'
-    || toolName === 'task_status'
-    || toolName === 'sendmessage'
-    || toolName === 'send_message'
-    || input.taskId !== null
-    || output.taskId !== null
-    || output.taskType !== null
-}
-
-function isTodoTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
-  return toolName === 'todowrite'
-    || toolName === 'todo_write'
-    || toolName === 'taskcreate'
-    || toolName === 'task_create'
-    || toolName === 'taskupdate'
-    || toolName === 'task_update'
-    || toolName === 'tasklist'
-    || toolName === 'task_list'
-    || toolName === 'taskget'
-    || toolName === 'task_get'
-    || readTodoCount(input, output) !== null
-}
-
-function isPlanTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
-  return toolName === 'plan'
-    || toolName === 'exitplanmode'
-    || toolName === 'exit_plan_mode'
-    || input.mode === 'plan'
-    || output.mode === 'plan'
-    || output.plan !== null
-    || input.allowedPrompts.length > 0
-}
-
-function isPlanImplementationTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
-  return toolName === 'plan_implementation'
-    || input.planContent !== null
-    || output.planContent !== null
-}
-
-function isQuestionTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
-  return toolName === 'askuserquestion'
-    || toolName === 'ask_user_question'
-    || readQuestionCount(input, output) !== null
-}
-
-function isMcpTool(toolName: string, input: ToolPayload, output: ToolPayload): boolean {
-  return toolName.startsWith('mcp__')
-    || toolName.includes('/')
-    || toolName === 'mcp'
-    || toolName === 'listmcpresources'
-    || toolName === 'list_mcp_resources'
-    || toolName === 'readmcpresource'
-    || toolName === 'read_mcp_resource'
-    || input.mcpTarget !== null
-    || output.contents.length > 0
-}
-
-function isWorktreeTool(toolName: string): boolean {
-  return toolName === 'enterworktree'
-    || toolName === 'enter_worktree'
-    || toolName === 'exitworktree'
-    || toolName === 'exit_worktree'
 }
 
 function readFirstLine(value: string | null): string | null {
