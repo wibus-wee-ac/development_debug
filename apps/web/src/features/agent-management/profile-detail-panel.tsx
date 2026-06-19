@@ -921,71 +921,45 @@ function ProfileCredentialSettings({
     ? normalizeCodexAuthMode(values.authMode)
     : CODEX_AUTH_MODE_API_KEY
   const showChatgptControls = isCodexProvider && codexAuthMode === CODEX_AUTH_MODE_CHATGPT
-  const showCredentialInput = !showChatgptControls
-  const description = showChatgptControls || isChatgptCredential
-    ? 'ChatGPT account auth for Codex.'
+  const description = isCodexProvider
+    ? 'How this provider signs in to Codex.'
     : profile.credentialRef
       ? 'A credential is already stored. Leave empty to keep it.'
       : 'Stored locally and encrypted.'
 
   return (
-    <section className="py-3">
-      <div className="flex min-w-0 items-center gap-2">
-        <span className="text-[13px] font-medium text-foreground">
-          {isCodexProvider ? codexCredentialInputLabel(codexAuthMode) : 'Credential'}
-        </span>
+    <SettingsRow
+      label="Authentication"
+      description={description}
+      vertical
+    >
+      <div className="flex w-full max-w-[28rem] flex-col gap-2">
         {isCodexProvider && (
-          <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-medium">
-            {codexAuthMode === CODEX_AUTH_MODE_CHATGPT
-              ? 'ChatGPT'
-              : codexAuthMode === CODEX_AUTH_MODE_PERSONAL_ACCESS_TOKEN
-                ? 'PAT'
-                : codexAuthMode === CODEX_AUTH_MODE_BEDROCK_API_KEY
-                  ? 'Bedrock'
-                  : 'API Key'}
-          </Badge>
-        )}
-      </div>
-      <p className="mt-0.5 text-[12px] text-muted-foreground">{description}</p>
-
-      <div
-        className={cn(
-          'mt-2.5 flex w-full flex-col gap-2',
-          {
-            'max-w-[28rem]': !showChatgptControls,
-          },
-        )}
-      >
-        {isCodexProvider && (
-          <CodexAuthModeToggle
+          <Select
             value={codexAuthMode}
-            disabled={readOnly}
-            onChange={(nextAuthMode) => {
+            onValueChange={(nextAuthMode) => {
               onTextFieldChange('authMode', nextAuthMode)
               if (nextAuthMode === CODEX_AUTH_MODE_CHATGPT) {
                 onTextFieldChange('apiKey', '')
                 onTextFieldChange('baseUrl', '')
               }
             }}
-          />
-        )}
-        {showChatgptControls && credentialMetadata && isChatgptCredential && (
-          <ChatgptCredentialSummary credential={credentialMetadata} />
-        )}
-        {showCredentialInput && (
-          <Input
-            data-testid="provider-edit-apikey"
-            type="password"
-            value={values.apiKey}
-            onChange={e => onTextFieldChange('apiKey', e.target.value)}
             disabled={readOnly}
-            placeholder={isCodexProvider
-              ? codexCredentialPlaceholder(codexAuthMode, !!profile.credentialRef)
-              : codexCredentialPlaceholder(CODEX_AUTH_MODE_API_KEY, !!profile.credentialRef)}
-            className="h-9 text-[12.5px] font-mono"
-          />
+          >
+            <SelectTrigger className="h-9 w-56 text-[12.5px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CODEX_AUTH_MODE_OPTIONS.map(option => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
         )}
-        {isCodexProvider && codexAuthMode === CODEX_AUTH_MODE_BEDROCK_API_KEY && (
+
+        {showChatgptControls ? (
           <Input
             data-testid="provider-edit-bedrock-region"
             value={values.bedrockRegion}
