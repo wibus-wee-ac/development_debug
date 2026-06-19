@@ -369,7 +369,6 @@ function normalizeStoredGuideSteps(parsed: unknown): ReviewGuideStepView[] {
     return []
   }
 
-  const riskLevels = new Set(['low', 'medium', 'high', 'unknown'])
   return parsed.flatMap((rawStep, index): ReviewGuideStepView[] => {
     const step = rawStep && typeof rawStep === 'object' ? rawStep as Record<string, unknown> : null
     if (!step) {
@@ -382,7 +381,6 @@ function normalizeStoredGuideSteps(parsed: unknown): ReviewGuideStepView[] {
       return []
     }
 
-    const rawRiskLevel = readString(step.riskLevel) || 'unknown'
     const fileIds = readStringArray(step.fileIds)
     const threadIds = readStringArray(step.threadIds)
     const anchors = Array.isArray(step.anchors)
@@ -396,7 +394,6 @@ function normalizeStoredGuideSteps(parsed: unknown): ReviewGuideStepView[] {
       fileIds,
       threadIds,
       anchors,
-      riskLevel: riskLevels.has(rawRiskLevel) ? rawRiskLevel as ReviewGuideStepView['riskLevel'] : 'unknown',
       order,
     }]
   }).toSorted((left, right) => left.order - right.order)
@@ -1377,7 +1374,7 @@ function resolveGuideRuntimeKind(input: {
   throw new AppError({
     code: 'diff_review_guide_runtime_required',
     status: 400,
-    message: 'Universal provider targets require an explicit guided review runtime',
+    message: 'Universal provider targets require an explicit change walkthrough runtime',
     details: { providerTargetId: input.providerTargetId, providerKind: input.providerKind },
   })
 }
@@ -1396,7 +1393,7 @@ function assertGuideRuntimeSupportsProvider(input: {
   throw new AppError({
     code: 'diff_review_guide_runtime_incompatible',
     status: 400,
-    message: 'Provider target is not compatible with the requested guided review runtime',
+    message: 'Provider target is not compatible with the requested change walkthrough runtime',
     details: {
       providerTargetId: input.providerTargetId,
       providerKind: input.providerKind,
@@ -1511,9 +1508,9 @@ function buildGuideAgentInstruction(input: {
     : `git -C ${shellQuote(input.review.repositoryPath)}`
 
   return [
-    'You are generating a Cradle guided review map for the current local working tree.',
+    'You are generating a Cradle change walkthrough for the current local working tree.',
     '',
-    'This is not a code review and not a fix task. Build the reading path a human reviewer should follow.',
+    'This is not a code review, not a risk assessment, and not a fix task. Build the reading path that helps a human understand how this change was constructed.',
     'Use the available shell and file tools to inspect the repository. Do not rely only on the file inventory below.',
     'Do not modify files, do not apply patches, do not commit, and do not run formatting or install commands.',
     '',
@@ -1534,22 +1531,23 @@ function buildGuideAgentInstruction(input: {
     '- The text inside those tags must be one JSON object.',
     '- Do not put Markdown fences inside the tags.',
     '- Do not generate ids, order numbers, fileIds, or Cradle anchors. Cradle will derive those.',
+    '- Do not include risk scores, verdicts, approval guidance, or correctness judgments.',
     '',
     'Artifact shape:',
-    '{"steps":[{"title":"string","rationale":"string","riskLevel":"low|medium|high|unknown","threadIds":["thread-id"],"paths":["path"],"ranges":[{"path":"path","side":"head|base","startLine":1,"endLine":1}]}]}',
+    '{"steps":[{"title":"string","rationale":"string","threadIds":["thread-id"],"paths":["path"],"ranges":[{"path":"path","side":"head|base","startLine":1,"endLine":1}]}]}',
     '',
     'Rules:',
     '- Prefer 2 to 8 steps. Use fewer for small diffs.',
     '- Each step must reference at least one changed path or changed range.',
     '- Use only paths from the provided changed files list.',
     '- Use only threadIds from the provided threads list.',
-    '- Order steps by semantic review flow, not alphabetically and not necessarily patch order.',
+    '- Order steps by the change story, not alphabetically and not necessarily patch order.',
     '- Prefer exact ranges for the important changed regions. Use file-level paths only when line ranges would be misleading.',
     '- For deleted lines use side "base". For added or current lines use side "head".',
-    '- Public API, schema, config, and migration surfaces usually come before implementation details.',
-    '- Files with active comments should come early when they affect review decisions.',
-    '- Generated files and binary files should be late unless they define the contract being reviewed.',
-    '- Rationale explains why this belongs at that point in the reading order, not whether the code is correct.',
+    '- Start with the intent and public contract of the change, then the core implementation, then call sites, generated artifacts, tests, and docs when present.',
+    '- Files with active comments should come near the related part of the walkthrough.',
+    '- Generated files and binary files should be late unless they define the contract being explained.',
+    '- Rationale explains what role this step plays in understanding how the change was made, not whether the code is correct.',
     '',
     'Review:',
     JSON.stringify({
@@ -1591,7 +1589,7 @@ async function runGuideAgentTurn(input: {
     throw new AppError({
       code: 'diff_review_guide_provider_unsupported',
       status: 400,
-      message: 'Provider target runtime does not support guided review generation',
+      message: 'Provider target runtime does not support change walkthrough generation',
       details: { runtimeKind: input.runtimeKind, providerTargetId: input.profile.providerTargetId },
     })
   }
@@ -1758,11 +1756,9 @@ function normalizeGuideSteps(input: {
   const rawSteps = readGuideStepRecords(input.parsed)
   const lookup = buildFileLookup(input.files)
   const threadIds = new Set(input.threads.map(thread => thread.id))
-  const riskLevels = new Set(['low', 'medium', 'high', 'unknown'])
   return rawSteps.map((step, index): ReviewGuideStepView => {
     const title = readString(step.title)
     const rationale = readString(step.rationale)
-    const rawRiskLevel = readString(step.riskLevel) || 'unknown'
     const rangeRecords = readGuideRangeRecords(step)
     const pathFiles = readGuidePathFiles(step, lookup)
     const rangeFiles = rangeRecords.flatMap((range) => {
@@ -1794,7 +1790,6 @@ function normalizeGuideSteps(input: {
       fileIds: stepFileIds,
       threadIds: stepThreadIds,
       anchors,
-      riskLevel: riskLevels.has(rawRiskLevel) ? rawRiskLevel as ReviewGuideStepView['riskLevel'] : 'unknown',
       order,
     }
   })
@@ -1911,7 +1906,7 @@ async function runGuideGenerationTask(input: {
       throw new AppError({
         code: 'diff_review_guide_provider_unsupported',
         status: 400,
-        message: 'Provider target runtime does not support guided review generation',
+        message: 'Provider target runtime does not support change walkthrough generation',
         details: { runtimeKind: input.runtimeKind, providerTargetId: input.providerTargetId },
       })
     }
@@ -2059,7 +2054,7 @@ export async function generateGuide(input: {
     throw new AppError({
       code: 'diff_review_guide_provider_unsupported',
       status: 400,
-      message: 'Provider target runtime does not support guided review generation',
+      message: 'Provider target runtime does not support change walkthrough generation',
       details: { runtimeKind, providerTargetId: input.providerTargetId },
     })
   }

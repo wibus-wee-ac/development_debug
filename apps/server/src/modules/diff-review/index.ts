@@ -255,7 +255,7 @@ export const diffReview = new Elysia({
     })
   }, {
     detail: {
-      'summary': 'Generate a guided diff review',
+      'summary': 'Generate a diff change walkthrough',
       'x-cradle-cli': {
         command: ['workspace', 'diffs', 'guide', 'generate'],
       },

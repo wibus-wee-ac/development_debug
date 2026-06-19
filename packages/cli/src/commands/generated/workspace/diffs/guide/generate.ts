@@ -23,7 +23,7 @@ const spec = {
     "guide",
     "generate"
   ],
-  "description": "Generate a guided diff review",
+  "description": "Generate a diff change walkthrough",
   "flags": [
     {
       "name": "providerTargetId",

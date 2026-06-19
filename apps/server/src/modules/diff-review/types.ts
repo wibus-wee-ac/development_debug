@@ -205,7 +205,6 @@ export interface ReviewGuideStepView {
   fileIds: string[]
   threadIds: string[]
   anchors: ReviewRangeAnchorView[]
-  riskLevel: 'low' | 'medium' | 'high' | 'unknown'
   order: number
 }
 

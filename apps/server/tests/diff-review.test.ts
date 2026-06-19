@@ -219,7 +219,6 @@ interface DiffReviewResponse {
         lineHash: string
         hunkHeader: string
       }>
-      riskLevel: 'low' | 'medium' | 'high' | 'unknown'
       order: number
     }>
   }
@@ -612,7 +611,7 @@ describe('diff-review capability', () => {
     }
   })
 
-  it('generates and persists a guided review with a codex agent runtime', async () => {
+  it('generates and persists a change walkthrough with a codex agent runtime', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-diff-review-workspace-')
     const previousEnv = useIsolatedTestInfra(dataDir)
@@ -659,13 +658,11 @@ describe('diff-review capability', () => {
               paths: ['README.md'],
               ranges: [{ path: 'README.md', side: 'head', startLine: 2, endLine: 2 }],
               threadIds: ['unknown-thread-is-filtered'],
-              riskLevel: 'high',
             },
             {
               title: 'Review implementation',
               rationale: 'Confirm the exported value matches the README expectation.',
               ranges: [{ path: 'src.ts', side: 'head', startLine: 1, endLine: 1 }],
-              riskLevel: 'medium',
             },
           ],
         }),
@@ -698,7 +695,7 @@ describe('diff-review capability', () => {
           `/workspaces/workspace-diff-review-guide/diff-reviews/${review.id}`,
         )
         return reloaded.guide.status === 'ready' && reloaded.guide.steps.length === 2 ? reloaded : null
-      }, 'guided review generation')
+      }, 'change walkthrough generation')
 
       expect(runtime.streamInputs).toHaveLength(1)
       expect(runtime.streamInputs[0]).toMatchObject({
@@ -737,7 +734,6 @@ describe('diff-review capability', () => {
               startLine: 2,
               endLine: 2,
             })],
-            riskLevel: 'high',
             order: 0,
           },
           {
@@ -753,7 +749,6 @@ describe('diff-review capability', () => {
               startLine: 1,
               endLine: 1,
             })],
-            riskLevel: 'medium',
             order: 1,
           },
         ],
@@ -775,7 +770,7 @@ describe('diff-review capability', () => {
     }
   })
 
-  it('projects stored guided review steps without anchors into the current response contract', async () => {
+  it('projects stored change walkthrough steps without anchors into the current response contract', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-diff-review-workspace-')
     const previousEnv = useIsolatedTestInfra(dataDir)
@@ -815,7 +810,6 @@ describe('diff-review capability', () => {
             rationale: 'Legacy rows predate range anchors.',
             fileIds: [readme!.id],
             threadIds: [],
-            riskLevel: 'medium',
             order: 0,
           },
         ]),

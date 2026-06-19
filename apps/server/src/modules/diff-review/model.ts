@@ -176,7 +176,6 @@ const guide = t.Object({
     fileIds: t.Array(t.String()),
     threadIds: t.Array(t.String()),
     anchors: t.Array(rangeAnchor),
-    riskLevel: t.Union([t.Literal('low'), t.Literal('medium'), t.Literal('high'), t.Literal('unknown')]),
     order: t.Number(),
   })),
 })

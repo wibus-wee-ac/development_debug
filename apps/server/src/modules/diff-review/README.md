@@ -8,7 +8,7 @@ The diff-review module owns Cradle Diffs review records, local worktree, branch-
 
 - **index.ts**: Elysia routes for workspace diff reviews and CLI-exposed diff commands.
 - **model.ts**: TypeBox schemas for review, revision, file, thread, guide, agent fix, commit plan, and readiness contracts.
-- **service.ts**: Business logic for source adapters, refreshing review sources, comments, submissions, guided review generation, agent fixes, commit plans, and event recording.
+- **service.ts**: Business logic for source adapters, refreshing review sources, comments, submissions, change walkthrough generation, agent fixes, commit plans, and event recording.
 - **anchors.ts**: Diff range anchor normalization and revision remapping helpers.
 - **patch.ts**: Patch parsing, file summary extraction, generated-file detection, and line hashing.
 - **commit-plans.ts**: Commit plan grouping and normalization helpers.
@@ -16,8 +16,8 @@ The diff-review module owns Cradle Diffs review records, local worktree, branch-
 - **types.ts**: Module view and input types.
 - **utils.ts**: JSON, hashing, and title helpers.
 
-## Guided Review
+## Change Walkthrough
 
 `POST /workspaces/:id/diff-reviews/:reviewId/guide/generate` is owned by this module. For local working tree reviews it performs synchronous source and provider preflight checks, records a `running` guide row, returns the review immediately, then starts an ephemeral tool-enabled runtime turn in the background. The provider inspects the live repository with shell/file tools, and Diff Review later marks the guide `ready` or `failed`.
 
-The provider outputs path and line-range candidates only. Diff Review derives stable step ids, order, file ids, and `ReviewRangeAnchorView` anchors, and rejects stale worktree state by comparing the current `Git.getDiff()` hash with the revision `patchHash` before and after generation.
+The provider outputs a change walkthrough with path and line-range candidates only. It explains how the change is constructed rather than scoring risk or issuing a review verdict. Diff Review derives stable step ids, order, file ids, and `ReviewRangeAnchorView` anchors, and rejects stale worktree state by comparing the current `Git.getDiff()` hash with the revision `patchHash` before and after generation.
