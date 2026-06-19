@@ -18,6 +18,13 @@ import { postSecrets } from '~/api-gen/sdk.gen'
 import { PROVIDER_ICONS } from '~/components/common/provider-icons'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '~/components/ui/select'
 import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
@@ -27,12 +34,11 @@ import { nativeIpc } from '~/lib/electron'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { ChatgptCredentialSummary } from './chatgpt-credential-summary'
-import { CodexAuthModeToggle } from './codex-auth-mode-controls'
 import {
   CODEX_AUTH_MODE_API_KEY,
   CODEX_AUTH_MODE_BEDROCK_API_KEY,
   CODEX_AUTH_MODE_CHATGPT,
-  codexCredentialInputLabel,
+  CODEX_AUTH_MODE_OPTIONS,
   codexCredentialPlaceholder,
   codexSecretKindForAuthMode,
   normalizeCodexAuthMode,
@@ -388,14 +394,15 @@ function PresetSetupForm({
             <div key={field.key}>
               <SettingsDivider />
               <SettingsRow
-                label={isApiKey && isCodexProvider ? codexCredentialInputLabel(codexAuthMode) : isApiKey ? 'Credential' : field.label}
+                label={isApiKey && isCodexProvider ? 'Authentication' : isApiKey ? 'Credential' : field.label}
                 description={
                   isApiKey
                     ? isCodexProvider
-                      ? 'Choose how Codex authenticates for this provider.'
+                      ? 'How this provider signs in to Codex.'
                       : undefined
                     : undefined
                 }
+                vertical={isApiKey && isCodexProvider}
               >
                 {isApiKey
                   ? (

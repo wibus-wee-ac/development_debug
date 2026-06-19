@@ -53,14 +53,12 @@ import { nativeIpc } from '~/lib/electron'
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { ChatgptCredentialSummary } from './chatgpt-credential-summary'
 import { CodexAccountDiagnosticsPanel } from './codex-account-diagnostics-panel'
-import { CodexAuthModeToggle } from './codex-auth-mode-controls'
 import {
   CODEX_AUTH_MODE_API_KEY,
   CODEX_AUTH_MODE_BEDROCK_API_KEY,
   CODEX_AUTH_MODE_CHATGPT,
-  CODEX_AUTH_MODE_PERSONAL_ACCESS_TOKEN,
+  CODEX_AUTH_MODE_OPTIONS,
   codexAuthModeFromCredentialKind,
-  codexCredentialInputLabel,
   codexCredentialPlaceholder,
   codexSecretKindForAuthMode,
   normalizeCodexAuthMode,
@@ -959,7 +957,23 @@ function ProfileCredentialSettings({
           </Select>
         )}
 
-        {showChatgptControls ? (
+        {showChatgptControls && credentialMetadata && isChatgptCredential && (
+          <ChatgptCredentialSummary credential={credentialMetadata} />
+        )}
+        {!showChatgptControls && (
+          <Input
+            data-testid="provider-edit-apikey"
+            type="password"
+            value={values.apiKey}
+            onChange={e => onTextFieldChange('apiKey', e.target.value)}
+            disabled={readOnly}
+            placeholder={isCodexProvider
+              ? codexCredentialPlaceholder(codexAuthMode, !!profile.credentialRef)
+              : codexCredentialPlaceholder(CODEX_AUTH_MODE_API_KEY, !!profile.credentialRef)}
+            className="h-9 text-[12.5px] font-mono"
+          />
+        )}
+        {isCodexProvider && codexAuthMode === CODEX_AUTH_MODE_BEDROCK_API_KEY && (
           <Input
             data-testid="provider-edit-bedrock-region"
             value={values.bedrockRegion}
@@ -1002,7 +1016,7 @@ function ProfileCredentialSettings({
           <ChatgptDeviceCodeNotice login={activeChatgptLogin} />
         )}
       </div>
-    </section>
+    </SettingsRow>
   )
 }
 
