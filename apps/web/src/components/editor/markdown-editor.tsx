@@ -1,3 +1,4 @@
+import type { Editor } from '@tiptap/core'
 import Image from '@tiptap/extension-image'
 import Link from '@tiptap/extension-link'
 import Placeholder from '@tiptap/extension-placeholder'
@@ -6,7 +7,7 @@ import TaskList from '@tiptap/extension-task-list'
 import Typography from '@tiptap/extension-typography'
 import { EditorContent, useEditor } from '@tiptap/react'
 import StarterKit from '@tiptap/starter-kit'
-import { useEffect, useRef } from 'react'
+import { useCallback, useEffect, useRef } from 'react'
 import { Markdown } from 'tiptap-markdown'
 
 import { cn } from '~/lib/cn'
@@ -53,7 +54,9 @@ export function MarkdownEditor({
   const onChangeRef = useRef(onChange)
   const readonlyRef = useRef(readonly)
   const documentIdRef = useRef(documentId)
-  const externalContentRef = useRef(content ?? '')
+  const confirmedContentRef = useRef(content ?? '')
+  const saveRequestRef = useRef(0)
+  const smartMentionsRef = useRef(smartMentions)
 
   useEffect(() => {
     onSaveRef.current = onSave
@@ -67,7 +70,39 @@ export function MarkdownEditor({
     readonlyRef.current = readonly
   }, [readonly])
 
+  useEffect(() => {
+    smartMentionsRef.current = smartMentions
+  }, [smartMentions])
+
   const smartMentionsEnabled = !!smartMentions
+
+  const saveCurrentDraft = useCallback((currentEditor: Editor, options: { force?: boolean } = {}) => {
+    if (readonlyRef.current || !onSaveRef.current) {
+      return
+    }
+
+    const md = getMarkdownContent(currentEditor.storage)
+    if (!options.force && md === confirmedContentRef.current) {
+      return
+    }
+
+    const requestId = saveRequestRef.current + 1
+    saveRequestRef.current = requestId
+
+    try {
+      const result = onSaveRef.current(md)
+      void Promise.resolve(result)
+        .then(() => {
+          if (saveRequestRef.current === requestId) {
+            confirmedContentRef.current = md
+          }
+        })
+        .catch(() => {})
+    }
+    catch {
+      // Keep the previous confirmed snapshot so later refreshes do not treat a failed write as saved.
+    }
+  }, [])
 
   const editor = useEditor({
     extensions: [
@@ -99,8 +134,8 @@ export function MarkdownEditor({
       ...(smartMentionsEnabled
         ? [
             SmartMention.configure({
-              getItems: smartMentions.getItems,
-              onOpen: smartMentions.onOpen,
+              getItems: (query: string) => smartMentionsRef.current?.getItems(query) ?? [],
+              onOpen: (attrs: SmartMentionAttrs) => smartMentionsRef.current?.onOpen?.(attrs),
             }),
           ]
         : []),
@@ -114,9 +149,8 @@ export function MarkdownEditor({
     },
     // Auto-save on blur
     onBlur: ({ editor: e }) => {
-      if (saveOnBlur && !readonlyRef.current && onSaveRef.current) {
-        const md = getMarkdownContent(e.storage)
-        void onSaveRef.current(md)
+      if (saveOnBlur) {
+        saveCurrentDraft(e)
       }
     },
     onUpdate: ({ editor: e }) => {
@@ -124,11 +158,11 @@ export function MarkdownEditor({
         onChangeRef.current?.(getMarkdownContent(e.storage))
       }
     },
-  }, [placeholder, saveOnBlur, smartMentions, smartMentionsEnabled])
+  }, [placeholder, saveCurrentDraft, saveOnBlur, smartMentionsEnabled])
 
   useEffect(() => {
     editor?.setEditable(!readonly)
-  }, [editor, readonly])
+  }, [editor, readonly, saveCurrentDraft])
 
   useEffect(() => {
     if (!editor) {
@@ -138,23 +172,27 @@ export function MarkdownEditor({
     const nextContent = content ?? ''
     const currentContent = getMarkdownContent(editor.storage)
     const documentChanged = documentIdRef.current !== documentId
-    const hasLocalEdits = currentContent !== externalContentRef.current
+    const hasLocalEdits = currentContent !== confirmedContentRef.current
 
     if (documentChanged) {
       documentIdRef.current = documentId
-      externalContentRef.current = nextContent
+      confirmedContentRef.current = nextContent
       if (currentContent !== nextContent) {
         editor.commands.setContent(nextContent)
       }
       return
     }
 
-    if (nextContent === externalContentRef.current) {
+    if (nextContent === confirmedContentRef.current) {
       return
     }
 
-    externalContentRef.current = nextContent
-    if (!hasLocalEdits && currentContent !== nextContent) {
+    if (hasLocalEdits) {
+      return
+    }
+
+    confirmedContentRef.current = nextContent
+    if (currentContent !== nextContent) {
       editor.commands.setContent(nextContent)
     }
   }, [content, documentId, editor])
@@ -165,15 +203,18 @@ export function MarkdownEditor({
       return
     }
     const handleKeyDown = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key === 's') {
+      if (
+        (e.metaKey || e.ctrlKey)
+        && e.key.toLowerCase() === 's'
+        && (editor.isFocused || editor.view.dom.contains(document.activeElement))
+      ) {
         e.preventDefault()
-        const md = getMarkdownContent(editor.storage)
-        void onSaveRef.current?.(md)
+        saveCurrentDraft(editor, { force: true })
       }
     }
     document.addEventListener('keydown', handleKeyDown)
     return () => document.removeEventListener('keydown', handleKeyDown)
-  }, [editor, readonly])
+  }, [editor, readonly, saveCurrentDraft])
 
   return (
     <div className={cn('tiptap-editor', className)}>
