@@ -1,3 +1,7 @@
+/* eslint-disable react-refresh/only-export-components */
+
+import './styles.css'
+
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query'
 import * as React from 'react'
 import * as ReactJSXDevRuntime from 'react/jsx-dev-runtime'
@@ -5,7 +9,6 @@ import * as ReactJSXRuntime from 'react/jsx-runtime'
 import * as ReactDOM from 'react-dom'
 import * as ReactDOMClient from 'react-dom/client'
 
-import { App } from './app'
 import { AppErrorBoundary } from './components/common/app-error-boundary'
 import { resolveInitialLocale } from './i18n/browser-locale'
 import { I18nProvider } from './i18n/client'
@@ -41,26 +44,36 @@ const queryClient = new QueryClient({
 // Hash-based routing: #devtool renders the devtool page (Electron second window)
 const isDevtoolWindow = window.location.hash === '#devtool' || window.location.hash === '#/devtool'
 
-async function startApp(): Promise<void> {
+const AppRoot = React.lazy(async () => {
+  const { App } = await import('./app')
+  return { default: App }
+})
+
+const DevtoolRoot = React.lazy(async () => {
+  const { DevtoolPage } = await import('./features/devtool/ipc-devtool-page')
+  return { default: DevtoolPage }
+})
+
+function RootApplication() {
   const initialLocale = resolveInitialLocale()
-  let appContent: React.ReactNode
+  const Root = isDevtoolWindow ? DevtoolRoot : AppRoot
 
-  if (isDevtoolWindow) {
-    const { DevtoolPage } = await import('./features/devtool/ipc-devtool-page')
-    appContent = <DevtoolPage />
-  }
-  else {
-    appContent = <App />
-  }
+  return (
+    <I18nProvider initialLocale={initialLocale}>
+      <QueryClientProvider client={queryClient}>
+        <React.Suspense fallback={<div className="h-screen w-screen bg-background" />}>
+          <Root />
+        </React.Suspense>
+      </QueryClientProvider>
+    </I18nProvider>
+  )
+}
 
+function startApp(): void {
   ReactDOMClient.createRoot(document.getElementById('app')!).render(
     <React.StrictMode>
       <AppErrorBoundary>
-        <I18nProvider initialLocale={initialLocale}>
-          <QueryClientProvider client={queryClient}>
-            {appContent}
-          </QueryClientProvider>
-        </I18nProvider>
+        <RootApplication />
       </AppErrorBoundary>
     </React.StrictMode>,
   )
@@ -74,7 +87,7 @@ async function startApp(): Promise<void> {
   })
 }
 
-void startApp()
+startApp()
 
 queueMicrotask(() => {
   initializeReactDiagnostics()

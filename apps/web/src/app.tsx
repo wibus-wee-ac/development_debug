@@ -1,5 +1,3 @@
-import './styles.css'
-
 import { RouterProvider } from '@tanstack/react-router'
 
 import { AppEnvironmentProviders } from '~/app-providers'

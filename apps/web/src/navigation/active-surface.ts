@@ -35,6 +35,7 @@ export function readActiveSurfaceId(): string | null {
 
 export function useActiveSurface(): SurfaceDraft | null {
   return useRouterState({
+    router,
     select: state => surfaceDraftFromRouterState(state),
     structuralSharing: true,
   })
@@ -42,12 +43,14 @@ export function useActiveSurface(): SurfaceDraft | null {
 
 export function useActiveSurfaceId(): string | null {
   return useRouterState({
+    router,
     select: state => surfaceDraftFromRouterState(state)?.id ?? null,
   })
 }
 
 export function useIsActiveSurfaceId(surfaceId: string): boolean {
   return useRouterState({
+    router,
     select: state => surfaceDraftFromRouterState(state)?.id === surfaceId,
   })
 }
