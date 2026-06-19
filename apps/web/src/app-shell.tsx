@@ -13,12 +13,10 @@ import { useGlobalSearchStore } from '~/features/search/global-search-store'
 import { useUnreadSessionIds } from '~/features/workspace/use-session'
 import { isWorkspaceFileShortcutScopeEvent } from '~/features/workspace/workspace-file-shortcuts'
 import { isTearoffWindow, tearoffSessionId } from '~/lib/electron'
-import {
-  createRouteSurfaceSyncRouteKey,
-  isRouteSurfaceSyncSuppressed,
-} from '~/navigation/route-surface-sync-guard'
+import { surfaceDraftFromRouterState, useActiveSurface } from '~/navigation/active-surface'
+import { createRouteSurfaceSyncRouteKey, isRouteSurfaceSyncSuppressed } from '~/navigation/route-surface-sync-key'
 import { SurfaceActivityProvider } from '~/navigation/surface-activity-context'
-import { layoutSlotIdForSurface, surfaceDraftFromRoute } from '~/navigation/surface-identity'
+import { layoutSlotIdForSurface } from '~/navigation/surface-identity'
 import { installSurfaceResourceLifecycle } from '~/navigation/surface-resource-lifecycle'
 import { useSurfaceStore } from '~/navigation/surface-store'
 import { installTearoffSessionRestore } from '~/navigation/tearoff-sessions'
@@ -48,19 +46,17 @@ function RouteSurfaceSync() {
   const lastSyncedRouteKeyRef = useRef<string | null>(null)
   const routeSnapshot = useRouterState({
     select: (state) => {
-      const match = state.matches.at(-1)
       const location = state.location as typeof state.location & { href?: string }
       return {
         routeKey: createRouteSurfaceSyncRouteKey(location),
-        pathname: location.pathname,
-        params: match?.params as Record<string, unknown> | undefined,
-        search: location.search as Record<string, unknown> | undefined,
+        surface: surfaceDraftFromRouterState(state),
       }
     },
+    structuralSharing: true,
   })
 
   useEffect(() => {
-    const surface = surfaceDraftFromRoute(routeSnapshot)
+    const surface = routeSnapshot.surface
     if (!surface) {
       return
     }
@@ -193,14 +189,13 @@ function MainAppRuntime() {
 
   const sidebarInSheet = useSidebarSheetMode()
   const [sidebarSheetOpen, setSidebarSheetOpen] = useState(false)
+  const activeSurface = useActiveSurface()
   const layoutSlotScope = useSurfaceStore(
     useShallow((state) => {
-      const activeSurface = state.surfaces.find(surface => surface.id === state.activeSurfaceId)
       const validSlotIds = state.surfaces
         .map(layoutSlotIdForSurface)
         .filter((id): id is string => id !== null)
       return {
-        activeSlotId: layoutSlotIdForSurface(activeSurface),
         validSurfaceIdsKey: state.surfaces.map(surface => surface.id).join('\0'),
         validSlotIdsKey: validSlotIds.join('\0'),
       }
@@ -216,7 +211,7 @@ function MainAppRuntime() {
     [layoutSlotScope.validSlotIdsKey],
   )
 
-  useSyncLayoutSlotScope(layoutSlotScope.activeSlotId, validSlotIds)
+  useSyncLayoutSlotScope(layoutSlotIdForSurface(activeSurface), validSlotIds)
 
   const openGlobalSearch = useCallback(() => {
     void loadGlobalSearchDialog()

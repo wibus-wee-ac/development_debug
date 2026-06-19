@@ -14,7 +14,6 @@ import {
 import { m } from 'motion/react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
-import { useShallow } from 'zustand/react/shallow'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { postSessions } from '~/api-gen/sdk.gen'
@@ -30,7 +29,7 @@ import type { ChatContextPart } from '~/features/chat/context/chat-context-parts
 import { startOptimisticChatResponse } from '~/features/chat/session/optimistic-chat-turn'
 import { useChatSessionDriver } from '~/features/chat/session/use-chat-session'
 import { cn } from '~/lib/cn'
-import { useSurfaceStore } from '~/navigation/surface-store'
+import { useActiveSurface } from '~/navigation/active-surface'
 import { useSessionLayoutStore } from '~/store/session-layout'
 
 import { stripCradleContextForDisplay } from './display-context'
@@ -38,13 +37,11 @@ import type { ExplicitContextAttachment } from './explicit-context'
 import {
   addCurrentTextSelectionAttachment,
   clearExplicitContextAttachments,
-  installExplicitContextProvider,
   removeExplicitContextAttachment,
   useExplicitContextAttachments,
 } from './explicit-context'
 import { formatContextEnvelopeForAgent } from './format-context'
 import { useJarvisUiStore } from './jarvis-ui-store'
-import { installSystemAgentContextProvider } from './system-context-provider'
 import { collectContextEnvelope } from './use-context-snapshot'
 import { useJarvisPreferences } from './use-jarvis-preferences'
 
@@ -385,27 +382,17 @@ export function JarvisPopover({
   const addSession = useJarvisUiStore(s => s.addSession)
   const includeContext = useJarvisUiStore(s => s.includeContext)
   const setIncludeContext = useJarvisUiStore(s => s.setIncludeContext)
-  const activeAmbientContext = useSurfaceStore(useShallow((state) => {
-    const activeSurface = state.activeSurfaceId
-      ? state.surfaces.find(surface => surface.id === state.activeSurfaceId) ?? null
-      : null
-
-    return {
-      label: activeSurface ? activeSurface.title || activeSurface.kind : null,
-      type: activeSurface?.kind ?? null,
-    }
-  }))
+  const activeSurface = useActiveSurface()
+  const activeAmbientContext = {
+    label: activeSurface ? activeSurface.title || activeSurface.kind : null,
+    type: activeSurface?.kind ?? null,
+  }
 
   const { centerColumnRect, footerRect } = useLayoutGeometry()
   const { prefs, isSuccess: preferencesReady } = useJarvisPreferences()
   const hasProfile = Boolean(prefs?.profileId)
   const contextSwitchLabel = clipContextLabel(activeAmbientContext.label ?? t('input.includeContext'))
   const jarvisReady = preferencesReady
-
-  React.useEffect(() => {
-    installSystemAgentContextProvider()
-    installExplicitContextProvider()
-  }, [])
 
   React.useEffect(() => {
     if (!open && jarvisExpanded) {

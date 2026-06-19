@@ -43,18 +43,11 @@ interface GuideViewProps {
   onBack: () => void
 }
 
-/** Guided reviews can only be produced by these runtimes. */
+/** Change walkthroughs can only be produced by these runtimes. */
 const GUIDE_RUNTIME_OPTIONS: RuntimeKindOption[] = [
   { value: 'codex' },
   { value: 'claude-agent' },
 ]
-
-const RISK_TONE: Record<ReviewGuideStep['riskLevel'], string> = {
-  low: 'bg-emerald-500/12 text-emerald-600 dark:text-emerald-400',
-  medium: 'bg-amber-500/12 text-amber-600 dark:text-amber-400',
-  high: 'bg-red-500/12 text-red-600 dark:text-red-400',
-  unknown: 'bg-muted text-muted-foreground',
-}
 
 export function GuideView({ workspaceId, repositoryPath, reviewId, onBack }: GuideViewProps) {
   const { review, isLoading, generateGuideMutation } = useReview({ workspaceId, repositoryPath, reviewId })
@@ -185,7 +178,7 @@ function GuideGenerateGate({
             {force ? <RotateCcwIcon className="size-5" /> : <ListTreeIcon className="size-5" />}
           </span>
           <h2 className="mt-4 text-base font-semibold text-foreground">
-            {force ? 'Regenerate the guided review' : 'Generate a guided review'}
+            {force ? 'Regenerate the walkthrough' : 'Generate a change walkthrough'}
           </h2>
           <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
             {force
@@ -503,8 +496,8 @@ function GuideSection({
   const [expandedFileIds, setExpandedFileIds] = useState<Set<string>>(() => new Set())
 
   const options = useMemo(
-    () => buildCodeViewOptions('unified', preferences),
-    [preferences],
+    () => buildCodeViewOptions('unified'),
+    [],
   )
 
   const diffStyleVars = {
@@ -538,11 +531,6 @@ function GuideSection({
         <h3 className="text-base font-semibold leading-snug tracking-tight text-foreground">
           {step.title}
         </h3>
-        <span className={cn(RISK_TONE[step.riskLevel], 'mt-2 inline-block rounded-full px-2 py-0.5 text-[10px] font-medium capitalize')}>
-          {step.riskLevel}
-          {' '}
-          risk
-        </span>
         <p className="mt-3 text-[14px] leading-[1.75] text-foreground/85">
           {step.rationale}
         </p>

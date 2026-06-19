@@ -3,7 +3,12 @@ import { useEffect } from 'react'
 
 import { toastManager, ToastProvider } from '~/components/ui/toast'
 import { TooltipProvider } from '~/components/ui/tooltip'
+import { createChatContextProvider } from '~/features/chat/context/chat-context'
+import { installContextProviders } from '~/features/context/context-registry'
 import { DirectoryPickerProvider } from '~/features/filesystem/directory-picker-provider'
+import { createKanbanContextProvider } from '~/features/kanban/kanban-context'
+import { createExplicitContextProvider } from '~/features/system-agent/explicit-context'
+import { createSystemAgentContextProvider } from '~/features/system-agent/system-context-provider'
 import { subscribeDesktopQuitGuardArmed } from '~/lib/electron'
 import { ShortcutProvider } from '~/lib/shortcut-provider'
 import { useResolvedThemeMode } from '~/store/theme'
@@ -13,6 +18,7 @@ export function AppEnvironmentProviders({ children }: { children: React.ReactNod
     <LazyMotion features={domAnimation}>
       <ToastProvider>
         <DesktopQuitGuardToastBridge />
+        <RendererContextRuntime />
         <TooltipProvider>
           <ShortcutProvider>
             <DirectoryPickerProvider>{children}</DirectoryPickerProvider>
@@ -21,6 +27,19 @@ export function AppEnvironmentProviders({ children }: { children: React.ReactNod
       </ToastProvider>
     </LazyMotion>
   )
+}
+
+function RendererContextRuntime() {
+  useEffect(() => {
+    return installContextProviders([
+      createSystemAgentContextProvider(),
+      createExplicitContextProvider(),
+      createChatContextProvider(),
+      createKanbanContextProvider(),
+    ])
+  }, [])
+
+  return null
 }
 
 function DesktopQuitGuardToastBridge() {

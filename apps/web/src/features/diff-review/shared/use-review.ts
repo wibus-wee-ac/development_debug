@@ -290,7 +290,7 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
   })
 
   /**
-   * On-demand guided review generation. This spends tokens, so it is strictly user-initiated —
+   * On-demand change walkthrough generation. This spends tokens, so it is strictly user-initiated —
    * never auto-triggered. `force` re-generates over an existing guide.
    */
   const generateGuideMutation = useMutation({

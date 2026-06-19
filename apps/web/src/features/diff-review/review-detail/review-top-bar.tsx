@@ -1,5 +1,6 @@
 import {
   CheckIcon,
+  GitCommitHorizontalIcon,
   GitCommitVerticalIcon,
   ListTreeIcon,
   MessageSquareIcon,
@@ -30,6 +31,8 @@ interface ReviewTopBarProps {
   isFetching: boolean
   onOpenGuide: () => void
   hasGuide: boolean
+  onOpenCommit?: () => void
+  hasCommitPlan?: boolean
   threadsRailCollapsed: boolean
   onToggleThreadsRail: () => void
   openThreadCount: number
@@ -56,6 +59,8 @@ export function ReviewTopBar({
   isFetching,
   onOpenGuide,
   hasGuide,
+  onOpenCommit,
+  hasCommitPlan,
   threadsRailCollapsed,
   onToggleThreadsRail,
   openThreadCount,
@@ -106,11 +111,20 @@ export function ReviewTopBar({
         onToggleGenerated={() => onPreference({ collapseGeneratedFiles: !review.preferences.collapseGeneratedFiles })}
       />
 
-      <Button variant="ghost" size="sm" onClick={onOpenGuide} className="h-7 gap-1.5 px-2 text-[12px]">
-        <ListTreeIcon className="size-3.5" />
-        Guide
-        {hasGuide && <span className="size-1.5 rounded-full bg-emerald-500" aria-label="Guide generated" />}
-      </Button>
+     <Button variant="ghost" size="sm" onClick={onOpenGuide} className="h-7 gap-1.5 px-2 text-[12px]">
+       <ListTreeIcon className="size-3.5" />
+       Guide
+       {hasGuide && <span className="size-1.5 rounded-full bg-emerald-500" aria-label="Guide generated" />}
+     </Button>
+
+      {/* Commit plan — only for reviews whose changes can be staged into commits. */}
+      {onOpenCommit && (
+        <Button variant="ghost" size="sm" onClick={onOpenCommit} className="h-7 gap-1.5 px-2 text-[12px]">
+          <GitCommitHorizontalIcon className="size-3.5" />
+          Commit
+          {hasCommitPlan && <span className="size-1.5 rounded-full bg-sky-500" aria-label="Commit plan exists" />}
+        </Button>
+      )}
 
       {/* Threads toggle — visible, badge carries the count. */}
       <Button

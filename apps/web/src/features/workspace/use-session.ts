@@ -8,8 +8,8 @@ import {
   getSessionsQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
 import type { GetSessionsByIdResponse, GetSessionsData, GetSessionsResponse } from '~/api-gen/types.gen'
-import { queryRefreshPolicy } from '~/lib/query-refresh-policy'
 import type { RuntimeKind } from '~/features/agent-runtime/types'
+import { queryRefreshPolicy } from '~/lib/query-refresh-policy'
 import { useSessionLayoutStore } from '~/store/session-layout'
 
 const SESSION_LIST_REFRESH_INTERVAL_MS = 5_000
@@ -18,11 +18,6 @@ let unreadSessionIdsSnapshot: string[] = []
 
 export function readUnreadSessionIdsSnapshot(): string[] {
   return unreadSessionIdsSnapshot
-}
-
-export function useUnreadSessionIds(): Set<string> {
-  const { sessions } = useAllSessions()
-  return useMemo(() => new Set(sessions.filter(session => session.unread).map(session => session.id)), [sessions])
 }
 
 export interface WorkspaceSession {
@@ -289,6 +284,25 @@ function asSessionLayoutRecords(sessions: WorkspaceSession[]) {
 
 function updateUnreadSessionIdsSnapshot(sessions: WorkspaceSession[]) {
   unreadSessionIdsSnapshot = sessions.filter(session => session.unread).map(session => session.id)
+}
+
+function selectUnreadSessionIds(sessions: GetSessionsResponse): string[] {
+  return sessions.filter(session => session.unread === true).map(session => session.id)
+}
+
+export function useUnreadSessionIds(): Set<string> {
+  const queryOptions = sessionListOptions()
+  const { data: unreadSessionIds = [] } = useQuery({
+    ...getSessionsOptions(queryOptions),
+    ...queryRefreshPolicy('active', { refetchInterval: SESSION_LIST_REFRESH_INTERVAL_MS }),
+    select: selectUnreadSessionIds,
+  })
+
+  useEffect(() => {
+    unreadSessionIdsSnapshot = unreadSessionIds
+  }, [unreadSessionIds])
+
+  return useMemo(() => new Set(unreadSessionIds), [unreadSessionIds])
 }
 
 export function useAllSessions(archived?: boolean) {
