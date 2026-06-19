@@ -374,6 +374,16 @@ describe('issue-agent capability', () => {
       expect(chatSessionRes.status).toBe(200)
       expect(await chatSessionRes.json()).toEqual(expect.objectContaining({ agentId: agent.id }))
 
+      const linkedSessionsRes = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}/sessions`))
+      expect(linkedSessionsRes.status).toBe(200)
+      expect(await linkedSessionsRes.json()).toEqual([
+        expect.objectContaining({
+          id: delegationState.chatSessionId,
+          agentId: agent.id,
+          linkedIssueId: issue.id,
+        }),
+      ])
+
       const rerunRes = await app.handle(new Request(`http://localhost/issue-agent-sessions/${encodeURIComponent(delegatedSession.id)}/rerun`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },

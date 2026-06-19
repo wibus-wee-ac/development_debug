@@ -33,6 +33,12 @@ interface Issue {
   sourceChatSessionId: string | null
 }
 
+interface LinkedSession {
+  id: string
+  linkedIssueId: string | null
+  title: string | null
+}
+
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
@@ -175,6 +181,41 @@ describe('kanban capability', () => {
       expect(searchByIssueNumber.status).toBe(200)
       expect(await searchByIssueNumber.json()).toEqual([
         expect.objectContaining({ id: issueWithoutStatus.id, number: 2 }),
+      ])
+
+      db().insert(providerTargets).values({
+        id: 'provider-target-linked-session',
+        kind: 'manual',
+        providerKind: 'openai-compatible',
+        displayName: 'Linked Session Provider',
+      }).run()
+      const createSession = await app.handle(new Request('http://localhost/sessions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          workspaceId: 'workspace-kanban',
+          title: 'Linked investigation chat',
+          providerTargetId: 'provider-target-linked-session',
+        }),
+      }))
+      expect(createSession.status).toBe(200)
+      const session = await createSession.json() as LinkedSession
+
+      const linkSession = await app.handle(new Request(`http://localhost/sessions/${encodeURIComponent(session.id)}/linked-issue`, {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ issueId: issue.id }),
+      }))
+      expect(linkSession.status).toBe(200)
+
+      const listLinkedSessions = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}/sessions`))
+      expect(listLinkedSessions.status).toBe(200)
+      expect(await listLinkedSessions.json()).toEqual([
+        expect.objectContaining({
+          id: session.id,
+          title: 'Linked investigation chat',
+          linkedIssueId: issue.id,
+        }),
       ])
 
       const addComment = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}/comments`, {

@@ -20,6 +20,7 @@ import { AppError } from '../../errors/app-error'
 import { currentUnixSeconds } from '../../helpers/time'
 import type { MutationActor, MutationActorKind } from '../../http/actor-context'
 import { db } from '../../infra'
+import * as Session from '../session/service'
 
 type StatusCategory = 'triage' | 'backlog' | 'unstarted' | 'started' | 'completed' | 'canceled'
 type IssueActorKind = Extract<MutationActorKind, 'user' | 'agent' | 'provider-target' | 'system'>
@@ -1262,6 +1263,11 @@ export function getLinkedIssue(sessionId: string): { issueId: string | null } {
     throw new AppError({ code: 'session_not_found', status: 404, message: 'Session not found', details: { sessionId } })
   }
   return { issueId: s.linkedIssueId }
+}
+
+export function listLinkedSessions(issueId: string): Session.SessionView[] {
+  getIssue(issueId)
+  return Session.listLinkedToIssue(issueId)
 }
 
 export function linkIssue(sessionId: string, issueId: string): { ok: true } {

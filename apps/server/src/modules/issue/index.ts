@@ -128,6 +128,13 @@ export const issue = new Elysia({
     params: IssueModel.idParams,
     response: { 200: IssueModel.issue },
   })
+  .get('/:id/sessions', ({ params }) => Issue.listLinkedSessions(params.id), {
+    detail: {
+      summary: 'List linked chat sessions for an issue',
+    },
+    params: IssueModel.idParams,
+    response: { 200: t.Array(IssueModel.linkedSession) },
+  })
   .post('/', ({ body, request }) => Issue.createIssue(body, resolveActorContext(request)), {
     detail: {
       'summary': 'Create issue',

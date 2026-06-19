@@ -95,6 +95,7 @@ describe('openapi capability', () => {
       expect(document.paths['/acp/agents/{agentId}/cancel-install']).toBeUndefined()
       expect(document.paths['/kanban/issues/{id}/delegation']).toBeUndefined()
       expect(document.paths['/issues/{id}/delegation']).toBeTruthy()
+      expect(document.paths['/issues/{id}/sessions']).toBeTruthy()
       expect(document.paths['/issues/{id}/agent-sessions']).toBeTruthy()
       expect(document.paths['/issue-agent/issues/{issueId}/delegation']).toBeUndefined()
       expect(document.paths['/issue-agent-sessions/{agentSessionId}/activities']).toBeTruthy()

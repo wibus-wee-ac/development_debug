@@ -361,6 +361,21 @@ export function list(input: { workspaceId?: string, archived?: boolean } = {}): 
   ))
 }
 
+export function listLinkedToIssue(issueId: string): SessionView[] {
+  const rows = listRowsByActivity(and(eq(sessions.linkedIssueId, issueId)))
+
+  const sessionIds = rows.map(row => row.session.id)
+  const modelsBySessionId = listRequestedModelsBySessionIds(sessionIds)
+  const statusesBySessionId = listStatusesBySessionIds(sessionIds)
+  return rows.map(row => toSessionView(
+    row.session,
+    modelsBySessionId.get(row.session.id) ?? null,
+    statusesBySessionId.get(row.session.id) ?? 'idle',
+    row.latestUserMessageAt,
+    row.latestAssistantMessageAt,
+  ))
+}
+
 export function setArchived(input: { id: string, archived: boolean }): SessionView | null {
   const record = db().select().from(sessions).where(eq(sessions.id, input.id)).get()
   if (!record) {
