@@ -1,4 +1,5 @@
 import { Streamdown } from '@cradle/streamdown'
+import { useQuery } from '@tanstack/react-query'
 import type { UIMessage } from 'ai'
 import {
   ActivityIcon,
@@ -16,11 +17,14 @@ import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
 
+import { getChatRunsByRunIdSnapshotOptions } from '~/api-gen/@tanstack/react-query.gen'
+import type { GetChatRunsByRunIdSnapshotResponse } from '~/api-gen/types.gen'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 import { formatShortDurationMs } from '~/lib/number-format'
+import type { ChatRunDisplayMeta } from '~/store/chat'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useSessionLayoutStore } from '~/store/session-layout'
 import { STREAMDOWN_RENDER_OPTIONS } from '~/store/streamdown'
@@ -72,7 +76,6 @@ import type { RenderableToolPart } from './tool-ui-classifier'
 import { describeToolCall } from './tool-ui-classifier'
 
 const BUBBLE_TRANSITION = { type: 'spring', stiffness: 500, damping: 35, mass: 0.8 } as const
-const IS_DEV = import.meta.env.DEV
 const THINKING_IDLE_DELAY_MS = 900
 const MESSAGE_STREAMING_ANIMATION_MAX_CHARS = 12000
 const SUBAGENT_STREAMING_ANIMATION_MAX_CHARS = 4000
@@ -262,18 +265,20 @@ function PluginContextBlock({ part }: { part: ChatPluginContextMessagePart }) {
 
 function RunDebugCaption({ messageId }: { messageId: string }) {
   const meta = useChatStore(chatSelectors.runDisplayMeta(messageId), (a, b) => a === b)
-  if (!IS_DEV || !meta) {
+  const snapshotQuery = useQuery({
+    ...getChatRunsByRunIdSnapshotOptions({ path: { runId: meta?.runId ?? '' } }),
+    enabled: Boolean(meta?.runId),
+    refetchInterval: query => query.state.data?.status === 'running' ? 1000 : false,
+  })
+  if (!meta) {
     return null
   }
 
-  const ttfbMs
-    = meta.firstEventAtMs === null ? null : Math.max(0, meta.firstEventAtMs - meta.requestStartedAtMs)
-  const ttftMs
-    = meta.firstContentAtMs === null
-      ? null
-      : Math.max(0, meta.firstContentAtMs - meta.requestStartedAtMs)
-  const totalMs
-    = meta.completedAtMs === null ? null : Math.max(0, meta.completedAtMs - meta.requestStartedAtMs)
+  const localTimings = readLocalRunTimings(meta)
+  const snapshotTimings = snapshotQuery.data ? readRunSnapshotTimings(snapshotQuery.data) : null
+  const ttfbMs = snapshotTimings ? snapshotTimings.ttfbMs : localTimings.ttfbMs
+  const ttftMs = snapshotTimings ? snapshotTimings.ttftMs : localTimings.ttftMs
+  const totalMs = snapshotTimings?.totalMs ?? localTimings.totalMs
   const shortRunId = meta.runId ? `${meta.runId.slice(0, 8)}…` : 'pending'
 
   return (
@@ -314,6 +319,50 @@ function RunDebugCaption({ messageId }: { messageId: string }) {
         )}
       </div>
     </TooltipProvider>
+  )
+}
+
+type RunTimingMetrics = {
+  ttfbMs: number | null
+  ttftMs: number | null
+  totalMs: number | null
+}
+
+type RunSnapshotEvent = GetChatRunsByRunIdSnapshotResponse['events'][number]
+
+const TERMINAL_CHUNK_TYPES = new Set(['finish', 'abort', 'error'])
+const NON_RESPONSE_SNAPSHOT_PHASES = new Set([
+  'run_started',
+  'stream_finished',
+  'stream_failed',
+  'run_finalized',
+  'usage',
+  'step_usage',
+])
+
+function readLocalRunTimings(meta: ChatRunDisplayMeta): RunTimingMetrics {
+  return {
+    ttfbMs: meta.firstEventAtMs === null ? null : Math.max(0, meta.firstEventAtMs - meta.requestStartedAtMs),
+    ttftMs: meta.firstContentAtMs === null ? null : Math.max(0, meta.firstContentAtMs - meta.requestStartedAtMs),
+    totalMs: meta.completedAtMs === null ? null : Math.max(0, meta.completedAtMs - meta.requestStartedAtMs),
+  }
+}
+
+function readRunSnapshotTimings(snapshot: GetChatRunsByRunIdSnapshotResponse): RunTimingMetrics {
+  const firstResponseEvent = snapshot.events.find(isResponseSnapshotEvent)
+  const firstTextDeltaEvent = snapshot.events.find(event => event.phase === 'model_text_first_delta')
+  return {
+    ttfbMs: firstResponseEvent ? Math.max(0, firstResponseEvent.occurredAt - snapshot.startedAt) : null,
+    ttftMs: firstTextDeltaEvent ? Math.max(0, firstTextDeltaEvent.occurredAt - snapshot.startedAt) : null,
+    totalMs: snapshot.completedAt === undefined ? null : Math.max(0, snapshot.completedAt - snapshot.startedAt),
+  }
+}
+
+function isResponseSnapshotEvent(event: RunSnapshotEvent): boolean {
+  return Boolean(
+    event.chunkType
+    && !TERMINAL_CHUNK_TYPES.has(event.chunkType)
+    && !NON_RESPONSE_SNAPSHOT_PHASES.has(event.phase),
   )
 }
 
