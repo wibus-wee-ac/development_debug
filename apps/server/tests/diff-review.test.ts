@@ -117,7 +117,7 @@ interface DiffReviewResponse {
   id: string
   workspaceId: string
   repositoryPath: string
-  sourceKind: 'local-working-tree' | 'local-branch-compare'
+  sourceKind: 'local-working-tree' | 'local-branch-compare' | 'local-commit'
   title: string
   reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented'
   currentRevisionId: string | null
@@ -1343,6 +1343,64 @@ describe('diff-review capability', () => {
         app,
         '/workspaces/workspace-diff-review-branch-compare/diff-reviews/local-branch-compare',
         { baseRef: 'main', headRef: 'feature/diffs' },
+      )
+      expect(repeated.id).toBe(review.id)
+      expect(repeated.currentRevision?.id).toBe(review.currentRevision?.id)
+    }
+    finally {
+      restoreTestInfra(previousEnv)
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('creates an idempotent local commit review from a commit ref', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-diff-review-workspace-')
+    const previousEnv = useIsolatedTestInfra(dataDir)
+
+    try {
+      initGitRepository(workspaceRoot)
+      commitFile(workspaceRoot, 'README.md', '# Diff Review Fixture', 'repo: initial commit')
+      writeFileSync(join(workspaceRoot, 'README.md'), '# Diff Review Fixture\ncommit review\n', 'utf8')
+      writeFileSync(join(workspaceRoot, 'commit-review.ts'), 'export const reviewed = true\n', 'utf8')
+      runGit(workspaceRoot, ['add', 'README.md', 'commit-review.ts'])
+      runGit(workspaceRoot, ['commit', '-m', 'feature: commit review fixture'])
+      const commitSha = runGit(workspaceRoot, ['rev-parse', 'HEAD'])
+      const shortSha = runGit(workspaceRoot, ['rev-parse', '--short', 'HEAD'])
+
+      const app = await createServerApp()
+      db()
+        .insert(workspaces)
+        .values({
+          id: 'workspace-diff-review-local-commit',
+          name: 'Workspace Diff Review Local Commit',
+          path: workspaceRoot,
+        })
+        .run()
+
+      const review = await postJson<DiffReviewResponse>(
+        app,
+        '/workspaces/workspace-diff-review-local-commit/diff-reviews/local-commit',
+        { commitRef: commitSha },
+      )
+      expect(review.sourceKind).toBe('local-commit')
+      expect(review.title).toContain(shortSha)
+      expect(review.title).toContain('feature: commit review fixture')
+      expect(review.currentRevision?.sourceVersion).toContain(commitSha)
+      expect(review.currentRevision?.patch).toContain('diff --git a/README.md b/README.md')
+      expect(review.currentRevision?.patch).toContain('diff --git a/commit-review.ts b/commit-review.ts')
+      expect(review.files).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({ path: 'README.md', status: 'modified' }),
+          expect.objectContaining({ path: 'commit-review.ts', status: 'added' }),
+        ]),
+      )
+
+      const repeated = await postJson<DiffReviewResponse>(
+        app,
+        '/workspaces/workspace-diff-review-local-commit/diff-reviews/local-commit',
+        { commitRef: shortSha },
       )
       expect(repeated.id).toBe(review.id)
       expect(repeated.currentRevision?.id).toBe(review.currentRevision?.id)

@@ -1,10 +1,14 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { GitCompareIcon, GitPullRequestArrowIcon, Loader2Icon, PlusIcon } from 'lucide-react'
+import { GitCommitVerticalIcon, GitCompareIcon, GitPullRequestArrowIcon, Loader2Icon, PlusIcon } from 'lucide-react'
 import { useState } from 'react'
 
-import { postWorkspacesByIdDiffReviewsLocalBranchCompare } from '~/api-gen/sdk.gen'
+import {
+  postWorkspacesByIdDiffReviewsLocalBranchCompare,
+  postWorkspacesByIdDiffReviewsLocalCommit,
+} from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
+import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { cn } from '~/lib/cn'
 
 import {
@@ -57,12 +61,31 @@ export function ReviewsListPage({
     },
   })
 
+  const commitMutation = useMutation({
+    mutationFn: async (input: { commitRef: string }) => {
+      const { data } = await postWorkspacesByIdDiffReviewsLocalCommit({
+        path: { id: workspaceId },
+        body: {
+          repo: repositoryPath ?? undefined,
+          commitRef: input.commitRef,
+        },
+        throwOnError: true,
+      })
+      return data
+    },
+    onSuccess: (data) => {
+      void queryClient.invalidateQueries({ queryKey: reviewListQueryKey(workspaceId) })
+      navigateToReview(workspaceId, data.id, { repositoryPath })
+    },
+  })
+
   return (
     <div className="flex h-full w-full min-h-0 flex-col overflow-hidden" data-testid="reviews-list-page">
       <header className="flex h-10 shrink-0 items-center gap-2 px-4">
-        <h1 className="text-sm font-semibold text-foreground">Reviews</h1>
-        <span className="text-[11px] tabular-nums text-muted-foreground">{reviews.length}</span>
+        <h1 className="text-[13px] font-semibold text-foreground">Reviews</h1>
+        <span className="text-[12px] tabular-nums text-muted-foreground">{reviews.length}</span>
         <div className="flex-1" />
+        <CommitDialog onOpen={input => commitMutation.mutate(input)} pending={commitMutation.isPending} />
         <CompareDialog onCompare={input => compareMutation.mutate(input)} pending={compareMutation.isPending} />
       </header>
 
@@ -73,7 +96,7 @@ export function ReviewsListPage({
             type="button"
             onClick={() => setTab(item.id)}
             className={cn(
-              'h-7 rounded-md px-2.5 text-xs font-medium transition-colors',
+              'h-7 rounded-md px-2.5 text-[12px] font-medium transition-colors',
               tab === item.id
                 ? 'bg-muted text-foreground'
                 : 'text-muted-foreground hover:bg-muted/60 hover:text-foreground',
@@ -94,7 +117,7 @@ export function ReviewsListPage({
             )
           : isError
             ? (
-                <p className="py-10 text-center text-xs text-muted-foreground">Reviews unavailable</p>
+                <p className="py-10 text-center text-[12px] text-muted-foreground">Reviews unavailable</p>
               )
             : (
                 <ReviewsContent
@@ -136,7 +159,7 @@ function ReviewsContent({
         ? (
             <div className="py-16 text-center">
               <GitPullRequestArrowIcon className="mx-auto size-5 text-muted-foreground/30" aria-hidden />
-              <p className="mt-2 text-xs text-muted-foreground">No reviews yet</p>
+              <p className="mt-2 text-[12px] text-muted-foreground">No reviews yet</p>
             </div>
           )
         : (
@@ -184,8 +207,8 @@ function WorkingTreeEntry({
         <PlusIcon className="size-3.5" aria-hidden />
       </span>
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-xs font-medium text-foreground">Working tree</span>
-        <span className="block truncate text-[11px] text-muted-foreground">
+        <span className="block truncate text-[13px] font-medium text-foreground">Working tree</span>
+        <span className="block truncate text-[12px] text-muted-foreground">
           {present ? 'Review your uncommitted changes' : 'No uncommitted changes detected'}
         </span>
       </span>
@@ -205,7 +228,7 @@ function ReviewRow({ review, onClick }: { review: CradleDiffReview, onClick: () 
     <button
       type="button"
       onClick={onClick}
-      className="flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-muted/60"
+      className="group flex w-full items-center gap-3 rounded-md px-3 py-2 text-left transition-colors hover:bg-muted/60"
       data-testid="reviews-list-row"
     >
       <span
@@ -216,8 +239,8 @@ function ReviewRow({ review, onClick }: { review: CradleDiffReview, onClick: () 
         aria-hidden
       />
       <span className="min-w-0 flex-1">
-        <span className="block truncate text-xs font-medium text-foreground">{review.title}</span>
-        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+        <span className="block truncate text-[13px] font-medium text-foreground">{review.title}</span>
+        <span className="mt-0.5 block truncate text-[12px] text-muted-foreground">
           {sourceLabel(review.sourceKind)}
 {' '}
 ·
@@ -226,14 +249,14 @@ function ReviewRow({ review, onClick }: { review: CradleDiffReview, onClick: () 
       </span>
       <div className="flex shrink-0 items-center gap-1.5">
         {unviewed > 0 && (
-          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">
+          <span className="rounded-full bg-muted px-1.5 py-0.5 text-[11px] tabular-nums text-muted-foreground">
             {unviewed}
 {' '}
 unviewed
           </span>
         )}
         {openThreads > 0 && (
-          <span className="rounded-full bg-orange-500/10 px-1.5 py-0.5 text-[10px] tabular-nums text-orange-600 dark:text-orange-400">
+          <span className="rounded-full bg-orange-500/10 px-1.5 py-0.5 text-[11px] tabular-nums text-orange-600 dark:text-orange-400">
             {openThreads}
 {' '}
 open
@@ -241,6 +264,68 @@ open
         )}
       </div>
     </button>
+  )
+}
+
+function CommitDialog({
+  onOpen,
+  pending,
+}: {
+  onOpen: (input: { commitRef: string }) => void
+  pending: boolean
+}) {
+  const [open, setOpen] = useState(false)
+  const [commitRef, setCommitRef] = useState('')
+
+  return (
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={(
+          <Button variant="outline" size="sm" className="h-7 gap-1.5 text-[12px]">
+            <GitCommitVerticalIcon className="size-3.5" aria-hidden />
+            Commit
+          </Button>
+        )}
+      />
+      <PopoverContent align="end" className="w-72 gap-2 p-3">
+        <div className="space-y-1.5">
+          <label htmlFor="commit-ref" className="text-[12px] font-medium text-foreground/80">Commit ref</label>
+          <Input
+            id="commit-ref"
+            autoFocus
+            value={commitRef}
+            onChange={event => setCommitRef(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && commitRef.trim() && !pending) {
+                onOpen({ commitRef: commitRef.trim() })
+                setOpen(false)
+                setCommitRef('')
+              }
+            }}
+            placeholder="HEAD, sha, or ref"
+            className="h-8 text-[12px]"
+          />
+        </div>
+        <div className="flex items-center justify-end gap-1.5 pt-1">
+          <Button variant="ghost" size="sm" className="h-7 text-[12px]" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            className="h-7 text-[12px]"
+            disabled={!commitRef.trim() || pending}
+            onClick={() => {
+              onOpen({ commitRef: commitRef.trim() })
+              setOpen(false)
+              setCommitRef('')
+            }}
+          >
+            {pending && <Loader2Icon className="size-3.5 animate-spin" />}
+            Open
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }
 
@@ -255,44 +340,62 @@ function CompareDialog({
   const [baseRef, setBaseRef] = useState('main')
   const [headRef, setHeadRef] = useState('')
 
-  if (!open) {
-    return (
-      <Button variant="outline" size="sm" onClick={() => setOpen(true)}>
-        <GitCompareIcon className="size-3.5" aria-hidden />
-        Compare
-      </Button>
-    )
-  }
-
   return (
-    <div className="flex items-center gap-1.5">
-      <Input
-        value={baseRef}
-        onChange={event => setBaseRef(event.target.value)}
-        placeholder="base ref"
-        className="h-7 w-28 text-xs"
+    <Popover open={open} onOpenChange={setOpen}>
+      <PopoverTrigger
+        render={(
+          <Button variant="outline" size="sm" className="h-7 gap-1.5 text-[12px]">
+            <GitCompareIcon className="size-3.5" aria-hidden />
+            Compare
+          </Button>
+        )}
       />
-      <Input
-        value={headRef}
-        onChange={event => setHeadRef(event.target.value)}
-        placeholder="head ref"
-        className="h-7 w-28 text-xs"
-      />
-      <Button
-        variant="default"
-        size="sm"
-        disabled={!baseRef.trim() || !headRef.trim() || pending}
-        onClick={() => {
-          onCompare({ baseRef: baseRef.trim(), headRef: headRef.trim() })
-          setOpen(false)
-        }}
-      >
-        {pending ? <Loader2Icon className="size-3.5 animate-spin" /> : null}
-        Open
-      </Button>
-      <Button variant="ghost" size="sm" onClick={() => setOpen(false)}>
-        Cancel
-      </Button>
-    </div>
+      <PopoverContent align="end" className="w-80 gap-2 p-3">
+        <div className="space-y-1.5">
+          <label htmlFor="base-ref" className="text-[12px] font-medium text-foreground/80">Base ref</label>
+          <Input
+            id="base-ref"
+            autoFocus
+            value={baseRef}
+            onChange={event => setBaseRef(event.target.value)}
+            placeholder="main"
+            className="h-8 text-[12px]"
+          />
+        </div>
+        <div className="space-y-1.5">
+          <label htmlFor="head-ref" className="text-[12px] font-medium text-foreground/80">Head ref</label>
+          <Input
+            id="head-ref"
+            value={headRef}
+            onChange={event => setHeadRef(event.target.value)}
+            onKeyDown={(event) => {
+              if (event.key === 'Enter' && baseRef.trim() && headRef.trim() && !pending) {
+                onCompare({ baseRef: baseRef.trim(), headRef: headRef.trim() })
+                setOpen(false)
+              }
+            }}
+            placeholder="feature-branch"
+            className="h-8 text-[12px]"
+          />
+        </div>
+        <div className="flex items-center justify-end gap-1.5 pt-1">
+          <Button variant="ghost" size="sm" className="h-7 text-[12px]" onClick={() => setOpen(false)}>
+            Cancel
+          </Button>
+          <Button
+            size="sm"
+            className="h-7 text-[12px]"
+            disabled={!baseRef.trim() || !headRef.trim() || pending}
+            onClick={() => {
+              onCompare({ baseRef: baseRef.trim(), headRef: headRef.trim() })
+              setOpen(false)
+            }}
+          >
+            {pending && <Loader2Icon className="size-3.5 animate-spin" />}
+            Open
+          </Button>
+        </div>
+      </PopoverContent>
+    </Popover>
   )
 }

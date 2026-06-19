@@ -1,4 +1,3 @@
-import { CheckIcon, MessageSquareIcon } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '~/components/ui/button'
@@ -27,7 +26,9 @@ export function InlineThread({
 }: InlineThreadProps) {
   const [expanded, setExpanded] = useState(thread.state !== 'resolved')
   const [draft, setDraft] = useState('')
+  const [replying, setReplying] = useState(false)
   const lastComment = thread.comments.at(-1)
+  const resolved = thread.state === 'resolved'
 
   const toggle = () => {
     const next = !expanded
@@ -37,82 +38,134 @@ export function InlineThread({
 
   return (
     <div
-      className="my-1 overflow-hidden rounded-lg border border-border bg-background shadow-sm"
+      className="my-px border-l border-border bg-muted/30"
       data-testid="inline-thread"
       data-thread-state={thread.state}
     >
       <button
         type="button"
         onClick={toggle}
-        className="flex w-full items-center gap-2 px-2.5 py-1.5 text-left transition-colors hover:bg-muted/50"
+        className="flex w-full items-center gap-2 px-3 py-1.5 text-left transition-colors hover:bg-muted/50"
       >
         <span
           className={cn(
-            'flex size-4 items-center justify-center rounded-full',
-            thread.state === 'resolved' ? 'bg-emerald-500/15 text-emerald-600 dark:text-emerald-400' : 'bg-orange-500/15 text-orange-600 dark:text-orange-400',
+            'size-1.5 shrink-0 rounded-full',
+            resolved ? 'bg-emerald-500' : thread.state === 'stale' ? 'bg-amber-500' : 'bg-orange-500',
           )}
-        >
-          {thread.state === 'resolved' ? <CheckIcon className="size-2.5" /> : <MessageSquareIcon className="size-2.5" />}
-        </span>
-        <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">
+          aria-hidden
+        />
+        <span className="min-w-0 flex-1 truncate text-[12px] font-medium text-foreground">
           {lastComment ? lastComment.bodyMarkdown.split('\n')[0] : 'Thread'}
         </span>
-        <span className="shrink-0 text-[10px] tabular-nums text-muted-foreground">
+        <span className="shrink-0 text-[11px] tabular-nums text-muted-foreground/70">
           {thread.comments.length}
         </span>
       </button>
 
       {expanded && (
-        <div className="space-y-2 border-t border-border/60 px-2.5 py-2">
+        <div className="space-y-1.5 px-3 pb-2 pl-5">
           {thread.comments.map(comment => (
-            <div key={comment.id} className="space-y-1">
-              <div className="flex items-center gap-1.5 text-[10px] text-muted-foreground">
+            <div key={comment.id} className="space-y-0.5">
+              <div className="flex items-baseline gap-1.5 text-[11px] text-muted-foreground">
                 <span className="font-medium text-foreground/80">{comment.authorId}</span>
                 <span className="tabular-nums">{formatTimestamp(comment.createdAt)}</span>
               </div>
-              <p className="whitespace-pre-wrap text-[11px] leading-relaxed text-foreground/90">
+              <p className="whitespace-pre-wrap text-[12px] leading-relaxed text-foreground/90">
                 {comment.bodyMarkdown}
               </p>
             </div>
           ))}
 
-          {thread.state !== 'resolved' && (
-            <>
-              <Textarea
-                value={draft}
-                onChange={event => setDraft(event.target.value)}
-                placeholder="Reply…"
-                className="min-h-12 resize-none text-[11px]"
-              />
-              <div className="flex items-center justify-end gap-1.5">
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  className="h-6 text-[11px]"
-                  onClick={() => onResolve(thread.id)}
-                  disabled={resolvePending}
-                >
-                  Resolve
-                </Button>
-                <Button
-                  type="button"
-                  size="sm"
-                  className="h-6 text-[11px]"
-                  onClick={() => {
-                    const body = draft.trim()
-                    if (body) {
-                      onReply(thread.id, body)
-                      setDraft('')
-                    }
-                  }}
-                  disabled={!draft.trim() || replyPending}
-                >
-                  Reply
-                </Button>
-              </div>
-            </>
-          )}
+          {resolved
+            ? null
+            : replying
+              ? (
+                  <div className="space-y-1.5 pt-1">
+                    <Textarea
+                      autoFocus
+                      value={draft}
+                      onChange={event => setDraft(event.target.value)}
+                      onKeyDown={(event) => {
+                        if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+                          event.preventDefault()
+                          const body = draft.trim()
+                          if (body) {
+                            onReply(thread.id, body)
+                            setDraft('')
+                            setReplying(false)
+                          }
+                        }
+                        if (event.key === 'Escape') {
+                          event.preventDefault()
+                          setReplying(false)
+                          setDraft('')
+                        }
+                      }}
+                      placeholder="Reply…"
+                      className="min-h-7 resize-none text-[12px]"
+                    />
+                    <div className="flex items-center justify-end gap-1">
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-[12px] text-muted-foreground"
+                        onClick={() => {
+                          setReplying(false)
+                          setDraft('')
+                        }}
+                      >
+                        Cancel
+                      </Button>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-6 text-[12px] text-muted-foreground"
+                        onClick={() => onResolve(thread.id)}
+                        disabled={resolvePending}
+                      >
+                        Resolve
+                      </Button>
+                      <Button
+                        type="button"
+                        size="sm"
+                        className="h-6 text-[12px]"
+                        disabled={!draft.trim() || replyPending}
+                        onClick={() => {
+                          const body = draft.trim()
+                          if (body) {
+                            onReply(thread.id, body)
+                            setDraft('')
+                            setReplying(false)
+                          }
+                        }}
+                      >
+                        Reply
+                      </Button>
+                    </div>
+                  </div>
+                )
+              : (
+                  <div className="flex items-center gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={() => setReplying(true)}
+                      className="text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      Reply
+                    </button>
+                    <span className="text-muted-foreground/30">·</span>
+                    <button
+                      type="button"
+                      onClick={() => onResolve(thread.id)}
+                      disabled={resolvePending}
+                      className="text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      Resolve
+                    </button>
+                  </div>
+                )}
         </div>
       )}
     </div>

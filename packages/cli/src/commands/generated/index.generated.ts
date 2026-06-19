@@ -206,6 +206,7 @@ import { register as registerWorkspaceDiffsAgentFixCreate } from './workspace/di
 import { register as registerWorkspaceDiffsAgentFixRerun } from './workspace/diffs/agent-fix/rerun'
 import { register as registerWorkspaceDiffsAgentFixStart } from './workspace/diffs/agent-fix/start'
 import { register as registerWorkspaceDiffsBranchCompare } from './workspace/diffs/branch-compare'
+import { register as registerWorkspaceDiffsCommit } from './workspace/diffs/commit'
 import { register as registerWorkspaceDiffsCommitPlanApply } from './workspace/diffs/commit-plan/apply'
 import { register as registerWorkspaceDiffsCommitPlanCreate } from './workspace/diffs/commit-plan/create'
 import { register as registerWorkspaceDiffsCommitPlanUpdate } from './workspace/diffs/commit-plan/update'
@@ -451,6 +452,7 @@ export function registerGeneratedCommands(program: Command): void {
   registerWorkspaceDiffsAgentFixRerun(program)
   registerWorkspaceDiffsAgentFixStart(program)
   registerWorkspaceDiffsBranchCompare(program)
+  registerWorkspaceDiffsCommit(program)
   registerWorkspaceDiffsCommitPlanApply(program)
   registerWorkspaceDiffsCommitPlanCreate(program)
   registerWorkspaceDiffsCommitPlanUpdate(program)

@@ -191,6 +191,9 @@ export function sourceLabel(sourceKind: ReviewSourceKind): string {
   if (sourceKind === 'local-branch-compare') {
     return 'Branch compare'
   }
+  if (sourceKind === 'local-commit') {
+    return 'Commit'
+  }
   if (sourceKind === 'agent-change-set') {
     return 'Agent changes'
   }
@@ -301,6 +304,7 @@ export const LOCAL_REVIEW_USER_ID = 'local-user'
 export function reviewAuthoredByLocalUser(review: CradleDiffReview): boolean {
   return review.sourceKind === 'local-working-tree'
     || review.sourceKind === 'local-branch-compare'
+    || review.sourceKind === 'local-commit'
     || review.events.some(event => event.eventKind === 'review_created' && event.actorId === LOCAL_REVIEW_USER_ID)
 }
 
@@ -320,7 +324,7 @@ export function reviewForMe(review: CradleDiffReview): boolean {
 
 export function buildCodeViewOptions(
   diffStyle: DiffStyle,
-  preferences: CradleDiffReview['preferences'] | undefined,
+  onGutterUtilityClick?: CodeViewOptions<ThreadAnnotation>['onGutterUtilityClick'],
 ): CodeViewOptions<ThreadAnnotation> {
   return {
     theme: { dark: 'pierre-dark', light: 'pierre-light' },
@@ -332,11 +336,14 @@ export function buildCodeViewOptions(
     hunkSeparators: 'line-info-basic',
     enableLineSelection: true,
     controlledSelection: true,
+    // Hover any line → a "+" appears in the gutter → click opens the composer.
+    enableGutterUtility: true,
+    onGutterUtilityClick,
     stickyHeaders: true,
     pointerEventsOnScroll: false,
     itemMetrics: {
       hunkLineCount: 1,
-      lineHeight: preferences?.lineHeight ?? 18,
+      lineHeight: 18,
     },
   }
 }

@@ -1,7 +1,6 @@
-import type { CodeViewItem, DiffLineAnnotation } from '@pierre/diffs'
+import type { CodeViewItem, DiffLineAnnotation, SelectedLineRange } from '@pierre/diffs'
 import type { CodeViewHandle } from '@pierre/diffs/react'
 import { CodeView, useStableCallback } from '@pierre/diffs/react'
-import type { CSSProperties } from 'react'
 import { useEffect, useMemo, useRef } from 'react'
 
 import type { CodeViewLineSelection, DiffData, ThreadAnnotation } from '../shared/diff-items'
@@ -25,6 +24,7 @@ interface DiffStageProps {
   onSelectLines: (selection: CodeViewLineSelection | null) => void
   onFileFromSelection: (fileId: string) => void
   composerAnchor: CodeViewLineSelection | null
+  onComposerOpen: (selection: CodeViewLineSelection) => void
   onComposerClose: () => void
   onCreateThread: (input: { fileId: string, anchor: { fileId: string, side: 'base' | 'head', startLine: number, endLine: number }, bodyMarkdown: string }) => void
   createPending: boolean
@@ -47,6 +47,7 @@ export function DiffStage({
   onSelectLines,
   onFileFromSelection,
   composerAnchor,
+  onComposerOpen,
   onComposerClose,
   onCreateThread,
   createPending,
@@ -60,9 +61,20 @@ export function DiffStage({
 }: DiffStageProps) {
   const viewerRef = useRef<CodeViewHandle<ThreadAnnotation>>(null)
 
+  const handleGutterUtilityClick = useStableCallback((range: SelectedLineRange, context: { item: { id: string } }) => {
+    const selection: CodeViewLineSelection = { id: context.item.id, range }
+    onSelectLines(selection)
+    const path = diffData.itemIdToPath.get(selection.id)
+    const file = path ? files.find(item => item.path === path) : undefined
+    if (file) {
+      onFileFromSelection(file.id)
+    }
+    onComposerOpen(selection)
+  })
+
   const options = useMemo(
-    () => buildCodeViewOptions(diffStyle, review.preferences),
-    [diffStyle, review.preferences],
+    () => buildCodeViewOptions(diffStyle, handleGutterUtilityClick),
+    [diffStyle, handleGutterUtilityClick],
   )
 
   const annotationsByItem = useMemo(
@@ -80,11 +92,6 @@ export function DiffStage({
     }),
     [visibleItems, annotationsByItem],
   )
-
-  const diffStyleVars = {
-    '--diffs-font-size': `${review.preferences.fontSize ?? 11}px`,
-    '--diffs-line-height': `${review.preferences.lineHeight ?? 18}px`,
-  } as CSSProperties
 
   const scrollToPath = useStableCallback((path: string) => {
     const viewer = viewerRef.current
@@ -140,8 +147,6 @@ export function DiffStage({
     )
   })
 
-  const renderGutterUtility = useStableCallback(() => null)
-
   const selectDiffLines = useStableCallback((selection: CodeViewLineSelection | null) => {
     onSelectLines(selection)
     if (!selection) {
@@ -159,7 +164,7 @@ export function DiffStage({
       {visibleItems.length === 0
         ? (
             <div className="flex h-full items-center justify-center p-4 text-center">
-              <p className="text-xs text-muted-foreground">Working tree clean</p>
+              <p className="text-[12px] text-muted-foreground">Working tree clean</p>
             </div>
           )
         : (
@@ -170,8 +175,6 @@ export function DiffStage({
               selectedLines={selectedLineSelection}
               onSelectedLinesChange={selectDiffLines}
               renderAnnotation={renderAnnotation}
-              renderGutterUtility={renderGutterUtility}
-              style={diffStyleVars}
               className="min-h-0 h-full overflow-auto overscroll-contain [overflow-anchor:none]"
             />
           )}

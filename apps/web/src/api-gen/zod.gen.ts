@@ -5,7 +5,8 @@ import * as z from 'zod';
 export const zPutPreferencesAppBody = z.object({
     featureFlags: z.object({
         multiWorkspacePoc: z.boolean().default(false),
-        localAuthForDangerousActions: z.boolean().optional().default(false)
+        localAuthForDangerousActions: z.boolean().optional().default(false),
+        continueBlockedCodexGoals: z.boolean().optional().default(false)
     })
 });
 
@@ -1551,6 +1552,15 @@ export const zPostWorkspacesByIdDiffReviewsLocalBranchCompareBody = z.object({
 });
 
 export const zPostWorkspacesByIdDiffReviewsLocalBranchComparePath = z.object({
+    id: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsLocalCommitBody = z.object({
+    repo: z.string().min(1).optional(),
+    commitRef: z.string().min(1)
+});
+
+export const zPostWorkspacesByIdDiffReviewsLocalCommitPath = z.object({
     id: z.string().min(1)
 });
 

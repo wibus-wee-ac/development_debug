@@ -1,8 +1,8 @@
-import { MessageSquarePlusIcon, XIcon } from 'lucide-react'
 import { useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Textarea } from '~/components/ui/textarea'
+import { cn } from '~/lib/cn'
 
 import type { CodeViewLineSelection } from '../shared/diff-items'
 import { formatSelectedReviewRange, getSelectedReviewRange } from '../shared/diff-items'
@@ -32,50 +32,69 @@ export function ThreadComposer({
     return null
   }
 
+  const submit = () => {
+    const body = draft.trim()
+    if (!body) {
+      return
+    }
+    onCreate({
+      fileId: range.file.id,
+      anchor: {
+        fileId: range.file.id,
+        side: range.side,
+        startLine: range.startLine,
+        endLine: range.endLine,
+      },
+      bodyMarkdown: body,
+    })
+  }
+
   return (
     <div
-      className="absolute inset-x-3 bottom-3 z-20 mx-auto max-w-xl rounded-lg border border-border bg-background shadow-lg"
+      className="absolute inset-x-0 top-0 z-20 border-b border-border bg-background/95 backdrop-blur"
       data-testid="thread-composer"
     >
-      <div className="flex items-center gap-2 border-b border-border/60 px-2.5 py-1.5">
-        <MessageSquarePlusIcon className="size-3.5 text-muted-foreground" aria-hidden />
-        <span className="min-w-0 flex-1 truncate text-[11px] text-muted-foreground">
+      <div className="mx-auto flex max-w-3xl items-start gap-2 px-4 py-2">
+        <span className="mt-1.5 shrink-0 truncate font-mono text-[12px] text-muted-foreground">
           {formatSelectedReviewRange(range)}
         </span>
-        <Button type="button" variant="ghost" size="icon" className="size-6" onClick={onClose} aria-label="Cancel">
-          <XIcon className="size-3.5" />
-        </Button>
-      </div>
-      <div className="p-2.5">
         <Textarea
           autoFocus
           value={draft}
           onChange={event => setDraft(event.target.value)}
-          placeholder="Comment on this line…"
-          className="min-h-16 resize-none text-xs"
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+              event.preventDefault()
+              submit()
+            }
+            if (event.key === 'Escape') {
+              event.preventDefault()
+              onClose()
+            }
+          }}
+          placeholder="Add a comment…"
+          className={cn(
+            'min-h-7 flex-1 resize-none border-0 bg-transparent p-0 text-[13px] shadow-none focus-visible:ring-0',
+            'placeholder:text-muted-foreground/60',
+          )}
+          rows={1}
         />
-        <div className="mt-2 flex items-center justify-end">
+        <div className="mt-0.5 flex shrink-0 items-center gap-1">
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-6 text-[12px] text-muted-foreground"
+            onClick={onClose}
+          >
+            Cancel
+          </Button>
           <Button
             type="button"
             size="sm"
-            className="text-xs"
+            className="h-6 text-[12px]"
             disabled={!draft.trim() || pending}
-            onClick={() => {
-              const body = draft.trim()
-              if (!body) {
-                return
-              }
-              onCreate({
-                fileId: range.file.id,
-                anchor: {
-                  fileId: range.file.id,
-                  side: range.side,
-                  startLine: range.startLine,
-                  endLine: range.endLine,
-                },
-                bodyMarkdown: body,
-              })
-            }}
+            onClick={submit}
           >
             Comment
           </Button>

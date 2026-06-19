@@ -16,24 +16,25 @@ interface FileListAsideProps {
   viewedPending: boolean
   hiddenWhitespaceFileCount: number
   hiddenGeneratedFileCount: number
+  width: number
 }
 
 type ListMode = 'flat' | 'tree'
 
 const STATUS_ORDER: ReviewFile['status'][] = ['modified', 'added', 'deleted', 'renamed', 'untracked']
-const STATUS_LABEL: Record<ReviewFile['status'], string> = {
-  modified: 'Modified',
-  added: 'Added',
-  deleted: 'Deleted',
-  renamed: 'Renamed',
-  untracked: 'Untracked',
+const STATUS_LETTER: Record<ReviewFile['status'], string> = {
+  modified: 'M',
+  added: 'A',
+  deleted: 'D',
+  renamed: 'R',
+  untracked: 'U',
 }
-const STATUS_DOT: Record<ReviewFile['status'], string> = {
-  modified: 'bg-orange-500',
-  added: 'bg-emerald-500',
-  deleted: 'bg-red-500',
-  renamed: 'bg-sky-500',
-  untracked: 'bg-violet-500',
+const STATUS_COLOR: Record<ReviewFile['status'], string> = {
+  modified: 'text-amber-600 dark:text-amber-400',
+  added: 'text-emerald-600 dark:text-emerald-400',
+  deleted: 'text-red-600 dark:text-red-400',
+  renamed: 'text-sky-600 dark:text-sky-400',
+  untracked: 'text-violet-600 dark:text-violet-400',
 }
 
 export function FileListAside({
@@ -44,6 +45,7 @@ export function FileListAside({
   viewedPending,
   hiddenWhitespaceFileCount,
   hiddenGeneratedFileCount,
+  width,
 }: FileListAsideProps) {
   const [mode, setMode] = useState<ListMode>('flat')
 
@@ -60,10 +62,14 @@ export function FileListAside({
   }, [visibleFiles])
 
   return (
-    <aside className="hidden w-64 shrink-0 flex-col bg-sidebar lg:flex" data-testid="file-list-aside">
-      <div className="flex h-10 shrink-0 items-center gap-2 px-3">
-        <span className="text-xs font-medium text-foreground/80">Files</span>
-        <span className="text-[11px] tabular-nums text-muted-foreground">{visibleFiles.length}</span>
+    <aside
+      className="hidden shrink-0 flex-col border-r border-border/60 bg-background lg:flex"
+      style={{ width }}
+      data-testid="file-list-aside"
+    >
+      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border/60 px-3">
+        <span className="text-[12px] font-medium text-foreground/70">Files</span>
+        <span className="text-[11px] tabular-nums text-muted-foreground/60">{visibleFiles.length}</span>
         <div className="flex-1" />
         <ToggleGroup
           type="single"
@@ -75,31 +81,32 @@ export function FileListAside({
           }}
           variant="outline"
           size="sm"
-          className="h-6 gap-px"
+          className="h-5 gap-px"
           aria-label="File list mode"
         >
-          <ToggleGroupItem value="flat" aria-label="Flat list" className="h-6 px-1.5">
+          <ToggleGroupItem value="flat" aria-label="Flat list" className="size-5 p-0">
             <ListIcon className="size-3" />
           </ToggleGroupItem>
-          <ToggleGroupItem value="tree" aria-label="Directory tree" className="h-6 px-1.5">
+          <ToggleGroupItem value="tree" aria-label="Directory tree" className="size-5 p-0">
             <ListTreeIcon className="size-3" />
           </ToggleGroupItem>
         </ToggleGroup>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto px-2 pb-2">
+      <div className="min-h-0 flex-1 overflow-y-auto py-1">
         {mode === 'tree'
           ? <TreeMode files={visibleFiles} selectedFileId={selectedFileId} onSelectFile={onSelectFile} />
           : (
-              <div className="space-y-3">
+              <div className="space-y-2">
                 {grouped.map(group => (
                   <section key={group.status}>
-                    <h2 className="flex items-center gap-1.5 px-1 pb-1 text-[10px] font-medium uppercase tracking-wide text-muted-foreground/70">
-                      <span className={cn('size-1.5 rounded-full', STATUS_DOT[group.status])} />
-                      {STATUS_LABEL[group.status]}
-                      <span className="tabular-nums">{group.files.length}</span>
+                    <h2 className="flex items-center gap-1.5 px-3 pb-0.5 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/50">
+                      <span className={cn('font-mono', STATUS_COLOR[group.status])}>
+                        {STATUS_LETTER[group.status]}
+                      </span>
+                      <span>{group.files.length}</span>
                     </h2>
-                    <div className="space-y-px">
+                    <div>
                       {group.files.map(file => (
                         <FileRow
                           key={file.id}
@@ -115,22 +122,10 @@ export function FileListAside({
                 ))}
 
                 {(hiddenWhitespaceFileCount > 0 || hiddenGeneratedFileCount > 0) && (
-                  <p className="px-1 pt-1 text-[10px] leading-relaxed text-muted-foreground/70">
-                    {hiddenWhitespaceFileCount > 0 && (
-<>
-{hiddenWhitespaceFileCount}
-{' '}
-whitespace-only hidden
-<br />
-</>
-)}
-                    {hiddenGeneratedFileCount > 0 && (
-<>
-{hiddenGeneratedFileCount}
-{' '}
-generated hidden
-</>
-)}
+                  <p className="px-3 pt-1 text-[11px] leading-relaxed text-muted-foreground/50">
+                    {hiddenWhitespaceFileCount > 0 && `${hiddenWhitespaceFileCount} whitespace-only hidden`}
+                    {hiddenWhitespaceFileCount > 0 && hiddenGeneratedFileCount > 0 && ' · '}
+                    {hiddenGeneratedFileCount > 0 && `${hiddenGeneratedFileCount} generated hidden`}
                   </p>
                 )}
               </div>
@@ -153,13 +148,52 @@ function FileRow({
   onToggleViewed: () => void
   viewedPending: boolean
 }) {
+  const fileName = file.path.split('/').pop() ?? file.path
+  const dir = file.path.slice(0, file.path.length - fileName.length)
+
   return (
     <div
       className={cn(
-        'group flex items-center gap-2 rounded-md px-2 py-1.5 transition-colors',
+        'group relative flex h-7 items-center gap-2 pl-3 pr-2 transition-colors',
         selected ? 'bg-muted' : 'hover:bg-muted/50',
       )}
     >
+      {/* Selected indicator — a 2px bar on the left edge, Linear-style. */}
+      <span
+        className={cn(
+          'absolute left-0 top-1/2 h-4 w-0.5 -translate-y-1/2 rounded-full transition-opacity',
+          selected ? 'bg-foreground opacity-100' : 'opacity-0',
+        )}
+        aria-hidden
+      />
+
+      <button
+        type="button"
+        onClick={onSelect}
+        className="flex min-w-0 flex-1 items-center gap-2 text-left"
+      >
+        <span className={cn('shrink-0 font-mono text-[11px] font-semibold', STATUS_COLOR[file.status])}>
+          {STATUS_LETTER[file.status]}
+        </span>
+        <span className="min-w-0 flex-1 truncate text-[12px]">
+          <span className={file.isViewed ? 'text-muted-foreground/60 line-through' : 'text-foreground/90'}>
+            {fileName}
+          </span>
+          {dir && <span className="ml-1.5 text-[11px] text-muted-foreground/40">{dir}</span>}
+        </span>
+      </button>
+
+      <span className="flex shrink-0 items-center gap-1 font-mono text-[11px] tabular-nums text-muted-foreground/50">
+        <span className="text-emerald-600/80 dark:text-emerald-400/80">
++
+{file.additions}
+        </span>
+        <span className="text-red-600/80 dark:text-red-400/80">
+−
+{file.deletions}
+        </span>
+      </span>
+
       <button
         type="button"
         onClick={onToggleViewed}
@@ -168,32 +202,13 @@ function FileRow({
           'flex size-4 shrink-0 items-center justify-center rounded-full border transition-colors',
           file.isViewed
             ? 'border-emerald-500 bg-emerald-500 text-white'
-            : 'border-border text-transparent hover:border-muted-foreground',
+            : 'border-border text-transparent opacity-0 hover:border-muted-foreground group-hover:opacity-100',
         )}
         aria-label={file.isViewed ? 'Mark unviewed' : 'Mark viewed'}
         title={file.isViewed ? 'Mark unviewed' : 'Mark viewed'}
       >
         <CheckIcon className="size-2.5" />
       </button>
-
-      <button
-        type="button"
-        onClick={onSelect}
-        className="flex min-w-0 flex-1 items-center gap-2 text-left"
-      >
-        <span className="min-w-0 flex-1 truncate text-xs text-foreground/90">{file.path}</span>
-      </button>
-
-      <span className="flex shrink-0 items-center gap-1 font-mono text-[10px] tabular-nums">
-        <span className="text-emerald-600 dark:text-emerald-400">
-+
-{file.additions}
-        </span>
-        <span className="text-red-600 dark:text-red-400">
-−
-{file.deletions}
-        </span>
-      </span>
     </div>
   )
 }
@@ -233,7 +248,6 @@ function TreeMode({
     },
   })
 
-  // Keep the selected path visually in sync in tree mode.
   void selectedFileId
 
   return <PierreFileTree model={model} className="h-full" />

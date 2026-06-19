@@ -10,6 +10,7 @@ import type {
   DiffReviewGuide,
   DiffReviewPreference,
   DiffReviewRevision,
+  DiffReviewSource,
   DiffReviewSourceOperation,
   DiffReviewSubmission,
   DiffReviewThread,
@@ -58,6 +59,7 @@ import type {
   DiffReviewView,
   DiffRevisionView,
   GuideRuntimeKind,
+  LocalCommitBinding,
   ReviewActorKind,
   ReviewAgentFixArtifactView,
   ReviewAgentFixView,
@@ -107,6 +109,14 @@ const GUIDE_ARTIFACT_END = '</cradle_guide>'
 const GUIDE_RUNTIME_SETTINGS: ChatRuntimeSettings = {
   accessMode: 'full-access',
   interactionMode: 'default',
+}
+
+interface ReviewSourceAdapter {
+  refreshStored: (workspaceId: string, source: DiffReviewSource) => Promise<DiffReviewView>
+}
+
+interface LocalWorkingTreeBinding {
+  repositoryPath: string
 }
 
 function toRevisionView(row: DiffReviewRevision): DiffRevisionView {
@@ -486,7 +496,7 @@ function ensureReviewSource(input: {
   const existing = db().select().from(diffReviewSources).where(and(
     eq(diffReviewSources.workspaceId, input.workspaceId),
     eq(diffReviewSources.kind, input.kind),
-  )).all().find(source => safeJsonParse(source.bindingJson) && source.bindingJson === bindingJson)
+  )).all().find(source => source.bindingJson === bindingJson)
   if (existing) {
     return existing.id
   }
@@ -519,6 +529,40 @@ function ensureBranchCompareSource(workspaceId: string, binding: BranchCompareBi
     binding,
     refreshPolicy: 'manual',
   })
+}
+
+function ensureLocalCommitSource(workspaceId: string, binding: LocalCommitBinding): string {
+  return ensureReviewSource({
+    workspaceId,
+    kind: 'local-commit',
+    binding,
+    refreshPolicy: 'manual',
+  })
+}
+
+function readSourceBinding<T>(source: DiffReviewSource): T {
+  return JSON.parse(source.bindingJson) as T
+}
+
+function getReviewSource(review: DiffReview): DiffReviewSource {
+  if (!review.sourceId) {
+    throw new AppError({
+      code: 'diff_review_source_missing',
+      status: 409,
+      message: 'Diff review source is missing',
+      details: { reviewId: review.id },
+    })
+  }
+  const source = db().select().from(diffReviewSources).where(eq(diffReviewSources.id, review.sourceId)).get()
+  if (!source) {
+    throw new AppError({
+      code: 'diff_review_source_not_found',
+      status: 404,
+      message: 'Diff review source was not found',
+      details: { reviewId: review.id, sourceId: review.sourceId },
+    })
+  }
+  return source
 }
 
 function getReviewRow(workspaceId: string, reviewId: string): DiffReview {
@@ -616,6 +660,125 @@ function markOpenAnchoredThreadsStale(reviewId: string): void {
   }
 }
 
+async function refreshMaterializedPatchReview(input: {
+  workspaceId: string
+  sourceId: string
+  repositoryPath: string
+  sourceKind: ReviewSourceKind
+  title: string
+  patch: string
+  patchHash: string
+  sourceVersion: string
+  statusFiles: Git.GitFileStatusView[]
+  reviewCreatedPayload: unknown
+  revisionUpdatedPayload: Record<string, unknown>
+}): Promise<DiffReviewView> {
+  const now = currentUnixSeconds()
+  let review = findReviewBySource(input.workspaceId, input.sourceId)
+  if (!review) {
+    review = db().insert(diffReviews).values({
+      id: randomUUID(),
+      workspaceId: input.workspaceId,
+      sourceId: input.sourceId,
+      repositoryPath: input.repositoryPath,
+      sourceKind: input.sourceKind,
+      title: input.title,
+      status: 'open',
+      reviewState: 'unreviewed',
+      currentRevisionId: null,
+      createdAt: now,
+      updatedAt: now,
+    }).returning().get()
+    recordEvent({
+      reviewId: review.id,
+      eventKind: 'review_created',
+      payload: input.reviewCreatedPayload,
+      createdAt: now,
+    })
+  }
+
+  if (input.patch.trim().length === 0) {
+    markOpenAnchoredThreadsStale(review.id)
+    const updated = db().update(diffReviews)
+      .set({ title: input.title, sourceId: input.sourceId, currentRevisionId: null, updatedAt: now })
+      .where(eq(diffReviews.id, review.id))
+      .returning()
+      .get()
+    return loadReviewView(updated)
+  }
+
+  const currentRevision = review.currentRevisionId
+    ? db().select().from(diffReviewRevisions).where(eq(diffReviewRevisions.id, review.currentRevisionId)).get()
+    : undefined
+  if (currentRevision?.patchHash === input.patchHash) {
+    const updated = db().update(diffReviews)
+      .set({ title: input.title, sourceId: input.sourceId, updatedAt: now })
+      .where(eq(diffReviews.id, review.id))
+      .returning()
+      .get()
+    return loadReviewView(updated)
+  }
+
+  const summaries = parsePatchFileSummaries(input.patch, input.statusFiles)
+  const additions = summaries.reduce((total, file) => total + file.additions, 0)
+  const deletions = summaries.reduce((total, file) => total + file.deletions, 0)
+  const revision = db().transaction((tx) => {
+    const existing = tx.select().from(diffReviewRevisions).where(and(
+      eq(diffReviewRevisions.reviewId, review.id),
+      eq(diffReviewRevisions.patchHash, input.patchHash),
+    )).get()
+    if (existing) {
+      return existing
+    }
+
+    const inserted = tx.insert(diffReviewRevisions).values({
+      id: randomUUID(),
+      reviewId: review.id,
+      sourceVersion: input.sourceVersion,
+      patchHash: input.patchHash,
+      fileCount: summaries.length,
+      additions,
+      deletions,
+      patch: input.patch,
+      generatedAt: now,
+    }).returning().get()
+    for (const file of summaries) {
+      tx.insert(diffReviewFiles).values({
+        id: randomUUID(),
+        revisionId: inserted.id,
+        path: file.path,
+        previousPath: file.previousPath,
+        status: file.status,
+        additions: file.additions,
+        deletions: file.deletions,
+        isGenerated: isGeneratedReviewFile(file),
+        isBinary: file.isBinary,
+        isViewed: false,
+      }).run()
+    }
+    return inserted
+  })
+
+  const updated = db().update(diffReviews)
+    .set({ title: input.title, sourceId: input.sourceId, currentRevisionId: revision.id, updatedAt: now })
+    .where(eq(diffReviews.id, review.id))
+    .returning()
+    .get()
+  remapReviewThreads(review.id, revision)
+  recordEvent({
+    reviewId: review.id,
+    eventKind: 'revision_updated',
+    payload: {
+      revisionId: revision.id,
+      patchHash: revision.patchHash,
+      fileCount: revision.fileCount,
+      ...input.revisionUpdatedPayload,
+    },
+    createdAt: now,
+  })
+  return loadReviewView(updated)
+}
+
 export async function refreshLocalWorkingTree(
   workspaceId: string,
   repositoryPath?: string,
@@ -629,112 +792,22 @@ export async function refreshLocalWorkingTree(
     files: status.files,
     patchHash,
   }))
-  const now = currentUnixSeconds()
   const title = titleForRepository(status.repositoryName)
-
   const sourceId = ensureLocalWorkingTreeSource(workspaceId, status.repositoryPath)
-  let review = findReviewBySource(workspaceId, sourceId)
-  if (!review) {
-    review = db().insert(diffReviews).values({
-      id: randomUUID(),
-      workspaceId,
-      sourceId,
-      repositoryPath: status.repositoryPath,
-      sourceKind: 'local-working-tree',
-      title,
-      status: 'open',
-      reviewState: 'unreviewed',
-      currentRevisionId: null,
-      createdAt: now,
-      updatedAt: now,
-    }).returning().get()
-    recordEvent({
-      reviewId: review.id,
-      eventKind: 'review_created',
-      payload: { sourceKind: 'local-working-tree', repositoryPath: status.repositoryPath },
-      createdAt: now,
-    })
-  }
 
-  if (patch.trim().length === 0) {
-    markOpenAnchoredThreadsStale(review.id)
-    const updated = db().update(diffReviews)
-      .set({ title, sourceId, currentRevisionId: null, updatedAt: now })
-      .where(eq(diffReviews.id, review.id))
-      .returning()
-      .get()
-    return loadReviewView(updated)
-  }
-
-  const currentRevision = review.currentRevisionId
-    ? db().select().from(diffReviewRevisions).where(eq(diffReviewRevisions.id, review.currentRevisionId)).get()
-    : undefined
-  if (currentRevision?.patchHash === patchHash) {
-    const updated = db().update(diffReviews)
-      .set({ title, sourceId, updatedAt: now })
-      .where(eq(diffReviews.id, review.id))
-      .returning()
-      .get()
-    return loadReviewView(updated)
-  }
-
-  const summaries = parsePatchFileSummaries(patch, status.files)
-  const additions = summaries.reduce((total, file) => total + file.additions, 0)
-  const deletions = summaries.reduce((total, file) => total + file.deletions, 0)
-  const revision = db().transaction((tx) => {
-    const existing = tx.select().from(diffReviewRevisions).where(and(
-      eq(diffReviewRevisions.reviewId, review.id),
-      eq(diffReviewRevisions.patchHash, patchHash),
-    )).get()
-    if (existing) {
-      return existing
-    }
-
-    const inserted = tx.insert(diffReviewRevisions).values({
-      id: randomUUID(),
-      reviewId: review.id,
-      sourceVersion,
-      patchHash,
-      fileCount: summaries.length,
-      additions,
-      deletions,
-      patch,
-      generatedAt: now,
-    }).returning().get()
-    for (const file of summaries) {
-      tx.insert(diffReviewFiles).values({
-        id: randomUUID(),
-        revisionId: inserted.id,
-        path: file.path,
-        previousPath: file.previousPath,
-        status: file.status,
-        additions: file.additions,
-        deletions: file.deletions,
-        isGenerated: isGeneratedReviewFile(file),
-        isBinary: file.isBinary,
-        isViewed: false,
-      }).run()
-    }
-    return inserted
+  return refreshMaterializedPatchReview({
+    workspaceId,
+    sourceId,
+    repositoryPath: status.repositoryPath,
+    sourceKind: 'local-working-tree',
+    title,
+    patch,
+    patchHash,
+    sourceVersion,
+    statusFiles: status.files,
+    reviewCreatedPayload: { sourceKind: 'local-working-tree', repositoryPath: status.repositoryPath },
+    revisionUpdatedPayload: {},
   })
-
-  const updated = db().update(diffReviews)
-    .set({ title, sourceId, currentRevisionId: revision.id, updatedAt: now })
-    .where(eq(diffReviews.id, review.id))
-    .returning()
-    .get()
-  remapReviewThreads(review.id, revision)
-  recordEvent({
-    reviewId: review.id,
-    eventKind: 'revision_updated',
-    payload: {
-      revisionId: revision.id,
-      patchHash: revision.patchHash,
-      fileCount: revision.fileCount,
-    },
-    createdAt: now,
-  })
-  return loadReviewView(updated)
 }
 
 export async function refreshLocalBranchCompare(input: {
@@ -747,123 +820,104 @@ export async function refreshLocalBranchCompare(input: {
   const patch = compare.patch
   const patchHash = hashText(patch)
   const sourceVersion = `${compare.baseSha}...${compare.headSha}:${patchHash}`
-  const now = currentUnixSeconds()
   const sourceId = ensureBranchCompareSource(input.workspaceId, {
     repositoryPath: compare.repositoryPath,
     baseRef: input.baseRef,
     headRef: input.headRef,
   })
   const title = `${compare.headRef} into ${compare.baseRef}`
-  let review = findReviewBySource(input.workspaceId, sourceId)
-  if (!review) {
-    review = db().insert(diffReviews).values({
-      id: randomUUID(),
-      workspaceId: input.workspaceId,
-      sourceId,
-      repositoryPath: compare.repositoryPath,
+
+  return refreshMaterializedPatchReview({
+    workspaceId: input.workspaceId,
+    sourceId,
+    repositoryPath: compare.repositoryPath,
+    sourceKind: 'local-branch-compare',
+    title,
+    patch,
+    patchHash,
+    sourceVersion,
+    statusFiles: [],
+    reviewCreatedPayload: {
       sourceKind: 'local-branch-compare',
-      title,
-      status: 'open',
-      reviewState: 'unreviewed',
-      currentRevisionId: null,
-      createdAt: now,
-      updatedAt: now,
-    }).returning().get()
-    recordEvent({
-      reviewId: review.id,
-      eventKind: 'review_created',
-      payload: {
-        sourceKind: 'local-branch-compare',
-        repositoryPath: compare.repositoryPath,
-        baseRef: input.baseRef,
-        headRef: input.headRef,
-      },
-      createdAt: now,
-    })
-  }
-
-  if (patch.trim().length === 0) {
-    markOpenAnchoredThreadsStale(review.id)
-    const updated = db().update(diffReviews)
-      .set({ title, sourceId, currentRevisionId: null, updatedAt: now })
-      .where(eq(diffReviews.id, review.id))
-      .returning()
-      .get()
-    return loadReviewView(updated)
-  }
-
-  const currentRevision = review.currentRevisionId
-    ? db().select().from(diffReviewRevisions).where(eq(diffReviewRevisions.id, review.currentRevisionId)).get()
-    : undefined
-  if (currentRevision?.patchHash === patchHash) {
-    const updated = db().update(diffReviews)
-      .set({ title, sourceId, updatedAt: now })
-      .where(eq(diffReviews.id, review.id))
-      .returning()
-      .get()
-    return loadReviewView(updated)
-  }
-
-  const summaries = parsePatchFileSummaries(patch, [])
-  const additions = summaries.reduce((total, file) => total + file.additions, 0)
-  const deletions = summaries.reduce((total, file) => total + file.deletions, 0)
-  const revision = db().transaction((tx) => {
-    const existing = tx.select().from(diffReviewRevisions).where(and(
-      eq(diffReviewRevisions.reviewId, review.id),
-      eq(diffReviewRevisions.patchHash, patchHash),
-    )).get()
-    if (existing) {
-      return existing
-    }
-
-    const inserted = tx.insert(diffReviewRevisions).values({
-      id: randomUUID(),
-      reviewId: review.id,
-      sourceVersion,
-      patchHash,
-      fileCount: summaries.length,
-      additions,
-      deletions,
-      patch,
-      generatedAt: now,
-    }).returning().get()
-    for (const file of summaries) {
-      tx.insert(diffReviewFiles).values({
-        id: randomUUID(),
-        revisionId: inserted.id,
-        path: file.path,
-        previousPath: file.previousPath,
-        status: file.status,
-        additions: file.additions,
-        deletions: file.deletions,
-        isGenerated: isGeneratedReviewFile(file),
-        isBinary: file.isBinary,
-        isViewed: false,
-      }).run()
-    }
-    return inserted
-  })
-
-  const updated = db().update(diffReviews)
-    .set({ title, sourceId, currentRevisionId: revision.id, updatedAt: now })
-    .where(eq(diffReviews.id, review.id))
-    .returning()
-    .get()
-  remapReviewThreads(review.id, revision)
-  recordEvent({
-    reviewId: review.id,
-    eventKind: 'revision_updated',
-    payload: {
-      revisionId: revision.id,
-      patchHash: revision.patchHash,
-      fileCount: revision.fileCount,
+      repositoryPath: compare.repositoryPath,
+      baseRef: input.baseRef,
+      headRef: input.headRef,
+    },
+    revisionUpdatedPayload: {
       baseRef: input.baseRef,
       headRef: input.headRef,
       mergeBaseSha: compare.mergeBaseSha,
     },
-    createdAt: now,
   })
-  return loadReviewView(updated)
+}
+
+export async function refreshLocalCommit(input: {
+  workspaceId: string
+  repositoryPath?: string
+  commitRef: string
+}): Promise<DiffReviewView> {
+  const commit = await Git.getCommitDiff(input.workspaceId, input.commitRef, input.repositoryPath)
+  const patch = commit.patch
+  const patchHash = hashText(patch)
+  const sourceVersion = `${commit.parentSha ?? 'root'}..${commit.commitSha}:${patchHash}`
+  const sourceId = ensureLocalCommitSource(input.workspaceId, {
+    repositoryPath: commit.repositoryPath,
+    commitSha: commit.commitSha,
+  })
+  const title = `${commit.shortSha} ${commit.subject}`
+
+  return refreshMaterializedPatchReview({
+    workspaceId: input.workspaceId,
+    sourceId,
+    repositoryPath: commit.repositoryPath,
+    sourceKind: 'local-commit',
+    title,
+    patch,
+    patchHash,
+    sourceVersion,
+    statusFiles: [],
+    reviewCreatedPayload: {
+      sourceKind: 'local-commit',
+      repositoryPath: commit.repositoryPath,
+      commitSha: commit.commitSha,
+      parentSha: commit.parentSha,
+      subject: commit.subject,
+    },
+    revisionUpdatedPayload: {
+      commitSha: commit.commitSha,
+      parentSha: commit.parentSha,
+    },
+  })
+}
+
+const reviewSourceAdapters: Partial<Record<ReviewSourceKind, ReviewSourceAdapter>> = {
+  'local-working-tree': {
+    refreshStored: (workspaceId, source) => {
+      const binding = readSourceBinding<LocalWorkingTreeBinding>(source)
+      return refreshLocalWorkingTree(workspaceId, binding.repositoryPath)
+    },
+  },
+  'local-branch-compare': {
+    refreshStored: (workspaceId, source) => {
+      const binding = readSourceBinding<BranchCompareBinding>(source)
+      return refreshLocalBranchCompare({
+        workspaceId,
+        repositoryPath: binding.repositoryPath,
+        baseRef: binding.baseRef,
+        headRef: binding.headRef,
+      })
+    },
+  },
+  'local-commit': {
+    refreshStored: (workspaceId, source) => {
+      const binding = readSourceBinding<LocalCommitBinding>(source)
+      return refreshLocalCommit({
+        workspaceId,
+        repositoryPath: binding.repositoryPath,
+        commitRef: binding.commitSha,
+      })
+    },
+  },
 }
 
 export function get(workspaceId: string, reviewId: string): DiffReviewView {
@@ -880,25 +934,8 @@ export function list(workspaceId: string): DiffReviewView[] {
 
 export async function refresh(workspaceId: string, reviewId: string): Promise<DiffReviewView> {
   const review = getReviewRow(workspaceId, reviewId)
-  if (review.sourceKind !== 'local-working-tree') {
-    if (review.sourceKind === 'local-branch-compare' && review.sourceId) {
-      const source = db().select().from(diffReviewSources).where(eq(diffReviewSources.id, review.sourceId)).get()
-      const binding = safeJsonParse(source?.bindingJson)
-      if (
-        binding
-        && typeof binding === 'object'
-        && typeof (binding as BranchCompareBinding).baseRef === 'string'
-        && typeof (binding as BranchCompareBinding).headRef === 'string'
-      ) {
-        const branchBinding = binding as BranchCompareBinding
-        return refreshLocalBranchCompare({
-          workspaceId,
-          repositoryPath: branchBinding.repositoryPath,
-          baseRef: branchBinding.baseRef,
-          headRef: branchBinding.headRef,
-        })
-      }
-    }
+  const adapter = reviewSourceAdapters[review.sourceKind]
+  if (!adapter) {
     throw new AppError({
       code: 'diff_review_refresh_not_supported',
       status: 400,
@@ -906,7 +943,7 @@ export async function refresh(workspaceId: string, reviewId: string): Promise<Di
       details: { workspaceId, reviewId, sourceKind: review.sourceKind },
     })
   }
-  return refreshLocalWorkingTree(workspaceId, review.repositoryPath)
+  return adapter.refreshStored(workspaceId, getReviewSource(review))
 }
 
 function getCurrentRevision(review: DiffReview): DiffReviewRevision {
@@ -1299,6 +1336,12 @@ export function sourceReadiness(workspaceId: string): ReviewSourceReadinessView[
     },
     {
       sourceKind: 'local-branch-compare',
+      workspaceId,
+      state: 'ready',
+      actions: [],
+    },
+    {
+      sourceKind: 'local-commit',
       workspaceId,
       state: 'ready',
       actions: [],

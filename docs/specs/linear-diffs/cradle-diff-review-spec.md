@@ -9,7 +9,7 @@ Cradle 应把 Linear Diffs 类能力设计为独立的 `diff-review` product cap
 ## Goals
 
 - 在 Cradle 内提供完整 diff review experience：review list、diff detail、file navigation、inline comments、review submit、approve/request changes/comment、resolved threads、viewed files、review state。
-- 支持多个 source：local working tree、local branch comparison、agent-produced change set、GitHub PR、future external imported review。
+- 支持多个 source：local working tree、local branch comparison、local commit、agent-produced change set、GitHub PR、future external imported review。
 - 支持 review attention views：需要我关注、我创建、我参与、全部 source reviews。
 - 让 issue context、agent context、workspace context 和 diff context 在同一个 review surface 中可见，但保持 namespace ownership 清晰。
 - 提供 agent-native feedback loop：从 diff range 或 review thread 创建 agent fix request，并能把 agent result 关联回 review thread / revision。
@@ -97,6 +97,7 @@ A review source describes where a diff comes from and which adapter can refresh 
 type ReviewSourceKind =
   | 'local-working-tree'
   | 'local-branch-compare'
+  | 'local-commit'
   | 'agent-change-set'
   | 'github-pull-request'
   | 'external-import'
@@ -115,6 +116,7 @@ Binding examples:
 
 - `local-working-tree`: `{ baseRef?: string | null, includeUntracked: boolean }`
 - `local-branch-compare`: `{ baseRef: string, headRef: string, mergeBaseSha?: string | null }`
+- `local-commit`: `{ repositoryPath: string, commitSha: string }`
 - `agent-change-set`: `{ sessionId: string, runId?: string | null, artifactId?: string | null }`
 - `github-pull-request`: `{ owner: string, repo: string, pullNumber: number, providerAccountId: string }`
 - `external-import`: `{ sourceName: string, externalUrl?: string | null }`
@@ -165,6 +167,7 @@ interface DiffRevision {
 
 - local working tree: hash of `git status --porcelain=v2` plus patch hash.
 - branch compare: `${baseSha}...${headSha}`.
+- local commit: `${parentSha ?? 'root'}..${commitSha}` plus patch hash.
 - GitHub PR: latest head sha plus PR updated timestamp or ETag.
 - agent change set: session run output artifact id plus patch hash.
 

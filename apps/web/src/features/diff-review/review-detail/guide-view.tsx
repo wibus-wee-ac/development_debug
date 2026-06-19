@@ -421,7 +421,7 @@ function GuideReading({
 
   return (
     <div className="min-h-0 flex-1 overflow-y-auto bg-background">
-      <article className="mx-auto max-w-5xl px-8 py-10 lg:px-12 lg:py-14">
+      <article className="mx-auto max-w-6xl px-8 py-10 lg:px-12 lg:py-14">
         <header className="mb-12 border-b border-border/60 pb-6">
           <p className="text-[11px] font-medium uppercase tracking-[0.15em] text-muted-foreground/60">
             Guided review

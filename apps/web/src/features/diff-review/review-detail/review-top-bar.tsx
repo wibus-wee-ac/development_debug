@@ -6,7 +6,6 @@ import {
   RefreshCwIcon,
   Rows3Icon,
   SendIcon,
-  Settings2Icon,
   SlidersHorizontalIcon,
 } from 'lucide-react'
 import { useTransition } from 'react'
@@ -22,7 +21,7 @@ interface ReviewTopBarProps {
   review: CradleDiffReview
   diffStyle: DiffStyle
   onDiffStyleChange: (style: DiffStyle) => void
-  onPreference: (input: { fontSize?: number, hideWhitespaceOnly?: boolean, collapseGeneratedFiles?: boolean }) => void
+  onPreference: (input: { hideWhitespaceOnly?: boolean, collapseGeneratedFiles?: boolean }) => void
   preferencePending: boolean
   onSubmit: (decision: ReviewDecision, bodyMarkdown: string) => void
   submitPending: boolean
@@ -31,10 +30,13 @@ interface ReviewTopBarProps {
   isFetching: boolean
   onOpenGuide: () => void
   hasGuide: boolean
+  threadsRailCollapsed: boolean
+  onToggleThreadsRail: () => void
+  openThreadCount: number
 }
 
 const REVIEW_STATE_TONE: Record<CradleDiffReview['reviewState'], string> = {
-  'unreviewed': 'bg-muted-foreground/30',
+  'unreviewed': 'bg-muted-foreground/40',
   'in-review': 'bg-sky-500',
   'changes-requested': 'bg-orange-500',
   'approved': 'bg-emerald-500',
@@ -54,18 +56,19 @@ export function ReviewTopBar({
   isFetching,
   onOpenGuide,
   hasGuide,
+  threadsRailCollapsed,
+  onToggleThreadsRail,
+  openThreadCount,
 }: ReviewTopBarProps) {
   const [isDiffStylePending, startDiffStyleTransition] = useTransition()
   const refreshing = refreshPending || isFetching
-  const fontSize = review.preferences.fontSize ?? 11
 
   return (
-    <header className="flex h-11 shrink-0 items-center gap-3 px-4" data-testid="review-top-bar">
-      {/* Identity: a single line of context, nothing competing for attention. */}
-      <span className={cn('size-2 shrink-0 rounded-full', REVIEW_STATE_TONE[review.reviewState])} aria-hidden />
+    <header className="flex h-10 shrink-0 items-center gap-2 px-3" data-testid="review-top-bar">
+      <span className={cn('size-1.5 shrink-0 rounded-full', REVIEW_STATE_TONE[review.reviewState])} aria-hidden />
       <div className="min-w-0">
-        <h1 className="truncate text-sm font-medium text-foreground">{review.title}</h1>
-        <p className="truncate text-[11px] tabular-nums text-muted-foreground">
+        <h1 className="truncate text-[13px] font-medium leading-tight text-foreground">{review.title}</h1>
+        <p className="truncate text-[12px] tabular-nums text-muted-foreground/70">
           {sourceLabel(review.sourceKind)}
           {' · '}
           {formatChangeStats(review)}
@@ -74,27 +77,59 @@ export function ReviewTopBar({
 
       <div className="flex-1" />
 
-      {/* Guide is always reachable; generation is opt-in inside the view (it costs tokens). */}
-      <Button variant="ghost" size="sm" onClick={onOpenGuide} className="gap-1.5 text-xs">
+      {/* Layout — primary view control, stays visible. */}
+      <div className="flex items-center rounded-md border border-border/60 p-px">
+        <LayoutPill
+          active={diffStyle === 'unified'}
+          onClick={() => startDiffStyleTransition(() => onDiffStyleChange('unified'))}
+          disabled={isDiffStylePending}
+        >
+          <Rows3Icon className="size-3.5" />
+          Unified
+        </LayoutPill>
+        <LayoutPill
+          active={diffStyle === 'split'}
+          onClick={() => startDiffStyleTransition(() => onDiffStyleChange('split'))}
+          disabled={isDiffStylePending}
+        >
+          <GitCommitVerticalIcon className="size-3.5" />
+          Split
+        </LayoutPill>
+      </div>
+
+      {/* Display filters — secondary, icon popover. */}
+      <DisplayPopover
+        hideWhitespaceOnly={review.preferences.hideWhitespaceOnly}
+        collapseGeneratedFiles={review.preferences.collapseGeneratedFiles}
+        pending={preferencePending}
+        onToggleWhitespace={() => onPreference({ hideWhitespaceOnly: !review.preferences.hideWhitespaceOnly })}
+        onToggleGenerated={() => onPreference({ collapseGeneratedFiles: !review.preferences.collapseGeneratedFiles })}
+      />
+
+      <Button variant="ghost" size="sm" onClick={onOpenGuide} className="h-7 gap-1.5 px-2 text-[12px]">
         <ListTreeIcon className="size-3.5" />
         Guide
         {hasGuide && <span className="size-1.5 rounded-full bg-emerald-500" aria-label="Guide generated" />}
       </Button>
 
-      <DisplayPopover
-        diffStyle={diffStyle}
-        fontSize={fontSize}
-        hideWhitespaceOnly={review.preferences.hideWhitespaceOnly}
-        collapseGeneratedFiles={review.preferences.collapseGeneratedFiles}
-        pending={preferencePending || isDiffStylePending}
-        onDiffStyle={(style) => {
-          startDiffStyleTransition(() => onDiffStyleChange(style))
-        }}
-        onFont={size => onPreference({ fontSize: size })}
-        onToggleWhitespace={() => onPreference({ hideWhitespaceOnly: !review.preferences.hideWhitespaceOnly })}
-        onToggleGenerated={() => onPreference({ collapseGeneratedFiles: !review.preferences.collapseGeneratedFiles })}
-      />
+      {/* Threads toggle — visible, badge carries the count. */}
+      <Button
+        variant="ghost"
+        size="icon"
+        className={cn('relative size-7', threadsRailCollapsed && 'bg-muted text-foreground')}
+        onClick={onToggleThreadsRail}
+        aria-label={threadsRailCollapsed ? 'Show threads' : 'Hide threads'}
+        title={threadsRailCollapsed ? 'Show threads' : 'Hide threads'}
+      >
+        <MessageSquareIcon className="size-3.5" />
+        {openThreadCount > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 flex min-w-3.5 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-medium text-white">
+            {openThreadCount}
+          </span>
+        )}
+      </Button>
 
+      {/* Review — primary action. */}
       <ReviewPopover
         pending={submitPending}
         state={review.reviewState}
@@ -117,25 +152,42 @@ export function ReviewTopBar({
   )
 }
 
-/** Display options tucked away — layout + readability controls don't belong in the chrome line. */
+function LayoutPill({
+  active,
+  onClick,
+  disabled,
+  children,
+}: {
+  active: boolean
+  onClick: () => void
+  disabled: boolean
+  children: React.ReactNode
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      disabled={disabled}
+      className={cn(
+        'flex h-6 items-center gap-1.5 rounded-[5px] px-2 text-[12px] font-medium transition-colors',
+        active ? 'bg-muted text-foreground' : 'text-muted-foreground hover:text-foreground',
+      )}
+    >
+      {children}
+    </button>
+  )
+}
+
 function DisplayPopover({
-  diffStyle,
-  fontSize,
   hideWhitespaceOnly,
   collapseGeneratedFiles,
   pending,
-  onDiffStyle,
-  onFont,
   onToggleWhitespace,
   onToggleGenerated,
 }: {
-  diffStyle: DiffStyle
-  fontSize: number
   hideWhitespaceOnly: boolean
   collapseGeneratedFiles: boolean
   pending: boolean
-  onDiffStyle: (style: DiffStyle) => void
-  onFont: (size: number) => void
   onToggleWhitespace: () => void
   onToggleGenerated: () => void
 }) {
@@ -143,56 +195,24 @@ function DisplayPopover({
     <Popover>
       <PopoverTrigger
         render={(
-          <Button variant="ghost" size="sm" className="gap-1.5 text-xs" disabled={pending}>
+          <Button variant="ghost" size="icon" className="size-7" disabled={pending} aria-label="Display options">
             <SlidersHorizontalIcon className="size-3.5" />
-            Display
           </Button>
         )}
       />
-      <PopoverContent align="end" className="w-64 gap-3">
-        <section className="space-y-1.5">
-          <p className="text-[11px] font-medium text-muted-foreground">Layout</p>
-          <div className="grid grid-cols-2 gap-1.5">
-            <LayoutButton active={diffStyle === 'unified'} onClick={() => onDiffStyle('unified')} icon={<Rows3Icon className="size-3.5" />}>
-              Unified
-            </LayoutButton>
-            <LayoutButton active={diffStyle === 'split'} onClick={() => onDiffStyle('split')} icon={<GitCommitVerticalIcon className="size-3.5" />}>
-              Split
-            </LayoutButton>
-          </div>
-        </section>
-
-        <section className="space-y-1.5">
-          <p className="text-[11px] font-medium text-muted-foreground">Font size</p>
-          <div className="flex items-center gap-1.5">
-            <Button variant="outline" size="sm" className="h-7 flex-1" onClick={() => onFont(Math.max(9, fontSize - 1))} disabled={pending}>
-              A−
-            </Button>
-            <span className="w-8 text-center text-[11px] tabular-nums text-muted-foreground">
-{fontSize}
-px
-            </span>
-            <Button variant="outline" size="sm" className="h-7 flex-1" onClick={() => onFont(Math.min(24, fontSize + 1))} disabled={pending}>
-              A+
-            </Button>
-          </div>
-        </section>
-
-        <section className="space-y-1">
-          <p className="text-[11px] font-medium text-muted-foreground">Filter</p>
-          <CheckRow active={hideWhitespaceOnly} onClick={onToggleWhitespace} disabled={pending}>
-            Hide whitespace-only changes
-          </CheckRow>
-          <CheckRow active={collapseGeneratedFiles} onClick={onToggleGenerated} disabled={pending}>
-            Collapse generated files
-          </CheckRow>
-        </section>
+      <PopoverContent align="end" className="w-52 gap-0 p-1">
+        <p className="px-2 py-1 text-[11px] font-medium uppercase tracking-wide text-muted-foreground/50">Filter</p>
+        <MenuCheck active={hideWhitespaceOnly} onClick={onToggleWhitespace} disabled={pending}>
+          Hide whitespace-only
+        </MenuCheck>
+        <MenuCheck active={collapseGeneratedFiles} onClick={onToggleGenerated} disabled={pending}>
+          Collapse generated
+        </MenuCheck>
       </PopoverContent>
     </Popover>
   )
 }
 
-/** Submit review: the three decisions, gathered so the chrome stays calm. */
 function ReviewPopover({
   pending,
   state,
@@ -210,57 +230,63 @@ function ReviewPopover({
     <Popover>
       <PopoverTrigger
         render={(
-          <Button variant="default" size="sm" className="gap-1.5 text-xs" disabled={pending}>
-            <Settings2Icon className="size-3.5" />
+          <Button size="sm" className="h-7 text-[12px]" disabled={pending}>
             Review
           </Button>
         )}
       />
-      <PopoverContent align="end" className="w-56 gap-1">
-        <p className="px-1 pb-1 text-[11px] text-muted-foreground">
-          {state === 'approved' ? 'You approved this review' : state === 'changes-requested' ? 'You requested changes' : 'Submit your review'}
+      <PopoverContent align="end" className="w-52 gap-0 p-1">
+        <p className="px-2 py-1 text-[11px] text-muted-foreground/70">
+          {state === 'approved'
+            ? 'You approved this review'
+            : state === 'changes-requested'
+              ? 'You requested changes'
+              : 'Submit your review'}
         </p>
-        <ReviewAction icon={<MessageSquareIcon className="size-3.5" />} onClick={onComment}>
+        <div className="my-1 h-px bg-border/60" />
+        <MenuRow onClick={onComment} icon={<MessageSquareIcon className="size-3.5" />} disabled={pending}>
           Comment
-        </ReviewAction>
-        <ReviewAction icon={<SendIcon className="size-3.5" />} onClick={onRequestChanges}>
+        </MenuRow>
+        <MenuRow onClick={onRequestChanges} icon={<SendIcon className="size-3.5" />} disabled={pending}>
           Request changes
-        </ReviewAction>
-        <ReviewAction icon={<CheckIcon className="size-3.5" />} onClick={onApprove} emphasis>
+        </MenuRow>
+        <MenuRow onClick={onApprove} icon={<CheckIcon className="size-3.5" />} disabled={pending} emphasis>
           Approve
-        </ReviewAction>
+        </MenuRow>
       </PopoverContent>
     </Popover>
   )
 }
 
-function LayoutButton({
-  active,
+function MenuRow({
   onClick,
   icon,
+  disabled,
+  emphasis,
   children,
 }: {
-  active: boolean
   onClick: () => void
   icon: React.ReactNode
+  disabled?: boolean
+  emphasis?: boolean
   children: React.ReactNode
 }) {
   return (
     <button
       type="button"
       onClick={onClick}
-      className={cn(
-        'flex h-8 items-center justify-center gap-1.5 rounded-md text-xs transition-colors',
-        active ? 'bg-primary text-primary-foreground' : 'bg-muted text-muted-foreground hover:text-foreground',
-      )}
+      disabled={disabled}
+      className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[12px] transition-colors hover:bg-muted disabled:opacity-50"
     >
       {icon}
-      {children}
+      <span className={cn('flex-1', emphasis ? 'font-medium text-foreground' : 'text-foreground/80')}>
+        {children}
+      </span>
     </button>
   )
 }
 
-function CheckRow({
+function MenuCheck({
   active,
   onClick,
   disabled,
@@ -276,43 +302,17 @@ function CheckRow({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex w-full items-center gap-2 rounded-md px-1 py-1 text-left text-xs text-foreground transition-colors hover:bg-muted/60"
+      className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[12px] text-foreground/80 transition-colors hover:bg-muted disabled:opacity-50"
     >
       <span
         className={cn(
-          'flex size-4 items-center justify-center rounded border',
+          'flex size-3.5 items-center justify-center rounded-[3px] border',
           active ? 'border-primary bg-primary text-primary-foreground' : 'border-border',
         )}
       >
-        {active && <CheckIcon className="size-3" />}
+        {active && <CheckIcon className="size-2.5" />}
       </span>
-      {children}
-    </button>
-  )
-}
-
-function ReviewAction({
-  icon,
-  onClick,
-  children,
-  emphasis,
-}: {
-  icon: React.ReactNode
-  onClick: () => void
-  children: React.ReactNode
-  emphasis?: boolean
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className={cn(
-        'flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs transition-colors hover:bg-muted',
-        emphasis ? 'font-medium text-foreground' : 'text-foreground/80',
-      )}
-    >
-      {icon}
-      {children}
+      <span className="flex-1">{children}</span>
     </button>
   )
 }

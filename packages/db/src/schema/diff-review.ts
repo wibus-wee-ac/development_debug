@@ -10,7 +10,7 @@ export const diffReviews = sqliteTable('diff_reviews', {
   sourceId: text('source_id'),
   repositoryPath: text('repository_path').notNull(),
   sourceKind: text('source_kind', {
-    enum: ['local-working-tree', 'local-branch-compare', 'agent-change-set', 'github-pull-request', 'external-import'],
+    enum: ['local-working-tree', 'local-branch-compare', 'local-commit', 'agent-change-set', 'github-pull-request', 'external-import'],
   }).notNull(),
   title: text('title').notNull(),
   status: text('status', {
@@ -34,7 +34,7 @@ export const diffReviewSources = sqliteTable('diff_review_sources', {
     .notNull()
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   kind: text('kind', {
-    enum: ['local-working-tree', 'local-branch-compare', 'agent-change-set', 'github-pull-request', 'external-import'],
+    enum: ['local-working-tree', 'local-branch-compare', 'local-commit', 'agent-change-set', 'github-pull-request', 'external-import'],
   }).notNull(),
   ownerNamespace: text('owner_namespace').notNull().default('diff-review'),
   bindingJson: text('binding_json').notNull().default('{}'),
@@ -248,7 +248,7 @@ export const diffReviewSourceReadinessCache = sqliteTable('diff_review_source_re
     .notNull()
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   sourceKind: text('source_kind', {
-    enum: ['local-working-tree', 'local-branch-compare', 'agent-change-set', 'github-pull-request', 'external-import'],
+    enum: ['local-working-tree', 'local-branch-compare', 'local-commit', 'agent-change-set', 'github-pull-request', 'external-import'],
   }).notNull(),
   state: text('state', {
     enum: [

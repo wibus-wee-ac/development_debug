@@ -26,6 +26,7 @@ function matchesTab(review: CradleDiffReview, tab: ReviewsListTab): boolean {
   if (tab === 'created') {
     return review.sourceKind === 'local-working-tree'
       || review.sourceKind === 'local-branch-compare'
+      || review.sourceKind === 'local-commit'
       || review.events.some(event => event.eventKind === 'review_created' && event.actorId === 'local-user')
   }
   return true

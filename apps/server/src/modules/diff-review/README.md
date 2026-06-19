@@ -2,13 +2,13 @@
 
 # Diff Review Module
 
-The diff-review module owns Cradle Diffs review records, local worktree and branch-compare revisions, review threads, guide generation, agent fix work orders, commit plans, and source readiness projections.
+The diff-review module owns Cradle Diffs review records, local worktree, branch-compare, and commit revisions, review threads, guide generation, agent fix work orders, commit plans, and source readiness projections.
 
 ## Files
 
 - **index.ts**: Elysia routes for workspace diff reviews and CLI-exposed diff commands.
 - **model.ts**: TypeBox schemas for review, revision, file, thread, guide, agent fix, commit plan, and readiness contracts.
-- **service.ts**: Business logic for refreshing review sources, comments, submissions, guided review generation, agent fixes, commit plans, and event recording.
+- **service.ts**: Business logic for source adapters, refreshing review sources, comments, submissions, guided review generation, agent fixes, commit plans, and event recording.
 - **anchors.ts**: Diff range anchor normalization and revision remapping helpers.
 - **patch.ts**: Patch parsing, file summary extraction, generated-file detection, and line hashing.
 - **commit-plans.ts**: Commit plan grouping and normalization helpers.

@@ -61,6 +61,24 @@ export const diffReview = new Elysia({
     body: DiffReviewModel.localBranchCompareBody,
     response: { 200: DiffReviewModel.review },
   })
+  .post('/:id/diff-reviews/local-commit', ({ params, body }) => {
+    const input = body as { repo?: string, commitRef: string }
+    return DiffReview.refreshLocalCommit({
+      workspaceId: params.id,
+      repositoryPath: input.repo,
+      commitRef: input.commitRef,
+    })
+  }, {
+    detail: {
+      'summary': 'Create or refresh local commit diff review',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'commit'],
+      },
+    },
+    params: DiffReviewModel.workspaceParams,
+    body: DiffReviewModel.localCommitBody,
+    response: { 200: DiffReviewModel.review },
+  })
   .get('/:id/diff-reviews/:reviewId', ({ params }) => DiffReview.get(params.id, params.reviewId), {
     detail: {
       'summary': 'Get diff review',

@@ -11,6 +11,7 @@ const reviewState = t.Union([
 const sourceKind = t.Union([
   t.Literal('local-working-tree'),
   t.Literal('local-branch-compare'),
+  t.Literal('local-commit'),
   t.Literal('agent-change-set'),
   t.Literal('github-pull-request'),
   t.Literal('external-import'),
@@ -301,6 +302,11 @@ export const DiffReviewModel = {
     repo: t.Optional(t.String({ minLength: 1 })),
     baseRef: t.String({ minLength: 1 }),
     headRef: t.String({ minLength: 1 }),
+  }, { additionalProperties: false }),
+
+  localCommitBody: t.Object({
+    repo: t.Optional(t.String({ minLength: 1 })),
+    commitRef: t.String({ minLength: 1 }),
   }, { additionalProperties: false }),
 
   setViewedBody: t.Object({

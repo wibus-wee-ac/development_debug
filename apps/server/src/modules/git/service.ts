@@ -86,6 +86,20 @@ export interface GitBranchCompareView {
   patch: string
 }
 
+export interface GitCommitDiffView {
+  repositoryPath: string
+  repositoryName: string
+  commitRef: string
+  commitSha: string
+  shortSha: string
+  parentSha: string | null
+  subject: string
+  authorName: string
+  authorEmail: string
+  timestamp: number
+  patch: string
+}
+
 export interface GitCommitFileGroupInput {
   message: string
   paths: string[]
@@ -115,6 +129,7 @@ interface ResolvedGitRepository {
 
 const FIELD_SEP = '\x1F'
 const ROOT_REPOSITORY_PATH = '.'
+const EMPTY_TREE_SHA = '4b825dc642cb6eb9a060e54bf8d69288fbee4904'
 const RE_REMOTE_PREFIX = /^remotes\//
 const RE_REMOTE_BRANCH = /^[^/]+\/(.+)$/
 const MAX_REPOSITORY_SCAN_ENTRIES = 20_000
@@ -500,6 +515,47 @@ export async function getBranchCompare(
     }
   }
  catch (error) {
+    throw mapGitError(workspaceId, error, repository.path)
+  }
+}
+
+export async function getCommitDiff(
+  workspaceId: string,
+  commitRef: string,
+  repositoryPath?: string,
+): Promise<GitCommitDiffView> {
+  const { repository } = await resolveRepository(workspaceId, repositoryPath)
+  try {
+    const commitSha = (await runGitCommand(repository.absolutePath, ['rev-parse', '--verify', `${commitRef}^{commit}`])).trim()
+    const raw = await runGitCommand(repository.absolutePath, [
+      'show',
+      '-s',
+      `--format=%H${FIELD_SEP}%h${FIELD_SEP}%P${FIELD_SEP}%s${FIELD_SEP}%an${FIELD_SEP}%ae${FIELD_SEP}%at`,
+      commitSha,
+    ])
+    const [sha, shortSha, parentsRaw, subject, authorName, authorEmail, timestampStr] = raw.trim().split(FIELD_SEP)
+    const parentSha = parentsRaw?.trim().split(' ').filter(Boolean)[0] ?? null
+    const patch = await runGitCommand(repository.absolutePath, [
+      'diff',
+      '--find-renames',
+      parentSha ?? EMPTY_TREE_SHA,
+      commitSha,
+    ])
+    return {
+      repositoryPath: repository.path,
+      repositoryName: repository.name,
+      commitRef,
+      commitSha: sha,
+      shortSha,
+      parentSha,
+      subject: subject ?? '',
+      authorName: authorName ?? '',
+      authorEmail: authorEmail ?? '',
+      timestamp: timestampStr ? Number.parseInt(timestampStr, 10) * 1000 : 0,
+      patch,
+    }
+  }
+  catch (error) {
     throw mapGitError(workspaceId, error, repository.path)
   }
 }

@@ -1,4 +1,4 @@
-import { MessagesSquareIcon } from 'lucide-react'
+import { ChevronRightIcon, MessagesSquareIcon, XIcon } from 'lucide-react'
 
 import { cn } from '~/lib/cn'
 
@@ -8,88 +8,117 @@ interface OpenThreadsRailProps {
   review: CradleDiffReview
   files: ReviewFile[]
   onJumpToThread: (thread: ReviewThread) => void
+  onResolve: (threadId: string) => void
+  resolvePending: boolean
+  onCollapse: () => void
+  width: number
 }
 
-export function OpenThreadsRail({ review, files, onJumpToThread }: OpenThreadsRailProps) {
+export function OpenThreadsRail({
+  review,
+  files,
+  onJumpToThread,
+  onResolve,
+  resolvePending,
+  onCollapse,
+  width,
+}: OpenThreadsRailProps) {
   const fileById = new Map(files.map(file => [file.id, file]))
   const openThreads = review.threads.filter(thread => thread.state !== 'resolved')
-  const staleThreads = review.threads.filter(thread => thread.state === 'stale')
 
   return (
-    <aside className="hidden min-h-0 w-72 shrink-0 flex-col border-l border-border/60 bg-sidebar xl:flex" data-testid="open-threads-rail">
-      <div className="flex h-8 shrink-0 items-center gap-2 px-3">
-        <MessagesSquareIcon className="size-3.5 text-muted-foreground/60" aria-hidden />
-        <span className="text-xs font-medium text-foreground/80">Threads</span>
-        <span className="text-[10px] tabular-nums text-muted-foreground">{openThreads.length}</span>
+    <aside
+      className="hidden min-h-0 shrink-0 flex-col border-l border-border/60 bg-background xl:flex"
+      style={{ width }}
+      data-testid="open-threads-rail"
+    >
+      <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-border/60 px-3">
+        <span className="text-[12px] font-medium text-foreground/70">Threads</span>
+        <span className="text-[11px] tabular-nums text-muted-foreground/60">{openThreads.length}</span>
+        <div className="flex-1" />
+        <button
+          type="button"
+          onClick={onCollapse}
+          className="flex size-5 items-center justify-center rounded text-muted-foreground/60 transition-colors hover:bg-muted hover:text-foreground"
+          aria-label="Hide threads"
+        >
+          <XIcon className="size-3" />
+        </button>
       </div>
 
-      <div className="min-h-0 flex-1 overflow-y-auto p-2">
+      <div className="min-h-0 flex-1 overflow-y-auto">
         {openThreads.length === 0
           ? (
-              <div className="flex h-full items-center justify-center p-4 text-center">
-                <p className="text-xs text-muted-foreground">No open threads.</p>
+              <div className="flex flex-col items-center justify-center gap-1.5 px-4 py-12 text-center">
+                <MessagesSquareIcon className="size-4 text-muted-foreground/30" aria-hidden />
+                <p className="text-[11px] text-muted-foreground/60">No open threads</p>
               </div>
             )
           : (
-              <div className="space-y-1">
+              <div className="py-1">
                 {openThreads.map((thread) => {
                   const file = thread.fileId ? fileById.get(thread.fileId) : null
                   const last = thread.comments.at(-1)
+                  const path = file?.path ?? 'Thread'
                   return (
-                    <button
+                    <div
                       key={thread.id}
-                      type="button"
-                      onClick={() => onJumpToThread(thread)}
-                      className="w-full rounded-md px-2 py-1.5 text-left transition-colors hover:bg-muted/60"
+                      className="group relative"
                     >
-                      <div className="flex items-center gap-1.5">
+                      <button
+                        type="button"
+                        onClick={() => onJumpToThread(thread)}
+                        className="flex w-full items-start gap-2 px-3 py-1.5 text-left transition-colors hover:bg-muted/50"
+                      >
                         <span
                           className={cn(
-                            'size-1.5 shrink-0 rounded-full',
+                            'mt-1 size-1.5 shrink-0 rounded-full',
                             thread.state === 'stale' ? 'bg-amber-500' : 'bg-orange-500',
                           )}
                           aria-hidden
                         />
-                        <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground/90">
-                          {file?.path ?? 'Review thread'}
-                        </span>
-                        {thread.anchor && (
-                          <span className="shrink-0 font-mono text-[10px] text-muted-foreground">
-                            L
+                        <span className="min-w-0 flex-1">
+                          <span className="flex items-center gap-1.5">
+                            <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground/70">
+                              {path}
+                            </span>
+                            {thread.anchor && (
+                              <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground/60">
+                                L
 {thread.anchor.startLine}
+                              </span>
+                            )}
                           </span>
-                        )}
-                      </div>
-                      {last && (
-                        <p className="mt-0.5 line-clamp-2 pl-2.5 text-[10px] leading-relaxed text-muted-foreground">
-                          {last.bodyMarkdown}
-                        </p>
-                      )}
-                      <div className="mt-0.5 flex items-center gap-1.5 pl-2.5 text-[10px] text-muted-foreground/70">
-                        <span>
-{thread.comments.length}
-{' '}
-comment
-{thread.comments.length === 1 ? '' : 's'}
+                          {last && (
+                            <span className="mt-0.5 block truncate text-[12px] text-foreground/80">
+                              {last.bodyMarkdown.split('\n')[0]}
+                            </span>
+                          )}
+                          <span className="mt-0.5 block text-[11px] tabular-nums text-muted-foreground/50">
+                            {thread.comments.length}
+                            {' '}
+                            comment
+                            {thread.comments.length === 1 ? '' : 's'}
+                            {thread.state === 'stale' ? ' · stale' : ''}
+                          </span>
                         </span>
-                        {thread.state === 'stale' && <span className="text-amber-600 dark:text-amber-400">stale</span>}
-                      </div>
-                    </button>
+                        <ChevronRightIcon className="mt-1 size-3 shrink-0 text-muted-foreground/30" aria-hidden />
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => onResolve(thread.id)}
+                        disabled={resolvePending}
+                        className="absolute right-7 top-1.5 hidden size-5 items-center justify-center rounded text-muted-foreground transition-colors hover:bg-muted hover:text-foreground group-hover:flex"
+                        aria-label="Resolve thread"
+                        title="Resolve"
+                      >
+                        <XIcon className="size-3" />
+                      </button>
+                    </div>
                   )
                 })}
               </div>
             )}
-
-        {staleThreads.length > 0 && (
-          <div className="mt-3 border-t border-border/60 pt-2 text-[10px] text-muted-foreground/70">
-            {staleThreads.length}
-{' '}
-stale thread
-{staleThreads.length === 1 ? '' : 's'}
-{' '}
-need re-review
-          </div>
-        )}
       </div>
     </aside>
   )

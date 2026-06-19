@@ -2,6 +2,8 @@ import type { CodeViewItem } from '@pierre/diffs'
 import { FileDiffIcon, Loader2Icon } from 'lucide-react'
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 
+import { ResizeHandle } from '~/components/layout/resize-handle'
+
 import type { CodeViewLineSelection, DiffData, ThreadAnnotation } from '../shared/diff-items'
 import { buildItemsFromPatch, EMPTY_DIFF_DATA } from '../shared/diff-items'
 import { navigateToGuideView } from '../shared/navigation'
@@ -46,6 +48,12 @@ export function ReviewDetailPage({
   const [composerAnchor, setComposerAnchor] = useState<CodeViewLineSelection | null>(null)
   const stageHandleRef = useRef<DiffStageHandle | null>(null)
   const pendingScrollRef = useRef<string | null>(initialPath ?? null)
+
+  // Panel widths — Linear-style: panels are resizable, the diff stays the protagonist.
+  // Right rail auto-hides when there are no open threads so the diff gets the room.
+  const [fileTreeWidth, setFileTreeWidth] = useState(256)
+  const [threadsRailWidth, setThreadsRailWidth] = useState(320)
+  const [threadsRailCollapsed, setThreadsRailCollapsed] = useState(false)
 
   const files = useMemo(() => review?.files ?? [], [review?.files])
   const patch = review?.currentRevision?.patch ?? ''
@@ -164,7 +172,7 @@ export function ReviewDetailPage({
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center" data-testid="review-detail-error">
         <FileDiffIcon className="size-5 text-muted-foreground/30" aria-hidden />
-        <p className="text-xs text-muted-foreground">Review unavailable</p>
+        <p className="text-[12px] text-muted-foreground">Review unavailable</p>
       </div>
     )
   }
@@ -173,6 +181,9 @@ export function ReviewDetailPage({
     ? files.filter(file => (!collapseGeneratedFiles || !file.isGenerated) && diffData.whitespaceOnlyPaths.has(file.path)).length
     : 0
   const hiddenGeneratedFileCount = collapseGeneratedFiles ? files.filter(file => file.isGenerated).length : 0
+
+  const openThreadCount = review.threads.filter(thread => thread.state !== 'resolved').length
+  const showThreadsRail = !threadsRailCollapsed && openThreadCount > 0
 
   return (
     <div className="flex h-full w-full min-h-0 flex-col overflow-hidden" data-testid="review-detail-page">
@@ -192,6 +203,9 @@ export function ReviewDetailPage({
         isFetching={isFetching}
         onOpenGuide={() => navigateToGuideView(workspaceId, review.id, repositoryPath)}
         hasGuide={review.guide.steps.length > 0}
+        threadsRailCollapsed={threadsRailCollapsed}
+        onToggleThreadsRail={() => setThreadsRailCollapsed(value => !value)}
+        openThreadCount={openThreadCount}
       />
 
       <div className="flex min-h-0 flex-1">
@@ -203,21 +217,19 @@ export function ReviewDetailPage({
           viewedPending={viewedMutation.isPending}
           hiddenWhitespaceFileCount={hiddenWhitespaceFileCount}
           hiddenGeneratedFileCount={hiddenGeneratedFileCount}
+          width={fileTreeWidth}
+        />
+
+        <ResizeHandle
+          direction="horizontal"
+          value={fileTreeWidth}
+          onChange={setFileTreeWidth}
+          min={200}
+          max={420}
+          className="w-1.25 h-full"
         />
 
         <main className="flex min-h-0 min-w-0 flex-1 flex-col">
-          {selectedLineSelection && (
-            <div className="flex h-7 shrink-0 items-center justify-end px-3">
-              <button
-                type="button"
-                onClick={() => setComposerAnchor(selectedLineSelection)}
-                className="flex h-5 items-center gap-1 rounded px-1.5 text-[11px] font-medium text-orange-600 transition-colors hover:bg-orange-500/10 dark:text-orange-400"
-              >
-                + Comment on selection
-              </button>
-            </div>
-          )}
-
           <DiffStage
             review={review}
             diffData={diffData}
@@ -228,6 +240,7 @@ export function ReviewDetailPage({
             onSelectLines={setSelectedLineSelection}
             onFileFromSelection={setSelectedFileId}
             composerAnchor={composerAnchor}
+            onComposerOpen={setComposerAnchor}
             onComposerClose={() => setComposerAnchor(null)}
             onCreateThread={(input) => {
               createThreadMutation.mutate({
@@ -248,7 +261,28 @@ export function ReviewDetailPage({
           />
         </main>
 
-        <OpenThreadsRail review={review} files={files} onJumpToThread={jumpToThread} />
+        {showThreadsRail && (
+          <>
+            <ResizeHandle
+              direction="horizontal"
+              value={threadsRailWidth}
+              onChange={setThreadsRailWidth}
+              min={240}
+              max={480}
+              inverted
+              className="w-1.25 h-full"
+            />
+            <OpenThreadsRail
+              review={review}
+              files={files}
+              onJumpToThread={jumpToThread}
+              onResolve={threadId => resolveThreadMutation.mutate(threadId)}
+              resolvePending={resolveThreadMutation.isPending}
+              onCollapse={() => setThreadsRailCollapsed(true)}
+              width={threadsRailWidth}
+            />
+          </>
+        )}
       </div>
     </div>
   )

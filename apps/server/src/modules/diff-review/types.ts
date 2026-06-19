@@ -232,7 +232,7 @@ export interface ReviewGuideGenerateInput {
 }
 
 export interface ReviewSourceReadinessView {
-  sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import'
+  sourceKind: 'local-working-tree' | 'local-branch-compare' | 'local-commit' | 'agent-change-set' | 'github-pull-request' | 'external-import'
   workspaceId: string
   state:
     | 'ready'
@@ -252,7 +252,7 @@ export interface DiffReviewView {
   workspaceId: string
   sourceId: string | null
   repositoryPath: string
-  sourceKind: 'local-working-tree' | 'local-branch-compare' | 'agent-change-set' | 'github-pull-request' | 'external-import'
+  sourceKind: 'local-working-tree' | 'local-branch-compare' | 'local-commit' | 'agent-change-set' | 'github-pull-request' | 'external-import'
   title: string
   status: 'open' | 'merged' | 'closed' | 'abandoned'
   reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented'
@@ -276,6 +276,11 @@ export interface BranchCompareBinding {
   repositoryPath: string
   baseRef: string
   headRef: string
+}
+
+export interface LocalCommitBinding {
+  repositoryPath: string
+  commitSha: string
 }
 
 export type ReviewEventKind = ReviewEventView['eventKind']
