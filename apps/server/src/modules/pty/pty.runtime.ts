@@ -21,7 +21,7 @@ interface RuntimeRecord {
 }
 
 interface RuntimeHooks {
-  onOutput: (sessionId: string, data: string) => void
+  onOutput: (sessionId: string, role: PtyRuntimeRole, data: string) => void
   onExit: (sessionId: string, exit: PtyExitState) => void
   onRelease: (sessionId: string) => void
 }
@@ -112,7 +112,7 @@ export class PtyRuntimeRegistry {
     record.process = child
 
     child.onData((data: string) => {
-      this.hooks.onOutput(input.sessionId, data)
+      this.hooks.onOutput(input.sessionId, record.role, data)
     })
 
     child.onExit(({ exitCode, signal }) => {

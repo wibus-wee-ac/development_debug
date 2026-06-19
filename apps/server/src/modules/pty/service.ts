@@ -10,17 +10,23 @@ import {
 } from '../../helpers/agent-runtime-config'
 import { getSystemWorkflow } from '../../helpers/system-workflow'
 import { db } from '../../infra'
+import { reportRuntimeSessionTitle } from '../chat-runtime/title-service'
 import * as SessionService from '../session/service'
 import { captureCodexCliSession } from './codex-session-capture'
 import type { PtyClientEvent } from './protocol'
+import type { PtyRuntimeRole } from './pty.runtime'
 import { PtyRuntimeRegistry } from './pty.runtime'
 import type { PtyLiveSocket } from './pty.socket'
 import { PtySocketHub } from './pty.socket'
 import { ptyTimeline } from './pty.timeline'
 
 const codexCaptureTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const pendingTitleOscBuffers = new Map<string, string>()
 const CODEX_CAPTURE_ATTEMPTS = 12
 const CODEX_CAPTURE_RETRY_MS = 500
+const MAX_OSC_LOOKBEHIND_CHARS = 1_000
+const OSC_SEQUENCE_RE = /\u001B\](\d+);([^\u0007\u001B]*(?:\u001B(?!\\)[^\u0007\u001B]*)*)(?:\u0007|\u001B\\)/g
+const TITLE_OSC_CODES = new Set(['0', '2'])
 const CODEX_VALUE_OPTIONS = new Set([
   '-a',
   '-c',
@@ -43,13 +49,16 @@ const CODEX_VALUE_OPTIONS = new Set([
 ])
 
 const ptyRuntime = new PtyRuntimeRegistry({
-  onOutput: (sessionId, data) => {
+  onOutput: (sessionId, role, data) => {
     ptyTimeline.appendOutput(sessionId, data)
+    publishCliTuiTitle(sessionId, role, data)
   },
   onExit: (sessionId, exit) => {
+    pendingTitleOscBuffers.delete(sessionId)
     ptyTimeline.appendExit(sessionId, exit)
   },
   onRelease: (sessionId) => {
+    pendingTitleOscBuffers.delete(sessionId)
     ptyTimeline.delete(sessionId)
   },
 })
@@ -224,6 +233,7 @@ export function startOrAttach(input: { sessionId: string, cols: number, rows: nu
 
   if (!running) {
     ptyTimeline.reset(input.sessionId)
+    pendingTitleOscBuffers.delete(input.sessionId)
   }
 
   const startedAt = Date.now()
@@ -432,6 +442,66 @@ function cancelCodexSessionCapture(sessionId: string): void {
 
   clearTimeout(timer)
   codexCaptureTimers.delete(sessionId)
+}
+
+function publishCliTuiTitle(sessionId: string, role: PtyRuntimeRole, data: string): void {
+  if (role !== 'cli-tui') {
+    return
+  }
+
+  const pending = pendingTitleOscBuffers.get(sessionId) ?? ''
+  if (!pending && !data.includes('\u001B]')) {
+    return
+  }
+
+  const input = `${pending}${data}`
+  const title = readTerminalTitle(input)
+  const nextPending = getPendingOscSuffix(input)
+  if (nextPending) {
+    pendingTitleOscBuffers.set(sessionId, nextPending)
+  }
+  else {
+    pendingTitleOscBuffers.delete(sessionId)
+  }
+
+  if (!title) {
+    return
+  }
+
+  void reportRuntimeSessionTitle({ sessionId, title }).catch(() => {
+    // Runtime title sync is best-effort; PTY output delivery must not depend on DB writes.
+  })
+}
+
+function readTerminalTitle(input: string): string | null {
+  let title: string | null = null
+  OSC_SEQUENCE_RE.lastIndex = 0
+  let match: RegExpExecArray | null = OSC_SEQUENCE_RE.exec(input)
+
+  while (match !== null) {
+    const code = match[1]!
+    const value = (match[2] ?? '').trim()
+    if (value && TITLE_OSC_CODES.has(code)) {
+      title = value
+    }
+    match = OSC_SEQUENCE_RE.exec(input)
+  }
+
+  return title
+}
+
+function getPendingOscSuffix(data: string): string {
+  const oscStart = data.lastIndexOf('\u001B]')
+  if (oscStart === -1) {
+    return ''
+  }
+
+  const suffix = data.slice(oscStart)
+  if (suffix.includes('\u0007') || suffix.includes('\u001B\\')) {
+    return ''
+  }
+
+  return suffix.slice(-MAX_OSC_LOOKBEHIND_CHARS)
 }
 
 function persistCodexSessionBinding(

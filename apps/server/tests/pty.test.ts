@@ -2,8 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { workspaces } from '@cradle/db'
-import { sql } from 'drizzle-orm'
+import { sessions, workspaces } from '@cradle/db'
+import { eq, sql } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
 import { createServerApp } from '../src/app'
@@ -23,7 +23,7 @@ function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
 }
 
-async function createCliTuiSession(app: ElysiaApp, workspaceRoot: string) {
+async function createCliTuiSession(app: ElysiaApp, workspaceRoot: string, fixtureScript = TERMINAL_FIXTURE_SCRIPT) {
   const _app = app
   void _app
   db().insert(workspaces).values({
@@ -41,7 +41,7 @@ async function createCliTuiSession(app: ElysiaApp, workspaceRoot: string) {
     configJson: JSON.stringify({
       cliTui: {
         executable: process.execPath,
-        args: ['-e', TERMINAL_FIXTURE_SCRIPT],
+        args: ['-e', fixtureScript],
       },
     }),
   })
@@ -55,10 +55,32 @@ async function createCliTuiSession(app: ElysiaApp, workspaceRoot: string) {
     configJson: JSON.stringify({
       cliTuiLaunch: {
         executable: process.execPath,
-        args: ['-e', TERMINAL_FIXTURE_SCRIPT],
+        args: ['-e', fixtureScript],
       },
     }),
   })
+}
+
+async function waitForSessionTitle(sessionId: string, title: string): Promise<void> {
+  const deadline = Date.now() + 3_000
+  while (Date.now() < deadline) {
+    const session = db()
+      .select({ title: sessions.title, titleSource: sessions.titleSource })
+      .from(sessions)
+      .where(eq(sessions.id, sessionId))
+      .get()
+    if (session?.title === title && session.titleSource === 'provider') {
+      return
+    }
+    await new Promise(resolve => setTimeout(resolve, 50))
+  }
+
+  const session = db()
+    .select({ title: sessions.title, titleSource: sessions.titleSource })
+    .from(sessions)
+    .where(eq(sessions.id, sessionId))
+    .get()
+  expect(session).toEqual({ title, titleSource: 'provider' })
 }
 
 describe('pty capability HTTP control plane', () => {
@@ -96,6 +118,50 @@ describe('pty capability HTTP control plane', () => {
       expect(await stopRes.json()).toEqual({ ok: true })
     }
     finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
+  it('updates cli-tui session title from terminal OSC title metadata', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-pty-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+    shutdownInfra()
+
+    let app: ElysiaApp | undefined
+
+    try {
+      app = await createServerApp()
+      await createCliTuiSession(app, workspaceRoot, [
+        'process.stdout.write(\'\\x1B]0;Runtime Named Session\\x07READY\\n\')',
+        'setInterval(() => {}, 1000)',
+      ].join(';'))
+
+      const startRes = await app.handle(new Request('http://localhost/terminal-sessions/session-cli-tui/start-or-attach', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ cols: 80, rows: 24 }),
+      }))
+      expect(startRes.status).toBe(200)
+
+      await waitForSessionTitle('session-cli-tui', 'Runtime Named Session')
+
+      const stopRes = await app.handle(new Request('http://localhost/terminal-sessions/session-cli-tui', { method: 'DELETE' }))
+      expect(stopRes.status).toBe(200)
+    }
+    finally {
+      if (app) {
+        await app.handle(new Request('http://localhost/terminal-sessions/session-cli-tui', { method: 'DELETE' }))
+      }
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
