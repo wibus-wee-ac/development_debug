@@ -1,106 +1,112 @@
 /**
- * Nav — minimal fixed header with blur-on-scroll.
+ * Nav — minimal fixed header
  */
 
-import { useEffect, useState } from 'react'
-import { Container, ThemeToggle } from './primitives'
+import { useGSAP } from '@gsap/react'
+import gsap from 'gsap'
+import { Download } from 'lucide-react'
+import { useEffect, useRef, useState } from 'react'
+import { ThemeToggle } from './blueprint-annotations'
+
+gsap.registerPlugin(useGSAP)
 
 export function Nav() {
   const [scrolled, setScrolled] = useState(false)
+  const navRef = useRef<HTMLElement>(null)
 
   useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 12)
-    onScroll()
+    const onScroll = () => setScrolled(window.scrollY > 16)
     window.addEventListener('scroll', onScroll, { passive: true })
     return () => window.removeEventListener('scroll', onScroll)
   }, [])
 
+  useGSAP(() => {
+    gsap.from(navRef.current, { y: -10, opacity: 0, duration: 0.5, delay: 0.2, ease: 'power2.out' })
+  }, { scope: navRef })
+
   return (
     <nav
+      ref={navRef}
       style={{
         position: 'fixed',
         top: 0,
         left: 0,
         right: 0,
         zIndex: 50,
-        height: 52,
+        height: 48,
         display: 'flex',
         alignItems: 'center',
-        transition:
-          'background 0.35s ease, border-color 0.35s ease, backdrop-filter 0.35s ease',
+        transition: 'background 0.25s, border-color 0.25s',
         background: scrolled ? 'var(--nav-bg)' : 'transparent',
-        backdropFilter: scrolled ? 'saturate(180%) blur(20px)' : 'none',
-        WebkitBackdropFilter: scrolled ? 'saturate(180%) blur(20px)' : 'none',
-        borderBottom: scrolled
-          ? '1px solid var(--border-subtle)'
-          : '1px solid transparent',
+        backdropFilter: scrolled ? 'blur(12px)' : 'none',
+        WebkitBackdropFilter: scrolled ? 'blur(12px)' : 'none',
+        borderBottom: scrolled ? '1px solid var(--border)' : '1px solid transparent',
       }}
     >
-      <Container
-        style={{
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'space-between',
-        }}
+      <div style={{
+        maxWidth: 1100,
+        margin: '0 auto',
+        padding: '0 24px',
+        width: '100%',
+        display: 'flex',
+        alignItems: 'center',
+        justifyContent: 'space-between',
+      }}
       >
-        <a
-          href="/"
-          style={{ display: 'flex', alignItems: 'center', gap: 9, textDecoration: 'none' }}
-        >
+        {/* Logo */}
+        <a href="/" style={{ display: 'flex', alignItems: 'center', gap: 10, textDecoration: 'none' }}>
           <img
             src="/icon-64.webp"
             alt="Cradle"
-            width={22}
-            height={22}
+            width={24}
+            height={24}
             decoding="async"
-            style={{ borderRadius: 6, display: 'block' }}
+            style={{ borderRadius: 6 }}
           />
-          <span
-            style={{
-              fontSize: 14,
-              fontWeight: 560,
-              letterSpacing: '-0.02em',
-              color: 'var(--text)',
-            }}
+          <span style={{
+            fontSize: 13,
+            fontWeight: 600,
+            color: 'var(--text)',
+            letterSpacing: '-0.02em',
+          }}
           >
             Cradle
           </span>
         </a>
 
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+        {/* Right */}
+        <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+          <ThemeToggle />
           <a
-            href="https://github.com/wibus-wee/Cradle"
-            target="_blank"
-            rel="noopener noreferrer"
+            href="#download"
             style={{
               display: 'inline-flex',
               alignItems: 'center',
               gap: 6,
-              height: 36,
-              padding: '0 16px',
-              borderRadius: 980,
+              height: 30,
+              padding: '0 14px',
               border: '1px solid var(--border)',
-              background: 'var(--fill)',
+              background: 'transparent',
               color: 'var(--text-secondary)',
               fontSize: 13,
               fontWeight: 500,
               textDecoration: 'none',
-              transition: 'background 0.2s ease, color 0.2s ease',
+              transition: 'background 0.15s, color 0.15s',
             }}
             onMouseEnter={(e) => {
-              e.currentTarget.style.background = 'var(--fill-hover)'
-              e.currentTarget.style.color = 'var(--text)'
+              (e.currentTarget as HTMLAnchorElement).style.background = 'var(--fill-hover)'
+              ;(e.currentTarget as HTMLAnchorElement).style.color = 'var(--text)'
             }}
             onMouseLeave={(e) => {
-              e.currentTarget.style.background = 'var(--fill)'
-              e.currentTarget.style.color = 'var(--text-secondary)'
+              (e.currentTarget as HTMLAnchorElement).style.background = 'transparent'
+              ;(e.currentTarget as HTMLAnchorElement).style.color = 'var(--text-secondary)'
             }}
           >
-            GitHub
+            <Download style={{ width: 13, height: 13 }} />
+            Download
           </a>
-          <ThemeToggle />
         </div>
-      </Container>
+      </div>
     </nav>
   )
 }
