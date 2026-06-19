@@ -145,6 +145,7 @@ const RECENT_SESSION_WINDOW_SECONDS = 60 * 60
 const DEFAULT_WORKSPACE_FILE_NAME = 'untitled'
 const DEFAULT_WORKSPACE_FOLDER_NAME = 'untitled-folder'
 const EMPTY_WORKSPACE_SESSIONS: WorkspaceSession[] = []
+const EMPTY_SESSION_ID_SET = new Set<string>()
 
 const PROJECT_FILTER_OPTIONS: readonly WorkspaceSidebarProjectFilter[] = [
   'all',
@@ -1710,12 +1711,16 @@ const WorkspaceGroup = memo(
     )
     const locallyErroredSessionIds = useChatStore(
       useCallback(
-        (state) =>
-          new Set(
+        (state) => {
+          if (state.errorMap.size === 0) {
+            return EMPTY_SESSION_ID_SET
+          }
+          return new Set(
             workspaceSessionIds.filter((sessionId) =>
               Boolean(chatSelectors.latestError(sessionId)(state))
             )
-          ),
+          )
+        },
         [workspaceSessionIds]
       ),
       shallow

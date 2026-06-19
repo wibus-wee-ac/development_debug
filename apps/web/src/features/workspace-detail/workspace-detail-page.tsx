@@ -19,9 +19,9 @@ import {
 } from '~/api-gen/@tanstack/react-query.gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
 import { toastManager } from '~/components/ui/toast'
-import type { ChatContextPart } from '~/features/chat/context/chat-context-parts'
 import type { DraftChatComposerSubmitOptions } from '~/features/chat/composer/draft-chat-composer'
 import { DraftChatComposer } from '~/features/chat/composer/draft-chat-composer'
+import type { ChatContextPart } from '~/features/chat/context/chat-context-parts'
 import { startOptimisticChatResponse } from '~/features/chat/session/optimistic-chat-turn'
 import { sessionsQueryKey, updateSessionInSessionLists } from '~/features/workspace/use-session'
 import { WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
@@ -254,7 +254,7 @@ function DocumentSection({
 }) {
   const { t } = useTranslation('workspace')
   const saveDraft = (nextDraft: string) => {
-    void file.save(nextDraft)
+    return file.save(nextDraft).then(() => undefined)
   }
 
   if (file.loading) {
@@ -490,7 +490,6 @@ function useWorkspaceDetailOwner(workspaceId: string) {
   const handleRename = async (newName: string) => {
     await renameWorkspaceMutation.mutateAsync({ path: { id: workspaceId }, body: { name: newName } })
   }
-
 
   const openCreatedWorkspaceSession = async (sessionId: string, target: 'tab' | 'window') => {
     if (target === 'window') {

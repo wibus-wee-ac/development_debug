@@ -22,14 +22,18 @@ export function useWorkspaceFile(workspaceId: string, relativePath: string) {
 
   const { mutateAsync: save, isPending: saving } = useMutation({
     mutationFn: async (newContent: string) => {
-      await putWorkspacesByIdFilesContent({
+      const { data } = await putWorkspacesByIdFilesContent({
         path: { id: workspaceId },
         body: { path: relativePath, content: newContent, confirmedNonCradleOwnedWrite: true },
       })
-      return true
+      if (!data?.success) {
+        throw new Error('The workspace file was not written.')
+      }
+      return newContent
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey })
+    onSuccess: (newContent) => {
+      queryClient.setQueryData(queryKey, newContent)
+      void queryClient.invalidateQueries({ queryKey })
     },
   })
 
