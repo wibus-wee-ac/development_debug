@@ -2,6 +2,8 @@ import { z } from 'zod'
 
 export const ProfileConfigSchema = z.object({
   baseUrl: z.string().default(''),
+  openaiBaseUrl: z.string().default(''),
+  anthropicBaseUrl: z.string().default(''),
   model: z.string().default(''),
   api: z.string().default(''),
   authMode: z.enum([

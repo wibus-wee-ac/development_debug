@@ -14,7 +14,7 @@ import { useEffect, useRef, useState } from 'react'
 import { postTerminalSessionsBySessionIdStartOrAttach } from '~/api-gen'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 
-import { getAppTerminalTheme } from './app-theme'
+import { getAppTerminalTheme, watchTerminalTheme } from './app-theme'
 import { attachMacKeyboardHandler } from './keyboard-handler'
 import { createPtyChannel } from './pty-channel'
 
@@ -35,7 +35,6 @@ export function TuiView({ sessionId }: TuiViewProps) {
     }
     setReady(false)
 
-    const darkMq = window.matchMedia('(prefers-color-scheme: dark)')
     const terminal = new Terminal({
       theme: getAppTerminalTheme(),
       fontFamily: '"GeistMono", "Cascadia Code", "Fira Mono", monospace',
@@ -142,11 +141,9 @@ export function TuiView({ sessionId }: TuiViewProps) {
 
     attachMacKeyboardHandler(terminal)
 
-    // Live theme update on dark/light switch
-    const onColorSchemeChange = (_e: MediaQueryListEvent) => {
+    const stopWatchingTheme = watchTerminalTheme(() => {
       terminal.options.theme = getAppTerminalTheme()
-    }
-    darkMq.addEventListener('change', onColorSchemeChange)
+    })
 
     // Forward keystrokes to the server
     const dataDisposable = terminal.onData((data) => {
@@ -171,7 +168,7 @@ export function TuiView({ sessionId }: TuiViewProps) {
       channel.close()
       dataDisposable.dispose()
       resizeObserver.disconnect()
-      darkMq.removeEventListener('change', onColorSchemeChange)
+      stopWatchingTheme()
       terminal.dispose()
     }
   }, [sessionId])

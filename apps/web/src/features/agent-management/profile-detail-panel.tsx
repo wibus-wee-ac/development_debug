@@ -45,7 +45,7 @@ import { Switch } from '~/components/ui/switch'
 import { toastManager } from '~/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
-import type { AgentProfile, ModelDescriptor, ProviderTarget } from '~/features/agent-runtime/types'
+import type { AgentProfile, ApiProviderKind, ModelDescriptor, ProviderTarget } from '~/features/agent-runtime/types'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { cn } from '~/lib/cn'
 import { nativeIpc } from '~/lib/electron'
@@ -85,12 +85,15 @@ import type { CredentialMetadata } from './use-credential-metadata'
 import { isChatgptCredentialMetadata, useCredentialMetadata } from './use-credential-metadata'
 
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
-type ProfileTextField = 'name' | 'apiKey' | 'baseUrl' | 'api' | 'authMode' | 'bedrockRegion'
+type ProfileTextField = 'name' | 'apiKey' | 'baseUrl' | 'openaiBaseUrl' | 'anthropicBaseUrl' | 'api' | 'authMode' | 'bedrockRegion'
 
 interface ProfileDetailFormValues {
   name: string
   apiKey: string
+  providerKind: ApiProviderKind
   baseUrl: string
+  openaiBaseUrl: string
+  anthropicBaseUrl: string
   model: string
   api: string
   authMode: string
@@ -193,7 +196,10 @@ function getProfileFormValues(profile: AgentProfile): ProfileDetailFormValues {
   return {
     name: profile.name,
     apiKey: '',
+    providerKind: profile.providerKind,
     baseUrl: config.baseUrl,
+    openaiBaseUrl: config.openaiBaseUrl || config.baseUrl,
+    anthropicBaseUrl: config.anthropicBaseUrl || config.baseUrl,
     model: config.model,
     api: config.api,
     authMode: normalizeCodexAuthMode(config.authMode),
@@ -219,8 +225,25 @@ function buildProfileConfig(
   currentConfig: Record<string, unknown>,
   options: { codexAuthMode?: string | null } = {},
 ): Record<string, unknown> {
-  const { enabledModels: _, authMode: _authMode, bedrock: _bedrock, ...rest } = currentConfig
-  if (options.codexAuthMode) {
+  const {
+    enabledModels: _,
+    authMode: _authMode,
+    bedrock: _bedrock,
+    baseUrl: _baseUrl,
+    openaiBaseUrl: _openaiBaseUrl,
+    anthropicBaseUrl: _anthropicBaseUrl,
+    api: _api,
+    ...rest
+  } = currentConfig
+  if (values.providerKind === 'universal') {
+    return {
+      ...rest,
+      openaiBaseUrl: values.openaiBaseUrl,
+      anthropicBaseUrl: values.anthropicBaseUrl,
+      model: values.model || undefined,
+    }
+  }
+  if (values.providerKind === 'openai-compatible' && options.codexAuthMode) {
     const codexAuthMode = normalizeCodexAuthMode(options.codexAuthMode)
     return {
       ...rest,
@@ -245,7 +268,10 @@ function createProfileSignature(values: ProfileDetailFormValues): string {
   return JSON.stringify({
     name: values.name,
     apiKey: values.apiKey,
+    providerKind: values.providerKind,
     baseUrl: values.baseUrl,
+    openaiBaseUrl: values.openaiBaseUrl,
+    anthropicBaseUrl: values.anthropicBaseUrl,
     model: values.model,
     api: values.api,
     authMode: values.authMode,
@@ -285,7 +311,10 @@ export function ProfileDetailPanel({
   })
   const name = useWatch({ control: form.control, name: 'name' }) ?? ''
   const apiKey = useWatch({ control: form.control, name: 'apiKey' }) ?? ''
+  const providerKind = useWatch({ control: form.control, name: 'providerKind' }) ?? profile.providerKind
   const baseUrl = useWatch({ control: form.control, name: 'baseUrl' }) ?? ''
+  const openaiBaseUrl = useWatch({ control: form.control, name: 'openaiBaseUrl' }) ?? ''
+  const anthropicBaseUrl = useWatch({ control: form.control, name: 'anthropicBaseUrl' }) ?? ''
   const model = useWatch({ control: form.control, name: 'model' }) ?? ''
   const api = useWatch({ control: form.control, name: 'api' }) ?? ''
   const authMode = useWatch({ control: form.control, name: 'authMode' }) ?? CODEX_AUTH_MODE_API_KEY
@@ -307,7 +336,7 @@ export function ProfileDetailPanel({
   const { startLogin, cancelLogin } = useChatgptCredentialLoginActions()
   const chatgptLoginStatus = useChatgptCredentialLoginStatus(chatgptLoginId)
   const credentialMetadata = useCredentialMetadata(profile.credentialRef)
-  const showCodexAccountDiagnostics = profile.providerKind === 'openai-compatible'
+  const showCodexAccountDiagnostics = providerKind === 'openai-compatible'
     && normalizeCodexAuthMode(authMode) === CODEX_AUTH_MODE_CHATGPT
 
   useEffect(() => {
@@ -387,6 +416,25 @@ export function ProfileDetailPanel({
 
   const setTextField = (field: ProfileTextField, value: string) => {
       form.setValue(field, value, { shouldDirty: true })
+    }
+
+  const setProviderKind = (nextProviderKind: ApiProviderKind) => {
+      const currentValues = form.getValues()
+      if (nextProviderKind === 'openai-compatible') {
+        form.setValue('baseUrl', currentValues.openaiBaseUrl || currentValues.baseUrl, { shouldDirty: true })
+      }
+      if (nextProviderKind === 'anthropic') {
+        form.setValue('baseUrl', currentValues.anthropicBaseUrl || currentValues.baseUrl, { shouldDirty: true })
+      }
+      if (nextProviderKind === 'universal') {
+        if (currentValues.providerKind === 'openai-compatible' && currentValues.baseUrl) {
+          form.setValue('openaiBaseUrl', currentValues.baseUrl, { shouldDirty: true })
+        }
+        if (currentValues.providerKind === 'anthropic' && currentValues.baseUrl) {
+          form.setValue('anthropicBaseUrl', currentValues.baseUrl, { shouldDirty: true })
+        }
+      }
+      form.setValue('providerKind', nextProviderKind, { shouldDirty: true })
     }
 
   const handleEnabledModelsChange = (next: string[]) => {
@@ -534,21 +582,21 @@ export function ProfileDetailPanel({
       let credentialRef = profile.credentialRef ?? null
       const credentialValue = currentValues.apiKey.trim()
       if (credentialValue && supportsModels) {
-        const codexAuthMode = profile.providerKind === 'openai-compatible'
+        const codexAuthMode = currentValues.providerKind === 'openai-compatible'
           ? normalizeCodexAuthMode(currentValues.authMode)
           : CODEX_AUTH_MODE_API_KEY
         const { data: meta } = await postSecrets({
           body: {
-            kind: profile.providerKind === 'openai-compatible'
-              ? codexSecretKindForAuthMode(codexAuthMode, profile.providerKind)
-              : profile.providerKind,
+            kind: currentValues.providerKind === 'openai-compatible'
+              ? codexSecretKindForAuthMode(codexAuthMode, currentValues.providerKind)
+              : currentValues.providerKind,
             label: currentValues.name,
             secret: credentialValue,
           },
         })
         credentialRef = SecretCreateResponseSchema.parse(meta).id
       }
-      const codexAuthMode = profile.providerKind === 'openai-compatible'
+      const codexAuthMode = currentValues.providerKind === 'openai-compatible'
         ? normalizeCodexAuthMode(currentValues.authMode)
         : null
 
@@ -556,7 +604,7 @@ export function ProfileDetailPanel({
         path: { id: profile.id },
         body: {
           name: currentValues.name,
-          providerKind: profile.providerKind,
+          providerKind: currentValues.providerKind,
           enabled: profile.enabled,
           config: supportsModels
             ? buildProfileConfig(currentValues, ProfileConfigJsonSchema.parse(profile.configJson), { codexAuthMode })
@@ -598,7 +646,10 @@ export function ProfileDetailPanel({
   const watchedSignature = JSON.stringify({
         name,
         apiKey,
+        providerKind,
         baseUrl,
+        openaiBaseUrl,
+        anthropicBaseUrl,
         model,
         api,
         authMode,
@@ -676,8 +727,9 @@ export function ProfileDetailPanel({
         <ProfileGeneralSettings
           profile={profile}
           credentialMetadata={credentialMetadata.data ?? null}
-          values={{ name, apiKey, baseUrl, api, authMode, bedrockRegion }}
+          values={{ name, apiKey, providerKind, baseUrl, openaiBaseUrl, anthropicBaseUrl, api, authMode, bedrockRegion }}
           onTextFieldChange={setTextField}
+          onProviderKindChange={setProviderKind}
           supportsModels={supportsModels}
           readOnly={false}
           chatgptLoginPending={!!chatgptLoginId}
@@ -791,6 +843,7 @@ function ProfileGeneralSettings({
   credentialMetadata,
   values,
   onTextFieldChange,
+  onProviderKindChange,
   supportsModels,
   readOnly,
   chatgptLoginPending,
@@ -801,8 +854,9 @@ function ProfileGeneralSettings({
 }: {
   profile: AgentProfile
   credentialMetadata: CredentialMetadata | null
-  values: Pick<ProfileDetailFormValues, ProfileTextField>
+  values: Pick<ProfileDetailFormValues, ProfileTextField | 'providerKind'>
   onTextFieldChange: (field: ProfileTextField, value: string) => void
+  onProviderKindChange: (providerKind: ApiProviderKind) => void
   supportsModels: boolean
   readOnly: boolean
   chatgptLoginPending: boolean
@@ -811,12 +865,14 @@ function ProfileGeneralSettings({
   onChatgptLogin: () => void
   onCancelChatgptLogin: () => void
 }) {
-  const isUniversal = profile.providerKind === 'universal'
-  const isCodexProvider = profile.providerKind === 'openai-compatible'
+  const isUniversal = values.providerKind === 'universal'
+  const isCodexProvider = values.providerKind === 'openai-compatible'
+  const isChatgptCredential = isChatgptCredentialMetadata(credentialMetadata)
   const codexAuthMode = isCodexProvider
     ? normalizeCodexAuthMode(values.authMode)
     : CODEX_AUTH_MODE_API_KEY
   const endpointDisabled = readOnly || (isCodexProvider && codexAuthMode !== CODEX_AUTH_MODE_API_KEY)
+  const providerKindDisabled = readOnly || codexAuthMode === CODEX_AUTH_MODE_CHATGPT || isChatgptCredential
 
   return (
     <>
@@ -833,16 +889,59 @@ function ProfileGeneralSettings({
       {supportsModels && (
         <>
           <SettingsDivider />
-          <SettingsRow label="Endpoint" description="Base URL for the API">
-            <Input
-              data-testid="provider-edit-baseurl"
-              value={values.baseUrl}
-              onChange={e => onTextFieldChange('baseUrl', e.target.value)}
-              disabled={endpointDisabled}
-              className="h-9 w-56 text-[12.5px] font-mono"
-              placeholder="https://api.example.com/v1"
-            />
+          <SettingsRow label="Provider type" description="Runtime protocol family for this provider">
+            <Select
+              value={values.providerKind}
+              onValueChange={value => onProviderKindChange(value as ApiProviderKind)}
+              disabled={providerKindDisabled}
+            >
+              <SelectTrigger className="h-9 w-56 text-[12.5px]">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="openai-compatible">{PROVIDER_KIND_LABELS['openai-compatible']}</SelectItem>
+                <SelectItem value="anthropic">{PROVIDER_KIND_LABELS.anthropic}</SelectItem>
+                <SelectItem value="universal">{PROVIDER_KIND_LABELS.universal}</SelectItem>
+              </SelectContent>
+            </Select>
           </SettingsRow>
+
+          <SettingsDivider />
+          {isUniversal
+            ? (
+                <SettingsRow label="Endpoints" description="Separate base URLs for each API family" vertical>
+                  <div className="flex w-full max-w-[28rem] flex-col gap-2">
+                    <Input
+                      data-testid="provider-edit-openai-baseurl"
+                      value={values.openaiBaseUrl}
+                      onChange={e => onTextFieldChange('openaiBaseUrl', e.target.value)}
+                      disabled={readOnly}
+                      className="h-9 text-[12.5px] font-mono"
+                      placeholder="OpenAI: https://api.example.com/v1"
+                    />
+                    <Input
+                      data-testid="provider-edit-anthropic-baseurl"
+                      value={values.anthropicBaseUrl}
+                      onChange={e => onTextFieldChange('anthropicBaseUrl', e.target.value)}
+                      disabled={readOnly}
+                      className="h-9 text-[12.5px] font-mono"
+                      placeholder="Anthropic: https://api.example.com"
+                    />
+                  </div>
+                </SettingsRow>
+              )
+            : (
+                <SettingsRow label="Endpoint" description="Base URL for the API">
+                  <Input
+                    data-testid="provider-edit-baseurl"
+                    value={values.baseUrl}
+                    onChange={e => onTextFieldChange('baseUrl', e.target.value)}
+                    disabled={endpointDisabled}
+                    className="h-9 w-56 text-[12.5px] font-mono"
+                    placeholder="https://api.example.com/v1"
+                  />
+                </SettingsRow>
+              )}
 
           {!isUniversal && (
             <>
@@ -877,6 +976,8 @@ function ProfileGeneralSettings({
             values={values}
             onTextFieldChange={onTextFieldChange}
             readOnly={readOnly}
+            providerKind={values.providerKind}
+            lockChatgptAuth={isChatgptCredential}
             chatgptLoginPending={chatgptLoginPending}
             chatgptLoginBusy={chatgptLoginBusy}
             activeChatgptLogin={activeChatgptLogin}
@@ -896,6 +997,8 @@ function ProfileCredentialSettings({
   values,
   onTextFieldChange,
   readOnly,
+  providerKind,
+  lockChatgptAuth,
   chatgptLoginPending,
   chatgptLoginBusy,
   activeChatgptLogin,
@@ -907,13 +1010,15 @@ function ProfileCredentialSettings({
   values: Pick<ProfileDetailFormValues, ProfileTextField>
   onTextFieldChange: (field: ProfileTextField, value: string) => void
   readOnly: boolean
+  providerKind: ApiProviderKind
+  lockChatgptAuth: boolean
   chatgptLoginPending: boolean
   chatgptLoginBusy: boolean
   activeChatgptLogin: ChatgptCredentialLoginStart | null
   onChatgptLogin: () => void
   onCancelChatgptLogin: () => void
 }) {
-  const isCodexProvider = profile.providerKind === 'openai-compatible'
+  const isCodexProvider = providerKind === 'openai-compatible'
   const isChatgptCredential = isChatgptCredentialMetadata(credentialMetadata)
   const codexAuthMode = isCodexProvider
     ? normalizeCodexAuthMode(values.authMode)
@@ -942,7 +1047,7 @@ function ProfileCredentialSettings({
                 onTextFieldChange('baseUrl', '')
               }
             }}
-            disabled={readOnly}
+            disabled={readOnly || lockChatgptAuth}
           >
             <SelectTrigger className="h-9 w-56 text-[12.5px]">
               <SelectValue />

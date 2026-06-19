@@ -16,7 +16,7 @@ import {
   postTerminalSessionsShellStart,
 } from '~/api-gen/sdk.gen'
 
-import { getAppTerminalTheme } from './app-theme'
+import { getAppTerminalTheme, watchTerminalTheme } from './app-theme'
 import { attachMacKeyboardHandler } from './keyboard-handler'
 import { createPtyChannel } from './pty-channel'
 import type { TerminalMetadata } from './terminal-metadata'
@@ -121,7 +121,6 @@ export function ShellView({ ptyId, cwd, visible = true, onExited, onMetadata, st
     }
 
     const el = containerRef.current
-    const darkMq = window.matchMedia('(prefers-color-scheme: dark)')
     const terminal = new Terminal({
       theme: getAppTerminalTheme(),
       fontFamily: '"GeistMono", "Cascadia Code", "Fira Mono", monospace',
@@ -386,10 +385,9 @@ export function ShellView({ ptyId, cwd, visible = true, onExited, onMetadata, st
     // ── Live updates ─────────────────────────────────────────────────────────
     attachMacKeyboardHandler(terminal)
 
-    const onColorSchemeChange = (_e: MediaQueryListEvent) => {
+    const stopWatchingTheme = watchTerminalTheme(() => {
       terminal.options.theme = getAppTerminalTheme()
-    }
-    darkMq.addEventListener('change', onColorSchemeChange)
+    })
 
     const dataDisposable = terminal.onData((data) => {
       if (!visibleRef.current) {
@@ -425,7 +423,7 @@ export function ShellView({ ptyId, cwd, visible = true, onExited, onMetadata, st
       channel.close()
       dataDisposable.dispose()
       resizeObserver.disconnect()
-      darkMq.removeEventListener('change', onColorSchemeChange)
+      stopWatchingTheme()
       terminal.dispose()
       terminalRef.current = null
       fitAddonRef.current = null
