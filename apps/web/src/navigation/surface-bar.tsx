@@ -19,8 +19,10 @@ import {
   XIcon,
 } from 'lucide-react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { shallow } from 'zustand/shallow'
 
 import { cn } from '~/lib/cn'
+import { chatSelectors, useChatStore } from '~/store/chat'
 
 import { activateSurface, closeSurfaceById, openNewChat } from './navigation-commands'
 import type { ScreenCoordinates } from './screen-coordinates'
@@ -95,9 +97,23 @@ interface SurfacePillProps {
   isActive: boolean
   shortcutHint?: number
   showShortcutHint: boolean
+  running: boolean
   unread: boolean
   onActivate: (surfaceId: string) => void
   onClose: (event: React.MouseEvent, surfaceId: string) => void
+}
+
+function SurfaceRunningIndicator() {
+  return (
+    <span
+      aria-hidden="true"
+      className="inline-flex size-4 shrink-0 items-center justify-center gap-0.5 text-primary [contain:layout_paint]"
+    >
+      <span className="size-1 rounded-full bg-current opacity-30 animate-[surface-running-dot_1.2s_ease-in-out_infinite] motion-reduce:animate-none" />
+      <span className="size-1 rounded-full bg-current opacity-30 animate-[surface-running-dot_1.2s_ease-in-out_infinite] [animation-delay:0.16s] motion-reduce:animate-none" />
+      <span className="size-1 rounded-full bg-current opacity-30 animate-[surface-running-dot_1.2s_ease-in-out_infinite] [animation-delay:0.32s] motion-reduce:animate-none" />
+    </span>
+  )
 }
 
 const SortableSurfacePill = memo(({
@@ -105,6 +121,7 @@ const SortableSurfacePill = memo(({
   isActive,
   shortcutHint,
   showShortcutHint,
+  running,
   unread,
   onActivate,
   onClose,
@@ -130,6 +147,7 @@ const SortableSurfacePill = memo(({
         </span>
       )
   const showBadgeSlot = unread && !showShortcutHint
+  const showRunningSlot = running && !showShortcutHint
 
   return (
     <div
@@ -163,17 +181,29 @@ const SortableSurfacePill = memo(({
         <span
           className={cn(
             'absolute inset-0 flex items-center justify-center transition-[opacity,transform,filter] duration-150 ease-out',
-            showShortcutHint || showBadgeSlot ? 'scale-[0.92] opacity-0 blur-[2px]' : 'scale-100 opacity-100 blur-0',
+            showShortcutHint || showRunningSlot || showBadgeSlot ? 'scale-[0.92] opacity-0 blur-[2px]' : 'scale-100 opacity-100 blur-0',
           )}
         >
           <SurfaceIcon surface={surface} />
         </span>
+        {running && (
+          <span
+            role="status"
+            aria-label="Session running"
+            className={cn(
+              'absolute inset-0 inline-flex items-center justify-center transition-[opacity,transform,filter] duration-150 ease-out',
+              showRunningSlot ? 'scale-100 opacity-100 blur-0' : 'scale-[0.92] opacity-0 blur-[2px]',
+            )}
+          >
+            <SurfaceRunningIndicator />
+          </span>
+        )}
         {unread && (
           <span
             aria-hidden="true"
             className={cn(
               'absolute inset-0 inline-flex items-center justify-center text-primary transition-[opacity,transform,filter] duration-150 ease-out',
-              showBadgeSlot ? 'scale-100 opacity-100 blur-0' : 'scale-[0.92] opacity-0 blur-[2px]',
+              showBadgeSlot && !showRunningSlot ? 'scale-100 opacity-100 blur-0' : 'scale-[0.92] opacity-0 blur-[2px]',
             )}
           >
             <MessageCircleMoreIcon className="size-3.5" />
@@ -215,10 +245,12 @@ SortableSurfacePill.displayName = 'SortableSurfacePill'
 export const SurfaceBar = memo(({
   className,
   sessionScoped = false,
+  runningSessionIds: serverRunningSessionIds = new Set<string>(),
   unreadSessionIds = new Set<string>(),
 }: {
   className?: string
   sessionScoped?: boolean
+  runningSessionIds?: ReadonlySet<string>
   unreadSessionIds?: ReadonlySet<string>
 }) => {
   'use no memo'
@@ -226,6 +258,25 @@ export const SurfaceBar = memo(({
   const surfaces = useSurfaceStore(state => state.surfaces)
   const activeSurfaceId = useSurfaceStore(state => state.activeSurfaceId)
   const reorderSurfaces = useSurfaceStore(state => state.reorderSurfaces)
+  const chatSessionIds = useMemo(() => {
+    const ids: string[] = []
+    for (const surface of surfaces) {
+      const sessionId = readChatSessionId(surface)
+      if (sessionId) {
+        ids.push(sessionId)
+      }
+    }
+    return ids
+  }, [surfaces])
+  const locallyRunningSessionIds = useChatStore(
+    useCallback(
+      state => new Set(
+        chatSessionIds.filter(sessionId => chatSelectors.isSessionStreaming(sessionId)(state)),
+      ),
+      [chatSessionIds],
+    ),
+    shallow,
+  )
   const surfacesRef = useRef(surfaces)
   const dragStartPointerRef = useRef<ScreenCoordinates | null>(null)
   const dragReleasePointerRef = useRef<ScreenCoordinates | null>(null)
@@ -417,18 +468,22 @@ export const SurfaceBar = memo(({
         data-testid="surface-bar"
       >
         <SortableContext items={surfaceIds} strategy={horizontalListSortingStrategy}>
-          {surfaces.map((surface, index) => (
-            <SortableSurfacePill
-              key={surface.id}
-              surface={surface}
-              isActive={surface.id === activeSurfaceId}
-              shortcutHint={index < 9 ? index + 1 : undefined}
-              showShortcutHint={showMetaTabHints}
-              unread={readChatSessionId(surface) ? unreadSessionIds.has(readChatSessionId(surface)!) : false}
-              onActivate={handleActivate}
-              onClose={handleClose}
-            />
-          ))}
+          {surfaces.map((surface, index) => {
+            const sessionId = readChatSessionId(surface)
+            return (
+              <SortableSurfacePill
+                key={surface.id}
+                surface={surface}
+                isActive={surface.id === activeSurfaceId}
+                shortcutHint={index < 9 ? index + 1 : undefined}
+                showShortcutHint={showMetaTabHints}
+                running={sessionId ? serverRunningSessionIds.has(sessionId) || locallyRunningSessionIds.has(sessionId) : false}
+                unread={sessionId ? unreadSessionIds.has(sessionId) : false}
+                onActivate={handleActivate}
+                onClose={handleClose}
+              />
+            )
+          })}
         </SortableContext>
 
         <DragOverlay dropAnimation={null}>

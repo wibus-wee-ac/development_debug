@@ -1,11 +1,11 @@
 import { GlobeIcon, PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { useCallback } from 'react'
+import { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { ResourcesPopover } from '~/features/devtool/resources/resources-popover'
-import { useUnreadSessionIds } from '~/features/workspace/use-session'
+import { useAllSessions } from '~/features/workspace/use-session'
 import { cn } from '~/lib/cn'
 import { isTearoffWindow, platform } from '~/lib/electron'
 import { SurfaceBar } from '~/navigation/surface-bar'
@@ -48,7 +48,15 @@ export function AppHeader({
   const sidebarCollapsed = useLayoutStore(s => s.sidebarCollapsed)
   const toggleSidebar = useLayoutStore(s => s.toggleSidebar)
   const toggleBrowserPanel = useLayoutStore(s => s.toggleBrowserPanel)
-  const unreadSessionIds = useUnreadSessionIds()
+  const { sessions } = useAllSessions()
+  const unreadSessionIds = useMemo(
+    () => new Set(sessions.filter(session => session.unread).map(session => session.id)),
+    [sessions],
+  )
+  const runningSessionIds = useMemo(
+    () => new Set(sessions.filter(session => session.status === 'streaming').map(session => session.id)),
+    [sessions],
+  )
   const isSettingsActive = useSurfaceStore((s) => {
     const activeSurface = s.surfaces.find(surface => surface.id === s.activeSurfaceId)
     return activeSurface?.kind === 'settings'
@@ -125,6 +133,7 @@ export function AppHeader({
         {!sessionScoped && (
           <SurfaceBar
             className="h-full"
+            runningSessionIds={runningSessionIds}
             unreadSessionIds={unreadSessionIds}
           />
         )}

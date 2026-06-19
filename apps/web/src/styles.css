@@ -207,6 +207,19 @@ body {
     }
   }
 
+  @keyframes surface-running-dot {
+
+    0%,
+    80%,
+    100% {
+      opacity: 0.3;
+    }
+
+    40% {
+      opacity: 1;
+    }
+  }
+
   @keyframes toast-success-odd {
     0% {
       scale: 1;
