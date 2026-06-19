@@ -19,7 +19,6 @@ import { KanbanBoard } from './kanban-board'
 import type { KanbanContextIssue } from './kanban-context'
 import {
   clearKanbanAttentionSnapshot,
-  installKanbanContextProvider,
   updateKanbanAttentionSnapshot,
 } from './kanban-context'
 import { KanbanList } from './kanban-list'
@@ -307,10 +306,6 @@ export function KanbanView({
   const selectedExternalIssue = selectedIssueId ? issuesById.get(selectedIssueId) : null
 
   const kanbanFilterSummary = summarizeKanbanFilter(filter, statuses, milestones)
-
-  useEffect(() => {
-    installKanbanContextProvider()
-  }, [])
 
   useEffect(() => {
     updateKanbanAttentionSnapshot({

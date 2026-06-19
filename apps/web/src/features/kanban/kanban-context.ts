@@ -1,7 +1,6 @@
 import type { ContextItem, ContextReference } from '~/features/context/context-items'
 import { estimateContextTokens } from '~/features/context/context-items'
 import type { ContextProvider } from '~/features/context/context-registry'
-import { jarvisContextRegistry } from '~/features/context/context-registry'
 
 export interface KanbanContextIssue {
   id: string
@@ -26,7 +25,6 @@ export interface KanbanAttentionSnapshot {
 }
 
 const snapshotsByBoardId = new Map<string, KanbanAttentionSnapshot>()
-let providerInstalled = false
 
 function issueRef(issue: KanbanContextIssue): ContextReference {
   return {
@@ -130,13 +128,4 @@ export function createKanbanContextProvider(): ContextProvider {
       return [createKanbanAttentionItem(snapshot, input.now)]
     },
   }
-}
-
-export function installKanbanContextProvider(): void {
-  if (providerInstalled) {
-    return
-  }
-
-  jarvisContextRegistry.registerProvider(createKanbanContextProvider())
-  providerInstalled = true
 }

@@ -15,7 +15,7 @@ User-facing board, issue, filter, status, and label-management copy is owned by 
 - **kanban-board.tsx**: Board layout and drag/drop composition; forwards resolved parent issue refs to cards and drag overlays.
 - **kanban-card.tsx**: Board card rendering for individual issues; issue cards expose native named buttons for opening detail views and separate parent issue quick-jump affordances while preserving drag wiring.
 - **kanban-column.tsx**: Board column rendering and drop targets; inline create mounts without height animation so board layout work stays immediate, and issue maps forward stable open/hover handlers plus parent issue refs.
-- **kanban-context.ts**: Kanban-owned Jarvis semantic attention provider for selected, open, peeked, focused, hovered, filtered, and visible issue state.
+- **kanban-context.ts**: Kanban-owned renderer context provider factory for selected, open, peeked, focused, hovered, filtered, and visible issue attention state; app composition owns provider installation.
 - **kanban-context.test.ts**: Unit coverage for Kanban attention context publication and stable issue references.
 - **kanban-group-header.tsx**: Group header rendering for board/list views with named create controls and expanded state.
 - **kanban-group-header.test.tsx**: Regression tests for group header expanded state, decorative icons, keyboard-visible create control, and callbacks.

@@ -1,6 +1,7 @@
-import { AlertCircleIcon, ArrowUpRightIcon, CheckCircle2Icon, CircleDotIcon, LinkIcon, MessageSquareTextIcon, SearchIcon, UnlinkIcon } from 'lucide-react'
-import { m } from 'motion/react'
+import { AlertCircleIcon, ArrowUpRightIcon, CircleDotIcon, LinkIcon, MessageSquareTextIcon, SearchIcon, UnlinkIcon } from 'lucide-react'
+import { AnimatePresence, m } from 'motion/react'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { Combobox, ComboboxContent, ComboboxInput, ComboboxItem, ComboboxList } from '~/components/ui/combobox'
@@ -11,11 +12,11 @@ import type { KanbanIssue, KanbanStatus } from '~/features/kanban/types'
 import { openKanbanBoard } from '~/navigation/navigation-commands'
 
 import { formatIssueId } from './shared/format-issue-id'
-import { priorityOptions } from './shared/issue-metadata'
 import { LabelChip } from './shared/label-chip'
 import { PriorityIcon } from './shared/priority-icon'
 import { StatusIcon } from './shared/status-icon'
 import { useBoards, useComments, useIssue, useIssues, useLinkedIssue, useLinkIssue, useStatuses, useUnlinkIssue } from './use-kanban'
+import type { IssuePriority } from './use-kanban'
 import type { StatusCategory } from './use-view-config'
 
 interface IssueAsidePanelProps {
@@ -23,7 +24,13 @@ interface IssueAsidePanelProps {
   workspaceId: string | null
 }
 
-const priorityLabels = Object.fromEntries(priorityOptions.map(option => [option.value, option.label]))
+const priorityLabelKeys: Record<IssuePriority, 'priority.none' | 'priority.low' | 'priority.medium' | 'priority.high' | 'priority.urgent'> = {
+  none: 'priority.none',
+  low: 'priority.low',
+  medium: 'priority.medium',
+  high: 'priority.high',
+  urgent: 'priority.urgent',
+}
 
 const issueUpdatedAtFormatter = new Intl.DateTimeFormat(undefined, {
   month: 'short',
@@ -32,11 +39,31 @@ const issueUpdatedAtFormatter = new Intl.DateTimeFormat(undefined, {
   minute: '2-digit',
 })
 
-function formatTime(value: number | null | undefined): string {
+const ENTER_SPRING = {
+  type: 'spring',
+  stiffness: 560,
+  damping: 38,
+  mass: 0.8,
+} as const
+
+const PICKER_SPRING = {
+  type: 'spring',
+  stiffness: 600,
+  damping: 40,
+  mass: 0.7,
+} as const
+
+function formatTime(value: number | null | undefined, unknownLabel: string): string {
   if (!value) {
-    return 'Unknown'
+    return unknownLabel
   }
   return issueUpdatedAtFormatter.format(new Date(value * 1000))
+}
+
+function statusForIssue(statuses: KanbanStatus[], issue: KanbanIssue): KanbanStatus | null {
+  return issue.statusId
+    ? statuses.find(status => status.id === issue.statusId) ?? null
+    : null
 }
 
 function findStatus(statuses: KanbanStatus[], issue: KanbanIssue | undefined): KanbanStatus | null {
@@ -46,13 +73,8 @@ function findStatus(statuses: KanbanStatus[], issue: KanbanIssue | undefined): K
   return statuses.find(status => status.id === issue.statusId) ?? null
 }
 
-function statusForIssue(statuses: KanbanStatus[], issue: KanbanIssue): KanbanStatus | null {
-  return issue.statusId
-    ? statuses.find(status => status.id === issue.statusId) ?? null
-    : null
-}
-
 export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps) {
+  const { t } = useTranslation('kanban')
   const [pickerOpen, setPickerOpen] = useState(false)
   const [query, setQuery] = useState('')
   const { workspaces, ready: workspacesReady } = useWorkspaces()
@@ -120,8 +142,8 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
       >
         <CircleDotIcon className="size-7 text-muted-foreground" aria-hidden="true" />
         <div className="space-y-1">
-          <p className="text-sm font-medium text-foreground">No workspace context</p>
-          <p className="text-xs leading-5 text-muted-foreground">Issue linking needs a workspace-backed chat session.</p>
+          <p className="text-sm font-medium text-foreground">{t('aside.empty.title')}</p>
+          <p className="text-xs leading-5 text-muted-foreground">{t('aside.empty.description')}</p>
         </div>
       </div>
     )
@@ -145,160 +167,195 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
       data-testid="right-aside-issue-panel"
       data-right-aside-issue-ready={ready ? 'true' : 'false'}
     >
-      <div className="flex shrink-0 items-center justify-between border-b border-border px-3 py-2">
-        <div className="min-w-0">
-          <p className="text-[11px] font-medium uppercase tracking-[0.08em] text-muted-foreground">Linked issue</p>
-          <p className="truncate text-sm font-medium text-foreground">
-            {selectedIssue ? formatIssueId(selectedIssue, workspaces) : 'No issue linked'}
-          </p>
-        </div>
-        {selectedIssue && (
-          <Button
-            type="button"
-            variant="ghost"
-            size="icon"
-            aria-label="Unlink issue"
-            disabled={unlinkIssue.isPending}
-            onClick={() => unlinkIssue.mutate(sessionId)}
-          >
-            <UnlinkIcon aria-hidden="true" />
-          </Button>
-        )}
-      </div>
-
-      <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3">
+      <AnimatePresence mode="wait" initial={false}>
         {selectedIssue
           ? (
-              <SelectedIssuePanel
-                issue={selectedIssue}
-                status={status}
-                boardId={boardId}
-                commentCount={comments.data?.length ?? 0}
-                linkError={linkIssue.isError || unlinkIssue.isError}
-                onOpenIssue={openIssue}
-              />
+              <m.div
+                key="linked"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={ENTER_SPRING}
+                className="flex flex-1 flex-col overflow-hidden"
+              >
+                <LinkedIssueHeader
+                  issue={selectedIssue}
+                  status={status}
+                  workspaces={workspaces}
+                  unlinkPending={unlinkIssue.isPending}
+                  onUnlink={() => unlinkIssue.mutate(sessionId)}
+                  onOpenIssue={openIssue}
+                  canOpen={!!boardId}
+                />
+                <LinkedIssueBody
+                  issue={selectedIssue}
+                  status={status}
+                  commentCount={comments.data?.length ?? 0}
+                  linkError={linkIssue.isError || unlinkIssue.isError}
+                />
+              </m.div>
             )
           : (
-              <EmptyIssueState
-                pickerOpen={pickerOpen}
-                setPickerOpen={setPickerOpen}
-                query={query}
-                setQuery={setQuery}
-                issues={candidateIssues}
-                workspaces={workspaces}
-                statuses={statusRows}
-                isLoading={isPickerLoading}
-                isLinking={linkIssue.isPending}
-                onLink={linkCandidate}
-              />
+              <m.div
+                key="empty"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={ENTER_SPRING}
+                className="flex flex-1 flex-col overflow-hidden"
+              >
+                <EmptyIssueState
+                  pickerOpen={pickerOpen}
+                  setPickerOpen={setPickerOpen}
+                  query={query}
+                  setQuery={setQuery}
+                  issues={candidateIssues}
+                  workspaces={workspaces}
+                  statuses={statusRows}
+                  isLoading={isPickerLoading}
+                  isLinking={linkIssue.isPending}
+                  onLink={linkCandidate}
+                />
+              </m.div>
             )}
+      </AnimatePresence>
+    </div>
+  )
+}
+
+// Header: ID + status pill on the left, actions on the right. The persistent
+// context strip — always answers "which issue, what state" at a glance.
+function LinkedIssueHeader({
+  issue,
+  status,
+  workspaces,
+  unlinkPending,
+  onUnlink,
+  onOpenIssue,
+  canOpen,
+}: {
+  issue: KanbanIssue
+  status: KanbanStatus | null
+  workspaces: ReturnType<typeof useWorkspaces>['workspaces']
+  unlinkPending: boolean
+  onUnlink: () => void
+  onOpenIssue: () => void
+  canOpen: boolean
+}) {
+  const { t } = useTranslation('kanban')
+  const category = (status?.category ?? 'unstarted') as StatusCategory
+  const readableId = formatIssueId(issue, workspaces)
+
+  return (
+    <div className="flex shrink-0 items-center gap-2 border-b border-border px-3 py-2">
+      <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-muted-foreground">
+        <StatusIcon category={category} size={13} aria-hidden="true" />
+        <span className="shrink-0 font-mono tabular-nums text-foreground/80">{readableId}</span>
+        <span className="truncate">{status?.name ?? t('aside.noStatus')}</span>
+      </span>
+      <div className="ml-auto flex shrink-0 items-center gap-0.5">
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t('aside.openInBoardAria')}
+          disabled={!canOpen}
+          onClick={onOpenIssue}
+        >
+          <ArrowUpRightIcon aria-hidden="true" />
+        </Button>
+        <Button
+          type="button"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t('aside.unlinkAria')}
+          disabled={unlinkPending}
+          onClick={onUnlink}
+        >
+          <UnlinkIcon aria-hidden="true" />
+        </Button>
       </div>
     </div>
   )
 }
 
-function SelectedIssuePanel({
+// Body: title + description lead, then a list of label/value property rows
+// that fill the aside width. No box-wrap — rows carry the structure, matching
+// the issue-detail properties sidebar.
+function LinkedIssueBody({
   issue,
   status,
-  boardId,
   commentCount,
   linkError,
-  onOpenIssue,
 }: {
   issue: KanbanIssue
   status: KanbanStatus | null
-  boardId: string | undefined
   commentCount: number
   linkError: boolean
-  onOpenIssue: () => void
 }) {
+  const { t } = useTranslation('kanban')
   const labels = issue.labels
+  const category = (status?.category ?? 'unstarted') as StatusCategory
+  const priorityKey = priorityLabelKeys[issue.priority] ?? 'priority.none'
+  const hasPriority = issue.priority !== 'none'
 
   return (
-    <>
-      <m.section
-        initial={{ opacity: 0, y: 4 }}
-        animate={{ opacity: 1, y: 0 }}
-        transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-        className="rounded-lg border border-border bg-card p-3 shadow-[var(--shadow-xs)]"
-      >
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0 space-y-2">
-            <h2 className="text-sm font-semibold leading-5 text-foreground text-pretty">{issue.title}</h2>
-            <div className="flex flex-wrap items-center gap-1.5">
-              <IssueStatusBadge status={status} />
-              <span className="inline-flex h-6 items-center gap-1 rounded-md border border-border bg-background px-2 text-[11px] text-muted-foreground">
-                <PriorityIcon priority={issue.priority} size={13} />
-                {priorityLabels[issue.priority] ?? issue.priority}
-              </span>
-            </div>
-          </div>
-          <Button
-            type="button"
-            variant="outline"
-            size="icon"
-            aria-label="Open issue in Kanban"
-            disabled={!boardId}
-            onClick={onOpenIssue}
-          >
-            <ArrowUpRightIcon aria-hidden="true" />
-          </Button>
-        </div>
-
+    <div className="flex flex-1 flex-col gap-3 overflow-y-auto p-3">
+      <div className="space-y-2">
+        <h2 className="text-pretty text-[13px] font-semibold leading-5 text-foreground">{issue.title}</h2>
         {issue.description && (
-          <p className="mt-3 line-clamp-5 whitespace-pre-wrap text-xs leading-5 text-muted-foreground text-pretty">
+          <p className="line-clamp-4 whitespace-pre-wrap text-pretty text-[12px] leading-5 text-muted-foreground">
             {issue.description}
           </p>
         )}
-      </m.section>
+      </div>
 
-      <section className="grid grid-cols-2 gap-2">
-        <IssueMetric icon={MessageSquareTextIcon} label="Comments" value={String(commentCount)} />
-        <IssueMetric icon={CheckCircle2Icon} label="Updated" value={formatTime(issue.updatedAt)} />
-      </section>
+      <dl className="divide-y divide-border/60">
+        <PropertyRow label={t('property.status')}>
+          <span className="inline-flex items-center gap-1.5">
+            <StatusIcon category={category} size={13} aria-hidden="true" />
+            <span>{status?.name ?? t('aside.noStatus')}</span>
+          </span>
+        </PropertyRow>
+        <PropertyRow label={t('property.priority')}>
+          {hasPriority
+            ? (
+                <span className="inline-flex items-center gap-1.5">
+                  <PriorityIcon priority={issue.priority} size={13} aria-hidden="true" />
+                  <span>{t(priorityKey)}</span>
+                </span>
+              )
+            : <span className="text-muted-foreground/70">{t('priority.none')}</span>}
+        </PropertyRow>
+        <PropertyRow label={t('aside.metric.comments')}>
+          <span className="inline-flex items-center gap-1.5 tabular-nums">
+            <MessageSquareTextIcon className="size-3 text-muted-foreground/70" aria-hidden="true" />
+            {commentCount}
+          </span>
+        </PropertyRow>
+        <PropertyRow label={t('aside.metric.updated')}>
+          <time className="tabular-nums text-muted-foreground">
+            {formatTime(issue.updatedAt, t('aside.metric.unknown'))}
+          </time>
+        </PropertyRow>
+      </dl>
 
       {labels.length > 0 && (
-        <section className="space-y-2">
-          <h3 className="text-xs font-medium text-foreground">Labels</h3>
-          <div className="flex flex-wrap gap-1.5">
-            {labels.map(label => <LabelChip key={label} label={label} />)}
-          </div>
-        </section>
+        <div className="flex flex-wrap gap-1.5">
+          {labels.map(label => <LabelChip key={label} label={label} />)}
+        </div>
       )}
 
-      {linkError
-        ? <IssuePanelError message="Issue link update failed." />
-        : null}
-    </>
+      {linkError && <IssuePanelError message={t('aside.error.linkFailed')} />}
+    </div>
   )
 }
 
-function IssueStatusBadge({ status }: { status: KanbanStatus | null }) {
-  const category = (status?.category ?? 'unstarted') as StatusCategory
-
+function PropertyRow({ label, children }: { label: string, children: React.ReactNode }) {
   return (
-    <span
-      className="inline-flex size-6 items-center justify-center rounded-md border border-border bg-background"
-      title={status?.name ?? 'No status'}
-      aria-label={status?.name ?? 'No status'}
-    >
-      <StatusIcon category={category} size={14} aria-hidden="true" />
-    </span>
-  )
-}
-
-function IssueMetric({ icon: Icon, label, value }: {
-  icon: typeof MessageSquareTextIcon
-  label: string
-  value: string
-}) {
-  return (
-    <div className="rounded-lg border border-border bg-background p-2.5">
-      <div className="flex items-center gap-1.5 text-[11px] text-muted-foreground">
-        <Icon className="size-3.5" aria-hidden="true" />
-        {label}
-      </div>
-      <p className="mt-1 truncate text-xs font-medium text-foreground tabular-nums">{value}</p>
+    <div className="flex items-center justify-between gap-2 py-1.5">
+      <dt className="shrink-0 text-[11px] text-muted-foreground">{label}</dt>
+      <dd className="flex min-w-0 items-center justify-end text-[12px] text-foreground">{children}</dd>
     </div>
   )
 }
@@ -326,6 +383,7 @@ function EmptyIssueState({
   isLinking: boolean
   onLink: (issueId: string) => void
 }) {
+  const { t } = useTranslation('kanban')
   const selectIssue = (issueId: string | null) => {
     if (!issueId) {
       return
@@ -335,69 +393,118 @@ function EmptyIssueState({
 
   return (
     <div className="flex flex-1 flex-col">
-      <div className="flex flex-1 flex-col items-center justify-center gap-3 text-center">
-        <div className="flex size-10 items-center justify-center rounded-lg border border-border bg-background">
-          <LinkIcon className="size-4 text-muted-foreground" aria-hidden="true" />
-        </div>
-        <div className="space-y-1">
-          <p className="text-sm font-medium text-foreground">No linked issue</p>
-          <p className="max-w-56 text-xs leading-5 text-muted-foreground">Connect this chat to a Kanban issue for fast context switching.</p>
-        </div>
-        {!pickerOpen && (
-          <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
-            <LinkIcon aria-hidden="true" />
-            Link issue
-          </Button>
-        )}
-      </div>
-
-      {pickerOpen && (
-        <m.section
-          initial={{ opacity: 0, y: 8 }}
-          animate={{ opacity: 1, y: 0 }}
-          transition={{ duration: 0.18, ease: [0.22, 1, 0.36, 1] }}
-          className="rounded-lg border border-border bg-card p-2.5 shadow-[var(--shadow-xs)]"
-        >
-          <Combobox
-            open={pickerOpen}
-            value={null}
-            inputValue={query}
-            onOpenChange={setPickerOpen}
-            onInputValueChange={setQuery}
-            onValueChange={selectIssue}
-            modal={false}
-            autoHighlight
-          >
-            <ComboboxInput
-              autoFocus
-              aria-label="Search issues"
-              placeholder="Search issues"
-              showClear
-              showTrigger
-              startAddon={<SearchIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />}
-              className="w-full"
-            />
-            <ComboboxContent align="start" sideOffset={6} className="w-88 min-w-80 p-1.5">
-              <ComboboxList className="max-h-72 p-0.5">
-                {isLoading && <Skeleton className="h-11 w-full" />}
-                {!isLoading && issues.length === 0 && (
-                  <div className="px-2 py-6 text-center text-xs text-muted-foreground">No issues found</div>
-                )}
-                {!isLoading && issues.map(issue => (
-                  <IssueComboboxItem
-                    key={issue.id}
-                    issue={issue}
-                    status={statusForIssue(statuses, issue)}
-                    workspaces={workspaces}
-                    disabled={isLinking}
-                  />
-                ))}
-              </ComboboxList>
-            </ComboboxContent>
-          </Combobox>
-        </m.section>
-      )}
+      <AnimatePresence mode="wait" initial={false}>
+        {!pickerOpen
+          ? (
+              <m.div
+                key="empty"
+                initial={{ opacity: 0, y: 6 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={ENTER_SPRING}
+                className="flex flex-1 flex-col items-center justify-center gap-3 px-4 text-center"
+              >
+                <div className="flex size-10 items-center justify-center rounded-lg border border-border bg-muted/40 text-muted-foreground">
+                  <LinkIcon className="size-4" aria-hidden="true" />
+                </div>
+                <div className="space-y-1">
+                  <p className="text-sm font-medium text-foreground">{t('aside.empty.title')}</p>
+                  <p className="max-w-56 text-pretty text-xs leading-5 text-muted-foreground">{t('aside.empty.description')}</p>
+                </div>
+                <Button type="button" variant="outline" size="sm" onClick={() => setPickerOpen(true)}>
+                  <LinkIcon aria-hidden="true" />
+                  {t('aside.empty.linkAction')}
+                </Button>
+              </m.div>
+            )
+          : (
+              <m.div
+                key="picker"
+                initial={{ opacity: 0, y: 8 }}
+                animate={{ opacity: 1, y: 0 }}
+                exit={{ opacity: 0, y: -4 }}
+                transition={PICKER_SPRING}
+                className="flex flex-1 flex-col p-3"
+              >
+                <IssuePicker
+                  query={query}
+                  setQuery={setQuery}
+                  setPickerOpen={setPickerOpen}
+                  issues={issues}
+                  workspaces={workspaces}
+                  statuses={statuses}
+                  isLoading={isLoading}
+                  isLinking={isLinking}
+                  onLink={selectIssue}
+                />
+              </m.div>
+            )}
+      </AnimatePresence>
     </div>
+  )
+}
+
+function IssuePicker({
+  query,
+  setQuery,
+  setPickerOpen,
+  issues,
+  workspaces,
+  statuses,
+  isLoading,
+  isLinking,
+  onLink,
+}: {
+  query: string
+  setQuery: (value: string) => void
+  setPickerOpen: (open: boolean) => void
+  issues: KanbanIssue[]
+  workspaces: ReturnType<typeof useWorkspaces>['workspaces']
+  statuses: KanbanStatus[]
+  isLoading: boolean
+  isLinking: boolean
+  onLink: (issueId: string | null) => void
+}) {
+  const { t } = useTranslation('kanban')
+
+  return (
+    <Combobox
+      open
+      value={null}
+      inputValue={query}
+      onOpenChange={setPickerOpen}
+      onInputValueChange={setQuery}
+      onValueChange={onLink}
+      modal={false}
+      autoHighlight
+    >
+      <ComboboxInput
+        autoFocus
+        aria-label={t('aside.picker.searchPlaceholder')}
+        placeholder={t('aside.picker.searchPlaceholder')}
+        showClear
+        showTrigger
+        startAddon={<SearchIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />}
+        className="w-full"
+      />
+      <ComboboxContent align="start" sideOffset={6} className="w-88 min-w-72 p-1.5">
+        <ComboboxList className="max-h-72 p-0.5">
+          {isLoading && <Skeleton className="h-11 w-full" />}
+          {!isLoading && issues.length === 0 && (
+            <div className="px-2 py-6 text-center text-xs text-muted-foreground">{t('aside.picker.noResults')}</div>
+          )}
+          {!isLoading && issues.map(issue => (
+            <IssueComboboxItem
+              key={issue.id}
+              issue={issue}
+              status={statusForIssue(statuses, issue)}
+              workspaces={workspaces}
+              disabled={isLinking}
+            />
+          ))}
+        </ComboboxList>
+      </ComboboxContent>
+    </Combobox>
   )
 }
 
@@ -412,9 +519,11 @@ function IssueComboboxItem({
   workspaces: ReturnType<typeof useWorkspaces>['workspaces']
   disabled: boolean
 }) {
+  const { t } = useTranslation('kanban')
   const labels = issue.labels
   const category = (status?.category ?? 'unstarted') as StatusCategory
   const readableId = formatIssueId(issue, workspaces)
+  const priorityKey = priorityLabelKeys[issue.priority] ?? 'priority.none'
 
   return (
     <ComboboxItem
@@ -427,26 +536,26 @@ function IssueComboboxItem({
     >
       <span
         className="mt-0.5 flex size-6 shrink-0 items-center justify-center rounded-md border border-border bg-background"
-        title={status?.name ?? 'No status'}
-        aria-label={status?.name ?? 'No status'}
+        title={status?.name ?? t('aside.noStatus')}
+        aria-label={status?.name ?? t('aside.noStatus')}
       >
         <StatusIcon category={category} size={14} aria-hidden="true" />
       </span>
       <span className="min-w-0 flex-1 space-y-1">
         <span className="flex min-w-0 items-center gap-2">
-          <span className="shrink-0 text-[11px] text-muted-foreground tabular-nums">{readableId}</span>
+          <span className="shrink-0 font-mono text-[11px] tabular-nums text-muted-foreground">{readableId}</span>
           <span className="min-w-0 truncate text-xs font-medium text-foreground">{issue.title}</span>
         </span>
         <span className="flex flex-wrap items-center gap-1.5">
           {issue.priority !== 'none' && (
             <span className="inline-flex h-5 items-center gap-1 rounded-md border border-border bg-background px-1.5 text-[10.5px] text-muted-foreground">
               <PriorityIcon priority={issue.priority} size={12} />
-              {priorityLabels[issue.priority] ?? issue.priority}
+              {t(priorityKey)}
             </span>
           )}
           {labels.slice(0, 2).map(label => <LabelChip key={label} label={label} />)}
           {labels.length > 2 && (
-            <span className="text-[10.5px] text-muted-foreground tabular-nums">
+            <span className="text-[10.5px] tabular-nums text-muted-foreground">
               +
               {labels.length - 2}
             </span>
@@ -459,7 +568,7 @@ function IssueComboboxItem({
 
 function IssuePanelError({ message }: { message: string }) {
   return (
-    <div className="flex items-center gap-2 rounded-lg border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
+    <div className="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-xs text-destructive">
       <AlertCircleIcon className="size-4 shrink-0" aria-hidden="true" />
       {message}
     </div>
@@ -469,12 +578,11 @@ function IssuePanelError({ message }: { message: string }) {
 function IssueAsideSkeleton() {
   return (
     <div className="flex flex-1 flex-col gap-3 p-3">
-      <Skeleton className="h-20 w-full" />
-      <div className="grid grid-cols-2 gap-2">
-        <Skeleton className="h-14 w-full" />
-        <Skeleton className="h-14 w-full" />
-      </div>
-      <Skeleton className="h-24 w-full" />
+      <Skeleton className="h-8 w-2/3 rounded-md" />
+      <Skeleton className="h-16 w-full rounded-md" />
+      <Skeleton className="h-5 w-full" />
+      <Skeleton className="h-5 w-full" />
+      <Skeleton className="h-5 w-3/4" />
     </div>
   )
 }

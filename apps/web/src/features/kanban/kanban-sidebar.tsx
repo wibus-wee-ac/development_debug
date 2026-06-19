@@ -14,8 +14,8 @@ import { useTranslation } from 'react-i18next'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
+import { useActiveSurface } from '~/navigation/active-surface'
 import { openKanbanBoard } from '~/navigation/navigation-commands'
-import { useSurfaceStore } from '~/navigation/surface-store'
 
 import { useAllBoards, useCreateBoard, useDeleteBoard, useUpdateBoard } from './use-kanban'
 
@@ -180,12 +180,10 @@ function CreateBoardDialog({ open, onOpenChange, onCreated }: { open: boolean, o
 
 function BoardItem({ board }: { board: { id: string, name: string } }) {
   const { t } = useTranslation('kanban')
-  const isActive = useSurfaceStore((state) => {
-    const surface = state.surfaces.find(item => item.id === state.activeSurfaceId)
-    return surface?.kind === 'kanban'
-      && surface.route.to === '/kanban/$boardId'
-      && surface.route.params.boardId === board.id
-  })
+  const activeSurface = useActiveSurface()
+  const isActive = activeSurface?.kind === 'kanban'
+    && activeSurface.route.to === '/kanban/$boardId'
+    && activeSurface.route.params.boardId === board.id
   const deleteBoard = useDeleteBoard()
   const updateBoard = useUpdateBoard()
   const [isRenaming, setIsRenaming] = useState(false)

@@ -31,7 +31,7 @@ describe('kanban attention context', () => {
       readNow: () => 1779782400000,
       createEnvelopeId: now => `ctx-${now}`,
     })
-    registry.registerProvider(createKanbanContextProvider())
+    registry.setProvider(createKanbanContextProvider())
 
     expect(registry.collectEnvelope().items).toEqual([
       expect.objectContaining({
