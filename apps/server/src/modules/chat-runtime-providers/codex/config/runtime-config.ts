@@ -3,7 +3,7 @@ import { writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { getRegisteredMcpServers } from '../../../../plugins'
+import { getRegisteredMcpServers } from '../../../../plugins/mcp-registry'
 import type {
   ChatRuntimeAccessMode,
   ChatRuntimeSettings,

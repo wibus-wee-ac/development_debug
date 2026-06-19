@@ -1,4 +1,4 @@
-import { getRegisteredMcpServers } from '../../../../plugins'
+import { getRegisteredMcpServers } from '../../../../plugins/mcp-registry'
 import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../../chat-runtime/runtime-provider-types'
 import type { CodexConfig } from '../../../provider-contracts/provider-base'
 import { readTrustedCodexConfig } from '../../../provider-contracts/provider-base'

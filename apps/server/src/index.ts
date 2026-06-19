@@ -72,7 +72,7 @@ function installProcessFatalHandlers(): void {
 
 async function bootstrap() {
   initializeLogger()
-  initializeTelemetry()
+  await initializeTelemetry()
   installProcessFatalHandlers()
   const [{ createServerApp }, { loadServerConfig }, { warmupModelsDevCache }, { recoverPersistedRunProjections }] = await Promise.all([
     import('./app'),

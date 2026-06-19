@@ -20,7 +20,7 @@ import {
 } from '@agentclientprotocol/sdk'
 import type { UIMessageChunk } from 'ai'
 
-import { getRegisteredMcpServers } from '../../../plugins'
+import { getRegisteredMcpServers } from '../../../plugins/mcp-registry'
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
 import type { AcpConnectionRecord } from './config'
 import type { AcpProcessManager } from './process-manager'

@@ -183,7 +183,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     import('./modules/external-issue-sources/service'),
     import('./modules/provider-runtime/host-manager'),
     import('./modules/provider-runtime/side-conversation-registry'),
-    import('./plugins'),
+    import('./plugins/loader'),
     import('./modules/workspace/files'),
   ])
   if (recoverPersistedRunsOnCreate) {

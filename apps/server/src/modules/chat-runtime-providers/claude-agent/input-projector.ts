@@ -8,7 +8,7 @@ import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import type { UIMessage } from 'ai'
 
 import { readObjectRecord as readRecord } from '../../../helpers/json-record'
-import { getRegisteredMcpServers } from '../../../plugins'
+import { getRegisteredMcpServers } from '../../../plugins/mcp-registry'
 import { isChatSkillContextPart, readChatPluginContextPart, readChatSkillContextPart } from '../../chat-runtime/context-parts'
 import type {
   ChatRuntimeSettings,
