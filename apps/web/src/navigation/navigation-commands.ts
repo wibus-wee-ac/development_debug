@@ -31,7 +31,12 @@ export function navigateToSurface(surface: AppSurface, options: { replace?: bool
 
 function openSurface(surface: SurfaceDraft, options: { replace?: boolean } = {}): void {
   clearRouteSurfaceSyncSuppressionForSurface(surface.id)
-  useSurfaceStore.getState().syncSurface(surface)
+  if (options.replace) {
+    useSurfaceStore.getState().replaceActiveSurface(surface)
+  }
+  else {
+    useSurfaceStore.getState().syncSurface(surface)
+  }
   void router.navigate(toRouterNavigateOptions(surface, options.replace))
 }
 

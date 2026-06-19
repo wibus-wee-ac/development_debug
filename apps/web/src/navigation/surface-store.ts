@@ -16,6 +16,7 @@ interface PersistedSurfaceState {
 
 interface SurfaceState extends PersistedSurfaceState {
   syncSurface: (surface: SurfaceDraft) => void
+  replaceActiveSurface: (surface: SurfaceDraft) => void
   setActiveSurfaceId: (surfaceId: string) => void
   closeSurface: (surfaceId: string) => void
   reorderSurfaces: (orderedIds: string[]) => void
@@ -67,6 +68,42 @@ function appendOrUpdateSurface(surfaces: readonly AppSurface[], surface: Surface
     : item))
 }
 
+function mergeSurface(existing: AppSurface, surface: SurfaceDraft): AppSurface {
+  return {
+    ...existing,
+    kind: surface.kind,
+    title: existing.title || surface.title,
+    route: surface.route,
+    closable: surface.closable,
+  }
+}
+
+function replaceActiveSurface(
+  surfaces: readonly AppSurface[],
+  activeSurfaceId: string | null,
+  surface: SurfaceDraft,
+): AppSurface[] {
+  const currentSurfaces = normalizeSurfaces(surfaces)
+  const activeSurface = currentSurfaces.find(item => item.id === activeSurfaceId)
+  if (!activeSurface || !activeSurface.closable) {
+    return appendOrUpdateSurface(currentSurfaces, surface)
+  }
+
+  const existingTarget = currentSurfaces.find(item => item.id === surface.id)
+  if (existingTarget) {
+    return normalizeSurfaces(currentSurfaces
+      .filter(item => item.id !== activeSurface.id || item.id === surface.id)
+      .map(item => item.id === surface.id ? mergeSurface(item, surface) : item))
+  }
+
+  return normalizeSurfaces(currentSurfaces.map(item => item.id === activeSurface.id
+    ? {
+        ...surface,
+        order: activeSurface.order,
+      }
+    : item))
+}
+
 function readFallbackSurfaceId(
   previousSurfaces: readonly AppSurface[],
   nextSurfaces: readonly AppSurface[],
@@ -103,6 +140,11 @@ export const useSurfaceStore = create<SurfaceState>()(
 
       syncSurface: surface => set(state => ({
         surfaces: appendOrUpdateSurface(state.surfaces, surface),
+        activeSurfaceId: surface.id,
+      })),
+
+      replaceActiveSurface: surface => set(state => ({
+        surfaces: replaceActiveSurface(state.surfaces, state.activeSurfaceId, surface),
         activeSurfaceId: surface.id,
       })),
 

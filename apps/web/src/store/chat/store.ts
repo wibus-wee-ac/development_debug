@@ -69,9 +69,18 @@ export const useChatStore = createWithEqualityFn<ChatState>()(
             if (splitsChanged) {
               draft.assistantDisplaySplitMap = splits as Draft<Map<string, AssistantDisplaySplit>>
             }
+            const removedPassiveStreaming = removed.some(id => state.passiveStreamingMessageIds.has(id))
             for (const id of removed) {
               draft.passiveStreamingMessageIds.delete(id)
               draft.errorMap.delete(id)
+            }
+            const meta = draft.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
+            if (
+              removedPassiveStreaming
+              && meta.passiveStatus === 'streaming'
+              && !displayed.some(message => draft.passiveStreamingMessageIds.has(message.id))
+            ) {
+              draft.sessionMetaMap.set(sessionId, { ...meta, passiveStatus: 'idle' })
             }
           })
         })
@@ -285,8 +294,20 @@ meta.localDriverMessageId,
           for (const id of messageIds) {
             if (sessionMsgIds.has(id) && !state.generatingMessageIds.has(id)) { next.add(id) }
           }
-          if (setsEqual(next, state.passiveStreamingMessageIds)) { return state }
-          return { passiveStreamingMessageIds: next }
+          const currentMeta = state.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
+          const nextPassiveStatus = readPassiveStatusFromRefs(
+            currentMeta.passiveStatus,
+            hasSetIntersection(sessionMsgIds, next),
+          )
+          const metaChanged = nextPassiveStatus !== currentMeta.passiveStatus
+          if (setsEqual(next, state.passiveStreamingMessageIds) && !metaChanged) { return state }
+          const result: Partial<ChatState> = { passiveStreamingMessageIds: next }
+          if (metaChanged) {
+            const nextMeta = new Map(state.sessionMetaMap)
+            nextMeta.set(sessionId, { ...currentMeta, passiveStatus: nextPassiveStatus })
+            result.sessionMetaMap = nextMeta
+          }
+          return result
         })
       },
 
@@ -297,11 +318,23 @@ meta.localDriverMessageId,
           if (streaming && sessionMsgIds.has(messageId) && !state.generatingMessageIds.has(messageId)) {
             next.add(messageId)
           }
- else {
+          else {
             next.delete(messageId)
           }
-          if (setsEqual(next, state.passiveStreamingMessageIds)) { return state }
-          return { passiveStreamingMessageIds: next }
+          const currentMeta = state.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
+          const nextPassiveStatus = readPassiveStatusFromRefs(
+            currentMeta.passiveStatus,
+            hasSetIntersection(sessionMsgIds, next),
+          )
+          const metaChanged = nextPassiveStatus !== currentMeta.passiveStatus
+          if (setsEqual(next, state.passiveStreamingMessageIds) && !metaChanged) { return state }
+          const result: Partial<ChatState> = { passiveStreamingMessageIds: next }
+          if (metaChanged) {
+            const nextMeta = new Map(state.sessionMetaMap)
+            nextMeta.set(sessionId, { ...currentMeta, passiveStatus: nextPassiveStatus })
+            result.sessionMetaMap = nextMeta
+          }
+          return result
         })
       },
 
@@ -535,8 +568,7 @@ export const chatSelectors = {
 
   isSessionStreaming: (sessionId: string) => (s: ChatState) => {
     const meta = s.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
-    if (meta.locallyDriving || meta.passiveStatus === 'streaming') { return true }
-    return (s.messagesMap.get(sessionId) ?? EMPTY_MESSAGES).some(m => s.generatingMessageIds.has(m.id) || s.passiveStreamingMessageIds.has(m.id))
+    return meta.locallyDriving || meta.passiveStatus === 'streaming'
   },
 
   error: (messageId: string) => (s: ChatState) => s.errorMap.get(messageId),
@@ -561,11 +593,11 @@ export const chatSelectors = {
 
   visibleStatus: (sessionId: string) => (s: ChatState): PublicStatus => {
     const meta = s.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
-    if (meta.locallyDriving) { return 'streaming' }
-    const msgs = s.messagesMap.get(sessionId)
-    if (msgs?.some(m => s.generatingMessageIds.has(m.id))) { return 'streaming' }
-    if (msgs?.some(m => s.errorMap.has(m.id))) { return 'error' }
+    if (meta.locallyDriving || meta.passiveStatus === 'streaming') { return 'streaming' }
     if (meta.cancelling) { return 'idle' }
+    if (meta.passiveStatus === 'error') { return 'error' }
+    const msgs = s.errorMap.size > 0 ? s.messagesMap.get(sessionId) : undefined
+    if (msgs?.some(m => s.errorMap.has(m.id))) { return 'error' }
     return meta.passiveStatus
   },
 
@@ -593,6 +625,21 @@ function setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
     if (!b.has(v)) { return false }
   }
   return true
+}
+
+function hasSetIntersection<T>(left: Set<T>, right: Set<T>): boolean {
+  const [smaller, larger] = left.size <= right.size ? [left, right] : [right, left]
+  for (const value of smaller) {
+    if (larger.has(value)) { return true }
+  }
+  return false
+}
+
+function readPassiveStatusFromRefs(current: PublicStatus, hasPassiveStreamingRefs: boolean): PublicStatus {
+  if (hasPassiveStreamingRefs) {
+    return 'streaming'
+  }
+  return current === 'streaming' ? 'idle' : current
 }
 
 function moveStreamingRefs(
