@@ -285,6 +285,16 @@ export interface ChatRuntimeDiffUiSlotState {
   updatedAt: number
 }
 
+export interface ChatRuntimeBackgroundTerminal {
+  itemId: string
+  processId: string
+  command: string
+  cwd: string
+  osPid: number | null
+  cpuPercent: number | null
+  rssKb: number | null
+}
+
 export interface ChatRuntimeTerminalUiSlotState {
   kind: 'terminal'
   slotId: string
@@ -295,6 +305,7 @@ export interface ChatRuntimeTerminalUiSlotState {
   failedCount: number
   lastCommand: string | null
   lastOutputPreview: string | null
+  backgroundTerminals: ChatRuntimeBackgroundTerminal[]
   updatedAt: number
 }
 
@@ -478,6 +489,20 @@ export interface ChatRuntimeUiSlotStatesResponse {
   states: ChatRuntimeUiSlotState[]
 }
 
+export interface ChatRuntimeBackgroundTerminalsResponse {
+  runtimeKind: string
+  providerSessionId: string | null
+  terminals: ChatRuntimeBackgroundTerminal[]
+  nextCursor: string | null
+}
+
+export interface ChatRuntimeBackgroundTerminalTerminateResponse {
+  runtimeKind: string
+  providerSessionId: string | null
+  processId: string
+  terminated: boolean
+}
+
 export type ChatRuntimeContextUsageResponse = GetChatSessionsBySessionIdContextUsageResponse
 export type ChatRuntimeContextUsage = NonNullable<ChatRuntimeContextUsageResponse['usage']>
 export type ChatRuntimeContextUsageSection = ChatRuntimeContextUsage['sections'][number]
@@ -525,6 +550,36 @@ export async function getChatRuntimeUiSlotStates(
     throw new Error(`Failed to load chat UI slot states: ${res.status} ${body}`)
   }
   return (await res.json()) as ChatRuntimeUiSlotStatesResponse
+}
+
+export async function getChatRuntimeBackgroundTerminals(
+  sessionId: string,
+  signal?: AbortSignal
+): Promise<ChatRuntimeBackgroundTerminalsResponse> {
+  const res = await fetch(
+    `${SERVER_BASE}/chat/sessions/${encodeURIComponent(sessionId)}/background-terminals`,
+    { signal }
+  )
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Failed to load background terminals: ${res.status} ${body}`)
+  }
+  return (await res.json()) as ChatRuntimeBackgroundTerminalsResponse
+}
+
+export async function terminateChatRuntimeBackgroundTerminal(
+  sessionId: string,
+  processId: string
+): Promise<ChatRuntimeBackgroundTerminalTerminateResponse> {
+  const res = await fetch(
+    `${SERVER_BASE}/chat/sessions/${encodeURIComponent(sessionId)}/background-terminals/${encodeURIComponent(processId)}/terminate`,
+    { method: 'POST' }
+  )
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Failed to terminate background terminal: ${res.status} ${body}`)
+  }
+  return (await res.json()) as ChatRuntimeBackgroundTerminalTerminateResponse
 }
 
 export async function getChatRuntimeContextUsage(

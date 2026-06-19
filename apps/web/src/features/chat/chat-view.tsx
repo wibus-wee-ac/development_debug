@@ -104,6 +104,7 @@ function readPlanSlotContent(state: ChatRuntimePlanUiSlotState): string {
 }
 
 export interface ChatViewProps {
+  active?: boolean
   sessionId: string | null
   /** Available files for @ mention */
   availableFiles?: MentionItem[]
@@ -159,7 +160,6 @@ function ChatTranscriptContent({
   keepMountedIndices,
   onVirtualScroll,
   onToolApprovalResponse,
-  composerStack,
   messageTextTransform,
 }: {
   sessionId: string | null
@@ -173,7 +173,6 @@ function ChatTranscriptContent({
   keepMountedIndices: ChatScrollRuntime['keepMountedIndices']
   onVirtualScroll: ChatScrollRuntime['handleVirtualScroll']
   onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
-  composerStack: React.ReactNode
   messageTextTransform?: MessageTextTransform
 }) {
   const { t } = useTranslation('chat')
@@ -235,10 +234,6 @@ function ChatTranscriptContent({
             </m.div>
           )}
         </div>
-
-        <div className="pointer-events-none sticky bottom-0 z-10 pt-4 pb-3">
-          {composerStack}
-        </div>
       </div>
     </div>
   )
@@ -261,7 +256,6 @@ function ChatMessageListPane({
   onScrollToMessageIndex,
   onScrollToOffset,
   onToolApprovalResponse,
-  composerStack,
   messageTextTransform,
 }: {
   sessionId: string | null
@@ -280,7 +274,6 @@ function ChatMessageListPane({
   onScrollToMessageIndex: ChatScrollRuntime['scrollToMessageIndex']
   onScrollToOffset: ChatScrollRuntime['scrollToOffset']
   onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
-  composerStack: React.ReactNode
   messageTextTransform?: MessageTextTransform
 }) {
   return (
@@ -297,7 +290,6 @@ function ChatMessageListPane({
         keepMountedIndices={keepMountedIndices}
         onVirtualScroll={onVirtualScroll}
         onToolApprovalResponse={onToolApprovalResponse}
-        composerStack={composerStack}
         messageTextTransform={messageTextTransform}
       />
 
@@ -652,6 +644,7 @@ function ChatComposerSection({
 }
 
 export function ChatView({
+  active = true,
   sessionId,
   availableFiles = EMPTY_FILES,
   searchFiles,
@@ -669,6 +662,8 @@ export function ChatView({
   prepareSend,
 }: ChatViewProps) {
   const queryClient = useQueryClient()
+  const surfaceActive = useSurfaceActive()
+  const chatActive = active && surfaceActive
   const {
     messageIds,
     messageCount,
@@ -682,17 +677,17 @@ export function ChatView({
     queueItems,
     cancelQueueItem,
     reorderQueueItems,
-  } = useChatSession(sessionId)
-  const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
+  } = useChatSession(sessionId, chatActive)
+  const { data: awaitSummary } = useSessionAwaitSummary(sessionId, chatActive)
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
   const [editingGoal, setEditingGoal] = useState<ChatRuntimeGoalUiSlotState | null>(null)
   const [goalObjectiveDraft, setGoalObjectiveDraft] = useState('')
   const [goalActionBusy, setGoalActionBusy] = useState(false)
   const [reviewModeOpen, setReviewModeOpen] = useState(false)
   const [usageSlotSessionId, setUsageSlotSessionId] = useState<string | null>(null)
-  const surfaceActive = useSurfaceActive()
-  const runtimeSettings = useRuntimeSettings(sessionId)
+  const runtimeSettings = useRuntimeSettings(sessionId, chatActive)
   const composerRuntime = useChatComposerRuntime({
+    active: chatActive,
     sessionId,
     isStreaming,
     isReady,
@@ -703,9 +698,9 @@ export function ChatView({
     sendMessage,
     stop,
   })
-  const scrollRuntime = useChatScrollRuntime({ sessionId, messageIds, status })
+  const scrollRuntime = useChatScrollRuntime({ active: chatActive, sessionId, messageIds, status })
   const appshotRuntime = useComposerAppshotCapture({
-    active: surfaceActive,
+    active: chatActive,
     supportsAttachments: composerRuntime.supportsAttachments,
   })
   const quickQuestion = useQuickQuestion({
@@ -1076,6 +1071,7 @@ export function ChatView({
       className="relative flex h-full flex-col"
       data-testid="chat-view"
       data-chat-ready={isReady ? 'true' : 'false'}
+      data-chat-active={chatActive ? 'true' : 'false'}
       data-chat-session-id={sessionId ?? ''}
       data-chat-status={status}
       suppressHydrationWarning
@@ -1106,40 +1102,41 @@ export function ChatView({
         onScrollToOffset={scrollRuntime.scrollToOffset}
         onToolApprovalResponse={respondToToolApproval}
         messageTextTransform={messageTextTransform}
-        composerStack={(
-          <ChatComposerSection
-            sessionId={sessionId}
-            awaitSummary={awaitSummary}
-            queueItems={queueItems}
-            onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
-            onReorderQueueItems={queueItemIds => void reorderQueueItems(queueItemIds)}
-            onSlashCommandAction={handleSlashCommandAction}
-            composerRuntime={preparedComposerRuntime}
-            appshotRuntime={appshotRuntime}
-            placeholder={placeholder}
-            availableFiles={availableFiles}
-            searchFiles={searchFiles}
-            searchPlugins={searchPlugins}
-            searchSkills={searchSkills}
-            toolbar={runtimeSettingsToolbar}
-            runtimeSettings={{
-              settings: runtimeSettings.settings,
-              disabled: !isReady || !runtimeSettings.loaded || runtimeSettings.loading,
-              onChange: updateRuntimeSettings,
-            }}
-            contextBar={composerContextBar}
-            droppedPath={droppedPath}
-            goalActions={goalActions}
-            quickQuestionSlot={quickQuestionSlot}
-            reviewSlot={reviewSlot}
-            usageSlot={usageSlot}
-            onQuickQuestion={
-              sessionId && hasQuickQuestionSlot ? quickQuestion.openQuickQuestion : undefined
-            }
-            onComposerFocusChange={scrollRuntime.handleComposerFocusChange}
-          />
-        )}
       />
+
+      <div className="pointer-events-none relative z-10 shrink-0 px-4 pr-12 pb-3 pt-2">
+        <ChatComposerSection
+          sessionId={sessionId}
+          awaitSummary={awaitSummary}
+          queueItems={queueItems}
+          onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
+          onReorderQueueItems={queueItemIds => void reorderQueueItems(queueItemIds)}
+          onSlashCommandAction={handleSlashCommandAction}
+          composerRuntime={preparedComposerRuntime}
+          appshotRuntime={appshotRuntime}
+          placeholder={placeholder}
+          availableFiles={availableFiles}
+          searchFiles={searchFiles}
+          searchPlugins={searchPlugins}
+          searchSkills={searchSkills}
+          toolbar={runtimeSettingsToolbar}
+          runtimeSettings={{
+            settings: runtimeSettings.settings,
+            disabled: !isReady || !runtimeSettings.loaded || runtimeSettings.loading,
+            onChange: updateRuntimeSettings,
+          }}
+          contextBar={composerContextBar}
+          droppedPath={droppedPath}
+          goalActions={goalActions}
+          quickQuestionSlot={quickQuestionSlot}
+          reviewSlot={reviewSlot}
+          usageSlot={usageSlot}
+          onQuickQuestion={
+            sessionId && hasQuickQuestionSlot ? quickQuestion.openQuickQuestion : undefined
+          }
+          onComposerFocusChange={scrollRuntime.handleComposerFocusChange}
+        />
+      </div>
 
       <Dialog open={editingGoal !== null} onOpenChange={open => !open && closeGoalEditor()}>
         <DialogContent className="sm:max-w-md">

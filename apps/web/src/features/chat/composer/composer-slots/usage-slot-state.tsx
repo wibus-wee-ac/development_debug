@@ -53,7 +53,7 @@ export function UsageSlotState({
 interface UsageWindowRowState {
   key: string
   label: string
-  usedPercent: number | null
+  remainingPercent: number | null
   resetLabel: string | null
 }
 
@@ -64,7 +64,7 @@ function UsageWindowRow({ row, title }: { row: UsageWindowRowState, title: strin
         {title && <span className="shrink-0 font-medium text-foreground/75">{title}</span>}
         <span className="shrink-0 text-foreground/80">{row.label}</span>
         <span className="shrink-0 font-mono tabular-nums text-foreground/80">
-          {formatUsagePercent(row.usedPercent)}
+          {formatRemainingPercent(row.remainingPercent)}
         </span>
         {row.resetLabel && (
           <>
@@ -75,8 +75,8 @@ function UsageWindowRow({ row, title }: { row: UsageWindowRowState, title: strin
           </>
         )}
       </div>
-      {row.usedPercent !== null && (
-        <Progress value={row.usedPercent} className="h-0.5 min-w-0 bg-muted/60" />
+      {row.remainingPercent !== null && (
+        <Progress value={row.remainingPercent} className="h-0.5 min-w-0 bg-muted/60" />
       )}
     </div>
   )
@@ -92,7 +92,7 @@ function readUsageRows(state: ChatRuntimeUsageUiSlotState): UsageWindowRowState[
     {
       key: 'primary',
       label: formatWindowDuration(state.primaryWindowDurationMins) ?? state.limitName ?? 'limit',
-      usedPercent: state.usedPercent === null ? null : clampPercent(state.usedPercent),
+      remainingPercent: formatRemainingValue(state.usedPercent),
       resetLabel: formatResetLabel(state.primaryResetsAt),
     },
   ]
@@ -101,8 +101,7 @@ function readUsageRows(state: ChatRuntimeUsageUiSlotState): UsageWindowRowState[
     rows.push({
       key: 'secondary',
       label: formatWindowDuration(state.secondaryWindowDurationMins) ?? 'secondary',
-      usedPercent:
-        state.secondaryUsedPercent === null ? null : clampPercent(state.secondaryUsedPercent),
+      remainingPercent: formatRemainingValue(state.secondaryUsedPercent),
       resetLabel: formatResetLabel(state.secondaryResetsAt),
     })
   }
@@ -110,11 +109,18 @@ function readUsageRows(state: ChatRuntimeUsageUiSlotState): UsageWindowRowState[
   return rows
 }
 
-function formatUsagePercent(usedPercent: number | null): string {
+function formatRemainingValue(usedPercent: number | null): number | null {
   if (usedPercent === null) {
+    return null
+  }
+  return clampPercent(100 - clampPercent(usedPercent))
+}
+
+function formatRemainingPercent(remainingPercent: number | null): string {
+  if (remainingPercent === null) {
     return 'unavailable'
   }
-  return `${Math.round(usedPercent)}% used`
+  return `${Math.round(remainingPercent)}% left`
 }
 
 function formatWindowDuration(durationMins: number | null): string | null {

@@ -19,12 +19,12 @@ export interface ChatRuntimeSettingsState {
   update: (patch: ChatRuntimeSettingsPatch) => Promise<ChatRuntimeSettingsResponse | null>
 }
 
-export function useRuntimeSettings(sessionId: string | null): ChatRuntimeSettingsState {
+export function useRuntimeSettings(sessionId: string | null, active = true): ChatRuntimeSettingsState {
   const queryClient = useQueryClient()
   const query = useQuery({
     queryKey: runtimeSettingsQueryKey(sessionId),
     queryFn: () => getSessionRuntimeSettings(sessionId!),
-    enabled: !!sessionId,
+    enabled: active && !!sessionId,
     staleTime: 10_000,
     retry: false,
   })

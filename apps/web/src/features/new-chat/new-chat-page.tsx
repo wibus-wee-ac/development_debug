@@ -66,7 +66,7 @@ function timeAgo(timestamp: number, now: number, t: NewChatTranslation): string 
 
 /* ─── Owner Hook ──────────────────────────────────────────────────────── */
 
-function useNewChatPageOwner(active: boolean) {
+function useNewChatPageOwner(active: boolean, replaceCurrentSurfaceOnSubmit: boolean) {
   const { t } = useTranslation('new-chat')
   const { workspaces, loading: workspacesLoading } = useWorkspaces()
   const { addFromPicker, adding: addingWorkspace } = useAddWorkspace()
@@ -121,8 +121,8 @@ function useNewChatPageOwner(active: boolean) {
         return
       }
     }
-    openChatSession(sessionId, { replace: true })
-  }, [])
+    openChatSession(sessionId, { replace: replaceCurrentSurfaceOnSubmit })
+  }, [replaceCurrentSurfaceOnSubmit])
 
   const handleSendToTarget = useCallback(async (
     text: string,
@@ -474,6 +474,7 @@ interface NewChatEntryPointProps {
   active?: boolean
   dataTestId?: string
   includeLayoutSlots?: boolean
+  replaceCurrentSurfaceOnSubmit?: boolean
   testIdPrefix?: string
 }
 
@@ -481,9 +482,10 @@ export function NewChatEntryPoint({
   active = true,
   dataTestId = 'new-chat-page',
   includeLayoutSlots = true,
+  replaceCurrentSurfaceOnSubmit = true,
   testIdPrefix = 'new-chat',
 }: NewChatEntryPointProps) {
-  const owner = useNewChatPageOwner(active)
+  const owner = useNewChatPageOwner(active, replaceCurrentSurfaceOnSubmit)
   const hasWorkspace = !!owner.selectedWorkspace?.path
   const isPlanMode = useNewChatStore(s => s.lastRuntimeSettings.interactionMode === 'plan')
 

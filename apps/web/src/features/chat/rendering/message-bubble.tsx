@@ -1659,10 +1659,10 @@ const MessageBubbleSegmentsView = ({
 
   return (
     <>
-      <m.div
-        initial={isFirstAppearance ? { opacity: 0, y: 8 } : false}
-        animate={{ opacity: 1, y: 0 }}
-        transition={BUBBLE_TRANSITION}
+      <div
+        // initial={isFirstAppearance ? { opacity: 0, y: 8 } : false}
+        // animate={{ opacity: 1, y: 0 }}
+        // transition={BUBBLE_TRANSITION}
         data-testid={`message-bubble-${frame.role}`}
         data-message-id={frame.id}
         data-message-role={frame.role}
@@ -1720,7 +1720,7 @@ const MessageBubbleSegmentsView = ({
             />
           )}
         </div>
-      </m.div>
+      </div>
 
       {lightboxImages.length > 0 && (
         <ImageLightbox
@@ -1940,10 +1940,10 @@ function MessageBubbleView({
   }
 
   return (
-    <m.div
-      initial={!isExportPresentation && isFirstAppearance ? { opacity: 0, y: 8 } : false}
-      animate={{ opacity: 1, y: 0 }}
-      transition={BUBBLE_TRANSITION}
+    <div
+      // initial={!isExportPresentation && isFirstAppearance ? { opacity: 0, y: 8 } : false}
+      // animate={{ opacity: 1, y: 0 }}
+      // transition={BUBBLE_TRANSITION}
       data-testid={`message-bubble-${message.role}`}
       data-message-id={message.id}
       data-message-role={message.role}
@@ -2008,7 +2008,7 @@ function MessageBubbleView({
           </div>
         )}
       </div>
-    </m.div>
+    </div>
   )
 }
 

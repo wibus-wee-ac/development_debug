@@ -4,6 +4,7 @@ import { shallow } from 'zustand/shallow'
 
 import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { cn } from '~/lib/utils'
+import { SurfaceActivityProvider } from '~/navigation/surface-activity-context'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
 import { useChatSessionDriver } from './use-chat-session'
@@ -68,10 +69,10 @@ export function ChatSessionFrameHost({
             name={`chat-session:${frame.sessionId}`}
             mode={visible ? 'visible' : 'hidden'}
           >
-          <ChatSessionFrame
-            descriptor={frame}
-            visible={visible}
-          />
+            <ChatSessionFrame
+              descriptor={frame}
+              visible={visible}
+            />
           </Activity>
         )
       })}
@@ -156,14 +157,17 @@ const ChatSessionFrame = ({
       data-chat-session-frame={descriptor.sessionId}
       data-chat-session-visible={visible ? 'true' : 'false'}
     >
-      <ChatRuntimeView
-        sessionId={descriptor.sessionId}
-        sessionProviderTargetId={descriptor.sessionProviderTargetId}
-        sessionModelId={descriptor.sessionModelId}
-        runtimeKind={descriptor.runtimeKind}
-        workspaceId={descriptor.workspaceId}
-        agentId={descriptor.agentId}
-      />
+      <SurfaceActivityProvider active={visible}>
+        <ChatRuntimeView
+          active={visible}
+          sessionId={descriptor.sessionId}
+          sessionProviderTargetId={descriptor.sessionProviderTargetId}
+          sessionModelId={descriptor.sessionModelId}
+          runtimeKind={descriptor.runtimeKind}
+          workspaceId={descriptor.workspaceId}
+          agentId={descriptor.agentId}
+        />
+      </SurfaceActivityProvider>
     </div>
   )
 }

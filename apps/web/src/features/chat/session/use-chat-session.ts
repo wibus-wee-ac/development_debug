@@ -29,9 +29,10 @@ export { useChatSessionDriver } from './use-chat-session-driver'
 
 // ── Facade Hook ────────────────────────────────────────────
 
-export function useChatSession(chatSessionId: string | null) {
+export function useChatSession(chatSessionId: string | null, active = true) {
   const controls = useChatSessionRuntimeControls(chatSessionId)
   const { queueQueryKey } = controls
+  const queryEnabled = active && !!chatSessionId
 
   const messageIds = useChatStore(
     useShallow(chatSelectors.messageIds(chatSessionId ?? '')),
@@ -52,13 +53,13 @@ export function useChatSession(chatSessionId: string | null) {
   const queueQuery = useQuery({
     queryKey: queueQueryKey,
     queryFn: () => listChatSessionQueue(chatSessionId!),
-    enabled: !!chatSessionId,
+    enabled: queryEnabled,
     refetchInterval: query => visibleStatus === 'streaming'
       || query.state.data?.items.some(item => item.status === 'pending' || item.status === 'running')
       ? 1000
       : false,
   })
-  const runtimeStatusQuery = useRuntimeSessionStatus(chatSessionId)
+  const runtimeStatusQuery = useRuntimeSessionStatus(queryEnabled ? chatSessionId : null)
   const runtimeStatus = runtimeStatusQuery.data
   const runtimeKind = useSessionLayoutStore(
     useShallow(state => chatSessionId ? state.sessions[chatSessionId]?.runtimeKind ?? null : null),

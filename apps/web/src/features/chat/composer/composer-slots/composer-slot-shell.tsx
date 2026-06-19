@@ -17,7 +17,7 @@ export function ComposerSlotShell({ stateName, testId, className, children }: Co
   return (
     <div
       className={cn(
-        'pointer-events-auto relative z-0 mx-1.5 -mb-px max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-transparent px-3.5 py-2 text-xs text-muted-foreground',
+        'pointer-events-auto relative z-0 mx-1.5 -mb-px max-w-full overflow-hidden rounded-t-lg rounded-b-none bg-transparent px-3.5 py-1.5 text-xs text-muted-foreground',
         'border border-border border-b-0 shadow-sm',
         className,
       )}

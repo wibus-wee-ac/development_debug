@@ -1,7 +1,6 @@
 import type { ContextItem } from '~/features/context/context-items'
 import { estimateContextTokens } from '~/features/context/context-items'
 import type { ContextProvider } from '~/features/context/context-registry'
-import { jarvisContextRegistry } from '~/features/context/context-registry'
 import { clampRatio } from '~/lib/number-format'
 
 export interface ChatAttentionSnapshot {
@@ -17,7 +16,6 @@ export interface ChatAttentionSnapshot {
 
 const snapshotsBySessionId = new Map<string, ChatAttentionSnapshot>()
 const listeners = new Set<() => void>()
-let providerInstalled = false
 
 function publishSnapshotChange(): void {
   for (const listener of listeners) {
@@ -124,13 +122,4 @@ export function createChatContextProvider(): ContextProvider {
       return [createChatContextItem(snapshot, input.now)]
     },
   }
-}
-
-export function installChatContextProvider(): void {
-  if (providerInstalled) {
-    return
-  }
-
-  jarvisContextRegistry.registerProvider(createChatContextProvider())
-  providerInstalled = true
 }

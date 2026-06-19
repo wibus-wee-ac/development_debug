@@ -100,7 +100,7 @@ export function SubagentOutputPanel({
         if (controller.signal.aborted) {
           return
         }
-        handler.fail(error instanceof Error ? error.message : 'Provider thread stream failed')
+        handler.fail(error instanceof Error ? error.message : String(error))
       }
     })()
 

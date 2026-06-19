@@ -1,66 +1,41 @@
 // Chat Runtime provider-thread HTTP boundary for provider-native subagent/thread detail panels.
 import type { UIMessage } from 'ai'
 
-import { getServerUrl } from '~/lib/electron'
+import {
+  getChatSessionsBySessionIdProviderThreadsByThreadIdQueryKey,
+  getChatSessionsBySessionIdProviderThreadsByThreadIdTurnsQueryKey,
+} from '~/api-gen/@tanstack/react-query.gen'
+import { client } from '~/api-gen/client.gen'
+import {
+  deleteChatSessionsBySessionIdProviderThreadsByThreadId,
+  getChatSessionsBySessionIdProviderThreadsByThreadId,
+  getChatSessionsBySessionIdProviderThreadsByThreadIdTurns,
+} from '~/api-gen/sdk.gen'
+import type {
+  DeleteChatSessionsBySessionIdProviderThreadsByThreadIdResponse,
+  GetChatSessionsBySessionIdProviderThreadsByThreadIdResponse,
+  GetChatSessionsBySessionIdProviderThreadsByThreadIdStreamResponses,
+  GetChatSessionsBySessionIdProviderThreadsByThreadIdTurnsResponse,
+} from '~/api-gen/types.gen'
 
-const SERVER_BASE = getServerUrl()
-
-export interface ProviderThread {
-  id: string
-  providerSessionTreeId: string | null
-  forkedFromId: string | null
-  preview: string | null
-  ephemeral: boolean
-  modelProvider: string | null
-  createdAt: number | null
-  updatedAt: number | null
-  status: string
-  sourceKind: string
-  source: unknown
-  threadSource: unknown
-  agentNickname: string | null
-  agentRole: string | null
-  name: string | null
-  cwd: string | null
-}
-
-export interface ProviderThreadReadResponse {
-  runtimeKind: string
-  providerSessionId: string | null
-  thread: ProviderThread
-}
-
-export interface ProviderThreadTurnsResponse {
-  runtimeKind: string
-  providerSessionId: string | null
-  threadId: string
-  turns: Array<{
-    id: string
-    status: string
-    startedAt: number | null
-    completedAt: number | null
-    durationMs: number | null
-    itemsView: string
-    items: unknown[]
-  }>
+export type ProviderThreadReadResponse = GetChatSessionsBySessionIdProviderThreadsByThreadIdResponse
+export type ProviderThread = ProviderThreadReadResponse['thread']
+export type ProviderThreadTurnsResponse = Omit<GetChatSessionsBySessionIdProviderThreadsByThreadIdTurnsResponse, 'messages'> & {
   messages: UIMessage[]
-  nextCursor: string | null
-  backwardsCursor: string | null
 }
-
-export interface ProviderThreadDeleteResponse {
-  runtimeKind: string
-  providerSessionId: string | null
-  threadId: string
-  deleted: true
-}
+export type ProviderThreadDeleteResponse = DeleteChatSessionsBySessionIdProviderThreadsByThreadIdResponse
 
 export function providerThreadQueryKey(sessionId: string, threadId: string): readonly unknown[] {
-  return ['chat', 'provider-thread', sessionId, threadId]
+  return getChatSessionsBySessionIdProviderThreadsByThreadIdQueryKey({
+    path: { sessionId, threadId },
+  })
 }
 
 export function providerThreadTurnsQueryKey(sessionId: string, threadId: string): readonly unknown[] {
-  return ['chat', 'provider-thread-turns', sessionId, threadId]
+  return getChatSessionsBySessionIdProviderThreadsByThreadIdTurnsQueryKey({
+    path: { sessionId, threadId },
+    query: { sortDirection: 'asc' },
+  })
 }
 
 export async function getProviderThread(
@@ -68,12 +43,12 @@ export async function getProviderThread(
   threadId: string,
   signal?: AbortSignal,
 ): Promise<ProviderThreadReadResponse> {
-  const res = await fetch(`${SERVER_BASE}/chat/sessions/${encodeURIComponent(sessionId)}/provider-threads/${encodeURIComponent(threadId)}`, { signal })
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(`Failed to load provider thread: ${res.status} ${body}`)
-  }
-  return await res.json() as ProviderThreadReadResponse
+  const { data } = await getChatSessionsBySessionIdProviderThreadsByThreadId({
+    path: { sessionId, threadId },
+    signal,
+    throwOnError: true,
+  })
+  return data
 }
 
 export async function getProviderThreadTurns(
@@ -81,12 +56,13 @@ export async function getProviderThreadTurns(
   threadId: string,
   signal?: AbortSignal,
 ): Promise<ProviderThreadTurnsResponse> {
-  const res = await fetch(`${SERVER_BASE}/chat/sessions/${encodeURIComponent(sessionId)}/provider-threads/${encodeURIComponent(threadId)}/turns?sortDirection=asc`, { signal })
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(`Failed to load provider thread turns: ${res.status} ${body}`)
-  }
-  return await res.json() as ProviderThreadTurnsResponse
+  const { data } = await getChatSessionsBySessionIdProviderThreadsByThreadIdTurns({
+    path: { sessionId, threadId },
+    query: { sortDirection: 'asc' },
+    signal,
+    throwOnError: true,
+  })
+  return data as ProviderThreadTurnsResponse
 }
 
 export async function deleteProviderThread(
@@ -94,24 +70,25 @@ export async function deleteProviderThread(
   threadId: string,
   signal?: AbortSignal,
 ): Promise<ProviderThreadDeleteResponse> {
-  const res = await fetch(`${SERVER_BASE}/chat/sessions/${encodeURIComponent(sessionId)}/provider-threads/${encodeURIComponent(threadId)}`, {
-    method: 'DELETE',
+  const { data } = await deleteChatSessionsBySessionIdProviderThreadsByThreadId({
+    path: { sessionId, threadId },
     signal,
+    throwOnError: true,
   })
-  if (!res.ok) {
-    const body = await res.text().catch(() => '')
-    throw new Error(`Failed to delete provider thread: ${res.status} ${body}`)
-  }
-  return await res.json() as ProviderThreadDeleteResponse
+  return data
 }
 
-export function subscribeProviderThreadStream(args: {
+export async function subscribeProviderThreadStream(args: {
   sessionId: string
   threadId: string
   signal?: AbortSignal
 }): Promise<Response> {
-  return fetch(`${SERVER_BASE}/chat/sessions/${encodeURIComponent(args.sessionId)}/provider-threads/${encodeURIComponent(args.threadId)}/stream`, {
-    method: 'GET',
+  const { response } = await client.get<GetChatSessionsBySessionIdProviderThreadsByThreadIdStreamResponses, unknown, true>({
+    parseAs: 'stream',
+    path: { sessionId: args.sessionId, threadId: args.threadId },
     signal: args.signal,
+    throwOnError: true,
+    url: '/chat/sessions/{sessionId}/provider-threads/{threadId}/stream',
   })
+  return response
 }

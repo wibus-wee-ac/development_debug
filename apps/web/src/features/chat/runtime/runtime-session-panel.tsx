@@ -46,6 +46,7 @@ interface RuntimeSessionPanelProps {
   sessionId: string | null
   runtimeKind?: RuntimeKind | null
   providerTargetId?: string | null
+  active?: boolean
 }
 
 const TOOL_STATE_LABELS: Record<ToolState, string> = {
@@ -59,6 +60,7 @@ const TOOL_STATE_LABELS: Record<ToolState, string> = {
 }
 
 const EMPTY_MESSAGES: UIMessage[] = []
+const subscribeInactiveChatAttentionSnapshots = () => () => undefined
 
 type ProgressTaskStatus = 'pending' | 'inProgress' | 'completed'
 
@@ -72,39 +74,45 @@ interface ProgressTaskItem {
 export function RuntimeSessionPanel({
   sessionId,
   runtimeKind,
-  providerTargetId
+  providerTargetId,
+  active = true
 }: RuntimeSessionPanelProps) {
+  const activeSessionId = active ? sessionId : null
   const visibleStatus = useChatStore(
-    sessionId ? chatSelectors.visibleStatus(sessionId) : () => 'idle' as const
+    activeSessionId ? chatSelectors.visibleStatus(activeSessionId) : () => 'idle' as const
   )
-  const { data: runtimeStatus } = useRuntimeSessionStatus(sessionId)
+  const { data: runtimeStatus } = useRuntimeSessionStatus(activeSessionId, active)
   const attentionSnapshot = useSyncExternalStore(
-    subscribeChatAttentionSnapshots,
-    () => readChatAttentionSnapshot(sessionId),
+    active ? subscribeChatAttentionSnapshots : subscribeInactiveChatAttentionSnapshots,
+    () => (active ? readChatAttentionSnapshot(sessionId) : null),
     () => null
   )
   const { data: runtimeUiSlotStates, isLoading: runtimeUiSlotStatesLoading } = useQuery({
-    queryKey: runtimeUiSlotStatesQueryKey(sessionId, runtimeKind),
-    queryFn: ({ signal }) => getChatRuntimeUiSlotStates(sessionId!, signal),
-    enabled: !!sessionId,
+    queryKey: runtimeUiSlotStatesQueryKey(activeSessionId, runtimeKind),
+    queryFn: ({ signal }) => getChatRuntimeUiSlotStates(activeSessionId!, signal),
+    enabled: !!activeSessionId,
     staleTime: 2_000,
-    refetchInterval: (query) =>
-      statusShouldPoll(runtimeStatus?.status) ||
-      shouldPollRuntimeSlotStates(query.state.data?.states ?? [])
+    refetchInterval: (query) => {
+      if (!active) {
+        return false
+      }
+      return statusShouldPoll(runtimeStatus?.status) ||
+        shouldPollRuntimeSlotStates(query.state.data?.states ?? [])
         ? 2_000
-        : false,
+        : false
+    },
     retry: false
   })
-  const todoSnapshot = useSessionTodos(sessionId)
+  const todoSnapshot = useSessionTodos(sessionId, active)
   const lastAssistantId = useChatStore(
-    sessionId ? chatSelectors.lastAssistantId(sessionId) : () => undefined
+    activeSessionId ? chatSelectors.lastAssistantId(activeSessionId) : () => undefined
   )
   const messages = useChatStore(
-    sessionId ? chatSelectors.messages(sessionId) : () => EMPTY_MESSAGES
+    activeSessionId ? chatSelectors.messages(activeSessionId) : () => EMPTY_MESSAGES
   )
   const tools = collectSessionToolParts(messages)
   const runMeta = useChatStore(
-    lastAssistantId ? chatSelectors.runDisplayMeta(lastAssistantId) : () => undefined
+    active && lastAssistantId ? chatSelectors.runDisplayMeta(lastAssistantId) : () => undefined
   )
   const toolCounts = countToolStates(tools)
   const recentTools = tools.slice(-6).reverse()

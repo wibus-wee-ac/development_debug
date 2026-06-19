@@ -29,6 +29,7 @@ interface SessionProviderModelSaveState {
 }
 
 export function ChatRuntimeView({
+  active = true,
   sessionId,
   sessionProviderTargetId,
   sessionModelId,
@@ -41,6 +42,7 @@ export function ChatRuntimeView({
   messageTextTransform,
   prepareSend,
 }: {
+  active?: boolean
   sessionId: string
   sessionProviderTargetId: string | null
   sessionModelId: string | null
@@ -255,6 +257,7 @@ export function ChatRuntimeView({
   return (
     <Suspense fallback={null}>
       <ChatView
+        active={active}
         sessionId={sessionId}
         runtimeKind={runtimeKind}
         workspaceId={workspaceId}

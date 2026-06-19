@@ -60,6 +60,7 @@ export interface ChatComposerRuntime {
 }
 
 interface UseChatComposerRuntimeOptions {
+  active?: boolean
   sessionId: string | null
   isStreaming: boolean
   isReady: boolean
@@ -122,6 +123,7 @@ function readCodexReviewAvailability({
 }
 
 export function useChatComposerRuntime({
+  active = true,
   sessionId,
   isStreaming,
   isReady,
@@ -133,25 +135,26 @@ export function useChatComposerRuntime({
   stop
 }: UseChatComposerRuntimeOptions): ChatComposerRuntime {
   const { data: chatPreferences } = useChatPreferencesQuery()
+  const sessionQueriesEnabled = active && !!sessionId
   const { data: runtimeCapabilities } = useQuery({
     queryKey: runtimeCapabilitiesQueryKey(sessionId),
     queryFn: ({ signal }) => getChatRuntimeCapabilities(sessionId!, signal),
-    enabled: !!sessionId,
+    enabled: sessionQueriesEnabled,
     staleTime: 60_000,
     retry: false
   })
   const { data: runtimeUiSlotStates } = useQuery({
     queryKey: runtimeUiSlotStatesQueryKey(sessionId, runtimeCapabilities?.runtimeKind),
     queryFn: ({ signal }) => getChatRuntimeUiSlotStates(sessionId!, signal),
-    enabled: !!sessionId,
+    enabled: sessionQueriesEnabled,
     staleTime: 2_000,
     refetchInterval: (query) =>
-      isStreaming || shouldPollRuntimeSlotStates(query.state.data?.states ?? []) ? 5_000 : false,
+      active && (isStreaming || shouldPollRuntimeSlotStates(query.state.data?.states ?? [])) ? 5_000 : false,
     retry: false
   })
   const { data: sessionBinding } = useQuery({
     ...getSessionsByIdOptions({ path: { id: sessionId ?? '' } }),
-    enabled: !!sessionId,
+    enabled: sessionQueriesEnabled,
     staleTime: 60_000,
     select: (data) => (data ? (data as SessionBinding) : null)
   })
@@ -162,7 +165,7 @@ export function useChatComposerRuntime({
   const hasCodexReviewSlot = useMemo(() => {
     return Boolean(runtimeCapabilities?.uiSlots.some((slot) => slot.id === 'codex:review'))
   }, [runtimeCapabilities?.uiSlots])
-  const gitRepositoriesQuery = useGitRepositories(hasCodexReviewSlot ? workspaceId : null)
+  const gitRepositoriesQuery = useGitRepositories(active && hasCodexReviewSlot ? workspaceId : null)
   const currentSessionModel = useMemo(() => {
     if (composerModel) {
       return composerModel
@@ -342,6 +345,9 @@ function shouldPollRuntimeSlotStates(states: ChatRuntimeUiSlotState[]): boolean 
     }
     if (state.kind === 'toolActivity') {
       return state.activeCount > 0
+    }
+    if (state.kind === 'terminal') {
+      return state.activeCount > 0 || state.backgroundTerminals.length > 0
     }
     if (state.kind === 'mcp') {
       return Boolean(state.recentProgress)

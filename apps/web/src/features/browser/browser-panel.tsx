@@ -110,6 +110,7 @@ interface BrowserPanelProps {
   activeSessionTitle?: string | null
   terminalCwd?: string | null
   nativeBoundsPaused?: boolean
+  nativeSurfaceVisible?: boolean
   onCloseLastTab?: (ownerId: string) => void
 }
 
@@ -1214,6 +1215,8 @@ export function BrowserPanel({
   activeSessionId = null,
   activeSessionTitle = null,
   terminalCwd = null,
+  nativeBoundsPaused = false,
+  nativeSurfaceVisible = true,
   onCloseLastTab,
 }: BrowserPanelProps) {
   const resolvedOwnerId = ownerId ?? DEFAULT_BROWSER_PANEL_OWNER_ID
@@ -1384,8 +1387,11 @@ export function BrowserPanel({
   }, [activeBrowserTabId, activeBrowserTabIsBlank, refreshLocalServers])
 
   useEffect(() => {
+    if (!nativeSurfaceVisible) {
+      return
+    }
     setActiveOwner(resolvedOwnerId)
-  }, [resolvedOwnerId, setActiveOwner])
+  }, [nativeSurfaceVisible, resolvedOwnerId, setActiveOwner])
 
   useEffect(() => {
     const bridge = readBrowserBridge()
@@ -1471,18 +1477,36 @@ export function BrowserPanel({
 
   const shouldShowNativeBrowserSurface = useCallback(() =>
     Boolean(
-      browserState?.open
+      nativeSurfaceVisible
+      && browserState?.open
       && activePanelTab?.kind === 'browser'
       && !activeBrowserTabIsBlank,
     ), [
     activeBrowserTabIsBlank,
     activePanelTab?.kind,
     browserState?.open,
+    nativeSurfaceVisible,
   ])
+
+  useEffect(() => {
+    if (shouldShowNativeBrowserSurface()) {
+      return
+    }
+    hideNativeBrowserSurface()
+  }, [hideNativeBrowserSurface, shouldShowNativeBrowserSurface])
+
+  useEffect(() => {
+    return () => {
+      hideNativeBrowserSurface()
+    }
+  }, [hideNativeBrowserSurface])
 
   const syncBounds = useCallback(() => {
     if (!shouldShowNativeBrowserSurface()) {
       hideNativeBrowserSurface()
+      return
+    }
+    if (nativeBoundsPaused) {
       return
     }
 
@@ -1517,6 +1541,7 @@ export function BrowserPanel({
   }, [
     hideNativeBrowserSurface,
     activeBrowserTabId,
+    nativeBoundsPaused,
     resolvedOwnerId,
     shouldShowNativeBrowserSurface,
   ])
@@ -1527,6 +1552,9 @@ export function BrowserPanel({
     }
     if (!shouldShowNativeBrowserSurface()) {
       hideNativeBrowserSurface()
+      return
+    }
+    if (nativeBoundsPaused) {
       return
     }
     if (animationFrameRef.current !== null) {
@@ -1552,6 +1580,7 @@ export function BrowserPanel({
     animationFrameRef.current = window.requestAnimationFrame(tick)
   }, [
     hideNativeBrowserSurface,
+    nativeBoundsPaused,
     shouldShowNativeBrowserSurface,
     syncBounds,
   ])
@@ -1574,6 +1603,9 @@ export function BrowserPanel({
       hideNativeBrowserSurfaceFromObserver()
       return
     }
+    if (nativeBoundsPaused) {
+      return
+    }
 
     scheduleStableBoundsSyncFromObserver()
     const resizeObserver = new ResizeObserver(scheduleStableBoundsSyncFromObserver)
@@ -1589,15 +1621,20 @@ export function BrowserPanel({
         window.cancelAnimationFrame(animationFrameRef.current)
         animationFrameRef.current = null
       }
-      hideNativeBrowserSurfaceFromObserver()
     }
   }, [
     activePanelTab?.kind,
+    nativeBoundsPaused,
     shouldShowNativeBrowserSurface,
   ])
 
   useEffect(() => {
-    if (typeof document === 'undefined' || typeof MutationObserver === 'undefined') {
+    if (
+      nativeBoundsPaused
+      || !shouldShowNativeBrowserSurface()
+      || typeof document === 'undefined'
+      || typeof MutationObserver === 'undefined'
+    ) {
       return
     }
 
@@ -1644,7 +1681,7 @@ export function BrowserPanel({
       resizeObserver?.disconnect()
       scheduleStableBoundsSyncFromOcclusionObserver()
     }
-  }, [])
+  }, [nativeBoundsPaused, shouldShowNativeBrowserSurface])
 
   useEffect(() => {
     const bridge = readBrowserBridge()

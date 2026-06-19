@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ChatRuntimeGoalUiSlotState,
   ChatRuntimePlanUiSlotState,
+  ChatRuntimeTerminalUiSlotState,
   ChatRuntimeUiSlot,
   ChatRuntimeUiSlotState,
   ChatRuntimeUsageUiSlotState,
@@ -12,8 +13,10 @@ import type {
 } from '../capabilities/chat-capabilities'
 import { GoalSlotState } from './composer-slots/goal-slot-state'
 import { PlanSlotState } from './composer-slots/plan-slot-state'
+import { ProgressSlotState } from './composer-slots/progress-slot-state'
 import { QuickQuestionSlotState } from './composer-slots/quick-question-slot-state'
 import { ReviewSlotState } from './composer-slots/review-slot-state'
+import { TerminalSlotState } from './composer-slots/terminal-slot-state'
 import type {
   ComposerGoalSlotActions,
   ComposerPlanSlotActions,
@@ -86,6 +89,9 @@ export function ComposerSlotStates({
   const goalState = states.find((state): state is ChatRuntimeGoalUiSlotState => {
     return state.kind === 'goal' && composerSlotIds.has(state.slotId)
   })
+  const progressState = states.find((state): state is ChatRuntimePlanUiSlotState => {
+    return state.kind === 'plan' && composerSlotIds.has(state.slotId) && isComposerProgressState(state)
+  })
   const planState = states.find((state): state is ChatRuntimePlanUiSlotState => {
     return (
       state.kind === 'plan' && composerSlotIds.has(state.slotId) && isComposerPlanReadyState(state)
@@ -95,6 +101,10 @@ export function ComposerSlotStates({
     = states.find((state): state is ChatRuntimeUserInputUiSlotState => {
       return state.kind === 'userInput' && composerSlotIds.has(state.slotId)
     }) ?? null
+  const terminalState
+    = states.find((state): state is ChatRuntimeTerminalUiSlotState => {
+      return state.kind === 'terminal' && composerSlotIds.has(state.slotId)
+    }) ?? null
   const renderedPlanState = planState ?? retainedPlanState
   const planKey = renderedPlanState ? readPlanSlotKey(renderedPlanState) : null
   const planKeyRef = useRef<string | null>(planKey)
@@ -102,6 +112,9 @@ export function ComposerSlotStates({
   const dismissPlanSignalRef = useRef<number | undefined>(dismissPlanSignal)
   const visiblePlanState = renderedPlanState && dismissedPlanKey !== planKey && !hidePlan
     ? renderedPlanState
+    : null
+  const standaloneProgressState = progressState && isComposerStandaloneProgressState(progressState)
+    ? progressState
     : null
 
   useEffect(() => {
@@ -142,7 +155,19 @@ export function ComposerSlotStates({
     goalState
       ? {
           key: 'goal',
-          node: <GoalSlotState state={goalState} actions={actions} className={className} />,
+          node: (
+            <GoalSlotState
+              state={goalState}
+              actions={actions}
+              className={className}
+            />
+          ),
+        }
+      : null,
+    standaloneProgressState
+      ? {
+          key: `progress:${standaloneProgressState.threadId}:${standaloneProgressState.turnId ?? 'turn'}`,
+          node: <ProgressSlotState state={standaloneProgressState} className={className} />,
         }
       : null,
     visiblePlanState
@@ -166,6 +191,18 @@ export function ComposerSlotStates({
           node: (
             <UserInputSlotState
               state={userInputState}
+              sessionId={sessionId}
+              className={className}
+            />
+          ),
+        }
+      : null,
+    terminalState && sessionId
+      ? {
+          key: `terminal:${terminalState.threadId}`,
+          node: (
+            <TerminalSlotState
+              state={terminalState}
               sessionId={sessionId}
               className={className}
             />
@@ -247,4 +284,12 @@ function readPlanSlotKey(state: ChatRuntimePlanUiSlotState): string {
 
 function isComposerPlanReadyState(state: ChatRuntimePlanUiSlotState): boolean {
   return !!state.content?.trim()
+}
+
+function isComposerProgressState(state: ChatRuntimePlanUiSlotState): boolean {
+  return state.steps.length > 0
+}
+
+function isComposerStandaloneProgressState(state: ChatRuntimePlanUiSlotState): boolean {
+  return state.steps.length > 0 && (state.pendingCount > 0 || state.inProgressCount > 0)
 }

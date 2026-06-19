@@ -23,17 +23,17 @@ export function ReadFilesBlock({ paths }: ReadFilesBlockProps) {
       <div className="flex flex-col gap-0.5">
         <AnimatePresence initial={true}>
           {visiblePaths.map((path, i) => (
-            <m.button
+            <button
               key={path}
               type="button"
-              initial={{ opacity: 0, y: 4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0, y: -4 }}
-              transition={{
-                duration: 0.2,
-                delay: i * 0.03,
-                ease: [0.25, 0.1, 0.25, 1],
-              }}
+              // initial={{ opacity: 0, y: 4 }}
+              // animate={{ opacity: 1, y: 0 }}
+              // exit={{ opacity: 0, y: -4 }}
+              // transition={{
+                // duration: 0.2,
+                // delay: i * 0.03,
+                // ease: [0.25, 0.1, 0.25, 1],
+              // }}
               className={cn(
                 'text-left font-mono text-sm text-muted-foreground',
                 'py-0.5 px-1 -mx-1 rounded-sm',
@@ -43,7 +43,7 @@ export function ReadFilesBlock({ paths }: ReadFilesBlockProps) {
               )}
             >
               {path}
-            </m.button>
+            </button>
           ))}
         </AnimatePresence>
       </div>

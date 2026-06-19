@@ -2,9 +2,9 @@ import { useQuery } from '@tanstack/react-query'
 import { shallow } from 'zustand/shallow'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
-import { useChatStore } from '~/store/chat'
+import { useActiveSurface } from '~/navigation/active-surface'
 import { chatSessionIdForSurface } from '~/navigation/surface-identity'
-import { useSurfaceStore } from '~/navigation/surface-store'
+import { useChatStore } from '~/store/chat'
 
 import type { ChatSessionFrameDescriptor } from './chat-session-frame-host'
 import { ChatSessionFrameHost } from './chat-session-frame-host'
@@ -15,10 +15,7 @@ function useStreamingSessionIds(): string[] {
 }
 
 function useActiveChatSessionId(): string | null {
-  return useSurfaceStore((state) => {
-    const activeSurface = state.surfaces.find(surface => surface.id === state.activeSurfaceId)
-    return chatSessionIdForSurface(activeSurface)
-  })
+  return chatSessionIdForSurface(useActiveSurface())
 }
 
 function RetainedStreamingChatSession({ sessionId }: { sessionId: string }) {
