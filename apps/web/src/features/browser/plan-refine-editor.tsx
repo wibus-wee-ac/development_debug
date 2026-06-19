@@ -54,13 +54,22 @@ export function PlanRefineEditor({ tabId, title, text, className }: PlanRefineEd
   }, [updateDirty])
 
   const handleSave = useCallback((markdown: string) => {
+    const saveEvent = new CustomEvent<PlanRefineEditorSaveDetail>(
+      PLAN_REFINE_EDITOR_SAVE_EVENT,
+      {
+        cancelable: true,
+        detail: { tabId, markdown },
+      },
+    )
+    window.dispatchEvent(saveEvent)
+    if (!saveEvent.defaultPrevented) {
+      updateDirty(markdown !== initialTextRef.current)
+      return
+    }
+
     draftRef.current = markdown
     initialTextRef.current = markdown
     updateDirty(false)
-    window.dispatchEvent(new CustomEvent<PlanRefineEditorSaveDetail>(
-      PLAN_REFINE_EDITOR_SAVE_EVENT,
-      { detail: { tabId, markdown } },
-    ))
   }, [tabId, updateDirty])
 
   return (

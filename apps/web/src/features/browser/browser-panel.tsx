@@ -2566,7 +2566,11 @@ export function BrowserPanel({
       if (!tab) {
         return
       }
-      closeLocalPanelTab(tab.id)
+      queueMicrotask(() => {
+        if (event.defaultPrevented) {
+          closeLocalPanelTab(tab.id)
+        }
+      })
     }
 
     window.addEventListener(PLAN_REFINE_EDITOR_SAVE_EVENT, handleSaveEvent)
