@@ -1163,6 +1163,10 @@ export const zPatchIssuesByIdPath = z.object({
     id: z.string().min(1)
 });
 
+export const zGetIssuesByIdSessionsPath = z.object({
+    id: z.string().min(1)
+});
+
 export const zPatchIssuesBulkBody = z.object({
     issueIds: z.array(z.string()),
     update: z.object({

@@ -5436,6 +5436,44 @@ export type PatchIssuesByIdResponses = {
 
 export type PatchIssuesByIdResponse = PatchIssuesByIdResponses[keyof PatchIssuesByIdResponses];
 
+export type GetIssuesByIdSessionsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/issues/{id}/sessions';
+};
+
+export type GetIssuesByIdSessionsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        parentSessionId: string | null;
+        sideContextSource: string | null;
+        workspaceId: string | null;
+        title: string | null;
+        providerTargetId: string | null;
+        agentId: string | null;
+        modelId: string | null;
+        linkedIssueId: string | null;
+        runtimeKind: string;
+        status: 'idle' | 'streaming' | 'error';
+        pinned: number;
+        archivedAt: number | null;
+        lastReadAt: number | null;
+        createdAt: number;
+        updatedAt: number;
+        latestUserMessageAt: number | null;
+        latestAssistantMessageAt: number | null;
+        unread: boolean;
+    }>;
+};
+
+export type GetIssuesByIdSessionsResponse = GetIssuesByIdSessionsResponses[keyof GetIssuesByIdSessionsResponses];
+
 export type PatchIssuesBulkData = {
     body: {
         issueIds: Array<string>;
@@ -12322,7 +12360,7 @@ export type GetChatDraftRuntimeCapabilitiesResponses = {
             description: string;
             argumentHint: string;
             aliases?: Array<string>;
-            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'quick-question' | 'user-input' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
+            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'progress' | 'quick-question' | 'user-input' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
             commandText?: string;
             surfaces: Array<'slashCommand' | 'toolbarPicker' | 'composerState' | 'messageInline' | 'runtimePanel' | 'streamEvidence' | 'recordOnly'>;
         }>;
@@ -12360,7 +12398,7 @@ export type GetChatSessionsBySessionIdCapabilitiesResponses = {
             description: string;
             argumentHint: string;
             aliases?: Array<string>;
-            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'quick-question' | 'user-input' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
+            iconKey?: 'alert' | 'approvals' | 'code-review' | 'compact' | 'config' | 'diff' | 'feedback' | 'filesystem' | 'goal' | 'crew' | 'ide-context' | 'mcp' | 'model' | 'personality' | 'plugin' | 'plan' | 'progress' | 'quick-question' | 'user-input' | 'reasoning' | 'search' | 'side-chat' | 'skills' | 'status' | 'terminal' | 'tool-activity' | 'usage';
             commandText?: string;
             surfaces: Array<'slashCommand' | 'toolbarPicker' | 'composerState' | 'messageInline' | 'runtimePanel' | 'streamEvidence' | 'recordOnly'>;
         }>;
@@ -12466,6 +12504,23 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
                 status: 'pending' | 'inProgress' | 'completed';
             }>;
             currentStep: string | null;
+            pendingCount: number;
+            inProgressCount: number;
+            completedCount: number;
+            updatedAt: number;
+        } | {
+            kind: string;
+            slotId: string;
+            threadId: string;
+            turnId: string | null;
+            source: string;
+            items: Array<{
+                id: string | null;
+                label: string;
+                status: 'pending' | 'inProgress' | 'completed';
+                sourceStatus: string | null;
+            }>;
+            currentItem: string | null;
             pendingCount: number;
             inProgressCount: number;
             completedCount: number;
