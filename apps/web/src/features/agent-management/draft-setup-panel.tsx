@@ -22,18 +22,28 @@ import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { useAgentProfiles } from '~/features/agent-runtime/use-agent-profiles'
-import { nativeIpc } from '~/lib/electron'
 import { cn } from '~/lib/cn'
+import { nativeIpc } from '~/lib/electron'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { ChatgptCredentialSummary } from './chatgpt-credential-summary'
+import { CodexAuthModeToggle } from './codex-auth-mode-controls'
+import {
+  CODEX_AUTH_MODE_API_KEY,
+  CODEX_AUTH_MODE_BEDROCK_API_KEY,
+  CODEX_AUTH_MODE_CHATGPT,
+  codexCredentialInputLabel,
+  codexCredentialPlaceholder,
+  codexSecretKindForAuthMode,
+  normalizeCodexAuthMode,
+} from './codex-auth-modes'
 import { warmManualProviderModelCache } from './provider-model-cache'
 import type { DraftProvider } from './provider-settings-utils'
 import { buildProfileId } from './provider-settings-utils'
 import type { ProviderPreset } from './provider-templates'
 import { PROVIDER_PRESETS } from './provider-templates'
+import type { ChatgptCredentialLoginStart } from './use-chatgpt-credential-login'
 import {
-  type ChatgptCredentialLoginStart,
   useChatgptCredentialLoginActions,
   useChatgptCredentialLoginStatus,
 } from './use-chatgpt-credential-login'
@@ -148,17 +158,28 @@ function PresetSetupForm({
   const form = useForm<PresetSetupFormValues>({
     defaultValues: {
       name: preset.name,
-      values: {},
+      values: preset.providerKind === 'openai-compatible'
+        ? { codexAuthMode: CODEX_AUTH_MODE_API_KEY }
+        : {},
     },
   })
   const watchedValues = useWatch({ control: form.control }) as PresetSetupFormValues
   const name = watchedValues.name ?? ''
   const values = watchedValues.values ?? {}
+  const isCodexProvider = preset.providerKind === 'openai-compatible'
+  const codexAuthMode = isCodexProvider
+    ? normalizeCodexAuthMode(values.codexAuthMode)
+    : CODEX_AUTH_MODE_API_KEY
   const profileId = buildProfileId(name, preset.id)
   const canSubmit = name.trim().length > 0
 
   useEffect(() => {
-    form.reset({ name: preset.name, values: {} })
+    form.reset({
+      name: preset.name,
+      values: preset.providerKind === 'openai-compatible'
+        ? { codexAuthMode: CODEX_AUTH_MODE_API_KEY }
+        : {},
+    })
     setStatus(null)
     setChatgptLoginId(null)
     setActiveChatgptLogin(null)
@@ -172,6 +193,8 @@ function PresetSetupForm({
     }
     if (login.state === 'completed' && login.credentialRef) {
       setChatgptCredentialRef(login.credentialRef)
+      form.setValue('values.codexAuthMode', CODEX_AUTH_MODE_CHATGPT, { shouldDirty: true })
+      form.setValue('values.apiKey', '', { shouldDirty: true })
       form.setValue('values.baseUrl', '', { shouldDirty: true })
       setChatgptLoginId(null)
       setActiveChatgptLogin(null)
@@ -216,29 +239,65 @@ function PresetSetupForm({
     setStatus(null)
 
     const requiresApiKey = preset.fields.some(f => f.key === 'apiKey')
-    if (requiresApiKey && !currentValues.values.apiKey && !chatgptCredentialRef) {
-      setStatus({ ok: false, text: 'Credential is required' })
-      return
+    const credentialValue = currentValues.values.apiKey?.trim() ?? ''
+    const bedrockRegion = currentValues.values.bedrockRegion?.trim() ?? ''
+    const selectedCodexAuthMode = isCodexProvider
+      ? normalizeCodexAuthMode(currentValues.values.codexAuthMode)
+      : CODEX_AUTH_MODE_API_KEY
+    if (requiresApiKey) {
+      if (isCodexProvider) {
+        if (selectedCodexAuthMode === CODEX_AUTH_MODE_CHATGPT && !chatgptCredentialRef) {
+          setStatus({ ok: false, text: 'Credential is required' })
+          return
+        }
+        if (selectedCodexAuthMode !== CODEX_AUTH_MODE_CHATGPT && !credentialValue) {
+          setStatus({ ok: false, text: 'Credential is required' })
+          return
+        }
+        if (selectedCodexAuthMode === CODEX_AUTH_MODE_BEDROCK_API_KEY && !bedrockRegion) {
+          setStatus({ ok: false, text: 'Bedrock region is required' })
+          return
+        }
+      }
+      else if (!credentialValue) {
+        setStatus({ ok: false, text: 'Credential is required' })
+        return
+      }
     }
 
     setBusy(true)
     try {
-      let credentialRef: string | null = chatgptCredentialRef
-      const apiKey = currentValues.values.apiKey
-      const useChatgptAuth = !!chatgptCredentialRef && !apiKey
-      if (apiKey) {
+      let credentialRef: string | null = selectedCodexAuthMode === CODEX_AUTH_MODE_CHATGPT
+        ? chatgptCredentialRef
+        : null
+      if (credentialValue && selectedCodexAuthMode !== CODEX_AUTH_MODE_CHATGPT) {
         const { data: meta } = await postSecrets({
-          body: { kind: preset.providerKind, label: currentValues.name, secret: apiKey },
+          body: {
+            kind: isCodexProvider
+              ? codexSecretKindForAuthMode(selectedCodexAuthMode, preset.providerKind)
+              : preset.providerKind,
+            label: currentValues.name,
+            secret: credentialValue,
+          },
         })
         credentialRef = SecretCreateResponseSchema.parse(meta).id
       }
 
       const config: Record<string, unknown> = { ...preset.defaults }
-      if (currentValues.values.baseUrl && !useChatgptAuth) {
-        config.baseUrl = currentValues.values.baseUrl
+      if (isCodexProvider) {
+        config.authMode = selectedCodexAuthMode
+        if (selectedCodexAuthMode === CODEX_AUTH_MODE_API_KEY) {
+          config.baseUrl = currentValues.values.baseUrl ?? ''
+        }
+        else {
+          config.baseUrl = ''
+        }
+        if (selectedCodexAuthMode === CODEX_AUTH_MODE_BEDROCK_API_KEY) {
+          config.bedrock = { region: bedrockRegion }
+        }
       }
-      if (useChatgptAuth) {
-        config.baseUrl = ''
+      else if (currentValues.values.baseUrl) {
+        config.baseUrl = currentValues.values.baseUrl
       }
       if (currentValues.values.model) {
         config.model = currentValues.values.model
@@ -329,31 +388,66 @@ function PresetSetupForm({
             <div key={field.key}>
               <SettingsDivider />
               <SettingsRow
-                label={isApiKey ? 'Credential' : field.label}
+                label={isApiKey && isCodexProvider ? codexCredentialInputLabel(codexAuthMode) : isApiKey ? 'Credential' : field.label}
                 description={
                   isApiKey
-                    ? 'Use an API key or connect a ChatGPT account for Codex.'
+                    ? isCodexProvider
+                      ? 'Choose how Codex authenticates for this provider.'
+                      : undefined
                     : undefined
                 }
               >
                 {isApiKey
                   ? (
                       <div className="flex w-56 flex-col gap-2">
-                        <Input
-                          data-testid={testId}
-                          type="password"
-                          value={values[field.key] ?? ''}
-                          onChange={(e) => {
-                            setChatgptCredentialRef(null)
-                            form.setValue(`values.${field.key}`, e.target.value, { shouldDirty: true })
-                          }}
-                          placeholder={chatgptCredentialRef ? 'Paste API key to replace ChatGPT auth' : field.placeholder}
-                          className={cn('h-9 text-[13px]', field.mono && 'font-mono')}
-                        />
-                        {chatgptCredentialMetadata.data && (
+                        {isCodexProvider && (
+                          <CodexAuthModeToggle
+                            value={codexAuthMode}
+                            onChange={(nextAuthMode) => {
+                              form.setValue('values.codexAuthMode', nextAuthMode, { shouldDirty: true })
+                              if (nextAuthMode !== CODEX_AUTH_MODE_CHATGPT) {
+                                setChatgptCredentialRef(null)
+                                setChatgptLoginId(null)
+                                setActiveChatgptLogin(null)
+                              }
+                              if (nextAuthMode === CODEX_AUTH_MODE_CHATGPT) {
+                                form.setValue('values.apiKey', '', { shouldDirty: true })
+                                form.setValue('values.baseUrl', '', { shouldDirty: true })
+                              }
+                            }}
+                          />
+                        )}
+                        {(!isCodexProvider || codexAuthMode !== CODEX_AUTH_MODE_CHATGPT) && (
+                          <Input
+                            data-testid={testId}
+                            type="password"
+                            value={values[field.key] ?? ''}
+                            onChange={(e) => {
+                              setChatgptCredentialRef(null)
+                              form.setValue(`values.${field.key}`, e.target.value, { shouldDirty: true })
+                            }}
+                            placeholder={
+                              isCodexProvider
+                                ? codexCredentialPlaceholder(codexAuthMode, false)
+                                : field.placeholder
+                            }
+                            className={cn('h-9 text-[13px]', field.mono && 'font-mono')}
+                          />
+                        )}
+                        {isCodexProvider && codexAuthMode === CODEX_AUTH_MODE_BEDROCK_API_KEY && (
+                          <Input
+                            data-testid="provider-bedrock-region"
+                            value={values.bedrockRegion ?? ''}
+                            onChange={e =>
+                              form.setValue('values.bedrockRegion', e.target.value, { shouldDirty: true })}
+                            placeholder="us-east-1"
+                            className="h-9 text-[13px] font-mono"
+                          />
+                        )}
+                        {isCodexProvider && codexAuthMode === CODEX_AUTH_MODE_CHATGPT && chatgptCredentialMetadata.data && (
                           <ChatgptCredentialSummary credential={chatgptCredentialMetadata.data} />
                         )}
-                        {preset.providerKind === 'openai-compatible' && (
+                        {isCodexProvider && codexAuthMode === CODEX_AUTH_MODE_CHATGPT && (
                           <div className="flex flex-wrap items-center gap-2">
                             {chatgptLoginId
                               ? (
@@ -381,7 +475,7 @@ function PresetSetupForm({
                                 )}
                           </div>
                         )}
-                        {activeChatgptLogin && (
+                        {codexAuthMode === CODEX_AUTH_MODE_CHATGPT && activeChatgptLogin && (
                           <ChatgptDeviceCodeNotice login={activeChatgptLogin} />
                         )}
                       </div>

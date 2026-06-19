@@ -52,6 +52,19 @@ import { nativeIpc } from '~/lib/electron'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { ChatgptCredentialSummary } from './chatgpt-credential-summary'
+import { CodexAccountDiagnosticsPanel } from './codex-account-diagnostics-panel'
+import { CodexAuthModeToggle } from './codex-auth-mode-controls'
+import {
+  CODEX_AUTH_MODE_API_KEY,
+  CODEX_AUTH_MODE_BEDROCK_API_KEY,
+  CODEX_AUTH_MODE_CHATGPT,
+  CODEX_AUTH_MODE_PERSONAL_ACCESS_TOKEN,
+  codexAuthModeFromCredentialKind,
+  codexCredentialInputLabel,
+  codexCredentialPlaceholder,
+  codexSecretKindForAuthMode,
+  normalizeCodexAuthMode,
+} from './codex-auth-modes'
 import { CustomModelsEditor } from './custom-models-editor'
 import { ModelsPanel } from './models-panel'
 import {
@@ -65,15 +78,16 @@ import {
   updateProviderTargetCustomModels,
   updateProviderTargetModelVisibility,
 } from './provider-target-model-settings'
+import type { ChatgptCredentialLoginStart } from './use-chatgpt-credential-login'
 import {
-  type ChatgptCredentialLoginStart,
   useChatgptCredentialLoginActions,
   useChatgptCredentialLoginStatus,
 } from './use-chatgpt-credential-login'
-import { type CredentialMetadata, isChatgptCredentialMetadata, useCredentialMetadata } from './use-credential-metadata'
+import type { CredentialMetadata } from './use-credential-metadata'
+import { isChatgptCredentialMetadata, useCredentialMetadata } from './use-credential-metadata'
 
 type SaveState = 'idle' | 'pending' | 'saving' | 'saved' | 'error'
-type ProfileTextField = 'name' | 'apiKey' | 'baseUrl' | 'api'
+type ProfileTextField = 'name' | 'apiKey' | 'baseUrl' | 'api' | 'authMode' | 'bedrockRegion'
 
 interface ProfileDetailFormValues {
   name: string
@@ -81,6 +95,8 @@ interface ProfileDetailFormValues {
   baseUrl: string
   model: string
   api: string
+  authMode: string
+  bedrockRegion: string
   enabledModels: string[]
 }
 
@@ -182,6 +198,8 @@ function getProfileFormValues(profile: AgentProfile): ProfileDetailFormValues {
     baseUrl: config.baseUrl,
     model: config.model,
     api: config.api,
+    authMode: normalizeCodexAuthMode(config.authMode),
+    bedrockRegion: config.bedrock?.region ?? '',
     enabledModels: getInitialEnabledModels(config.enabledModels),
   }
 }
@@ -201,12 +219,25 @@ function buildProviderRequestBody(profile: AgentProfile) {
 function buildProfileConfig(
   values: ProfileDetailFormValues,
   currentConfig: Record<string, unknown>,
-  options: { useChatgptAuth?: boolean } = {},
+  options: { codexAuthMode?: string | null } = {},
 ): Record<string, unknown> {
-  const { enabledModels: _, ...rest } = currentConfig
+  const { enabledModels: _, authMode: _authMode, bedrock: _bedrock, ...rest } = currentConfig
+  if (options.codexAuthMode) {
+    const codexAuthMode = normalizeCodexAuthMode(options.codexAuthMode)
+    return {
+      ...rest,
+      authMode: codexAuthMode,
+      baseUrl: codexAuthMode === CODEX_AUTH_MODE_API_KEY ? values.baseUrl : '',
+      model: values.model || undefined,
+      api: values.api || undefined,
+      ...(codexAuthMode === CODEX_AUTH_MODE_BEDROCK_API_KEY
+        ? { bedrock: { region: values.bedrockRegion.trim() } }
+        : {}),
+    }
+  }
   return {
     ...rest,
-    baseUrl: options.useChatgptAuth ? '' : values.baseUrl,
+    baseUrl: values.baseUrl,
     model: values.model || undefined,
     api: values.api || undefined,
   }
@@ -219,6 +250,8 @@ function createProfileSignature(values: ProfileDetailFormValues): string {
     baseUrl: values.baseUrl,
     model: values.model,
     api: values.api,
+    authMode: values.authMode,
+    bedrockRegion: values.bedrockRegion,
     enabledModels: values.enabledModels,
   })
 }
@@ -257,6 +290,8 @@ export function ProfileDetailPanel({
   const baseUrl = useWatch({ control: form.control, name: 'baseUrl' }) ?? ''
   const model = useWatch({ control: form.control, name: 'model' }) ?? ''
   const api = useWatch({ control: form.control, name: 'api' }) ?? ''
+  const authMode = useWatch({ control: form.control, name: 'authMode' }) ?? CODEX_AUTH_MODE_API_KEY
+  const bedrockRegion = useWatch({ control: form.control, name: 'bedrockRegion' }) ?? ''
   const enabledModels
     = useWatch({ control: form.control, name: 'enabledModels' }) ?? EMPTY_ENABLED_MODELS
 
@@ -274,6 +309,8 @@ export function ProfileDetailPanel({
   const { startLogin, cancelLogin } = useChatgptCredentialLoginActions()
   const chatgptLoginStatus = useChatgptCredentialLoginStatus(chatgptLoginId)
   const credentialMetadata = useCredentialMetadata(profile.credentialRef)
+  const showCodexAccountDiagnostics = profile.providerKind === 'openai-compatible'
+    && normalizeCodexAuthMode(authMode) === CODEX_AUTH_MODE_CHATGPT
 
   useEffect(() => {
     latestProfileRef.current = profile
@@ -287,7 +324,10 @@ export function ProfileDetailPanel({
     if (login.state === 'completed' && login.credentialRef) {
       const config = ProfileConfigJsonSchema.parse(profile.configJson)
       config.baseUrl = ''
+      config.authMode = CODEX_AUTH_MODE_CHATGPT
       form.setValue('baseUrl', '', { shouldDirty: false })
+      form.setValue('apiKey', '', { shouldDirty: false })
+      form.setValue('authMode', CODEX_AUTH_MODE_CHATGPT, { shouldDirty: false })
       setChatgptLoginId(null)
       setActiveChatgptLogin(null)
       void putProfilesById({
@@ -411,6 +451,24 @@ export function ProfileDetailPanel({
   }, [form, profile, profileId])
 
   useEffect(() => {
+    if (profile.providerKind !== 'openai-compatible') {
+      return
+    }
+    const config = ProfileConfigJsonSchema.parse(profile.configJson)
+    if (config.authMode) {
+      return
+    }
+    const credentialAuthMode = codexAuthModeFromCredentialKind(credentialMetadata.data?.kind)
+    if (!credentialAuthMode) {
+      return
+    }
+    const currentValues = form.getValues()
+    const nextValues = { ...currentValues, authMode: credentialAuthMode }
+    form.setValue('authMode', credentialAuthMode, { shouldDirty: false })
+    savedSignatureRef.current = createProfileSignature(nextValues)
+  }, [credentialMetadata.data?.kind, form, profile.configJson, profile.providerKind])
+
+  useEffect(() => {
     if (!supportsModels) {
       dispatch({ type: 'models/loaded', models: [], cachedAt: null })
       return
@@ -476,17 +534,25 @@ export function ProfileDetailPanel({
       }
 
       let credentialRef = profile.credentialRef ?? null
-      if (currentValues.apiKey && supportsModels) {
+      const credentialValue = currentValues.apiKey.trim()
+      if (credentialValue && supportsModels) {
+        const codexAuthMode = profile.providerKind === 'openai-compatible'
+          ? normalizeCodexAuthMode(currentValues.authMode)
+          : CODEX_AUTH_MODE_API_KEY
         const { data: meta } = await postSecrets({
           body: {
-            kind: profile.providerKind,
+            kind: profile.providerKind === 'openai-compatible'
+              ? codexSecretKindForAuthMode(codexAuthMode, profile.providerKind)
+              : profile.providerKind,
             label: currentValues.name,
-            secret: currentValues.apiKey,
+            secret: credentialValue,
           },
         })
         credentialRef = SecretCreateResponseSchema.parse(meta).id
       }
-      const useChatgptAuth = !currentValues.apiKey && isChatgptCredentialMetadata(credentialMetadata.data)
+      const codexAuthMode = profile.providerKind === 'openai-compatible'
+        ? normalizeCodexAuthMode(currentValues.authMode)
+        : null
 
       await putProfilesById({
         path: { id: profile.id },
@@ -495,7 +561,7 @@ export function ProfileDetailPanel({
           providerKind: profile.providerKind,
           enabled: profile.enabled,
           config: supportsModels
-            ? buildProfileConfig(currentValues, ProfileConfigJsonSchema.parse(profile.configJson), { useChatgptAuth })
+            ? buildProfileConfig(currentValues, ProfileConfigJsonSchema.parse(profile.configJson), { codexAuthMode })
             : ProfileConfigJsonSchema.parse(profile.configJson),
           credentialRef,
         },
@@ -537,6 +603,8 @@ export function ProfileDetailPanel({
         baseUrl,
         model,
         api,
+        authMode,
+        bedrockRegion,
         enabledModels,
       })
 
@@ -610,7 +678,7 @@ export function ProfileDetailPanel({
         <ProfileGeneralSettings
           profile={profile}
           credentialMetadata={credentialMetadata.data ?? null}
-          values={{ name, apiKey, baseUrl, api }}
+          values={{ name, apiKey, baseUrl, api, authMode, bedrockRegion }}
           onTextFieldChange={setTextField}
           supportsModels={supportsModels}
           readOnly={false}
@@ -620,6 +688,10 @@ export function ProfileDetailPanel({
           onChatgptLogin={handleChatgptLogin}
           onCancelChatgptLogin={handleCancelChatgptLogin}
         />
+
+        {showCodexAccountDiagnostics && (
+          <CodexAccountDiagnosticsPanel providerTargetId={profile.id} />
+        )}
 
         {supportsModels && (
           <MemoizedProfileModelsSection
@@ -742,7 +814,11 @@ function ProfileGeneralSettings({
   onCancelChatgptLogin: () => void
 }) {
   const isUniversal = profile.providerKind === 'universal'
-  const isChatgptCredential = isChatgptCredentialMetadata(credentialMetadata)
+  const isCodexProvider = profile.providerKind === 'openai-compatible'
+  const codexAuthMode = isCodexProvider
+    ? normalizeCodexAuthMode(values.authMode)
+    : CODEX_AUTH_MODE_API_KEY
+  const endpointDisabled = readOnly || (isCodexProvider && codexAuthMode !== CODEX_AUTH_MODE_API_KEY)
 
   return (
     <>
@@ -764,7 +840,7 @@ function ProfileGeneralSettings({
               data-testid="provider-edit-baseurl"
               value={values.baseUrl}
               onChange={e => onTextFieldChange('baseUrl', e.target.value)}
-              disabled={readOnly}
+              disabled={endpointDisabled}
               className="h-9 w-56 text-[12.5px] font-mono"
               placeholder="https://api.example.com/v1"
             />
@@ -777,7 +853,7 @@ function ProfileGeneralSettings({
                 <Select
                   value={values.api || 'auto'}
                   onValueChange={v => onTextFieldChange('api', v === 'auto' ? '' : v)}
-                  disabled={readOnly}
+                  disabled={endpointDisabled}
                 >
                   <SelectTrigger className="h-9 w-56 text-[12.5px]">
                     <SelectValue />
@@ -839,8 +915,14 @@ function ProfileCredentialSettings({
   onChatgptLogin: () => void
   onCancelChatgptLogin: () => void
 }) {
+  const isCodexProvider = profile.providerKind === 'openai-compatible'
   const isChatgptCredential = isChatgptCredentialMetadata(credentialMetadata)
-  const description = isChatgptCredential
+  const codexAuthMode = isCodexProvider
+    ? normalizeCodexAuthMode(values.authMode)
+    : CODEX_AUTH_MODE_API_KEY
+  const showChatgptControls = isCodexProvider && codexAuthMode === CODEX_AUTH_MODE_CHATGPT
+  const showCredentialInput = !showChatgptControls
+  const description = showChatgptControls || isChatgptCredential
     ? 'ChatGPT account auth for Codex.'
     : profile.credentialRef
       ? 'A credential is already stored. Leave empty to keep it.'
@@ -849,10 +931,18 @@ function ProfileCredentialSettings({
   return (
     <section className="py-3">
       <div className="flex min-w-0 items-center gap-2">
-        <span className="text-[13px] font-medium text-foreground">Credential</span>
-        {isChatgptCredential && (
+        <span className="text-[13px] font-medium text-foreground">
+          {isCodexProvider ? codexCredentialInputLabel(codexAuthMode) : 'Credential'}
+        </span>
+        {isCodexProvider && (
           <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-medium">
-            ChatGPT
+            {codexAuthMode === CODEX_AUTH_MODE_CHATGPT
+              ? 'ChatGPT'
+              : codexAuthMode === CODEX_AUTH_MODE_PERSONAL_ACCESS_TOKEN
+                ? 'PAT'
+                : codexAuthMode === CODEX_AUTH_MODE_BEDROCK_API_KEY
+                  ? 'Bedrock'
+                  : 'API Key'}
           </Badge>
         )}
       </div>
@@ -862,25 +952,50 @@ function ProfileCredentialSettings({
         className={cn(
           'mt-2.5 flex w-full flex-col gap-2',
           {
-            'max-w-[28rem]': !isChatgptCredential,
+            'max-w-[28rem]': !showChatgptControls,
           },
         )}
       >
-        {isChatgptCredential && credentialMetadata && (
+        {isCodexProvider && (
+          <CodexAuthModeToggle
+            value={codexAuthMode}
+            disabled={readOnly}
+            onChange={(nextAuthMode) => {
+              onTextFieldChange('authMode', nextAuthMode)
+              if (nextAuthMode === CODEX_AUTH_MODE_CHATGPT) {
+                onTextFieldChange('apiKey', '')
+                onTextFieldChange('baseUrl', '')
+              }
+            }}
+          />
+        )}
+        {showChatgptControls && credentialMetadata && isChatgptCredential && (
           <ChatgptCredentialSummary credential={credentialMetadata} />
         )}
-        {!isChatgptCredential && (
+        {showCredentialInput && (
           <Input
             data-testid="provider-edit-apikey"
             type="password"
             value={values.apiKey}
             onChange={e => onTextFieldChange('apiKey', e.target.value)}
             disabled={readOnly}
-            placeholder={profile.credentialRef ? 'Configured · type to replace' : 'sk-...'}
+            placeholder={isCodexProvider
+              ? codexCredentialPlaceholder(codexAuthMode, !!profile.credentialRef)
+              : codexCredentialPlaceholder(CODEX_AUTH_MODE_API_KEY, !!profile.credentialRef)}
             className="h-9 text-[12.5px] font-mono"
           />
         )}
-        {profile.providerKind === 'openai-compatible' && (
+        {isCodexProvider && codexAuthMode === CODEX_AUTH_MODE_BEDROCK_API_KEY && (
+          <Input
+            data-testid="provider-edit-bedrock-region"
+            value={values.bedrockRegion}
+            onChange={e => onTextFieldChange('bedrockRegion', e.target.value)}
+            disabled={readOnly}
+            placeholder="us-east-1"
+            className="h-9 text-[12.5px] font-mono"
+          />
+        )}
+        {showChatgptControls && (
           <div className="flex flex-wrap items-center gap-2">
             {chatgptLoginPending
               ? (
@@ -909,7 +1024,7 @@ function ProfileCredentialSettings({
                 )}
           </div>
         )}
-        {activeChatgptLogin && (
+        {showChatgptControls && activeChatgptLogin && (
           <ChatgptDeviceCodeNotice login={activeChatgptLogin} />
         )}
       </div>
