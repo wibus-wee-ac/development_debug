@@ -17,12 +17,13 @@ The deeper goal is to remove the historical debt left by the 2026-06-13 event-so
 - [x] (2026-06-19 16:44 +0800) Confirmed `finalizeRunSnapshot()` writes `backend_run_snapshots` without a `status='running'` fence, while the projector's `projectRunTerminal()` does fence on `status='running'`.
 - [x] (2026-06-19 16:44 +0800) Confirmed existing recovery tests cover explicit recovery and read-path non-repair, but not late active-run snapshot writes after a terminal fact exists, nor message-vs-run drift reconciliation.
 - [x] (2026-06-19 16:44 +0800) Wrote this cleanup ExecPlan.
-- [ ] Add a centralized terminal fence helper and use it from streaming snapshot writes, terminal finalization, pending delta flush, and durable snapshot finalization.
-- [ ] Split the streaming message write into a fenced `persistStreamingMessageSnapshot(activeRun)`; keep `persistMessageSnapshot` fence-free with no `runId` parameter.
-- [ ] Fence `finalizeRunSnapshot()` on `status='running'` and record an observability event on conflict instead of overwriting a terminal status.
-- [ ] Add deterministic drift reconciliation so terminal fact plus streaming message rows are reprojected from `session_events`.
-- [ ] Add regression tests for stale active runs, late snapshot timers, late stream finalization, and historical drift recovery.
-- [ ] Update Chat Runtime documentation.
+- [x] (2026-06-19 18:43 +0800) Added `readRunWriteFence(runId)` and routed streaming snapshot writes, terminal finalization, and pending delta flush through it.
+- [x] (2026-06-19 18:43 +0800) Split active streaming message persistence into `persistStreamingMessageSnapshot(activeRun)` and left `persistMessageSnapshot()` fence-free with no `runId`.
+- [x] (2026-06-19 18:43 +0800) Fenced `finalizeRunSnapshot()` on `status='running'` and added `CHAT_LATE_RUN_FINALIZATION_IGNORED` observability for late terminal conflicts.
+- [x] (2026-06-19 18:43 +0800) Added deterministic recovery for terminal projection drift, including terminal fact plus streaming message rows and snapshot/run status disagreement.
+- [x] (2026-06-19 18:43 +0800) Added regression coverage for fact-based drift repair, stale active-run snapshot no-op behavior, stream closure on stale release, and idempotent recovery.
+- [x] (2026-06-19 18:43 +0800) Updated Chat Runtime documentation for terminal-fenced streaming snapshots and recovery drift repair.
+- [x] (2026-06-19 18:43 +0800) Verified the implementation with focused tests, server typecheck, and recovery against a copied desktop database.
 
 ## Surprises & Discoveries
 
@@ -64,6 +65,9 @@ The deeper goal is to remove the historical debt left by the 2026-06-13 event-so
 - Observation: Existing recovery tests do not pin the newly observed failure.
   Evidence: `apps/server/tests/chat-runtime-recovery.test.ts` verifies explicit recovery and read-path non-repair. `apps/server/tests/chat-runtime.test.ts` has a stale-active-run test that expects the message to remain streaming until explicit recovery, but it does not assert that a late snapshot/finalizer cannot re-stream a terminal message after the terminal fact exists.
 
+- Observation: Releasing a stale active run must also close any live SSE subscriber.
+  Evidence: The first focused runtime test timed out after the fenced snapshot path released a stale active run by deleting subscribers without publishing a terminal chunk. The final implementation publishes a terminal close chunk derived from the persisted fence before releasing resources; `pnpm --filter @cradle/server exec vitest run tests/chat-runtime.test.ts --testNamePattern "active streaming snapshots|stale active run|orphaned persisted streaming"` then passed.
+
 ## Decision Log
 
 - Decision: Treat this as a fencing cleanup, not a new read-model introduction.
@@ -86,9 +90,30 @@ The deeper goal is to remove the historical debt left by the 2026-06-13 event-so
   Rationale: Durable run snapshots are forensic records. They are useful evidence that a stale finalizer fired, but they must not decide user-visible session state.
   Date/Author: 2026-06-19 / Codex
 
+- Decision: Publish a terminal close chunk before releasing stale active runs.
+  Rationale: The database fence must prevent durable writes, but live SSE readers still need a terminal signal so request streams close. The close chunk is derived from the persisted fence and is sent with `terminal=true`, so it does not project another message snapshot or append terminal facts.
+  Date/Author: 2026-06-19 / Codex
+
 ## Outcomes & Retrospective
 
-Not implemented yet. This plan records the intended fencing refactor and the local evidence motivating it. The expected end state is that the two reported sessions can be repaired by deterministic recovery, and that future stale active runs cannot write `messages.status = streaming` after a terminal fact exists, nor flip a terminal `backend_run_snapshots` status to a different terminal status.
+Implemented. Chat Runtime now fences live streaming writes and terminal finalization through the persisted `backend_runs` row, leaves event-derived terminal projection as the only terminal fact writer, fences durable run snapshot finalization on `status='running'`, and repairs historical terminal projection drift from `session_events`. The copied desktop database recovered the two known streaming-message/failed-run rows and all snapshot/run status drift, and a second recovery run reported zero changes.
+
+Validation completed:
+
+        pnpm --filter @cradle/server exec vitest run tests/chat-runtime-recovery.test.ts
+        # 1 test file passed, 5 tests passed
+
+        pnpm --filter @cradle/server exec vitest run tests/chat-runtime.test.ts --testNamePattern "active streaming snapshots|stale active run|orphaned persisted streaming"
+        # 1 test file passed, 2 tests passed, 50 skipped
+
+        pnpm --filter @cradle/server exec tsc --noEmit --pretty false
+        # passed
+
+        CRADLE_DATA_DIR=/tmp/cradle-recovery-copy.vhYndL pnpm --filter @cradle/server exec tsx -e "... recoverChatRuntimeProjections ..."
+        # first run: {"interruptedRunsFinalized":2,"terminalFactsProjected":0,"terminalProjectionDriftsRepaired":28}
+        # second run: {"interruptedRunsFinalized":0,"terminalFactsProjected":0,"terminalProjectionDriftsRepaired":0}
+
+After the first copied-DB recovery, both acceptance queries for terminal-run/streaming-message drift and snapshot/run status drift returned no rows. The real desktop database was not modified during development.
 
 ## Context and Orientation
 
@@ -259,7 +284,7 @@ The intended replacement shape is:
           -> flushFinalMessageProjection(activeRun)
           -> persistStreamingMessageSnapshot(activeRun)
                -> readRunWriteFence(activeRun.runId)
-               -> if terminal/missing: releaseActiveRun(activeRun), no write
+               -> if terminal/missing: publish a terminal close chunk, releaseActiveRun(activeRun), no durable write
                -> else: write messages with status='streaming'
 
 `persistMessageSnapshot()` keeps its current signature (no `runId`) and is now used only by the event-derived terminal projection and the non-streaming record mutation, not by the streaming path.
@@ -312,3 +337,5 @@ Recovery result grows a drift count:
 If this interface is exposed outside tests, update all call sites in `apps/server/src/modules/chat-runtime/service.ts`, `apps/server/src/app.ts`, `apps/server/src/index.ts`, and tests. This is a breaking internal API change and should not carry old fallback fields.
 
 Revision note, 2026-06-19 16:44 +0800: Initial plan created after investigating two sessions with terminal run facts but streaming message projections. The plan originally proposed a dedicated live-snapshot table; that was rejected after confirming renderer refresh hydrates from the in-memory SSE replay buffer rather than the `messages` streaming row, making the table's only benefit (cross-process-restart continuity) already covered by interrupted-run recovery. The revised plan fences the existing streaming and diagnostic writers in place and adds fact-based drift recovery.
+
+Revision note, 2026-06-19 18:43 +0800: Implementation completed. The plan now records the terminal fence helper, fenced streaming writer, durable snapshot finalizer fence, fact-based drift repair, stale active-run SSE close behavior, focused test results, server typecheck, and copied desktop database recovery evidence.
