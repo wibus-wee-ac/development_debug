@@ -82,6 +82,11 @@ export async function setAppPreferences(preferences: Static<typeof PreferencesMo
   const normalized = AppPreferencesJsonSchema.parse(JSON.stringify(preferences))
   await mkdir(dirname(filePath), { recursive: true })
   await writeFile(filePath, JSON.stringify(normalized, null, 2), 'utf8')
+  const { setCodexAppServerLogInsertBlocker } = await import('../chat-runtime-providers/codex/app-server/log-insert-blocker')
+  const result = setCodexAppServerLogInsertBlocker(normalized.featureFlags.blockCodexAppServerLogInserts)
+  if (result.status === 'failed') {
+    console.warn('[preferences] Failed to apply Codex app-server log insert blocker feature flag:', result)
+  }
 }
 
 export function getChatPreferencesSync(): Static<typeof PreferencesModel['chatPreferences']> {

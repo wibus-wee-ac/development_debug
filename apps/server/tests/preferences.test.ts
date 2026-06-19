@@ -1,7 +1,8 @@
-import { existsSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import Database from 'better-sqlite3'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createServerApp } from '../src/app'
@@ -35,6 +36,7 @@ describe('preferences capability', () => {
           multiWorkspacePoc: false,
           localAuthForDangerousActions: false,
           continueBlockedCodexGoals: false,
+          blockCodexAppServerLogInserts: false,
         },
       })
 
@@ -59,6 +61,7 @@ describe('preferences capability', () => {
           multiWorkspacePoc: true,
           localAuthForDangerousActions: true,
           continueBlockedCodexGoals: false,
+          blockCodexAppServerLogInserts: false,
         },
       })
 
@@ -69,8 +72,75 @@ describe('preferences capability', () => {
           multiWorkspacePoc: true,
           localAuthForDangerousActions: true,
           continueBlockedCodexGoals: false,
+          blockCodexAppServerLogInserts: false,
         },
       })
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
+  it('applies and removes the Codex app-server log insert blocker trigger from the app feature flag', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      const logsPath = join(dataDir, 'runtimes', 'codex-app-server', 'logs_2.sqlite')
+      mkdirSync(join(dataDir, 'runtimes', 'codex-app-server'), { recursive: true })
+      const setupDb = new Database(logsPath)
+      setupDb.exec('CREATE TABLE logs (id INTEGER PRIMARY KEY, message TEXT)')
+      setupDb.close()
+
+      app = await createServerApp()
+      const enableRes = await app.handle(new Request('http://localhost/preferences/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          featureFlags: {
+            multiWorkspacePoc: false,
+            blockCodexAppServerLogInserts: true,
+          },
+        }),
+      }))
+      expect(enableRes.status).toBe(200)
+
+      const enabledDb = new Database(logsPath)
+      enabledDb.prepare('INSERT INTO logs (message) VALUES (?)').run('blocked')
+      expect(enabledDb.prepare('SELECT count(*) AS count FROM logs').get()).toEqual({ count: 0 })
+      expect(enabledDb.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'block_log_inserts'",
+      ).get()).toEqual({ name: 'block_log_inserts' })
+      enabledDb.close()
+
+      const disableRes = await app.handle(new Request('http://localhost/preferences/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          featureFlags: {
+            multiWorkspacePoc: false,
+            blockCodexAppServerLogInserts: false,
+          },
+        }),
+      }))
+      expect(disableRes.status).toBe(200)
+
+      const disabledDb = new Database(logsPath)
+      disabledDb.prepare('INSERT INTO logs (message) VALUES (?)').run('allowed')
+      expect(disabledDb.prepare('SELECT count(*) AS count FROM logs').get()).toEqual({ count: 1 })
+      expect(disabledDb.prepare(
+        "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'block_log_inserts'",
+      ).get()).toBeUndefined()
+      disabledDb.close()
     }
     finally {
       shutdownInfra()

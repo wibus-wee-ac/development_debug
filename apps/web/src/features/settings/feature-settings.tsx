@@ -77,6 +77,18 @@ export function FeatureSettings() {
                 aria-label={t('features.continueBlockedCodexGoals.label' as SettingsKey)}
               />
             </SettingsRow>
+            <SettingsRow
+              label={t('features.blockCodexAppServerLogInserts.label' as SettingsKey)}
+              description={t('features.blockCodexAppServerLogInserts.description' as SettingsKey)}
+            >
+              <Switch
+                size="sm"
+                checked={prefs.featureFlags.blockCodexAppServerLogInserts}
+                disabled={isSaving}
+                onCheckedChange={checked => saveFeatureFlags({ blockCodexAppServerLogInserts: checked })}
+                aria-label={t('features.blockCodexAppServerLogInserts.label' as SettingsKey)}
+              />
+            </SettingsRow>
           </SettingsGroup>
         )}
     </SettingsPage>

@@ -184,6 +184,8 @@ export default {
   'chat.archive.searchPlaceholder': 'Search archived sessions...',
   'chat.archive.untitled': 'Untitled session',
   'features.loading': 'Loading feature flags...',
+  'features.blockCodexAppServerLogInserts.description': 'Install a trigger in Cradle\'s Codex app-server logs database that ignores new log rows and keeps the WAL from growing during noisy TRACE or DEBUG writes.',
+  'features.blockCodexAppServerLogInserts.label': 'Block Codex app-server log inserts',
   'features.continueBlockedCodexGoals.description': 'Resume Codex Goals that Codex marked blocked through Cradle\'s internal continuation path.',
   'features.continueBlockedCodexGoals.label': 'Continue blocked Codex Goals',
   'features.localAuthForDangerousActions.description': 'Ask the desktop app for system verification before deleting agents, issues, or workspaces.',

@@ -1,12 +1,13 @@
 import type { ChildProcessWithoutNullStreams } from 'node:child_process'
 import { spawn } from 'node:child_process'
-import { mkdirSync } from 'node:fs'
-import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
 import { createInterface } from 'node:readline'
 
 import type { ClientInfo } from '../app-server-protocol/ClientInfo'
+import { syncCodexAppServerLogInsertBlockerFromFeatureFlag } from './log-insert-blocker'
+import { prepareCodexAppServerHome } from './runtime-home'
 import { isCodexAppServerInteractiveServerRequest } from './server-request-methods'
+
+export { resolveCodexAppServerHome } from './runtime-home'
 
 type RequestId = number
 type CodexUserAgentMode = 'cradle' | 'native'
@@ -91,6 +92,7 @@ export class CodexAppServerClient {
     this.codexPath = options.codexPath ?? resolveCodexAppServerPath(env)
     this.userAgentMode = options.userAgentMode ?? 'cradle'
     env.CODEX_HOME = prepareCodexAppServerHome()
+    syncCodexAppServerLogInsertBlockerFromFeatureFlag()
     if (options.apiKey) {
       env.CRADLE_CODEX_API_KEY = options.apiKey
       env.CODEX_API_KEY = options.apiKey
@@ -395,30 +397,6 @@ export function readCodexNativeClientVersion(codexPath = 'codex'): Promise<strin
 function readCodexVersionFromCliOutput(output: string): string {
   return output.match(/\b\d+\.\d+\.\d+(?:[-+][0-9A-Z.-]+)?\b/i)?.[0]
     ?? CODEX_NATIVE_CLIENT_INFO_FALLBACK_VERSION
-}
-
-export function resolveCodexAppServerHome(input: {
-  env?: NodeJS.ProcessEnv
-  homeDir?: string
-} = {}): string {
-  const env = input.env ?? process.env
-  const dataDir = env.CRADLE_DATA_DIR?.trim()
-  if (dataDir) {
-    return join(dataDir, 'runtimes', 'codex-app-server')
-  }
-
-  const dbPath = env.CRADLE_DB_PATH?.trim()
-  if (dbPath) {
-    return join(dirname(dbPath), 'runtimes', 'codex-app-server')
-  }
-
-  return join(input.homeDir ?? homedir(), '.cradle', 'runtimes', 'codex-app-server')
-}
-
-function prepareCodexAppServerHome(): string {
-  const resolvedHome = resolveCodexAppServerHome()
-  mkdirSync(resolvedHome, { recursive: true })
-  return resolvedHome
 }
 
 function serializeConfigOverrides(config: Record<string, unknown>, prefix = ''): string[] {

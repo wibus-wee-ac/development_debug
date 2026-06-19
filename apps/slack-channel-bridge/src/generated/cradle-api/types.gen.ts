@@ -52,6 +52,9 @@ export type GetPreferencesAppResponses = {
     200: {
         featureFlags: {
             multiWorkspacePoc: boolean;
+            localAuthForDangerousActions?: boolean;
+            continueBlockedCodexGoals?: boolean;
+            blockCodexAppServerLogInserts?: boolean;
         };
     };
 };
@@ -62,6 +65,9 @@ export type PutPreferencesAppData = {
     body: {
         featureFlags: {
             multiWorkspacePoc: boolean;
+            localAuthForDangerousActions?: boolean;
+            continueBlockedCodexGoals?: boolean;
+            blockCodexAppServerLogInserts?: boolean;
         };
     };
     path?: never;

@@ -161,6 +161,8 @@
   "externalIssues.toast.updateFailed": "Update failed",
   "externalIssues.workspace.label": "Projecting into",
   "externalIssues.workspace.placeholder": "Select workspace",
+  "features.blockCodexAppServerLogInserts.description": "Install a trigger in Cradle's Codex app-server logs database that ignores new log rows and keeps the WAL from growing during noisy TRACE or DEBUG writes.",
+  "features.blockCodexAppServerLogInserts.label": "Block Codex app-server log inserts",
   "features.continueBlockedCodexGoals.description": "Resume Codex Goals that Codex marked blocked through Cradle's internal continuation path.",
   "features.continueBlockedCodexGoals.label": "Continue blocked Codex Goals",
   "features.loading": "Loading feature flags...",

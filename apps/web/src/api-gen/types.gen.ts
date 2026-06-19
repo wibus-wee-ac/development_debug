@@ -54,6 +54,7 @@ export type GetPreferencesAppResponses = {
             multiWorkspacePoc: boolean;
             localAuthForDangerousActions?: boolean;
             continueBlockedCodexGoals?: boolean;
+            blockCodexAppServerLogInserts?: boolean;
         };
     };
 };
@@ -66,6 +67,7 @@ export type PutPreferencesAppData = {
             multiWorkspacePoc: boolean;
             localAuthForDangerousActions?: boolean;
             continueBlockedCodexGoals?: boolean;
+            blockCodexAppServerLogInserts?: boolean;
         };
     };
     path?: never;
