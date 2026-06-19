@@ -8,16 +8,14 @@ import tsconfigPaths from 'vite-tsconfig-paths'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const require = createRequire(import.meta.url)
-const packageJson = require('./package.json') as {
-  dependencies?: Record<string, string>
+const desktopRuntimeExternals = require('./desktop-runtime.externals.json') as {
+  packages?: string[]
 }
 
 const NODE_BUILT_IN_MODULES = new Set(builtinModules
   .filter(moduleName => !moduleName.startsWith('_'))
   .flatMap(moduleName => [moduleName, `node:${moduleName}`]))
-const SERVER_EXTERNAL_DEPENDENCIES = Object.entries(packageJson.dependencies ?? {})
-  .filter(([, version]) => !version.startsWith('workspace:'))
-  .map(([packageName]) => packageName)
+const SERVER_EXTERNAL_DEPENDENCIES = desktopRuntimeExternals.packages ?? []
 
 function isExternalDependency(id: string): boolean {
   return SERVER_EXTERNAL_DEPENDENCIES.some(packageName => (
