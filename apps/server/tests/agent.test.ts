@@ -39,14 +39,15 @@ function writeCcSwitchOnboardingDatabase(path: string): void {
         app_type TEXT NOT NULL,
         name TEXT NOT NULL,
         settings_config TEXT NOT NULL,
+        icon TEXT,
         meta TEXT NOT NULL DEFAULT '{}',
         is_current BOOLEAN NOT NULL DEFAULT 0,
         PRIMARY KEY (id, app_type)
       );
     `)
     sqlite.prepare(`
-      INSERT INTO providers (id, app_type, name, settings_config, meta, is_current)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO providers (id, app_type, name, settings_config, icon, meta, is_current)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(
       'claude-current',
       'claude',
@@ -61,12 +62,13 @@ function writeCcSwitchOnboardingDatabase(path: string): void {
           ANTHROPIC_DEFAULT_OPUS_MODEL: 'claude-cc-switch-opus',
         },
       }),
+      'huoshan',
       JSON.stringify({ apiFormat: 'anthropic' }),
       1,
     )
     sqlite.prepare(`
-      INSERT INTO providers (id, app_type, name, settings_config, meta, is_current)
-      VALUES (?, ?, ?, ?, ?, ?)
+      INSERT INTO providers (id, app_type, name, settings_config, icon, meta, is_current)
+      VALUES (?, ?, ?, ?, ?, ?, ?)
     `).run(
       'codex-current',
       'codex',
@@ -88,6 +90,7 @@ function writeCcSwitchOnboardingDatabase(path: string): void {
           '',
         ].join('\n'),
       }),
+      null,
       JSON.stringify({}),
       1,
     )
@@ -501,6 +504,109 @@ describe('agent identity capability', () => {
     }
   })
 
+  it('keeps Claude and Codex CLI TUI candidates when provider config exists', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const homeDir = makeTempDir('cradle-local-agent-cli-overlap-home-')
+    const claudeDir = join(homeDir, '.claude')
+    const codexDir = join(homeDir, '.codex')
+    const binDir = join(homeDir, 'bin')
+    const previousEnv = new Map<string, string | undefined>()
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousHome = process.env.HOME
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.HOME = homeDir
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      mkdirSync(claudeDir, { recursive: true })
+      mkdirSync(codexDir, { recursive: true })
+      mkdirSync(binDir, { recursive: true })
+      const claudePath = createExecutable(binDir, 'claude')
+      const codexPath = createExecutable(binDir, 'codex')
+      const claudeSettingsPath = join(claudeDir, 'settings.json')
+      const claudeLocalSettingsPath = join(claudeDir, 'settings.local.json')
+      const codexConfigPath = join(codexDir, 'config.toml')
+      const codexAuthPath = join(codexDir, 'auth.json')
+
+      writeFileSync(claudeSettingsPath, JSON.stringify({
+        env: {
+          ANTHROPIC_MODEL: 'claude-overlap-model',
+        },
+      }))
+      writeFileSync(codexConfigPath, [
+        'model = "gpt-overlap"',
+        '',
+      ].join('\n'))
+
+      setEnv('CRADLE_LOCAL_AGENT_CONFIG_CLAUDE_DIR', claudeDir, previousEnv)
+      setEnv('CRADLE_LOCAL_AGENT_CONFIG_CLAUDE_SETTINGS_PATH', claudeSettingsPath, previousEnv)
+      setEnv('CRADLE_LOCAL_AGENT_CONFIG_CLAUDE_LOCAL_SETTINGS_PATH', claudeLocalSettingsPath, previousEnv)
+      setEnv('CRADLE_LOCAL_AGENT_CONFIG_CODEX_DIR', codexDir, previousEnv)
+      setEnv('CRADLE_LOCAL_AGENT_CONFIG_CODEX_CONFIG_PATH', codexConfigPath, previousEnv)
+      setEnv('CRADLE_LOCAL_AGENT_CONFIG_CODEX_AUTH_PATH', codexAuthPath, previousEnv)
+      setEnv('CRADLE_LOCAL_AGENT_CONFIG_INCLUDE_PROCESS_ENV', 'false', previousEnv)
+      setEnv('PATH', binDir, previousEnv)
+
+      app = await createServerApp()
+      const previewRes = await app.handle(new Request('http://localhost/agents/import/local-config/preview', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ includeProcessEnv: false }),
+      }))
+      expect(previewRes.status).toBe(200)
+      const preview = await previewRes.json()
+
+      expect(preview.candidates).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          app: 'claude',
+          externalRecordId: 'claude:local-current',
+          runtimeKind: 'claude-agent',
+          agentName: 'Local Claude',
+        }),
+        expect.objectContaining({
+          app: 'claude',
+          externalRecordId: 'claude:local-command',
+          runtimeKind: 'cli-tui',
+          agentName: 'Local Claude CLI',
+          executable: claudePath,
+          importable: true,
+        }),
+        expect.objectContaining({
+          app: 'codex',
+          externalRecordId: 'codex:local-current',
+          runtimeKind: 'codex',
+          agentName: 'Local Codex',
+        }),
+        expect.objectContaining({
+          app: 'codex',
+          externalRecordId: 'codex:local-command',
+          runtimeKind: 'cli-tui',
+          agentName: 'Local Codex CLI',
+          executable: codexPath,
+          importable: true,
+        }),
+      ]))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(homeDir, { recursive: true, force: true })
+      restoreEnv(previousEnv)
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousHome === undefined) {
+        delete process.env.HOME
+      }
+      else {
+        process.env.HOME = previousHome
+      }
+    }
+  })
+
   it('imports local CLI command agents with the detected executable path', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const homeDir = makeTempDir('cradle-local-cli-home-')
@@ -514,6 +620,9 @@ describe('agent identity capability', () => {
 
     try {
       mkdirSync(binDir, { recursive: true })
+      const claudePath = createExecutable(binDir, 'claude')
+      const codexPath = createExecutable(binDir, 'codex')
+      const piPath = createExecutable(binDir, 'pi')
       const kimiPath = createExecutable(binDir, 'kimi')
 
       setEnv('CRADLE_LOCAL_AGENT_CONFIG_INCLUDE_PROCESS_ENV', 'false', previousEnv)
@@ -529,11 +638,35 @@ describe('agent identity capability', () => {
       const imported = await importRes.json()
 
       expect(imported).toEqual(expect.objectContaining({
-        created: 1,
+        created: 4,
         existing: 0,
         skipped: 0,
       }))
-      expect(imported.preview.candidates).toEqual([
+      expect(imported.preview.candidates).toHaveLength(4)
+      expect(imported.preview.candidates).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          app: 'claude',
+          externalRecordId: 'claude:local-command',
+          runtimeKind: 'cli-tui',
+          agentName: 'Local Claude CLI',
+          executable: claudePath,
+          importable: true,
+        }),
+        expect.objectContaining({
+          app: 'codex',
+          externalRecordId: 'codex:local-command',
+          runtimeKind: 'cli-tui',
+          agentName: 'Local Codex CLI',
+          executable: codexPath,
+          importable: true,
+        }),
+        expect.objectContaining({
+          app: 'pi',
+          externalRecordId: 'pi:local-command',
+          runtimeKind: 'cli-tui',
+          executable: piPath,
+          importable: true,
+        }),
         expect.objectContaining({
           app: 'kimi',
           externalRecordId: 'kimi:local-command',
@@ -541,8 +674,41 @@ describe('agent identity capability', () => {
           executable: kimiPath,
           importable: true,
         }),
-      ])
-      expect(imported.agents).toEqual([
+      ]))
+      expect(imported.agents).toEqual(expect.arrayContaining([
+        expect.objectContaining({
+          app: 'claude',
+          externalRecordId: 'claude:local-command',
+          runtimeKind: 'cli-tui',
+          status: 'created',
+          agent: expect.objectContaining({
+            name: 'Local Claude CLI',
+            runtimeKind: 'cli-tui',
+            providerTargetId: null,
+          }),
+        }),
+        expect.objectContaining({
+          app: 'codex',
+          externalRecordId: 'codex:local-command',
+          runtimeKind: 'cli-tui',
+          status: 'created',
+          agent: expect.objectContaining({
+            name: 'Local Codex CLI',
+            runtimeKind: 'cli-tui',
+            providerTargetId: null,
+          }),
+        }),
+        expect.objectContaining({
+          app: 'pi',
+          externalRecordId: 'pi:local-command',
+          runtimeKind: 'cli-tui',
+          status: 'created',
+          agent: expect.objectContaining({
+            name: 'Local Pi',
+            runtimeKind: 'cli-tui',
+            providerTargetId: null,
+          }),
+        }),
         expect.objectContaining({
           app: 'kimi',
           externalRecordId: 'kimi:local-command',
@@ -554,8 +720,9 @@ describe('agent identity capability', () => {
             providerTargetId: null,
           }),
         }),
-      ])
-      expect(JSON.parse(imported.agents[0].agent.configJson)).toEqual(expect.objectContaining({
+      ]))
+      const kimiImport = imported.agents.find((entry: { app: string }) => entry.app === 'kimi')
+      expect(JSON.parse(kimiImport.agent.configJson)).toEqual(expect.objectContaining({
         cliTui: {
           executable: kimiPath,
           args: [],
@@ -687,6 +854,8 @@ describe('agent identity capability', () => {
       expect(claudeCandidate).toEqual(expect.objectContaining({
         importable: true,
         providerTargetId: expect.any(String),
+        iconSlug: 'volcengine',
+        avatarUrl: null,
       }))
       const recordsRes = await app.handle(new Request('http://localhost/external-provider-sources/records'))
       expect(recordsRes.status).toBe(200)

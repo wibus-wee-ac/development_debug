@@ -629,9 +629,7 @@ export function readLocalAgentConfigExternalProviderSnapshot(
   const providers = [
     claudeRecord(claude),
     codexRecord(codex),
-    ...cliRecords.filter(record =>
-      (record.app !== 'claude' && record.app !== 'codex')
-      || !providersHaveAppConfig(record.app, claude, codex)),
+    ...cliRecords,
   ]
     .filter((record): record is ExternalProviderRecord => Boolean(record))
   const warnings = [
@@ -656,20 +654,6 @@ export function readLocalAgentConfigExternalProviderSnapshot(
     inventory: {},
     warnings,
   }
-}
-
-function providersHaveAppConfig(
-  app: string,
-  claude: ClaudeConfigReadResult,
-  codex: CodexConfigReadResult,
-): boolean {
-  if (app === 'claude') {
-    return Boolean(claudeRecord(claude))
-  }
-  if (app === 'codex') {
-    return Boolean(codexRecord(codex))
-  }
-  return false
 }
 
 export async function readLocalAgentConfigExternalProviderSnapshotFromContext(

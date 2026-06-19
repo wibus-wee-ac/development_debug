@@ -191,6 +191,9 @@ const CURRENT_PROVIDER_KEYS: Record<string, keyof LocalSettings> = {
 }
 
 const SUPPORTED_APPS = new Set(['claude', 'codex', 'gemini'])
+const ICON_SLUG_ALIASES: Record<string, string> = {
+  huoshan: 'volcengine',
+}
 
 function textHash(value: unknown): string {
   return createHash('sha256').update(JSON.stringify(value)).digest('hex')
@@ -208,6 +211,28 @@ function optionalExternalString(value: unknown): string | undefined {
   if (typeof value !== 'string') { return undefined }
   const trimmed = value.trim()
   return trimmed.length > 0 ? trimmed : undefined
+}
+
+function isAbsoluteIconUrl(value: string | undefined): boolean {
+  if (!value) { return false }
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'data:'
+  }
+  catch {
+    return false
+  }
+}
+
+function providerIconUrl(provider: CcSwitchProviderRow): string | undefined {
+  const icon = optionalExternalString(provider.icon)
+  return isAbsoluteIconUrl(icon) ? icon : undefined
+}
+
+function providerIconSlugFromIcon(provider: CcSwitchProviderRow): string | undefined {
+  const icon = optionalExternalString(provider.icon)
+  if (!icon || isAbsoluteIconUrl(icon)) { return undefined }
+  return ICON_SLUG_ALIASES[icon] ?? icon
 }
 
 function compactInventory(inventory: CcSwitchSnapshotReadResult['inventory']): CcSwitchSnapshotReadResult['inventory'] {
@@ -460,7 +485,7 @@ function metadataBase(provider: CcSwitchProviderRow): JsonObject {
     health: provider.health,
     inFailoverQueue: provider.inFailoverQueue,
     iconSlug: providerIconSlug(provider),
-    iconUrl: optionalExternalString(provider.icon),
+    iconUrl: providerIconUrl(provider),
     sourceUpdatedAt: provider.createdAt ? new Date(provider.createdAt).toISOString() : undefined,
     rawFingerprintHint: textHash({
       id: provider.id,
@@ -474,6 +499,8 @@ function metadataBase(provider: CcSwitchProviderRow): JsonObject {
 }
 
 function providerIconSlug(provider: CcSwitchProviderRow): string | undefined {
+  const configuredIconSlug = providerIconSlugFromIcon(provider)
+  if (configuredIconSlug) { return configuredIconSlug }
   if (provider.appType === 'claude') { return 'claude' }
   if (provider.appType === 'codex') { return 'codex' }
   if (provider.appType === 'gemini') { return 'gemini' }

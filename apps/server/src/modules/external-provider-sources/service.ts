@@ -207,13 +207,26 @@ function metadataString(metadata: Record<string, unknown>, key: string): string 
   return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
 }
 
+function isAbsoluteIconUrl(value: string): boolean {
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'data:'
+  }
+  catch {
+    return false
+  }
+}
+
 function iconSlugFromMetadata(metadata: Record<string, unknown>): string | null {
   const iconSlug = metadataString(metadata, 'iconSlug')
   if (iconSlug) {
     return iconSlug
   }
   const iconUrl = metadataString(metadata, 'avatarUrl') ?? metadataString(metadata, 'iconUrl')
-  return iconUrl ? `url:${encodeURIComponent(iconUrl)}` : null
+  if (!iconUrl) {
+    return null
+  }
+  return isAbsoluteIconUrl(iconUrl) ? `url:${encodeURIComponent(iconUrl)}` : iconUrl
 }
 
 function sourceIconSlugFromMetadata(record: ParsedExternalProviderRecord): string | null {

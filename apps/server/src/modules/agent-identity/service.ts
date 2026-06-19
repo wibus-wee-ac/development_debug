@@ -334,7 +334,23 @@ function agentNameForLocalApp(app: ImportedAgentResult['app']): string {
   }
 }
 
-function importedAgentDescription(app: ImportedAgentResult['app']): string {
+function agentNameForLocalImport(app: ImportedAgentResult['app'], runtimeKind: ImportedAgentResult['runtimeKind']): string {
+  if (runtimeKind === 'cli-tui' && (app === 'claude' || app === 'codex' || app === 'gemini')) {
+    return `${agentNameForLocalApp(app)} CLI`
+  }
+  return agentNameForLocalApp(app)
+}
+
+function importedAgentDescription(app: ImportedAgentResult['app'], runtimeKind: ImportedAgentResult['runtimeKind']): string {
+  if (runtimeKind === 'cli-tui') {
+    switch (app) {
+      case 'claude': return 'Imported from local Claude CLI.'
+      case 'codex': return 'Imported from local Codex CLI.'
+      case 'gemini': return 'Imported from local Gemini CLI.'
+      case 'pi': return 'Imported from local Pi CLI.'
+      case 'kimi': return 'Imported from local Kimi CLI.'
+    }
+  }
   switch (app) {
     case 'claude': return 'Imported from local Claude configuration.'
     case 'codex': return 'Imported from local Codex configuration.'
@@ -373,6 +389,7 @@ function agentConfigObject(agent: Agent): Record<string, unknown> {
 }
 
 function findAgentForLocalImport(app: ImportedAgentResult['app'], runtimeKind: ImportedAgentResult['runtimeKind']): Agent | null {
+  const agentName = agentNameForLocalImport(app, runtimeKind)
   const markedAgent = db()
     .select()
     .from(agents)
@@ -393,13 +410,13 @@ function findAgentForLocalImport(app: ImportedAgentResult['app'], runtimeKind: I
   return db()
     .select()
     .from(agents)
-    .where(and(eq(agents.name, agentNameForLocalApp(app)), eq(agents.runtimeKind, runtimeKind)))
+    .where(and(eq(agents.name, agentName), eq(agents.runtimeKind, runtimeKind)))
     .get() ?? null
 }
 
 function metadataString(metadata: Record<string, unknown>, key: string): string | null {
   const value = metadata[key]
-  return typeof value === 'string' && value.trim().length > 0 ? value : null
+  return typeof value === 'string' && value.trim().length > 0 ? value.trim() : null
 }
 
 function localProxyUrl(value: string | null): boolean {
@@ -413,6 +430,33 @@ function localProxyUrl(value: string | null): boolean {
  catch {
     return false
   }
+}
+
+function absoluteAvatarUrl(value: string | null): string | null {
+  if (!value) {
+    return null
+  }
+  try {
+    const url = new URL(value)
+    return url.protocol === 'http:' || url.protocol === 'https:' || url.protocol === 'data:' ? value : null
+  }
+  catch {
+    return null
+  }
+}
+
+function metadataIconSlug(metadata: Record<string, unknown>): string | null {
+  const iconSlug = metadataString(metadata, 'iconSlug')
+  if (iconSlug) {
+    return iconSlug
+  }
+  const iconUrl = metadataString(metadata, 'iconUrl')
+  return iconUrl && !absoluteAvatarUrl(iconUrl) ? iconUrl : null
+}
+
+function metadataAvatarUrl(metadata: Record<string, unknown>): string | null {
+  return absoluteAvatarUrl(metadataString(metadata, 'avatarUrl'))
+    ?? absoluteAvatarUrl(metadataString(metadata, 'iconUrl'))
 }
 
 async function refreshOnboardingSources(input: ImportLocalConfigInput): Promise<PreviewLocalConfigImportResult['sourceRefreshes']> {
@@ -470,7 +514,7 @@ function candidateFromRecord(input: {
   const agent = findAgentForLocalImport(input.app, runtimeKind)
   const needsProviderTarget = runtimeKind !== 'cli-tui'
   const importable = (needsProviderTarget ? Boolean(input.providerTargetId) : true) && !input.reason
-  const agentName = agentNameForLocalApp(input.app)
+  const agentName = agentNameForLocalImport(input.app, runtimeKind)
   return {
     id: `${input.sourceKind}:${input.app}:${input.sourceKey}:${input.externalRecordId}`,
     app: input.app,
@@ -485,8 +529,8 @@ function candidateFromRecord(input: {
     modelId: metadataString(input.metadata, 'model'),
     endpoint: metadataString(input.metadata, 'baseUrl'),
     executable: metadataString(input.metadata, 'executable'),
-    iconSlug: metadataString(input.metadata, 'iconSlug'),
-    avatarUrl: metadataString(input.metadata, 'avatarUrl') ?? metadataString(input.metadata, 'iconUrl'),
+    iconSlug: metadataIconSlug(input.metadata),
+    avatarUrl: metadataAvatarUrl(input.metadata),
     importable,
     alreadyConfigured: Boolean(agent),
     reason: input.reason,
@@ -527,6 +571,7 @@ export async function previewLocalConfigImport(input: ImportLocalConfigInput = {
       continue
     }
     const target = getExternalRuntimeTarget(record.sourceKey, record.externalId)
+    const agentName = agentNameForLocalImport(app, runtimeKindForLocalApp(app, record.metadata))
     candidates.push(candidateFromRecord({
       sourceKind: 'cc-switch',
       sourceLabel: 'CC Switch',
@@ -537,17 +582,22 @@ export async function previewLocalConfigImport(input: ImportLocalConfigInput = {
       metadata: record.metadata,
       providerTargetId: target?.id ?? record.providerTargetId,
       reason: target ? null : 'No runtime target was projected for this CC Switch provider.',
-      notes: [`Detected ${app} local config using the CC Switch local proxy; Cradle will import ${agentNameForLocalApp(app)} with the resolved CC Switch upstream provider "${record.name}".`],
+      notes: [`Detected ${app} local config using the CC Switch local proxy; Cradle will import ${agentName} with the resolved CC Switch upstream provider "${record.name}".`],
     }))
   }
 
   const ccSwitchApps = new Set(candidates.map(candidate => candidate.app))
   for (const record of localRecords) {
     const app = localAgentApp(record.app)
-    if (!app || (localProxyApps.has(app) && ccSwitchApps.has(app))) {
+    const localProxyRecordSupersededByCcSwitch = app
+      && record.providerKind !== 'cli-tool'
+      && localProxyUrl(metadataString(record.metadata, 'baseUrl'))
+      && ccSwitchApps.has(app)
+    if (!app || localProxyRecordSupersededByCcSwitch) {
       continue
     }
     const target = getExternalRuntimeTarget(record.sourceKey, record.externalId)
+    const agentName = agentNameForLocalImport(app, runtimeKindForLocalApp(app, record.metadata))
     candidates.push(candidateFromRecord({
       sourceKind: 'local-config',
       sourceLabel: 'Local Agent Config',
@@ -560,7 +610,7 @@ export async function previewLocalConfigImport(input: ImportLocalConfigInput = {
       reason: record.providerKind === 'cli-tool' || target ? null : 'No runtime target was projected for this local provider record.',
       notes: localProxyUrl(metadataString(record.metadata, 'baseUrl'))
         ? ['Detected a local proxy endpoint, but no matching CC Switch current provider target is available.']
-        : [`Detected direct local ${agentNameForLocalApp(app)} configuration.`],
+        : [`Detected direct local ${agentName} configuration.`],
     }))
   }
 
@@ -653,7 +703,7 @@ export async function importLocalConfig(input: ImportLocalConfigInput = {}): Pro
     if (candidate.agent) {
       const updatedAgent = update(candidate.agent.id, {
         name: candidate.agentName,
-        description: importedAgentDescription(candidate.app),
+        description: importedAgentDescription(candidate.app, candidate.runtimeKind),
         avatarStyle: candidate.agent.avatarStyle,
         avatarSeed: candidate.agent.avatarSeed,
         providerTargetId: candidate.providerTargetId,
@@ -679,7 +729,7 @@ export async function importLocalConfig(input: ImportLocalConfigInput = {}): Pro
     const avatar = importedAgentAvatar(candidate)
     const createdAgent = create({
       name: candidate.agentName,
-      description: importedAgentDescription(candidate.app),
+      description: importedAgentDescription(candidate.app, candidate.runtimeKind),
       avatarStyle: avatar.avatarStyle,
       avatarSeed: avatar.avatarSeed,
       providerTargetId: candidate.providerTargetId,

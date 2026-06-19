@@ -89,6 +89,7 @@ describe('local agent config external provider source', () => {
     writeFileSync(config.codexAuthPath, JSON.stringify({
       OPENAI_API_KEY: 'test-openai-secret',
     }))
+    setPath('')
 
     const snapshot = readLocalAgentConfigExternalProviderSnapshot(config)
 
@@ -131,6 +132,56 @@ describe('local agent config external provider source', () => {
     ])
     expect(JSON.stringify(snapshot.providers.map(provider => provider.metadata))).not.toContain('test-anthropic-secret')
     expect(JSON.stringify(snapshot.providers.map(provider => provider.metadata))).not.toContain('test-openai-secret')
+  })
+
+  it('keeps CLI import records alongside Claude and Codex provider config', () => {
+    const root = createTempDir()
+    const binDir = join(root, 'bin')
+    mkdirSync(binDir, { recursive: true })
+    const config = createFixtureConfig(root)
+    const claudePath = createExecutable(binDir, 'claude')
+    const codexPath = createExecutable(binDir, 'codex')
+    setPath(binDir)
+    writeFileSync(config.claudeSettingsPath, JSON.stringify({
+      env: {
+        ANTHROPIC_MODEL: 'claude-overlap-test',
+      },
+    }))
+    writeFileSync(config.codexConfigPath, [
+      'model = "gpt-overlap-test"',
+      '',
+    ].join('\n'))
+
+    const snapshot = readLocalAgentConfigExternalProviderSnapshot(config)
+
+    expect(snapshot.providers).toEqual([
+      expect.objectContaining({
+        externalId: 'claude:local-current',
+        app: 'claude',
+        providerKind: 'anthropic',
+      }),
+      expect.objectContaining({
+        externalId: 'codex:local-current',
+        app: 'codex',
+        providerKind: 'openai-compatible',
+      }),
+      expect.objectContaining({
+        externalId: 'claude:local-command',
+        app: 'claude',
+        name: 'Local Claude CLI',
+        providerKind: 'cli-tool',
+        config: { executable: claudePath },
+        metadata: expect.objectContaining({ runtimeKind: 'cli-tui', iconSlug: 'claudecode' }),
+      }),
+      expect.objectContaining({
+        externalId: 'codex:local-command',
+        app: 'codex',
+        name: 'Local Codex CLI',
+        providerKind: 'cli-tool',
+        config: { executable: codexPath },
+        metadata: expect.objectContaining({ runtimeKind: 'cli-tui', iconSlug: 'codex' }),
+      }),
+    ])
   })
 
   it('returns an empty snapshot when allowlisted local config files do not exist', () => {
@@ -240,6 +291,7 @@ describe('local agent config external provider source', () => {
       'base_url = "https://openai.example.test/v1"',
       'wire_api = "responses"',
     ].join('\n'))
+    setPath('')
 
     const snapshot = readLocalAgentConfigExternalProviderSnapshot(config)
 
