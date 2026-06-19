@@ -8,11 +8,11 @@ import { Streamdown } from '@cradle/streamdown'
 import type { UIMessageChunk } from 'ai'
 import { parseJsonEventStream, uiMessageChunkSchema } from 'ai'
 import {
-  AlertTriangleIcon,
-  LoaderCircleIcon,
-  MessageCircleQuestionIcon,
-  XIcon,
-} from 'lucide-react'
+  WarningLine as AlertTriangleIcon,
+  LoadingLine as LoaderCircleIcon,
+  QuestionLine as MessageCircleQuestionIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import type { AnchorHTMLAttributes } from 'react'
 import { useEffect, useRef, useState } from 'react'
 

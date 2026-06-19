@@ -1,7 +1,7 @@
 'use client'
 
 import gsap from 'gsap'
-import { ArrowRight, BookOpen } from 'lucide-react'
+import { ArrowRightLine as ArrowRight, Book2Line as BookOpen } from '@mingcute/react'
 import Link from 'next/link'
 import { useEffect, useRef } from 'react'
 

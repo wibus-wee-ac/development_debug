@@ -1,11 +1,11 @@
 import { useMutation, useQuery } from '@tanstack/react-query'
 import {
-  AlertTriangleIcon,
-  CoinsIcon,
-  GaugeIcon,
-  RefreshCwIcon,
-  TimerResetIcon,
-} from 'lucide-react'
+  WarningLine as AlertTriangleIcon,
+  CoinLine as CoinsIcon,
+  Dashboard2Line as GaugeIcon,
+  Refresh1Line as RefreshCwIcon,
+  Stopwatch2Line as TimerResetIcon
+} from '@mingcute/react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 

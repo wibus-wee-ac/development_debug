@@ -1,17 +1,17 @@
 'use client'
 
 import {
-  Check,
-  Copy,
-  ExternalLink,
-  Filter,
-  Layers,
-  Package,
-  Plug,
-  Search,
-  ShieldCheck,
-  Sparkles,
-} from 'lucide-react'
+  CheckLine as Check,
+  CopyLine as Copy,
+  ExternalLinkLine as ExternalLink,
+  FilterLine as Filter,
+  LayersLine as Layers,
+  PackageLine as Package,
+  PluginLine as Plug,
+  SearchLine as Search,
+  SafeShieldLine as ShieldCheck,
+  SparklesLine as Sparkles
+} from '@mingcute/react'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 

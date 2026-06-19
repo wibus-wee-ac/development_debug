@@ -1,11 +1,11 @@
 import {
-  LayoutDashboardIcon,
-  MoreHorizontalIcon,
-  PencilIcon,
-  PlusIcon,
-  TrashIcon,
-  XIcon,
-} from 'lucide-react'
+  DashboardLine as LayoutDashboardIcon,
+  More2Line as MoreHorizontalIcon,
+  PencilLine as PencilIcon,
+  PlusLine as PlusIcon,
+  DeleteLine as TrashIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'

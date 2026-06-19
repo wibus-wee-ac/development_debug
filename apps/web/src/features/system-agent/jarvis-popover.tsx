@@ -1,16 +1,16 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
 import type { FileUIPart } from 'ai'
 import {
-  CircleDotIcon,
-  FolderIcon,
-  MaximizeIcon,
-  MessageSquareIcon,
-  MinimizeIcon,
-  MousePointer2Icon,
-  PanelsTopLeftIcon,
-  PaperclipIcon,
-  XIcon,
-} from 'lucide-react'
+  DotCircleLine as CircleDotIcon,
+  FolderLine as FolderIcon,
+  FullscreenLine as MaximizeIcon,
+  Message1Line as MessageSquareIcon,
+  MinimizeLine as MinimizeIcon,
+  Cursor2Line as MousePointer2Icon,
+  LayoutLine as PanelsTopLeftIcon,
+  AttachmentLine as PaperclipIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'

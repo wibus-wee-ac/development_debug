@@ -1,5 +1,10 @@
 // Compact Composer control for Cradle-owned runtime access and interaction settings.
-import { HammerIcon, LockIcon, RouteIcon, ShieldCheckIcon } from 'lucide-react'
+import {
+  HammerLine as HammerIcon,
+  LockLine as LockIcon,
+  RouteLine as RouteIcon,
+  SafeShieldLine as ShieldCheckIcon
+} from '@mingcute/react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'

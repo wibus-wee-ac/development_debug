@@ -1,14 +1,14 @@
 import { useQueryClient } from '@tanstack/react-query'
 import {
-  ArrowLeftIcon,
-  CheckIcon,
-  ChevronRightIcon,
-  CircleAlertIcon,
-  CircleCheckIcon,
-  CopyIcon,
-  LogInIcon,
-  XIcon,
-} from 'lucide-react'
+  ArrowLeftLine as ArrowLeftIcon,
+  CheckLine as CheckIcon,
+  RightSmallLine as ChevronRightIcon,
+  AlertLine as CircleAlertIcon,
+  CheckCircleLine as CircleCheckIcon,
+  CopyLine as CopyIcon,
+  EnterDoorLine as LogInIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'

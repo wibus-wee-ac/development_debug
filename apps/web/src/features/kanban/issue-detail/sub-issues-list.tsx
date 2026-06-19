@@ -1,4 +1,4 @@
-import { CornerDownRightIcon, PlusIcon } from 'lucide-react'
+import { CornerDownRightLine as CornerDownRightIcon, PlusLine as PlusIcon } from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

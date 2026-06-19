@@ -1,11 +1,11 @@
 import {
-  BotIcon,
-  BoxesIcon,
-  FileIcon,
-  FlagIcon,
-  GitPullRequestIcon,
-  MessageSquareIcon,
-} from 'lucide-react'
+  RobotLine as BotIcon,
+  Box3Line as BoxesIcon,
+  FileLine as FileIcon,
+  Flag2Line as FlagIcon,
+  GitPullRequestLine as GitPullRequestIcon,
+  Message1Line as MessageSquareIcon
+} from '@mingcute/react'
 import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'

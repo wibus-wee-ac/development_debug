@@ -4,23 +4,23 @@
 // Depends on: BrowserPanel Zustand store
 
 import {
-  AlignCenterIcon,
-  AlignHorizontalSpaceAroundIcon,
-  AlignHorizontalSpaceBetweenIcon,
-  AlignJustifyIcon,
-  AlignLeftIcon,
-  AlignRightIcon,
-  BoxIcon,
-  ChevronDownIcon,
-  Code2Icon,
-  Columns2Icon,
-  MinusIcon,
-  MousePointer2Icon,
-  PlusIcon,
-  RotateCcwIcon,
-  Rows2Icon,
-  SlidersHorizontalIcon,
-} from 'lucide-react'
+  AlignCenterLine as AlignCenterIcon,
+  DistributeSpacingHorizontalLine as AlignHorizontalSpaceAroundIcon,
+  DistributeSpacingHorizontalLine as AlignHorizontalSpaceBetweenIcon,
+  AlignJustifyLine as AlignJustifyIcon,
+  AlignLeftLine as AlignLeftIcon,
+  AlignRightLine as AlignRightIcon,
+  BoxLine as BoxIcon,
+  DownSmallLine as ChevronDownIcon,
+  CodeLine as Code2Icon,
+  Columns2Line as Columns2Icon,
+  SubtractLine as MinusIcon,
+  Cursor2Line as MousePointer2Icon,
+  PlusLine as PlusIcon,
+  AnticlockwiseLine as RotateCcwIcon,
+  Rows2Line as Rows2Icon,
+  SelectorHorizontalLine as SlidersHorizontalIcon
+} from '@mingcute/react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 

@@ -5,27 +5,27 @@
 
 import type { FileUIPart } from 'ai'
 import {
-  ArrowLeftIcon,
-  ArrowRightIcon,
-  BotIcon,
-  CameraIcon,
-  ExternalLinkIcon,
-  FileDiffIcon,
-  FileTextIcon,
-  GaugeIcon,
-  GlobeIcon,
-  LoaderCircleIcon,
-  MessageSquarePlusIcon,
-  PanelTopIcon,
-  PencilIcon,
-  PlusIcon,
-  RefreshCwIcon,
-  SendIcon,
-  ServerIcon,
-  SquareTerminalIcon,
-  Trash2Icon,
-  XIcon,
-} from 'lucide-react'
+  ArrowLeftLine as ArrowLeftIcon,
+  ArrowRightLine as ArrowRightIcon,
+  RobotLine as BotIcon,
+  CameraLine as CameraIcon,
+  ExternalLinkLine as ExternalLinkIcon,
+  GitCompareLine as FileDiffIcon,
+  FileLine as FileTextIcon,
+  Dashboard2Line as GaugeIcon,
+  GlobeLine as GlobeIcon,
+  LoadingLine as LoaderCircleIcon,
+  Chat1Line as MessageSquarePlusIcon,
+  LayoutTopLine as PanelTopIcon,
+  PencilLine as PencilIcon,
+  PlusLine as PlusIcon,
+  Refresh1Line as RefreshCwIcon,
+  SendLine as SendIcon,
+  ServerLine as ServerIcon,
+  TerminalBoxLine as SquareTerminalIcon,
+  DeleteLine as Trash2Icon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   lazy,

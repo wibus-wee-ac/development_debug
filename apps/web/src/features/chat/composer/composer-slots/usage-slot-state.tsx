@@ -4,8 +4,11 @@
  * Codex supplies ChatGPT account rate-limit windows through the provider-owned
  * usage slot state; this renderer keeps that account state near the composer.
  */
-import { AlertTriangleIcon, GaugeIcon, XIcon } from 'lucide-react'
-
+import {
+  WarningLine as AlertTriangleIcon,
+  Dashboard2Line as GaugeIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { Progress } from '~/components/ui/progress'
 import { cn } from '~/lib/cn'
 import { clampPercent } from '~/lib/number-format'

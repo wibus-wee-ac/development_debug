@@ -1,4 +1,11 @@
-import { ArrowRight, BookOpen, Braces, FileJson, Plug, ShieldCheck } from 'lucide-react'
+import {
+  ArrowRightLine as ArrowRight,
+  Book2Line as BookOpen,
+  BracesLine as Braces,
+  FileCodeLine as FileJson,
+  PluginLine as Plug,
+  SafeShieldLine as ShieldCheck
+} from '@mingcute/react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 

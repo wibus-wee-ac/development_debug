@@ -1,12 +1,12 @@
 import type { Editor } from '@tiptap/core'
 import { BubbleMenu } from '@tiptap/react/menus'
 import {
-  BoldIcon,
-  CodeIcon,
-  ItalicIcon,
-  LinkIcon,
-  StrikethroughIcon,
-} from 'lucide-react'
+  BoldLine as BoldIcon,
+  CodeLine as CodeIcon,
+  ItalicLine as ItalicIcon,
+  LinkLine as LinkIcon,
+  StrikethroughLine as StrikethroughIcon
+} from '@mingcute/react'
 import { useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'

@@ -1,4 +1,9 @@
-import { ArrowLeftIcon, CheckIcon, DicesIcon, XIcon } from 'lucide-react'
+import {
+  ArrowLeftLine as ArrowLeftIcon,
+  CheckLine as CheckIcon,
+  RandomLine as DicesIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import { Select as RadixSelect } from 'radix-ui'
 import { useCallback, useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'

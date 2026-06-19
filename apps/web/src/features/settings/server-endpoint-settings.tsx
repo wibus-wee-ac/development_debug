@@ -1,4 +1,9 @@
-import { RotateCcwIcon, SaveIcon, ServerIcon, WifiIcon } from 'lucide-react'
+import {
+  AnticlockwiseLine as RotateCcwIcon,
+  SaveLine as SaveIcon,
+  ServerLine as ServerIcon,
+  WifiLine as WifiIcon
+} from '@mingcute/react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

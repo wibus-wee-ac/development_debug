@@ -1,5 +1,9 @@
 import Editor from '@monaco-editor/react'
-import { CheckIcon, Loader2Icon, SaveIcon } from 'lucide-react'
+import {
+  CheckLine as CheckIcon,
+  LoadingLine as Loader2Icon,
+  SaveLine as SaveIcon
+} from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'

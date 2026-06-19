@@ -1,4 +1,4 @@
-import { KeyboardIcon } from 'lucide-react'
+import { KeyboardLine as KeyboardIcon } from '@mingcute/react'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 

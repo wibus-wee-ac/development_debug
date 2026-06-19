@@ -1,4 +1,8 @@
-import { ChevronLeftIcon, ChevronRightIcon, XIcon } from 'lucide-react'
+import {
+  LeftSmallLine as ChevronLeftIcon,
+  RightSmallLine as ChevronRightIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { useEffect, useState } from 'react'
 

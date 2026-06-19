@@ -1,16 +1,16 @@
 import {
-  BotIcon,
-  ChevronRightIcon,
-  DownloadIcon,
-  PlusIcon,
-  SearchIcon,
-  SlidersHorizontalIcon,
-  SparklesIcon,
-  SquareCheckIcon,
-  SquareIcon,
-  Trash2Icon,
-  XIcon,
-} from 'lucide-react'
+  RobotLine as BotIcon,
+  RightSmallLine as ChevronRightIcon,
+  DownloadLine as DownloadIcon,
+  PlusLine as PlusIcon,
+  SearchLine as SearchIcon,
+  SelectorHorizontalLine as SlidersHorizontalIcon,
+  SparklesLine as SparklesIcon,
+  CheckboxLine as SquareCheckIcon,
+  SquareLine as SquareIcon,
+  DeleteLine as Trash2Icon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

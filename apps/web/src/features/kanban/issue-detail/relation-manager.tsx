@@ -1,4 +1,9 @@
-import { LinkIcon, PlusIcon, SearchIcon, XIcon } from 'lucide-react'
+import {
+  LinkLine as LinkIcon,
+  PlusLine as PlusIcon,
+  SearchLine as SearchIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { useState } from 'react'
 
 import {

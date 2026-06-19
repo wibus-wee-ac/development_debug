@@ -1,5 +1,4 @@
-import { CalendarIcon, FlagIcon } from 'lucide-react'
-
+import { CalendarLine as CalendarIcon, Flag2Line as FlagIcon } from '@mingcute/react'
 import { cn } from '~/lib/cn'
 import type { KanbanMilestone } from '~/features/kanban/types'
 

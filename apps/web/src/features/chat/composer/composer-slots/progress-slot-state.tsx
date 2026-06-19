@@ -5,8 +5,7 @@
  * replace the old count badge + linear progress bar — the data is steps, not a
  * continuous percentage, so the dots stay the most faithful representation.
  */
-import { CheckCircle2Icon, ListChecksIcon } from 'lucide-react'
-
+import { CheckCircleLine as CheckCircle2Icon, ListCheckLine as ListChecksIcon } from '@mingcute/react'
 import { cn } from '~/lib/cn'
 
 import type {

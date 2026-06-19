@@ -1,5 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { DatabaseIcon, PencilIcon, PlusIcon, SearchIcon, Trash2Icon } from 'lucide-react'
+import {
+  CylinderLine as DatabaseIcon,
+  PencilLine as PencilIcon,
+  PlusLine as PlusIcon,
+  SearchLine as SearchIcon,
+  DeleteLine as Trash2Icon
+} from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

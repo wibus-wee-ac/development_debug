@@ -1,20 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
 import {
-  ArrowLeftIcon,
-  CalendarClockIcon,
-  CheckIcon,
-  ClockIcon,
-  FileTextIcon,
-  Loader2Icon,
-  PencilIcon,
-  PlayIcon,
-  PlusIcon,
-  RefreshCwIcon,
-  SparklesIcon,
-  TriangleAlertIcon,
-  XIcon,
-} from 'lucide-react'
+  ArrowLeftLine as ArrowLeftIcon,
+  CalendarTimeAddLine as CalendarClockIcon,
+  CheckLine as CheckIcon,
+  ClockLine as ClockIcon,
+  FileLine as FileTextIcon,
+  LoadingLine as Loader2Icon,
+  PencilLine as PencilIcon,
+  PlayLine as PlayIcon,
+  PlusLine as PlusIcon,
+  Refresh1Line as RefreshCwIcon,
+  SparklesLine as SparklesIcon,
+  WarningLine as TriangleAlertIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'

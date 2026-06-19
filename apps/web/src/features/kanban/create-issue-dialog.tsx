@@ -1,4 +1,13 @@
-import { CalendarIcon, ChevronRightIcon, MaximizeIcon, PaperclipIcon, SearchIcon, TagsIcon, UserRoundXIcon, XIcon } from 'lucide-react'
+import {
+  CalendarLine as CalendarIcon,
+  RightSmallLine as ChevronRightIcon,
+  FullscreenLine as MaximizeIcon,
+  AttachmentLine as PaperclipIcon,
+  SearchLine as SearchIcon,
+  TagLine as TagsIcon,
+  UserXLine as UserRoundXIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'

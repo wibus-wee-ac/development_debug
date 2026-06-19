@@ -1,6 +1,5 @@
 import { StaticRender } from '@cradle/streamdown'
-import { PanelTopIcon } from 'lucide-react'
-
+import { LayoutTopLine as PanelTopIcon } from '@mingcute/react'
 interface PlanDocumentViewerProps {
   title: string
   text: string

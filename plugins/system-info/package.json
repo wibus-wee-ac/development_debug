@@ -48,9 +48,9 @@
   },
   "devDependencies": {
     "@cradle/plugin-sdk": "workspace:*",
+    "@mingcute/react": "^1.4.1",
     "@types/react": "^19.2.1",
     "@vitejs/plugin-react": "^5.1.1",
-    "lucide-react": "^1.8.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "vite": "^8.0.0"

@@ -3,21 +3,21 @@ import { closestCenter, DndContext, DragOverlay, MouseSensor, useSensor, useSens
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
-  BarChart2Icon,
-  CalendarClockIcon,
-  CircleDotIcon,
-  FolderOpenIcon,
-  HomeIcon,
-  KanbanSquareIcon,
-  MessageCircleIcon,
-  MessageCircleMoreIcon,
-  MessageSquarePlusIcon,
-  PlusIcon,
-  PuzzleIcon,
-  SettingsIcon,
-  SparklesIcon,
-  XIcon,
-} from 'lucide-react'
+  ChartBarLine as BarChart2Icon,
+  CalendarTimeAddLine as CalendarClockIcon,
+  DotCircleLine as CircleDotIcon,
+  FolderOpenLine as FolderOpenIcon,
+  Home2Line as HomeIcon,
+  DashboardLine as KanbanSquareIcon,
+  Chat1Line as MessageCircleIcon,
+  Chat3Line as MessageCircleMoreIcon,
+  Chat1Line as MessageSquarePlusIcon,
+  PlusLine as PlusIcon,
+  PuzzledLine as PuzzleIcon,
+  Settings2Line as SettingsIcon,
+  SparklesLine as SparklesIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { shallow } from 'zustand/shallow'
 

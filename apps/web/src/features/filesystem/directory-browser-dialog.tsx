@@ -1,16 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
 import {
-  ArrowUpIcon,
-  ChevronRightIcon,
-  CodeIcon,
-  DownloadIcon,
-  FileIcon,
-  FileTextIcon,
-  FolderIcon,
-  HomeIcon,
-  Loader2Icon,
-  MonitorIcon,
-} from 'lucide-react'
+  ArrowUpLine as ArrowUpIcon,
+  RightSmallLine as ChevronRightIcon,
+  CodeLine as CodeIcon,
+  DownloadLine as DownloadIcon,
+  FileLine as FileIcon,
+  FileLine as FileTextIcon,
+  FolderLine as FolderIcon,
+  Home2Line as HomeIcon,
+  LoadingLine as Loader2Icon,
+  MonitorLine as MonitorIcon
+} from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'

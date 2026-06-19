@@ -3,11 +3,11 @@
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import {
-  Bug,
-  FileCode,
-  GitPullRequest,
-  Layers,
-} from 'lucide-react'
+  BugLine as Bug,
+  FileCodeLine as FileCode,
+  GitPullRequestLine as GitPullRequest,
+  LayersLine as Layers
+} from '@mingcute/react'
 import { useEffect, useRef } from 'react'
 
 gsap.registerPlugin(ScrollTrigger)

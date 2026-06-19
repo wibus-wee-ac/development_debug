@@ -1,5 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
-import { BotIcon, CheckCircle2Icon, LoaderCircleIcon, XCircleIcon } from 'lucide-react'
+import {
+  RobotLine as BotIcon,
+  CheckCircleLine as CheckCircle2Icon,
+  LoadingLine as LoaderCircleIcon,
+  CloseCircleLine as XCircleIcon
+} from '@mingcute/react'
 import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'

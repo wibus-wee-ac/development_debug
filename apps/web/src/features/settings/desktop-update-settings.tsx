@@ -1,4 +1,11 @@
-import { DownloadIcon, MonitorIcon, PackageCheckIcon, RefreshCwIcon, TerminalIcon, UnlinkIcon } from 'lucide-react'
+import {
+  DownloadLine as DownloadIcon,
+  MonitorLine as MonitorIcon,
+  PackageLine as PackageCheckIcon,
+  Refresh1Line as RefreshCwIcon,
+  TerminalLine as TerminalIcon,
+  UnlinkLine as UnlinkIcon
+} from '@mingcute/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

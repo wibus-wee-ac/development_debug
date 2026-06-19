@@ -1,14 +1,14 @@
 import type { ContextMenuItem as TreeContextMenuItem, ContextMenuOpenContext as TreeContextMenuOpenContext } from '@pierre/trees'
 import type { TFunction } from 'i18next'
 import {
-  ClipboardIcon,
-  CopyIcon,
-  Edit3Icon,
-  ExternalLinkIcon,
-  FilePlusIcon,
-  FolderOpenIcon,
-  FolderPlusIcon,
-} from 'lucide-react'
+  ClipboardLine as ClipboardIcon,
+  CopyLine as CopyIcon,
+  Edit3Line as Edit3Icon,
+  ExternalLinkLine as ExternalLinkIcon,
+  FileNewLine as FilePlusIcon,
+  FolderOpenLine as FolderOpenIcon,
+  NewFolderLine as FolderPlusIcon
+} from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 import { z } from 'zod'
 

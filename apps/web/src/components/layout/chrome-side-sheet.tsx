@@ -1,4 +1,4 @@
-import { XIcon } from 'lucide-react'
+import { CloseLine as XIcon } from '@mingcute/react'
 import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'

@@ -1,5 +1,8 @@
-import { ChevronRightIcon, MessagesSquareIcon, XIcon } from 'lucide-react'
-
+import {
+  RightSmallLine as ChevronRightIcon,
+  Message4Line as MessagesSquareIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { cn } from '~/lib/cn'
 
 import type { CradleDiffReview, ReviewFile, ReviewThread } from '../shared/types'

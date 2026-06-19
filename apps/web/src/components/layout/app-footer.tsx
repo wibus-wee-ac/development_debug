@@ -1,4 +1,4 @@
-import { MousePointer2Icon, XIcon } from 'lucide-react'
+import { Cursor2Line as MousePointer2Icon, CloseLine as XIcon } from '@mingcute/react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 

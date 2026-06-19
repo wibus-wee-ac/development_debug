@@ -1,5 +1,5 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { PlusIcon } from 'lucide-react'
+import { PlusLine as PlusIcon } from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

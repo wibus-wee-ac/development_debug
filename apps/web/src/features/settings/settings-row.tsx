@@ -1,5 +1,4 @@
-import { InfoIcon } from 'lucide-react'
-
+import { InformationLine as InfoIcon } from '@mingcute/react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 import { SettingsDivider } from './settings-divider'

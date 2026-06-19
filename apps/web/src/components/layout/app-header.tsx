@@ -1,4 +1,10 @@
-import { GlobeIcon, PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon } from 'lucide-react'
+import {
+  GlobeLine as GlobeIcon,
+  LayoutBottomLine as PanelBottomIcon,
+  LayoutLeftbarCloseLine as PanelLeftCloseIcon,
+  LayoutLeftbarOpenLine as PanelLeftOpenIcon,
+  LayoutRightLine as PanelRightIcon
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'

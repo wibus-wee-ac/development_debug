@@ -2,15 +2,15 @@ import { Streamdown } from '@cradle/streamdown'
 import { useQuery } from '@tanstack/react-query'
 import type { UIMessage } from 'ai'
 import {
-  ActivityIcon,
-  CheckIcon,
-  CopyIcon,
-  FileIcon,
-  HashIcon,
-  ImageIcon,
-  TargetIcon,
-  TimerIcon,
-} from 'lucide-react'
+  HeartbeatLine as ActivityIcon,
+  CheckLine as CheckIcon,
+  CopyLine as CopyIcon,
+  FileLine as FileIcon,
+  HashtagLine as HashIcon,
+  PicLine as ImageIcon,
+  TargetLine as TargetIcon,
+  StopwatchLine as TimerIcon
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import type { AnchorHTMLAttributes } from 'react'
 import { useEffect, useRef, useState } from 'react'

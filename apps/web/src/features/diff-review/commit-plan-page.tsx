@@ -1,13 +1,13 @@
 import { Link } from '@tanstack/react-router'
 import {
-  ArrowLeftIcon,
-  CheckIcon,
-  GitCommitVerticalIcon,
-  ListChecksIcon,
-  Loader2Icon,
-  PencilIcon,
-  XIcon,
-} from 'lucide-react'
+  ArrowLeftLine as ArrowLeftIcon,
+  CheckLine as CheckIcon,
+  GitCommitLine as GitCommitVerticalIcon,
+  ListCheckLine as ListChecksIcon,
+  LoadingLine as Loader2Icon,
+  PencilLine as PencilIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '~/components/ui/button'

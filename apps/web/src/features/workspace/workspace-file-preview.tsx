@@ -1,5 +1,9 @@
 import { StaticRender } from '@cradle/streamdown'
-import { FileQuestionIcon, ImageIcon, Loader2Icon } from 'lucide-react'
+import {
+  FileUnknownLine as FileQuestionIcon,
+  PicLine as ImageIcon,
+  LoadingLine as Loader2Icon
+} from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 import type { BundledLanguage } from 'shiki'
 

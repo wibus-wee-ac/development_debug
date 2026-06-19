@@ -1,6 +1,12 @@
 // Chat settings for default continuation behavior and archived session recovery.
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArchiveRestoreIcon, BrainIcon, CheckIcon, MessageSquareIcon, SearchIcon } from 'lucide-react'
+import {
+  UnarchiveLine as ArchiveRestoreIcon,
+  BrainLine as BrainIcon,
+  CheckLine as CheckIcon,
+  Message1Line as MessageSquareIcon,
+  SearchLine as SearchIcon
+} from '@mingcute/react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

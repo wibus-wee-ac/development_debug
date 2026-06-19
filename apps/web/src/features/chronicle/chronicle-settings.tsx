@@ -1,23 +1,23 @@
 import type { TFunction } from 'i18next'
 import {
-  ActivityIcon,
-  BrainIcon,
-  CheckCircle2Icon,
-  ClockIcon,
-  CpuIcon,
-  DownloadIcon,
-  EyeIcon,
-  FileAudioIcon,
-  HardDriveIcon,
-  ImageIcon,
-  KeyRoundIcon,
-  LayersIcon,
-  MessageSquareIcon,
-  RefreshCwIcon,
-  SearchIcon,
-  TriangleAlertIcon,
-  UserRoundIcon,
-} from 'lucide-react'
+  HeartbeatLine as ActivityIcon,
+  BrainLine as BrainIcon,
+  CheckCircleLine as CheckCircle2Icon,
+  ClockLine as ClockIcon,
+  ChipLine as CpuIcon,
+  DownloadLine as DownloadIcon,
+  EyeLine as EyeIcon,
+  FileMusicLine as FileAudioIcon,
+  DriveLine as HardDriveIcon,
+  PicLine as ImageIcon,
+  Key2Line as KeyRoundIcon,
+  LayersLine as LayersIcon,
+  Message1Line as MessageSquareIcon,
+  Refresh1Line as RefreshCwIcon,
+  SearchLine as SearchIcon,
+  WarningLine as TriangleAlertIcon,
+  User2Line as UserRoundIcon
+} from '@mingcute/react'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'

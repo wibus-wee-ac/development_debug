@@ -1,6 +1,11 @@
 import type { FileContents, MultiFileDiffProps } from '@pierre/diffs/react'
 import { MultiFileDiff } from '@pierre/diffs/react'
-import { ChevronRightIcon, Columns2Icon, FilePenLineIcon, Rows3Icon } from 'lucide-react'
+import {
+  RightSmallLine as ChevronRightIcon,
+  Columns2Line as Columns2Icon,
+  FileLine as FilePenLineIcon,
+  Rows3Line as Rows3Icon
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import { useState } from 'react'
 

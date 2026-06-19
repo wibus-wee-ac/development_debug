@@ -4,8 +4,11 @@ import * as React from "react"
 import { Select as SelectPrimitive } from "radix-ui"
 
 import { cn } from "~/lib/cn"
-import { ChevronDownIcon, CheckIcon, ChevronUpIcon } from "lucide-react"
-
+import {
+  DownSmallLine as ChevronDownIcon,
+  CheckLine as CheckIcon,
+  UpSmallLine as ChevronUpIcon
+} from "@mingcute/react"
 const EMPTY_ITEM_VALUE = "__select_empty__"
 
 function Select({

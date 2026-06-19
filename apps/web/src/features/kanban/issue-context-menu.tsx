@@ -1,16 +1,16 @@
 import {
-  BotIcon,
-  CheckIcon,
-  CircleDashedIcon,
-  ClipboardIcon,
-  CopyIcon,
-  ExternalLinkIcon,
-  FlagIcon,
-  MilestoneIcon,
-  Trash2Icon,
-  UserIcon,
-  UserRoundXIcon,
-} from 'lucide-react'
+  RobotLine as BotIcon,
+  CheckLine as CheckIcon,
+  CircleDashLine as CircleDashedIcon,
+  ClipboardLine as ClipboardIcon,
+  CopyLine as CopyIcon,
+  ExternalLinkLine as ExternalLinkIcon,
+  Flag2Line as FlagIcon,
+  Flag3Line as MilestoneIcon,
+  DeleteLine as Trash2Icon,
+  User2Line as UserIcon,
+  UserXLine as UserRoundXIcon
+} from '@mingcute/react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'

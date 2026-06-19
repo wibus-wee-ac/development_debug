@@ -1,11 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
-  CheckIcon,
-  GitBranchIcon,
-  PlusIcon,
-  RefreshCwIcon,
-  XIcon,
-} from 'lucide-react'
+  CheckLine as CheckIcon,
+  GitBranchLine as GitBranchIcon,
+  PlusLine as PlusIcon,
+  Refresh1Line as RefreshCwIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { useDeferredValue, useEffect, useReducer, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 

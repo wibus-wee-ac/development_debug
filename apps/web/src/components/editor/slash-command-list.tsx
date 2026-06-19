@@ -1,15 +1,15 @@
 import {
-  CodeIcon,
-  Heading1Icon,
-  Heading2Icon,
-  Heading3Icon,
-  ListIcon,
-  ListOrderedIcon,
-  ListTodoIcon,
-  MinusIcon,
-  QuoteIcon,
-  TextIcon,
-} from 'lucide-react'
+  CodeLine as CodeIcon,
+  Heading1Line as Heading1Icon,
+  Heading2Line as Heading2Icon,
+  Heading3Line as Heading3Icon,
+  PlaylistLine as ListIcon,
+  ListOrderedLine as ListOrderedIcon,
+  ToDoLine as ListTodoIcon,
+  SubtractLine as MinusIcon,
+  QuoteLeftLine as QuoteIcon,
+  TextLine as TextIcon
+} from '@mingcute/react'
 import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'

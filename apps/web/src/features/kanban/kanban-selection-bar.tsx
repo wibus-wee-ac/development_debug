@@ -1,4 +1,9 @@
-import { CheckIcon, CircleDashedIcon, FlagIcon, XIcon } from 'lucide-react'
+import {
+  CheckLine as CheckIcon,
+  CircleDashLine as CircleDashedIcon,
+  Flag2Line as FlagIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 

@@ -1,4 +1,4 @@
-import { CheckIcon, GitBranchIcon } from 'lucide-react'
+import { CheckLine as CheckIcon, GitBranchLine as GitBranchIcon } from '@mingcute/react'
 import type { MouseEvent, PointerEvent } from 'react'
 import { useEffect, useRef, useState } from 'react'
 

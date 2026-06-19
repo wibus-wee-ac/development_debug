@@ -1,5 +1,12 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { CheckIcon, CircleAlertIcon, CopyIcon, LogInIcon, Trash2Icon, XIcon } from 'lucide-react'
+import {
+  CheckLine as CheckIcon,
+  AlertLine as CircleAlertIcon,
+  CopyLine as CopyIcon,
+  EnterDoorLine as LogInIcon,
+  DeleteLine as Trash2Icon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import type { MutableRefObject, ReactNode } from 'react'
 import { useCallback, useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'

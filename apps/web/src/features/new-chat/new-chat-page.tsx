@@ -2,11 +2,11 @@ import { useQueryClient } from '@tanstack/react-query'
 import type { FileUIPart } from 'ai'
 import type { TFunction } from 'i18next'
 import {
-  ClockIcon,
-  FolderIcon,
-  FolderPlusIcon,
-  MessageSquareIcon,
-} from 'lucide-react'
+  ClockLine as ClockIcon,
+  FolderLine as FolderIcon,
+  NewFolderLine as FolderPlusIcon,
+  Message1Line as MessageSquareIcon
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'

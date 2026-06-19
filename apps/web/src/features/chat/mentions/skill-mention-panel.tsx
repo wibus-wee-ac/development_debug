@@ -1,4 +1,4 @@
-import { PackageIcon } from 'lucide-react'
+import { PackageLine as PackageIcon } from '@mingcute/react'
 import { useCallback, useMemo } from 'react'
 
 import type { SkillScope } from '~/features/skills/types'

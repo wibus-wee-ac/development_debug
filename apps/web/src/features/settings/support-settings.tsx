@@ -1,10 +1,10 @@
 import {
-  ClipboardIcon,
-  FolderOpenIcon,
-  LifeBuoyIcon,
-  RotateCcwIcon,
-  Share2Icon,
-} from 'lucide-react'
+  ClipboardLine as ClipboardIcon,
+  FolderOpenLine as FolderOpenIcon,
+  LifebuoyLine as LifeBuoyIcon,
+  AnticlockwiseLine as RotateCcwIcon,
+  Share2Line as Share2Icon
+} from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'

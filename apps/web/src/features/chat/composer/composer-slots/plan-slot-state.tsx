@@ -4,7 +4,14 @@
  * The provider owns the plan state. This rail only offers composer-level
  * follow-up actions and local dismissal for the current plan snapshot.
  */
-import { CheckIcon, ChevronDownIcon, ListChecksIcon, PencilIcon, TargetIcon, XIcon } from 'lucide-react'
+import {
+  CheckLine as CheckIcon,
+  DownSmallLine as ChevronDownIcon,
+  ListCheckLine as ListChecksIcon,
+  PencilLine as PencilIcon,
+  TargetLine as TargetIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '~/components/ui/button'

@@ -1,5 +1,13 @@
 import { useQuery } from '@tanstack/react-query'
-import { ActivityIcon, CircleDotIcon, FileDiffIcon, FolderTreeIcon, GitBranchIcon, RssIcon, SlidersHorizontalIcon } from 'lucide-react'
+import {
+  HeartbeatLine as ActivityIcon,
+  DotCircleLine as CircleDotIcon,
+  GitCompareLine as FileDiffIcon,
+  TreeLine as FolderTreeIcon,
+  GitBranchLine as GitBranchIcon,
+  RssLine as RssIcon,
+  SelectorHorizontalLine as SlidersHorizontalIcon
+} from '@mingcute/react'
 import { AnimatePresence, LayoutGroup, m } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'

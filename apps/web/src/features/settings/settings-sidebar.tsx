@@ -1,4 +1,22 @@
-import { ActivityIcon, ArrowDownToLineIcon, ArrowLeftIcon, BotIcon, BoxesIcon, DatabaseIcon, FlagIcon, HourglassIcon, InfoIcon, KeyboardIcon, LifeBuoyIcon, MessageSquareIcon, MonitorIcon, MousePointer2Icon, PaletteIcon, PlugIcon, ServerIcon } from 'lucide-react'
+import {
+  HeartbeatLine as ActivityIcon,
+  ArrowToDownLine as ArrowDownToLineIcon,
+  ArrowLeftLine as ArrowLeftIcon,
+  RobotLine as BotIcon,
+  Box3Line as BoxesIcon,
+  CylinderLine as DatabaseIcon,
+  Flag2Line as FlagIcon,
+  SandglassLine as HourglassIcon,
+  InformationLine as InfoIcon,
+  KeyboardLine as KeyboardIcon,
+  LifebuoyLine as LifeBuoyIcon,
+  Message1Line as MessageSquareIcon,
+  MonitorLine as MonitorIcon,
+  Cursor2Line as MousePointer2Icon,
+  PaletteLine as PaletteIcon,
+  PluginLine as PlugIcon,
+  ServerLine as ServerIcon
+} from '@mingcute/react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'

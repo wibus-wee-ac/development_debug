@@ -1,13 +1,13 @@
 import { StaticRender } from '@cradle/streamdown'
 import type { TFunction } from 'i18next'
 import {
-  CirclePlusIcon,
-  GitBranchIcon,
-  SparklesIcon,
-  Trash2Icon,
-  UserRoundCheckIcon,
-  UserRoundMinusIcon,
-} from 'lucide-react'
+  AddCircleLine as CirclePlusIcon,
+  GitBranchLine as GitBranchIcon,
+  SparklesLine as SparklesIcon,
+  DeleteLine as Trash2Icon,
+  UserFollowLine as UserRoundCheckIcon,
+  UserRemoveLine as UserRoundMinusIcon
+} from '@mingcute/react'
 import type { ElementType, ReactNode } from 'react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'

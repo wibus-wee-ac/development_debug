@@ -2,11 +2,11 @@ import { prepareFileTreeInput } from '@pierre/trees'
 import { FileTree as PierreFileTree, useFileTree, useFileTreeSelection } from '@pierre/trees/react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  FilePlusIcon,
-  FolderPlusIcon,
-  SearchIcon,
-  XIcon,
-} from 'lucide-react'
+  FileNewLine as FilePlusIcon,
+  NewFolderLine as FolderPlusIcon,
+  SearchLine as SearchIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'

@@ -1,5 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ArrowDownIcon, ArrowUpIcon, GitBranchIcon, GitGraphIcon, RefreshCwIcon } from 'lucide-react'
+import {
+  ArrowDownLine as ArrowDownIcon,
+  ArrowUpLine as ArrowUpIcon,
+  GitBranchLine as GitBranchIcon,
+  GitBranch2Line as GitGraphIcon,
+  Refresh1Line as RefreshCwIcon
+} from '@mingcute/react'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { VListHandle } from 'virtua'

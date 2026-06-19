@@ -1,5 +1,11 @@
-import { AlertTriangle, ArrowRight, ChartNetwork, Link2, Route, ScanSearch } from 'lucide-react'
-
+import {
+  WarningLine as AlertTriangle,
+  ArrowRightLine as ArrowRight,
+  SitemapLine as ChartNetwork,
+  Link2Line as Link2,
+  RouteLine as Route,
+  ScanLine as ScanSearch
+} from '@mingcute/react'
 import { cn } from '@/lib/cn'
 import type { DocsGraphPageScore } from '@/lib/docs-graph'
 import { buildDocsGraph } from '@/lib/docs-graph'

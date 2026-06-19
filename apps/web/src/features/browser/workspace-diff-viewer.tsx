@@ -12,7 +12,12 @@ import {
   WorkerPoolContextProvider,
 } from '@pierre/diffs/react'
 import WorkerUrl from '@pierre/diffs/worker/worker.js?worker&url'
-import { Columns2Icon, FileDiffIcon, Loader2Icon, Rows3Icon } from 'lucide-react'
+import {
+  Columns2Line as Columns2Icon,
+  GitCompareLine as FileDiffIcon,
+  LoadingLine as Loader2Icon,
+  Rows3Line as Rows3Icon
+} from '@mingcute/react'
 import { useDeferredValue, useEffect, useRef, useState, useTransition } from 'react'
 
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'

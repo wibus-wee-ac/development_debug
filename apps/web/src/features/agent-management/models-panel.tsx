@@ -1,5 +1,9 @@
 import type { TFunction } from 'i18next'
-import { RefreshCwIcon, SearchIcon, SparklesIcon } from 'lucide-react'
+import {
+  Refresh1Line as RefreshCwIcon,
+  SearchLine as SearchIcon,
+  SparklesLine as SparklesIcon
+} from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

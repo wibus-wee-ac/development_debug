@@ -1,5 +1,10 @@
 // Shared compact queue controls for Chat Session continuation items.
-import { ArrowDownIcon, ArrowUpIcon, GripVerticalIcon, XIcon } from 'lucide-react'
+import {
+  ArrowDownLine as ArrowDownIcon,
+  ArrowUpLine as ArrowUpIcon,
+  DotsVerticalLine as GripVerticalIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

@@ -5,13 +5,13 @@
  * builds native Codex review prompts without sending raw slash text.
  */
 import {
-  ArrowLeftIcon,
-  CheckCircle2Icon,
-  GitBranchIcon,
-  LoaderCircleIcon,
-  RefreshCwIcon,
-  XIcon,
-} from 'lucide-react'
+  ArrowLeftLine as ArrowLeftIcon,
+  CheckCircleLine as CheckCircle2Icon,
+  GitBranchLine as GitBranchIcon,
+  LoadingLine as LoaderCircleIcon,
+  Refresh1Line as RefreshCwIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 

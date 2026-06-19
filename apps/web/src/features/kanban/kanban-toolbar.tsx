@@ -1,13 +1,13 @@
 import {
-  CircleDotIcon,
-  ColumnsIcon,
-  FilterIcon,
-  GroupIcon,
-  ListIcon,
-  PlusIcon,
-  SlidersHorizontalIcon,
-  SortAscIcon,
-} from 'lucide-react'
+  DotCircleLine as CircleDotIcon,
+  Columns2Line as ColumnsIcon,
+  FilterLine as FilterIcon,
+  GroupLine as GroupIcon,
+  PlaylistLine as ListIcon,
+  PlusLine as PlusIcon,
+  SelectorHorizontalLine as SlidersHorizontalIcon,
+  SortAscendingLine as SortAscIcon
+} from '@mingcute/react'
 import { useTranslation } from 'react-i18next'
 
 import { Checkbox } from '~/components/ui/checkbox'

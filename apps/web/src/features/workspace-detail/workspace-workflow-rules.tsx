@@ -1,5 +1,5 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { BotIcon, GlobeIcon } from 'lucide-react'
+import { RobotLine as BotIcon, GlobeLine as GlobeIcon } from '@mingcute/react'
 import { useEffect } from 'react'
 import { z } from 'zod'
 

@@ -1,13 +1,13 @@
 import type { FileUIPart } from 'ai'
 import {
-  ArrowUpIcon,
-  CheckIcon,
-  ChevronRightIcon,
-  ImagePlusIcon,
-  Maximize2Icon,
-  PlusIcon,
-  XIcon,
-} from 'lucide-react'
+  ArrowUpLine as ArrowUpIcon,
+  CheckLine as CheckIcon,
+  RightSmallLine as ChevronRightIcon,
+  PicLine as ImagePlusIcon,
+  FullscreenLine as Maximize2Icon,
+  PlusLine as PlusIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import type {
   ChangeEvent,
   ClipboardEvent as ReactClipboardEvent,

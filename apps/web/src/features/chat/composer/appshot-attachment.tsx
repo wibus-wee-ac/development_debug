@@ -1,4 +1,8 @@
-import { ImageIcon, Rows3Icon, XIcon } from 'lucide-react'
+import {
+  PicLine as ImageIcon,
+  Rows3Line as Rows3Icon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import { useState } from 'react'

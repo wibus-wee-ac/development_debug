@@ -3,15 +3,15 @@
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
 import {
-  Bot,
-  Brain,
-  GitBranch,
-  MessageSquare,
-  Plug,
-  Terminal,
-  Workflow,
-  Zap,
-} from 'lucide-react'
+  RobotLine as Bot,
+  BrainLine as Brain,
+  GitBranchLine as GitBranch,
+  Message1Line as MessageSquare,
+  PluginLine as Plug,
+  TerminalLine as Terminal,
+  ProcessLine as Workflow,
+  FlashLine as Zap
+} from '@mingcute/react'
 import { useEffect, useRef } from 'react'
 
 gsap.registerPlugin(ScrollTrigger)

@@ -19,7 +19,7 @@ export default defineConfig(({ command }) => ({
           if (id.includes('/node_modules/motion/') || id.includes('/node_modules/framer-motion/') || id.includes('/node_modules/gsap/') || id.includes('/node_modules/@gsap/react/')) {
             return 'animation'
           }
-          if (id.includes('/node_modules/lucide-react/')) {
+          if (id.includes('/node_modules/@mingcute/react/')) {
             return 'icons'
           }
         },

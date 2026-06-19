@@ -1,5 +1,5 @@
 // Renders persisted Composer bang command results as terminal-style chat context.
-import { ChevronDownIcon, SquareTerminalIcon } from 'lucide-react'
+import { DownSmallLine as ChevronDownIcon, TerminalBoxLine as SquareTerminalIcon } from '@mingcute/react'
 import { useState } from 'react'
 
 import { Badge } from '~/components/ui/badge'

@@ -1,9 +1,9 @@
 import {
-  CheckIcon,
-  ChevronRightIcon,
-  LinkIcon,
-  XIcon,
-} from 'lucide-react'
+  CheckLine as CheckIcon,
+  RightSmallLine as ChevronRightIcon,
+  LinkLine as LinkIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'

@@ -1,4 +1,4 @@
-import { Loader2Icon } from 'lucide-react'
+import { LoadingLine as Loader2Icon } from '@mingcute/react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url'

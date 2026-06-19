@@ -1,5 +1,9 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { AlertCircleIcon, ExternalLinkIcon, LoaderCircleIcon } from 'lucide-react'
+import {
+  AlertLine as AlertCircleIcon,
+  ExternalLinkLine as ExternalLinkIcon,
+  LoadingLine as LoaderCircleIcon
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'

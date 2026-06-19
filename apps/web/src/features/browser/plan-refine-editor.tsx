@@ -1,4 +1,4 @@
-import { PencilIcon } from 'lucide-react'
+import { PencilLine as PencilIcon } from '@mingcute/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { MarkdownEditor } from '~/components/editor/markdown-editor'

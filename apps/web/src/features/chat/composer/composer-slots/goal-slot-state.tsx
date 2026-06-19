@@ -5,14 +5,14 @@
  * whether the provider exposed this slot on the composer surface.
  */
 import {
-  CheckCircle2Icon,
-  CirclePauseIcon,
-  CircleSlashIcon,
-  GaugeIcon,
-  PencilIcon,
-  TargetIcon,
-  Trash2Icon,
-} from 'lucide-react'
+  CheckCircleLine as CheckCircle2Icon,
+  PauseCircleLine as CirclePauseIcon,
+  ForbidCircleLine as CircleSlashIcon,
+  Dashboard2Line as GaugeIcon,
+  PencilLine as PencilIcon,
+  TargetLine as TargetIcon,
+  DeleteLine as Trash2Icon
+} from '@mingcute/react'
 import { useEffect, useState } from 'react'
 
 import { Progress } from '~/components/ui/progress'

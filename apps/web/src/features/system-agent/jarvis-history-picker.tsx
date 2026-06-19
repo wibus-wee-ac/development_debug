@@ -1,6 +1,10 @@
 import { useQuery } from '@tanstack/react-query'
 import type { TFunction } from 'i18next'
-import { CircleDotIcon, HistoryIcon, Loader2Icon } from 'lucide-react'
+import {
+  DotCircleLine as CircleDotIcon,
+  HistoryLine as HistoryIcon,
+  LoadingLine as Loader2Icon
+} from '@mingcute/react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 

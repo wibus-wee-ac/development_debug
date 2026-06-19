@@ -1,4 +1,12 @@
-import { AlertCircleIcon, ArrowUpRightIcon, CircleDotIcon, LinkIcon, MessageSquareTextIcon, SearchIcon, UnlinkIcon } from 'lucide-react'
+import {
+  AlertLine as AlertCircleIcon,
+  ArrowRightUpLine as ArrowUpRightIcon,
+  DotCircleLine as CircleDotIcon,
+  LinkLine as LinkIcon,
+  Message3Line as MessageSquareTextIcon,
+  SearchLine as SearchIcon,
+  UnlinkLine as UnlinkIcon
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'

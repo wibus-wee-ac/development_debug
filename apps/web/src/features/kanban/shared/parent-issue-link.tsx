@@ -1,4 +1,4 @@
-import { CornerDownRightIcon } from 'lucide-react'
+import { CornerDownRightLine as CornerDownRightIcon } from '@mingcute/react'
 import type { MouseEvent, PointerEvent } from 'react'
 
 import { cn } from '~/lib/cn'

@@ -1,5 +1,9 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { ChevronRightIcon, CircleStopIcon, TerminalIcon } from 'lucide-react'
+import {
+  RightSmallLine as ChevronRightIcon,
+  StopCircleLine as CircleStopIcon,
+  TerminalLine as TerminalIcon
+} from '@mingcute/react'
 import { useState } from 'react'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'

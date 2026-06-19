@@ -2,13 +2,13 @@
 
 import { Toast } from "@base-ui/react/toast";
 import {
-  CircleAlertIcon,
-  CircleCheckIcon,
-  InfoIcon,
-  LoaderCircleIcon,
-  TriangleAlertIcon,
-  XIcon,
-} from "lucide-react";
+  AlertLine as CircleAlertIcon,
+  CheckCircleLine as CircleCheckIcon,
+  InformationLine as InfoIcon,
+  LoadingLine as LoaderCircleIcon,
+  WarningLine as TriangleAlertIcon,
+  CloseLine as XIcon
+} from "@mingcute/react";
 import type React from "react";
 import { cn } from "~/lib/cn";
 

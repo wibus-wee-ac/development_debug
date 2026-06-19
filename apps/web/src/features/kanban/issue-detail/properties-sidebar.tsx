@@ -1,17 +1,17 @@
 import {
-  BotIcon,
-  CalendarIcon,
-  CheckIcon,
-  ExternalLinkIcon,
-  PencilIcon,
-  PlusIcon,
-  RotateCwIcon,
-  SearchIcon,
-  TagsIcon,
-  Trash2Icon,
-  UserRoundXIcon,
-  XIcon,
-} from 'lucide-react'
+  RobotLine as BotIcon,
+  CalendarLine as CalendarIcon,
+  CheckLine as CheckIcon,
+  ExternalLinkLine as ExternalLinkIcon,
+  PencilLine as PencilIcon,
+  PlusLine as PlusIcon,
+  ClockwiseLine as RotateCwIcon,
+  SearchLine as SearchIcon,
+  TagLine as TagsIcon,
+  DeleteLine as Trash2Icon,
+  UserXLine as UserRoundXIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

@@ -1,5 +1,5 @@
 import { Command as CommandPrimitive } from 'cmdk'
-import { CheckIcon, SearchIcon } from 'lucide-react'
+import { CheckLine as CheckIcon, SearchLine as SearchIcon } from '@mingcute/react'
 import * as React from 'react'
 
 import {

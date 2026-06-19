@@ -1,15 +1,15 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  CheckIcon,
-  ChevronRightIcon,
-  GitCommitHorizontalIcon,
-  GitPullRequestIcon,
-  MessageSquareCheckIcon,
-  MessageSquareWarningIcon,
-  PlusIcon,
-  WandSparklesIcon,
-  XIcon,
-} from 'lucide-react'
+  CheckLine as CheckIcon,
+  RightSmallLine as ChevronRightIcon,
+  GitCommitLine as GitCommitHorizontalIcon,
+  GitPullRequestLine as GitPullRequestIcon,
+  Message1Line as MessageSquareCheckIcon,
+  WarningLine as MessageSquareWarningIcon,
+  PlusLine as PlusIcon,
+  Magic2Line as WandSparklesIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import type { FormEvent } from 'react'
 import { useEffect, useId, useRef, useState } from 'react'

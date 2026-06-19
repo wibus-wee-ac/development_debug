@@ -4,20 +4,20 @@ import type { CodeViewHandle } from '@pierre/diffs/react'
 import { CodeView } from '@pierre/diffs/react'
 import { useQuery } from '@tanstack/react-query'
 import {
-  ActivityIcon,
-  AlertCircleIcon,
-  ArrowLeftIcon,
-  CheckCircle2Icon,
-  ChevronDownIcon,
-  ChevronRightIcon,
-  Clock3Icon,
-  FileDiffIcon,
-  ListTreeIcon,
-  Loader2Icon,
-  RotateCcwIcon,
-  SparklesIcon,
-  XCircleIcon,
-} from 'lucide-react'
+  HeartbeatLine as ActivityIcon,
+  AlertLine as AlertCircleIcon,
+  ArrowLeftLine as ArrowLeftIcon,
+  CheckCircleLine as CheckCircle2Icon,
+  DownSmallLine as ChevronDownIcon,
+  RightSmallLine as ChevronRightIcon,
+  Clock2Line as Clock3Icon,
+  GitCompareLine as FileDiffIcon,
+  TreeLine as ListTreeIcon,
+  LoadingLine as Loader2Icon,
+  AnticlockwiseLine as RotateCcwIcon,
+  SparklesLine as SparklesIcon,
+  CloseCircleLine as XCircleIcon
+} from '@mingcute/react'
 import type { CSSProperties } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 

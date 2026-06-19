@@ -8,8 +8,11 @@ import {
 
 import { cn } from "~/lib/cn"
 import { Button, buttonVariants } from "~/components/ui/button"
-import { ChevronLeftIcon, ChevronRightIcon, ChevronDownIcon } from "lucide-react"
-
+import {
+  LeftSmallLine as ChevronLeftIcon,
+  RightSmallLine as ChevronRightIcon,
+  DownSmallLine as ChevronDownIcon
+} from "@mingcute/react"
 function Calendar({
   className,
   classNames,

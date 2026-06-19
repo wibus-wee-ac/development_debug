@@ -1,4 +1,12 @@
-import { CheckCircle2Icon, DatabaseIcon, DownloadIcon, LaptopIcon, RefreshCwIcon, ServerIcon, TriangleAlertIcon } from 'lucide-react'
+import {
+  CheckCircleLine as CheckCircle2Icon,
+  CylinderLine as DatabaseIcon,
+  DownloadLine as DownloadIcon,
+  LaptopLine as LaptopIcon,
+  Refresh1Line as RefreshCwIcon,
+  ServerLine as ServerIcon,
+  WarningLine as TriangleAlertIcon
+} from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { VList } from 'virtua'

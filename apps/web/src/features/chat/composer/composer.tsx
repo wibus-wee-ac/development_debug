@@ -1,5 +1,11 @@
 import type { FileUIPart } from 'ai'
-import { LoaderCircleIcon, RouteIcon, SendHorizonalIcon, SquareIcon, SquareTerminalIcon } from 'lucide-react'
+import {
+  LoadingLine as LoaderCircleIcon,
+  RouteLine as RouteIcon,
+  SendPlaneLine as SendHorizonalIcon,
+  SquareLine as SquareIcon,
+  TerminalBoxLine as SquareTerminalIcon
+} from '@mingcute/react'
 import type { ChangeEvent } from 'react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 

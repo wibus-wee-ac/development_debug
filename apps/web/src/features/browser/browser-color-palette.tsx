@@ -3,7 +3,7 @@
 // Layer: Browser feature UI
 // Depends on: ui/popover primitive, motion
 
-import { CheckIcon, PipetteIcon } from 'lucide-react'
+import { CheckLine as CheckIcon, ColorPickerLine as PipetteIcon } from '@mingcute/react'
 import { m } from 'motion/react'
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
 import { useEffect, useId, useRef, useState } from 'react'

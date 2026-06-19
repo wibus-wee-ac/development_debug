@@ -1,14 +1,14 @@
 import {
-  BotIcon,
-  DownloadIcon,
-  FolderTreeIcon,
-  GlobeIcon,
-  PencilIcon,
-  PlusIcon,
-  SearchIcon,
-  Trash2Icon,
-  UploadIcon,
-} from 'lucide-react'
+  RobotLine as BotIcon,
+  DownloadLine as DownloadIcon,
+  TreeLine as FolderTreeIcon,
+  GlobeLine as GlobeIcon,
+  PencilLine as PencilIcon,
+  PlusLine as PlusIcon,
+  SearchLine as SearchIcon,
+  DeleteLine as Trash2Icon,
+  UploadLine as UploadIcon
+} from '@mingcute/react'
 import { useEffect, useReducer } from 'react'
 
 import { Button } from '~/components/ui/button'

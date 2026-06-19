@@ -1,4 +1,4 @@
-import { CpuIcon } from 'lucide-react'
+import { ChipLine as CpuIcon } from '@mingcute/react'
 import { useTranslation } from 'react-i18next'
 
 import { ProviderIcon } from '~/components/common/provider-icons'

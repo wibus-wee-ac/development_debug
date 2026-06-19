@@ -1,5 +1,10 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { CircleAlertIcon, CircleCheckIcon, CircleDashedIcon, TriangleAlertIcon } from 'lucide-react'
+import {
+  AlertLine as CircleAlertIcon,
+  CheckCircleLine as CircleCheckIcon,
+  CircleDashLine as CircleDashedIcon,
+  WarningLine as TriangleAlertIcon
+} from '@mingcute/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 

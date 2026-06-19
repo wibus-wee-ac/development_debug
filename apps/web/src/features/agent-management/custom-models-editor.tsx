@@ -1,4 +1,8 @@
-import { PlusIcon, SparklesIcon, Trash2Icon } from 'lucide-react'
+import {
+  PlusLine as PlusIcon,
+  SparklesLine as SparklesIcon,
+  DeleteLine as Trash2Icon
+} from '@mingcute/react'
 import { useEffect, useReducer, useRef } from 'react'
 import { z } from 'zod'
 

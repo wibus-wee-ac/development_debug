@@ -1,15 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import {
-  ArrowDownIcon,
-  ArrowUpIcon,
-  CircleDotIcon,
-  CornerDownLeftIcon,
-  FileIcon,
-  MessageSquareIcon,
-  PuzzleIcon,
-  SettingsIcon,
-  TerminalIcon,
-} from 'lucide-react'
+  ArrowDownLine as ArrowDownIcon,
+  ArrowUpLine as ArrowUpIcon,
+  DotCircleLine as CircleDotIcon,
+  CornerDownLeftLine as CornerDownLeftIcon,
+  FileLine as FileIcon,
+  Message1Line as MessageSquareIcon,
+  PuzzledLine as PuzzleIcon,
+  Settings2Line as SettingsIcon,
+  TerminalLine as TerminalIcon
+} from '@mingcute/react'
 import type { ComponentType } from 'react'
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'

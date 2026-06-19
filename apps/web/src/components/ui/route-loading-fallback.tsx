@@ -1,5 +1,4 @@
-import { LoaderCircleIcon } from 'lucide-react'
-
+import { LoadingLine as LoaderCircleIcon } from '@mingcute/react'
 export function RouteLoadingFallback() {
   return (
     <div className="flex h-full items-center justify-center">

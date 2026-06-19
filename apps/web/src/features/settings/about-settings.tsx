@@ -1,4 +1,11 @@
-import { BotIcon, FolderIcon, HardDriveIcon, KeyRoundIcon, ShieldAlertIcon, TerminalIcon } from 'lucide-react'
+import {
+  RobotLine as BotIcon,
+  FolderLine as FolderIcon,
+  DriveLine as HardDriveIcon,
+  Key2Line as KeyRoundIcon,
+  SafeAlertLine as ShieldAlertIcon,
+  TerminalLine as TerminalIcon
+} from '@mingcute/react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

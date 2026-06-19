@@ -1,5 +1,11 @@
 import type { UIMessage } from 'ai'
-import { ClipboardIcon, DownloadIcon, ImageDownIcon, LoaderCircleIcon, MessageCircleIcon } from 'lucide-react'
+import {
+  ClipboardLine as ClipboardIcon,
+  DownloadLine as DownloadIcon,
+  PicLine as ImageDownIcon,
+  LoadingLine as LoaderCircleIcon,
+  Chat1Line as MessageCircleIcon
+} from '@mingcute/react'
 import { domToPng } from 'modern-screenshot'
 import { useRef, useState } from 'react'
 

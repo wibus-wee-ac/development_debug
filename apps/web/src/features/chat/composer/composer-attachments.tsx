@@ -1,5 +1,9 @@
 import type { FileUIPart } from 'ai'
-import { FileIcon, PaperclipIcon, XIcon } from 'lucide-react'
+import {
+  FileLine as FileIcon,
+  AttachmentLine as PaperclipIcon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import type { ChangeEvent, RefObject } from 'react'
 

@@ -1,11 +1,11 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import type { FileUIPart } from 'ai'
 import {
-  FileTextIcon,
-  Loader2Icon,
-  PencilIcon,
-  ScrollTextIcon,
-} from 'lucide-react'
+  FileLine as FileTextIcon,
+  LoadingLine as Loader2Icon,
+  PencilLine as PencilIcon,
+  ScrollableListLine as ScrollTextIcon
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import type { CSSProperties } from 'react'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'

@@ -1,5 +1,13 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query'
-import { ClockIcon, LoaderCircleIcon, MoreHorizontalIcon, PlugZapIcon, PowerIcon, RefreshCwIcon, Trash2Icon } from 'lucide-react'
+import {
+  ClockLine as ClockIcon,
+  LoadingLine as LoaderCircleIcon,
+  More2Line as MoreHorizontalIcon,
+  Plugin2Line as PlugZapIcon,
+  PowerLine as PowerIcon,
+  Refresh1Line as RefreshCwIcon,
+  DeleteLine as Trash2Icon
+} from '@mingcute/react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

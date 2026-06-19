@@ -1,4 +1,4 @@
-import { FolderIcon } from 'lucide-react'
+import { FolderLine as FolderIcon } from '@mingcute/react'
 import { useCallback, useMemo } from 'react'
 
 import { WorkspaceFileIcon, WorkspaceFileIconSpriteSheet } from '~/components/common/workspace-file-icon'

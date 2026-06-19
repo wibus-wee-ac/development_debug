@@ -1,5 +1,9 @@
 import type { FileUIPart, UIMessage } from 'ai'
-import { BotIcon, SendIcon, XCircleIcon } from 'lucide-react'
+import {
+  RobotLine as BotIcon,
+  SendLine as SendIcon,
+  CloseCircleLine as XCircleIcon
+} from '@mingcute/react'
 import { useState } from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'

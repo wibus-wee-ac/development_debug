@@ -1,11 +1,11 @@
 import { ShaderGradient, ShaderGradientCanvas } from '@shader-gradient/react'
 import {
-  ArrowRightIcon,
-  FolderIcon,
-  MessageSquareIcon,
-  Settings2Icon,
-  XIcon,
-} from 'lucide-react'
+  ArrowRightLine as ArrowRightIcon,
+  FolderLine as FolderIcon,
+  Message1Line as MessageSquareIcon,
+  Settings2Line as Settings2Icon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'

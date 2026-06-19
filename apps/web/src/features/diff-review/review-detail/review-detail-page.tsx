@@ -1,5 +1,5 @@
 import type { CodeViewItem } from '@pierre/diffs'
-import { FileDiffIcon, Loader2Icon } from 'lucide-react'
+import { GitCompareLine as FileDiffIcon, LoadingLine as Loader2Icon } from '@mingcute/react'
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ResizeHandle } from '~/components/layout/resize-handle'

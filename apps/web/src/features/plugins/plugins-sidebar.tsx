@@ -1,5 +1,4 @@
-import { PuzzleIcon } from 'lucide-react'
-
+import { PuzzledLine as PuzzleIcon } from '@mingcute/react'
 import { cn } from '~/lib/cn'
 import { usePluginStore } from '~/lib/plugin-store'
 import { useActiveSurface } from '~/navigation/active-surface'

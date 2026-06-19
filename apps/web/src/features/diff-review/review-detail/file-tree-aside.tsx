@@ -1,6 +1,10 @@
 import { prepareFileTreeInput } from '@pierre/trees'
 import { FileTree as PierreFileTree, useFileTree } from '@pierre/trees/react'
-import { CheckIcon, ListIcon, ListTreeIcon } from 'lucide-react'
+import {
+  CheckLine as CheckIcon,
+  PlaylistLine as ListIcon,
+  TreeLine as ListTreeIcon
+} from '@mingcute/react'
 import { useMemo, useState } from 'react'
 
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'

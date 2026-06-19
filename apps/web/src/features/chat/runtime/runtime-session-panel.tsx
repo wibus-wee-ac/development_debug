@@ -1,16 +1,16 @@
 import { useQuery } from '@tanstack/react-query'
 import type { UIMessage } from 'ai'
 import {
-  ActivityIcon,
-  BotIcon,
-  CheckCircle2Icon,
-  CircleIcon,
-  EyeIcon,
-  ListChecksIcon,
-  LoaderCircleIcon,
-  TimerIcon,
-  WrenchIcon
-} from 'lucide-react'
+  HeartbeatLine as ActivityIcon,
+  RobotLine as BotIcon,
+  CheckCircleLine as CheckCircle2Icon,
+  RoundLine as CircleIcon,
+  EyeLine as EyeIcon,
+  ListCheckLine as ListChecksIcon,
+  LoadingLine as LoaderCircleIcon,
+  StopwatchLine as TimerIcon,
+  ToolLine as WrenchIcon
+} from '@mingcute/react'
 import { useSyncExternalStore } from 'react'
 
 import type { RuntimeKind } from '~/features/agent-runtime/types'

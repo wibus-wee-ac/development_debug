@@ -1,15 +1,15 @@
 import { useQuery } from '@tanstack/react-query'
 import {
-  ActivityIcon,
-  CircleAlertIcon,
-  CpuIcon,
-  MemoryStickIcon,
-  MonitorIcon,
-  PanelBottomIcon,
-  RefreshCwIcon,
-  ServerIcon,
-  SquareTerminalIcon,
-} from 'lucide-react'
+  HeartbeatLine as ActivityIcon,
+  AlertLine as CircleAlertIcon,
+  ChipLine as CpuIcon,
+  UsbFlashDiskLine as MemoryStickIcon,
+  MonitorLine as MonitorIcon,
+  LayoutBottomLine as PanelBottomIcon,
+  Refresh1Line as RefreshCwIcon,
+  ServerLine as ServerIcon,
+  TerminalBoxLine as SquareTerminalIcon
+} from '@mingcute/react'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'

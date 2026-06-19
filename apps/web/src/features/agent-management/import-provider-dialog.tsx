@@ -1,5 +1,10 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { CircleAlertIcon, DownloadIcon, GlobeIcon, KeyIcon } from 'lucide-react'
+import {
+  AlertLine as CircleAlertIcon,
+  DownloadLine as DownloadIcon,
+  GlobeLine as GlobeIcon,
+  Key2Line as KeyIcon
+} from '@mingcute/react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 

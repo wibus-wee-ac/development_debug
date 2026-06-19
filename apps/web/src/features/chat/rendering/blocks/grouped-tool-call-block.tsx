@@ -1,23 +1,23 @@
 import {
-  BotIcon,
-  CheckCircle2Icon,
-  ChevronRightIcon,
-  CircleAlertIcon,
-  ClockIcon,
-  Code2Icon,
-  DiffIcon,
-  FileSearchIcon,
-  FileTextIcon,
-  GitBranchIcon,
-  GlobeIcon,
-  HelpCircleIcon,
-  ListChecksIcon,
-  ListTodoIcon,
-  NotebookTabsIcon,
-  PanelTopIcon,
-  ServerIcon,
-  SquareTerminalIcon,
-} from 'lucide-react'
+  RobotLine as BotIcon,
+  CheckCircleLine as CheckCircle2Icon,
+  RightSmallLine as ChevronRightIcon,
+  AlertLine as CircleAlertIcon,
+  ClockLine as ClockIcon,
+  CodeLine as Code2Icon,
+  GitCompareLine as DiffIcon,
+  FileSearchLine as FileSearchIcon,
+  FileLine as FileTextIcon,
+  GitBranchLine as GitBranchIcon,
+  GlobeLine as GlobeIcon,
+  QuestionLine as HelpCircleIcon,
+  ListCheckLine as ListChecksIcon,
+  ToDoLine as ListTodoIcon,
+  Notebook2Line as NotebookTabsIcon,
+  LayoutTopLine as PanelTopIcon,
+  ServerLine as ServerIcon,
+  TerminalBoxLine as SquareTerminalIcon
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import type { ComponentType } from 'react'
 import { useState } from 'react'

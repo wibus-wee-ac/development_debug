@@ -2,8 +2,7 @@ import * as React from "react"
 import { ContextMenu as ContextMenuPrimitive } from "radix-ui"
 
 import { cn } from "~/lib/cn"
-import { ChevronRightIcon, CheckIcon } from "lucide-react"
-
+import { RightSmallLine as ChevronRightIcon, CheckLine as CheckIcon } from "@mingcute/react"
 function ContextMenu({
   ...props
 }: React.ComponentProps<typeof ContextMenuPrimitive.Root>) {

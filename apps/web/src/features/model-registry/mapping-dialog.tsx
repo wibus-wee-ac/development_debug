@@ -6,7 +6,10 @@
  * and the settings model-registry page.
  */
 import { useQueryClient } from '@tanstack/react-query'
-import { SearchIcon, SlidersHorizontalIcon } from 'lucide-react'
+import {
+  SearchLine as SearchIcon,
+  SelectorHorizontalLine as SlidersHorizontalIcon
+} from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'

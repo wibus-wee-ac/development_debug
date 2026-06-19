@@ -11,8 +11,11 @@ import {
   InputGroupButton,
   InputGroupInput,
 } from "~/components/ui/input-group"
-import { ChevronDownIcon, XIcon, CheckIcon } from "lucide-react"
-
+import {
+  DownSmallLine as ChevronDownIcon,
+  CloseLine as XIcon,
+  CheckLine as CheckIcon
+} from "@mingcute/react"
 const Combobox = ComboboxPrimitive.Root
 
 function ComboboxValue({ ...props }: ComboboxPrimitive.Value.Props) {

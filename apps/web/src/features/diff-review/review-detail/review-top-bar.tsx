@@ -1,14 +1,14 @@
 import {
-  CheckIcon,
-  GitCommitHorizontalIcon,
-  GitCommitVerticalIcon,
-  ListTreeIcon,
-  MessageSquareIcon,
-  RefreshCwIcon,
-  Rows3Icon,
-  SendIcon,
-  SlidersHorizontalIcon,
-} from 'lucide-react'
+  CheckLine as CheckIcon,
+  GitCommitLine as GitCommitHorizontalIcon,
+  GitCommitLine as GitCommitVerticalIcon,
+  TreeLine as ListTreeIcon,
+  Message1Line as MessageSquareIcon,
+  Refresh1Line as RefreshCwIcon,
+  Rows3Line as Rows3Icon,
+  SendLine as SendIcon,
+  SelectorHorizontalLine as SlidersHorizontalIcon
+} from '@mingcute/react'
 import { useTransition } from 'react'
 
 import { Button } from '~/components/ui/button'

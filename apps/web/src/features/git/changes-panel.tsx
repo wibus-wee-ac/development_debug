@@ -2,7 +2,12 @@
 import { prepareFileTreeInput } from '@pierre/trees'
 import { FileTree as PierreFileTree, useFileTree } from '@pierre/trees/react'
 import { useQueryClient } from '@tanstack/react-query'
-import { FileDiffIcon, GitBranchIcon, Loader2Icon, ScanEyeIcon } from 'lucide-react'
+import {
+  GitCompareLine as FileDiffIcon,
+  GitBranchLine as GitBranchIcon,
+  LoadingLine as Loader2Icon,
+  Scan2Line as ScanEyeIcon
+} from '@mingcute/react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'

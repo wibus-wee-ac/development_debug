@@ -1,18 +1,18 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  ChevronDownIcon,
-  ChevronRightIcon,
-  DownloadIcon,
-  PlusIcon,
-  RefreshCwIcon,
-  SearchIcon,
-  ServerIcon,
-  SparklesIcon,
-  SquareCheckIcon,
-  SquareIcon,
-  Trash2Icon,
-  XIcon,
-} from 'lucide-react'
+  DownSmallLine as ChevronDownIcon,
+  RightSmallLine as ChevronRightIcon,
+  DownloadLine as DownloadIcon,
+  PlusLine as PlusIcon,
+  Refresh1Line as RefreshCwIcon,
+  SearchLine as SearchIcon,
+  ServerLine as ServerIcon,
+  SparklesLine as SparklesIcon,
+  CheckboxLine as SquareCheckIcon,
+  SquareLine as SquareIcon,
+  DeleteLine as Trash2Icon,
+  CloseLine as XIcon
+} from '@mingcute/react'
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

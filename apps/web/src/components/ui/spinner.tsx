@@ -1,5 +1,5 @@
 import { cn } from "~/lib/cn"
-import { Loader2Icon } from "lucide-react"
+import { LoadingLine as Loader2Icon } from "@mingcute/react"
 import * as React from "react"
 
 const DEFAULT_DELAY_MS = 180

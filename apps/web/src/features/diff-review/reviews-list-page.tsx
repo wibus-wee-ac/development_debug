@@ -1,5 +1,11 @@
 import { useMutation, useQueryClient } from '@tanstack/react-query'
-import { GitCommitVerticalIcon, GitCompareIcon, GitPullRequestArrowIcon, Loader2Icon, PlusIcon } from 'lucide-react'
+import {
+  GitCommitLine as GitCommitVerticalIcon,
+  GitCompareLine as GitCompareIcon,
+  GitPullRequestLine as GitPullRequestArrowIcon,
+  LoadingLine as Loader2Icon,
+  PlusLine as PlusIcon
+} from '@mingcute/react'
 import { useState } from 'react'
 
 import {

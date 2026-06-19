@@ -1,5 +1,12 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
-import { ChevronRightIcon, GitBranchIcon, LoaderCircleIcon, PlusIcon, ShieldCheckIcon, TrashIcon } from 'lucide-react'
+import {
+  RightSmallLine as ChevronRightIcon,
+  GitBranchLine as GitBranchIcon,
+  LoadingLine as LoaderCircleIcon,
+  PlusLine as PlusIcon,
+  SafeShieldLine as ShieldCheckIcon,
+  DeleteLine as TrashIcon
+} from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

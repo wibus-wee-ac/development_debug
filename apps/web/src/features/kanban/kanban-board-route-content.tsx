@@ -1,4 +1,4 @@
-import { LayoutDashboardIcon } from 'lucide-react'
+import { DashboardLine as LayoutDashboardIcon } from '@mingcute/react'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 
