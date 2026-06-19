@@ -41,9 +41,6 @@ importers:
       '@node-rs/jieba':
         specifier: ^2.0.1
         version: 2.0.1
-      '@openai/codex-sdk':
-        specifier: ^0.128.0
-        version: 0.128.0
       '@opentelemetry/api':
         specifier: ^1.9.1
         version: 1.9.1
@@ -1168,7 +1165,11 @@ importers:
         specifier: ^8.0.0
         version: 8.0.11(@types/node@22.19.17)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0)
 
-  packages/db: {}
+  packages/db:
+    dependencies:
+      drizzle-orm:
+        specifier: ^0.45.2
+        version: 0.45.2(@opentelemetry/api@1.9.1)(@types/better-sqlite3@7.6.13)(@types/pg@8.15.6)(better-sqlite3@12.10.1)
 
   packages/design-system:
     devDependencies:
@@ -1306,6 +1307,28 @@ importers:
         version: 8.0.11(@types/node@22.19.17)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0)
 
   plugins/github-issues:
+    devDependencies:
+      '@cradle/plugin-sdk':
+        specifier: workspace:*
+        version: link:../../packages/plugin-sdk
+      '@types/node':
+        specifier: ^22.19.1
+        version: 22.19.19
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vite:
+        specifier: ^8.0.0
+        version: 8.0.11(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0)
+      vitest:
+        specifier: ^4.1.4
+        version: 4.1.4(@opentelemetry/api@1.9.1)(@types/node@22.19.19)(jsdom@29.0.2(@noble/hashes@1.8.0))(msw@2.13.3(@types/node@22.19.19)(typescript@5.9.3))(vite@8.0.11(@types/node@22.19.19)(esbuild@0.28.0)(jiti@2.7.0)(tsx@4.21.0)(yaml@2.9.0))
+
+  plugins/nowledge-mem:
+    dependencies:
+      zod:
+        specifier: ^4.4.3
+        version: 4.4.3
     devDependencies:
       '@cradle/plugin-sdk':
         specifier: workspace:*
@@ -3561,51 +3584,6 @@ packages:
   '@open-draft/until@2.1.0':
     resolution: {integrity: sha512-U69T3ItWHvLwGg5eJ0n3I62nWuE6ilHlmz7zM0npLBRvPRd7e6NYmg54vvRtP5mZG7kZqZCFVdsTWo7BPtBujg==}
 
-  '@openai/codex-sdk@0.128.0':
-    resolution: {integrity: sha512-Eao0LLA5x90qwU6SXYd21h4KxdCef1WpCvHFgKdbqzWMJ79lUvguGDGvx1RheP+zTdKGxJfJ6dulI5wSXoUBhQ==}
-    engines: {node: '>=18'}
-
-  '@openai/codex@0.128.0':
-    resolution: {integrity: sha512-+xp6ODmFfBNnexIWRHApEaPXot2j6gyM8A5we/5IS/uY4eYHj4arETct4hQ5M4eO+MK7JY3ZU4xhuobhlysr0A==}
-    engines: {node: '>=16'}
-    hasBin: true
-
-  '@openai/codex@0.128.0-darwin-arm64':
-    resolution: {integrity: sha512-w+6zohfHx/kHBdles/CyFKaY57u9I3nK8QI9+NrdwMliKA0b7xn13yblRNkMpe09j6vL1oAWoxYsMOQ/vjBGug==}
-    engines: {node: '>=16'}
-    cpu: [arm64]
-    os: [darwin]
-
-  '@openai/codex@0.128.0-darwin-x64':
-    resolution: {integrity: sha512-SDbn6fO22Puy8xmMIbZi4f2znMrUEPwABApke4mo+4ihaauwuVjeqzXvW5SPJz5ty/bG11/mSupQgReT7T8BBw==}
-    engines: {node: '>=16'}
-    cpu: [x64]
-    os: [darwin]
-
-  '@openai/codex@0.128.0-linux-arm64':
-    resolution: {integrity: sha512-+SvH73H60qvCXFuQGP/EsmR//s1hHMBR22PvJkXvM/hdnTIGucx+JqRUjAWdmmQ1IU6j3kgwVvdLW/6ICB+M6w==}
-    engines: {node: '>=16'}
-    cpu: [arm64]
-    os: [linux]
-
-  '@openai/codex@0.128.0-linux-x64':
-    resolution: {integrity: sha512-2lnSPA05CRRuKAzFW8BCmmNCSieDcToLwfC2ALLbBYilGLgzhRibjlDglK9F1BkEzfohSSWJu4PBbRu/aG60lQ==}
-    engines: {node: '>=16'}
-    cpu: [x64]
-    os: [linux]
-
-  '@openai/codex@0.128.0-win32-arm64':
-    resolution: {integrity: sha512-ECJvsqmYFdA9pn42xxK3Odp/G16AjmBW0BglX8L0PwPjqbstbmlew9bfHf7xvL+SNfNl4NmyotW0+RNo1phgaA==}
-    engines: {node: '>=16'}
-    cpu: [arm64]
-    os: [win32]
-
-  '@openai/codex@0.128.0-win32-x64':
-    resolution: {integrity: sha512-k3jmUAFrzkUtvjGTXvSKjQqJLLlzjxp/VoHJDYedgmXUn6j70HxK38IwapzmnYfiBiTuzETvGwjXHzZgzKjhoQ==}
-    engines: {node: '>=16'}
-    cpu: [x64]
-    os: [win32]
-
   '@opentelemetry/api-logs@0.218.0':
     resolution: {integrity: sha512-fmEWp5kXlGEc3i/lR698Hz41DfGyN4Tbe4g7L1AxSc7fF8Xeh/FQ9Quqpa9dVA413Q1Ad43QOLzU4JoXgbFPWw==}
     engines: {node: '>=8.0.0'}
@@ -5415,8 +5393,8 @@ packages:
     resolution: {integrity: sha512-1ln28VkVHUbd5qy+ccXG68voWc0mgZMhBnwG0umxfD+wbkXUcvRzVrLjSqao7N8hCrDqp+Pt5j9Tsqef+9yQQQ==}
     hasBin: true
 
-  '@react-grab/cli@0.1.44':
-    resolution: {integrity: sha512-gMDYY2rw6OWajCcDlXSIgs2LC432YJXSb3Lm5yM187uhRgBYddoEVULi36h+IolX3r7jSb3ew7vn9FfI8NSo0A==}
+  '@react-grab/cli@0.1.46':
+    resolution: {integrity: sha512-rNjGKeRY3HROku1J/a7y8RGHRGFR6ZnllSPqNLfFI5cUu6FCdjjxHvXf1TEXxW7I5REq8iKoLuzM9iYboXCRdg==}
     hasBin: true
 
   '@reduxjs/toolkit@2.11.2':
@@ -7176,8 +7154,8 @@ packages:
     resolution: {integrity: sha512-MnA+YT8fwfJPgBx3m60MNqakm30XOkyIoH1y6huTQvC0PwZG7ki8NacLBcrPbNoo8vEZy7Jpuk7+jMO+CUovTQ==}
     engines: {node: '>= 14'}
 
-  agent-install@0.0.5:
-    resolution: {integrity: sha512-nHlms9BkP8ZiY79HrwCGiA2DcNaXrAaJrCM/BEqQ7MEsSKyCk+2A76xPGylIfASZSZE0SaU3T0bNSg4rBPIJAQ==}
+  agent-install@0.0.6:
+    resolution: {integrity: sha512-7NRMZ/ZDz2vHevQTgJsocBFpakB1/Wx5ip19YSJuj4VOXpraWztTerViNtdSyARKZT9e2yVwUUB5JXXCE7mNrA==}
     hasBin: true
 
   ai@6.0.168:
@@ -11315,8 +11293,8 @@ packages:
       react:
         optional: true
 
-  react-grab@0.1.44:
-    resolution: {integrity: sha512-bDEwBdI90ljq2lhUtPqmWis/HwYB/CvfT0m5i+P9F83Pt0Ot8o9XL8v00s9jcWzdQUlsFDzmq2FO2CHUe8JY8A==}
+  react-grab@0.1.46:
+    resolution: {integrity: sha512-i6sSSBGqW1yxZ5TZL9wX2m9qNMKOydpou5IMaXrK1iylJAJyr/npoqv4mhq3cO7480FBhmlEZbf5VF8KOCBlMQ==}
     hasBin: true
     peerDependencies:
       react: '>=17.0.0'
@@ -12312,6 +12290,7 @@ packages:
   tsconfck@3.1.6:
     resolution: {integrity: sha512-ks6Vjr/jEw0P1gmOVwutM3B7fWxoWBL2KRDb1JfqGVawBmO5UsvmWOQFGHBPl5yxYz4eERr19E6L7NMv+Fej4w==}
     engines: {node: ^18 || >=20}
+    deprecated: unmaintained
     hasBin: true
     peerDependencies:
       typescript: ^5.0.0
@@ -15418,37 +15397,6 @@ snapshots:
 
   '@open-draft/until@2.1.0': {}
 
-  '@openai/codex-sdk@0.128.0':
-    dependencies:
-      '@openai/codex': 0.128.0
-
-  '@openai/codex@0.128.0':
-    optionalDependencies:
-      '@openai/codex-darwin-arm64': '@openai/codex@0.128.0-darwin-arm64'
-      '@openai/codex-darwin-x64': '@openai/codex@0.128.0-darwin-x64'
-      '@openai/codex-linux-arm64': '@openai/codex@0.128.0-linux-arm64'
-      '@openai/codex-linux-x64': '@openai/codex@0.128.0-linux-x64'
-      '@openai/codex-win32-arm64': '@openai/codex@0.128.0-win32-arm64'
-      '@openai/codex-win32-x64': '@openai/codex@0.128.0-win32-x64'
-
-  '@openai/codex@0.128.0-darwin-arm64':
-    optional: true
-
-  '@openai/codex@0.128.0-darwin-x64':
-    optional: true
-
-  '@openai/codex@0.128.0-linux-arm64':
-    optional: true
-
-  '@openai/codex@0.128.0-linux-x64':
-    optional: true
-
-  '@openai/codex@0.128.0-win32-arm64':
-    optional: true
-
-  '@openai/codex@0.128.0-win32-x64':
-    optional: true
-
   '@opentelemetry/api-logs@0.218.0':
     dependencies:
       '@opentelemetry/api': 1.9.1
@@ -17655,9 +17603,9 @@ snapshots:
       smol-toml: 1.6.1
       tinyexec: 1.1.2
 
-  '@react-grab/cli@0.1.44':
+  '@react-grab/cli@0.1.46':
     dependencies:
-      agent-install: 0.0.5
+      agent-install: 0.0.6
       commander: 14.0.3
       ignore: 7.0.5
       ora: 9.4.0
@@ -19720,7 +19668,7 @@ snapshots:
 
   agent-base@7.1.4: {}
 
-  agent-install@0.0.5:
+  agent-install@0.0.6:
     dependencies:
       '@iarna/toml': 2.2.5
       commander: 14.0.3
@@ -24780,9 +24728,9 @@ snapshots:
     optionalDependencies:
       react: 19.2.5
 
-  react-grab@0.1.44(react@19.2.5):
+  react-grab@0.1.46(react@19.2.5):
     dependencies:
-      '@react-grab/cli': 0.1.44
+      '@react-grab/cli': 0.1.46
       bippy: 0.5.41(react@19.2.5)
     optionalDependencies:
       react: 19.2.5
@@ -24904,7 +24852,7 @@ snapshots:
       prompts: 2.4.2
       react: 19.2.5
       react-dom: 19.2.5(react@19.2.5)
-      react-grab: 0.1.44(react@19.2.5)
+      react-grab: 0.1.46(react@19.2.5)
     optionalDependencies:
       esbuild: 0.28.0
       unplugin: 2.1.0

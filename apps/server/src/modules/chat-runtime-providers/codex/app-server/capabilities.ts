@@ -25,8 +25,8 @@ export interface CodexAppServerCapabilityManifest {
 }
 
 const CODEX_APP_SERVER_PROTOCOL = 'codex-app-server'
-const CODEX_APP_SERVER_GENERATOR_VERSION = 'codex-cli 0.137.0'
-const CODEX_APP_SERVER_GENERATED_DATE = '2026-06-07'
+const CODEX_APP_SERVER_GENERATOR_VERSION = 'codex-cli 0.141.0'
+const CODEX_APP_SERVER_GENERATED_DATE = '2026-06-19'
 
 export const CODEX_APP_SERVER_CLIENT_METHODS = [
   { method: 'initialize', paramsType: 'InitializeParams', category: 'initialize', operation: 'initialize', interaction: 'request' },
@@ -34,6 +34,7 @@ export const CODEX_APP_SERVER_CLIENT_METHODS = [
   { method: 'thread/resume', paramsType: 'ThreadResumeParams', category: 'thread', operation: 'resume', interaction: 'request' },
   { method: 'thread/fork', paramsType: 'ThreadForkParams', category: 'thread', operation: 'fork', interaction: 'request' },
   { method: 'thread/archive', paramsType: 'ThreadArchiveParams', category: 'thread', operation: 'archive', interaction: 'request' },
+  { method: 'thread/delete', paramsType: 'ThreadDeleteParams', category: 'thread', operation: 'delete', interaction: 'request' },
   { method: 'thread/unsubscribe', paramsType: 'ThreadUnsubscribeParams', category: 'thread', operation: 'unsubscribe', interaction: 'request' },
   { method: 'thread/increment_elicitation', paramsType: 'ThreadIncrementElicitationParams', category: 'thread', operation: 'increment_elicitation', interaction: 'request' },
   { method: 'thread/decrement_elicitation', paramsType: 'ThreadDecrementElicitationParams', category: 'thread', operation: 'decrement_elicitation', interaction: 'request' },
@@ -50,6 +51,8 @@ export const CODEX_APP_SERVER_CLIENT_METHODS = [
   { method: 'thread/shellCommand', paramsType: 'ThreadShellCommandParams', category: 'thread', operation: 'shellCommand', interaction: 'request' },
   { method: 'thread/approveGuardianDeniedAction', paramsType: 'ThreadApproveGuardianDeniedActionParams', category: 'thread', operation: 'approveGuardianDeniedAction', interaction: 'request' },
   { method: 'thread/backgroundTerminals/clean', paramsType: 'ThreadBackgroundTerminalsCleanParams', category: 'thread', operation: 'backgroundTerminals/clean', interaction: 'request' },
+  { method: 'thread/backgroundTerminals/list', paramsType: 'ThreadBackgroundTerminalsListParams', category: 'thread', operation: 'backgroundTerminals/list', interaction: 'request' },
+  { method: 'thread/backgroundTerminals/terminate', paramsType: 'ThreadBackgroundTerminalsTerminateParams', category: 'thread', operation: 'backgroundTerminals/terminate', interaction: 'request' },
   { method: 'thread/rollback', paramsType: 'ThreadRollbackParams', category: 'thread', operation: 'rollback', interaction: 'request' },
   { method: 'thread/list', paramsType: 'ThreadListParams', category: 'thread', operation: 'list', interaction: 'request' },
   { method: 'thread/search', paramsType: 'ThreadSearchParams', category: 'thread', operation: 'search', interaction: 'request' },
@@ -92,6 +95,7 @@ export const CODEX_APP_SERVER_CLIENT_METHODS = [
   { method: 'thread/realtime/start', paramsType: 'ThreadRealtimeStartParams', category: 'thread', operation: 'realtime/start', interaction: 'stream' },
   { method: 'thread/realtime/appendAudio', paramsType: 'ThreadRealtimeAppendAudioParams', category: 'thread', operation: 'realtime/appendAudio', interaction: 'stream' },
   { method: 'thread/realtime/appendText', paramsType: 'ThreadRealtimeAppendTextParams', category: 'thread', operation: 'realtime/appendText', interaction: 'stream' },
+  { method: 'thread/realtime/appendSpeech', paramsType: 'ThreadRealtimeAppendSpeechParams', category: 'thread', operation: 'realtime/appendSpeech', interaction: 'request' },
   { method: 'thread/realtime/stop', paramsType: 'ThreadRealtimeStopParams', category: 'thread', operation: 'realtime/stop', interaction: 'stream' },
   { method: 'thread/realtime/listVoices', paramsType: 'ThreadRealtimeListVoicesParams', category: 'thread', operation: 'realtime/listVoices', interaction: 'request' },
   { method: 'review/start', paramsType: 'ReviewStartParams', category: 'review', operation: 'start', interaction: 'request' },
@@ -100,10 +104,11 @@ export const CODEX_APP_SERVER_CLIENT_METHODS = [
   { method: 'experimentalFeature/list', paramsType: 'ExperimentalFeatureListParams', category: 'experimental-feature', operation: 'list', interaction: 'request' },
   { method: 'permissionProfile/list', paramsType: 'PermissionProfileListParams', category: 'permission-profile', operation: 'list', interaction: 'request' },
   { method: 'experimentalFeature/enablement/set', paramsType: 'ExperimentalFeatureEnablementSetParams', category: 'experimental-feature', operation: 'enablement/set', interaction: 'request' },
-  { method: 'remoteControl/enable', paramsType: null, category: 'remote-control', operation: 'enable', interaction: 'request' },
-  { method: 'remoteControl/disable', paramsType: null, category: 'remote-control', operation: 'disable', interaction: 'request' },
+  { method: 'remoteControl/enable', paramsType: 'RemoteControlEnableParams | null', category: 'remote-control', operation: 'enable', interaction: 'request' },
+  { method: 'remoteControl/disable', paramsType: 'RemoteControlDisableParams | null', category: 'remote-control', operation: 'disable', interaction: 'request' },
   { method: 'remoteControl/status/read', paramsType: null, category: 'remote-control', operation: 'status/read', interaction: 'request' },
   { method: 'remoteControl/pairing/start', paramsType: 'RemoteControlPairingStartParams', category: 'remote-control', operation: 'pairing/start', interaction: 'request' },
+  { method: 'remoteControl/pairing/status', paramsType: 'RemoteControlPairingStatusParams', category: 'remote-control', operation: 'pairing/status', interaction: 'request' },
   { method: 'remoteControl/client/list', paramsType: 'RemoteControlClientsListParams', category: 'remote-control', operation: 'client/list', interaction: 'request' },
   { method: 'remoteControl/client/revoke', paramsType: 'RemoteControlClientsRevokeParams', category: 'remote-control', operation: 'client/revoke', interaction: 'request' },
   { method: 'collaborationMode/list', paramsType: 'CollaborationModeListParams', category: 'collaboration-mode', operation: 'list', interaction: 'request' },
@@ -120,6 +125,8 @@ export const CODEX_APP_SERVER_CLIENT_METHODS = [
   { method: 'account/login/cancel', paramsType: 'CancelLoginAccountParams', category: 'account', operation: 'login/cancel', interaction: 'request' },
   { method: 'account/logout', paramsType: null, category: 'account', operation: 'logout', interaction: 'request' },
   { method: 'account/rateLimits/read', paramsType: null, category: 'account', operation: 'rateLimits/read', interaction: 'request' },
+  { method: 'account/rateLimitResetCredit/consume', paramsType: 'ConsumeAccountRateLimitResetCreditParams', category: 'account', operation: 'rateLimitResetCredit/consume', interaction: 'request' },
+  { method: 'account/usage/read', paramsType: null, category: 'account', operation: 'usage/read', interaction: 'request' },
   { method: 'account/sendAddCreditsNudgeEmail', paramsType: 'SendAddCreditsNudgeEmailParams', category: 'account', operation: 'sendAddCreditsNudgeEmail', interaction: 'request' },
   { method: 'feedback/upload', paramsType: 'FeedbackUploadParams', category: 'feedback', operation: 'upload', interaction: 'request' },
   { method: 'command/exec', paramsType: 'CommandExecParams', category: 'command', operation: 'exec', interaction: 'stream' },
@@ -164,6 +171,7 @@ export const CODEX_APP_SERVER_SERVER_NOTIFICATIONS = [
   { method: 'thread/started', paramsType: 'ThreadStartedNotification', category: 'thread' },
   { method: 'thread/status/changed', paramsType: 'ThreadStatusChangedNotification', category: 'thread' },
   { method: 'thread/archived', paramsType: 'ThreadArchivedNotification', category: 'thread' },
+  { method: 'thread/deleted', paramsType: 'ThreadDeletedNotification', category: 'thread' },
   { method: 'thread/unarchived', paramsType: 'ThreadUnarchivedNotification', category: 'thread' },
   { method: 'thread/closed', paramsType: 'ThreadClosedNotification', category: 'thread' },
   { method: 'skills/changed', paramsType: 'SkillsChangedNotification', category: 'skills' },
@@ -208,6 +216,7 @@ export const CODEX_APP_SERVER_SERVER_NOTIFICATIONS = [
   { method: 'thread/compacted', paramsType: 'ContextCompactedNotification', category: 'thread' },
   { method: 'model/rerouted', paramsType: 'ModelReroutedNotification', category: 'model' },
   { method: 'model/verification', paramsType: 'ModelVerificationNotification', category: 'model' },
+  { method: 'turn/moderationMetadata', paramsType: 'TurnModerationMetadataNotification', category: 'turn' },
   { method: 'warning', paramsType: 'WarningNotification', category: 'warning' },
   { method: 'guardianWarning', paramsType: 'GuardianWarningNotification', category: 'guardian-warning' },
   { method: 'deprecationNotice', paramsType: 'DeprecationNoticeNotification', category: 'deprecation-notice' },
