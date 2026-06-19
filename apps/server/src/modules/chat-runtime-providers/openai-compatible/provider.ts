@@ -196,7 +196,7 @@ function resolveOpenAICompatibleEndpoint(
   if (profile.providerKind === 'universal') {
     const config = readTrustedUniversalConfig(profile.configJson)
     return {
-      baseUrl: config.baseUrl,
+      baseUrl: config.openaiBaseUrl,
       model: config.model,
       maxMessages: config.maxMessages,
     }

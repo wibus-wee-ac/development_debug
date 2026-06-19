@@ -482,7 +482,7 @@ function resolveAnthropicBaseUrl(
 ): string | undefined {
   if (profile.providerKind === 'universal') {
     const universalConfig = readTrustedUniversalConfig(profile.configJson)
-    return universalConfig.baseUrl ?? undefined
+    return universalConfig.anthropicBaseUrl ?? undefined
   }
   return config.baseUrl ?? undefined
 }
