@@ -1,7 +1,8 @@
 import { useMemo } from 'react'
 
-import { useSurfaceStore } from '~/navigation/surface-store'
+import { useActiveSurface } from '~/navigation/active-surface'
 import { sortSurfaces } from '~/navigation/surface-identity'
+import { useSurfaceStore } from '~/navigation/surface-store'
 
 function RouteDetails({ value }: { value: unknown }) {
   return (
@@ -13,9 +14,9 @@ function RouteDetails({ value }: { value: unknown }) {
 
 export function SurfacesPanel() {
   const surfaces = useSurfaceStore(state => state.surfaces)
-  const activeSurfaceId = useSurfaceStore(state => state.activeSurfaceId)
+  const activeSurface = useActiveSurface()
+  const activeSurfaceId = activeSurface?.id ?? null
   const orderedSurfaces = useMemo(() => sortSurfaces(surfaces), [surfaces])
-  const activeSurface = orderedSurfaces.find(surface => surface.id === activeSurfaceId) ?? null
 
   return (
     <div className="h-full overflow-auto p-4 font-mono text-[11px]">

@@ -15,7 +15,6 @@ import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 're
 import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
-import { useShallow } from 'zustand/react/shallow'
 
 import { getIssuesSearchOptions, getKanbanBoardsOptions, getSearchThreadsOptions, getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
@@ -36,9 +35,9 @@ import { cn } from '~/lib/cn'
 import { rankFuzzyItems } from '~/lib/fuzzy-rank'
 import type { WebCommandRegistration } from '~/lib/plugin-store'
 import { usePluginStore } from '~/lib/plugin-store'
+import { useActiveSurface } from '~/navigation/active-surface'
 import { openChatSession, openKanbanBoard, openNewChat, openSettingsSection, openUsage } from '~/navigation/navigation-commands'
 import { chatSessionIdForSurface, workspaceIdForSurface } from '~/navigation/surface-identity'
-import { useSurfaceStore } from '~/navigation/surface-store'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
@@ -166,18 +165,7 @@ function useActiveFileSearchWorkspaceId(enabled: boolean): {
   workspaceId: string | null
 } {
   const { slots } = useLayoutSlotsCtx()
-  const activeSurface = useSurfaceStore(useShallow((s) => {
-    if (!enabled) {
-      return null
-    }
-    const surface = s.surfaces.find(item => item.id === s.activeSurfaceId)
-    return surface
-      ? {
-        kind: surface.kind,
-        route: surface.route,
-      }
-      : null
-  }))
+  const activeSurface = useActiveSurface()
   const chatSessionId = enabled ? chatSessionIdForSurface(activeSurface) : null
 
   const { data: chatSession } = useQuery({

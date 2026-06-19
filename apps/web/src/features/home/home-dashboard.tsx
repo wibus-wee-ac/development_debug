@@ -9,6 +9,7 @@ export function HomeDashboard() {
       active={active}
       dataTestId="home-dashboard"
       includeLayoutSlots={false}
+      replaceCurrentSurfaceOnSubmit={false}
       testIdPrefix="home"
     />
   )

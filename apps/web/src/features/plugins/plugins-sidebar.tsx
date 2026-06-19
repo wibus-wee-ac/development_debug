@@ -2,12 +2,12 @@ import { PuzzleIcon } from 'lucide-react'
 
 import { cn } from '~/lib/cn'
 import { usePluginStore } from '~/lib/plugin-store'
+import { useActiveSurface } from '~/navigation/active-surface'
 import { openPluginPanel } from '~/navigation/navigation-commands'
-import { useSurfaceStore } from '~/navigation/surface-store'
 
 export function PluginsSidebar({ collapsed }: { collapsed?: boolean }) {
   const panels = usePluginStore(s => s.panels)
-  const activeSurface = useSurfaceStore((s) => s.surfaces.find(surface => surface.id === s.activeSurfaceId))
+  const activeSurface = useActiveSurface()
   const ready = panels.length > 0
 
   if (!ready) {

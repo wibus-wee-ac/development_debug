@@ -11,13 +11,15 @@ const LEGACY_TABS_STORAGE_KEY = 'cradle:tabs-next:v1'
 
 interface PersistedSurfaceState {
   surfaces: AppSurface[]
-  activeSurfaceId: string | null
+}
+
+type LegacyPersistedSurfaceState = PersistedSurfaceState & {
+  activeSurfaceId?: string | null
 }
 
 interface SurfaceState extends PersistedSurfaceState {
   syncSurface: (surface: SurfaceDraft) => void
-  replaceActiveSurface: (surface: SurfaceDraft) => void
-  setActiveSurfaceId: (surfaceId: string) => void
+  replaceSurface: (replacedSurfaceId: string | null, surface: SurfaceDraft) => void
   closeSurface: (surfaceId: string) => void
   reorderSurfaces: (orderedIds: string[]) => void
   updateSurfaceTitle: (surfaceId: string, title: string) => void
@@ -121,19 +123,19 @@ function mergeSurface(existing: AppSurface, surface: SurfaceDraft): AppSurface {
   return surfaceMatchesDraft(existing, surface) ? existing : merged
 }
 
-function replaceActiveSurface(
+function replaceSurfaceInCollection(
   surfaces: readonly AppSurface[],
-  activeSurfaceId: string | null,
+  replacedSurfaceId: string | null,
   surface: SurfaceDraft,
 ): AppSurface[] {
-  const activeSurface = surfaces.find(item => item.id === activeSurfaceId)
-  if (!activeSurface || !activeSurface.closable) {
+  const replacedSurface = surfaces.find(item => item.id === replacedSurfaceId)
+  if (!replacedSurface || !replacedSurface.closable) {
     return appendOrUpdateSurface(surfaces, surface)
   }
 
   const existingTarget = surfaces.find(item => item.id === surface.id)
   if (existingTarget) {
-    if (existingTarget.id === activeSurface.id) {
+    if (existingTarget.id === replacedSurface.id) {
       const merged = mergeSurface(existingTarget, surface)
       if (merged === existingTarget) {
         return surfaces as AppSurface[]
@@ -145,41 +147,20 @@ function replaceActiveSurface(
 
     return normalizeSurfaces(
       surfaces
-        .filter(item => item.id !== activeSurface.id || item.id === surface.id)
+        .filter(item => item.id !== replacedSurface.id || item.id === surface.id)
         .map(item => (item.id === surface.id ? mergeSurface(item, surface) : item)),
     )
   }
 
   return normalizeSurfaces(
     surfaces.map(item =>
-      item.id === activeSurface.id
+      item.id === replacedSurface.id
         ? {
             ...surface,
-            order: activeSurface.order,
+            order: replacedSurface.order,
           }
         : item),
   )
-}
-
-function readFallbackSurfaceId(
-  previousSurfaces: readonly AppSurface[],
-  nextSurfaces: readonly AppSurface[],
-  closedSurfaceId: string,
-  activeSurfaceId: string | null,
-): string {
-  const orderedPrevious = sortSurfaces(previousSurfaces)
-  const orderedNext = sortSurfaces(nextSurfaces)
-
-  if (activeSurfaceId !== closedSurfaceId) {
-    return orderedNext.some(surface => surface.id === activeSurfaceId)
-      ? activeSurfaceId!
-      : HOME_SURFACE_ID
-  }
-
-  const closedIndex = orderedPrevious.findIndex(surface => surface.id === closedSurfaceId)
-  const next
-    = orderedNext[Math.min(Math.max(closedIndex, 0), orderedNext.length - 1)] ?? orderedNext.at(-1)
-  return next?.id ?? HOME_SURFACE_ID
 }
 
 function clearLegacyTabsPersistence(): void {
@@ -193,41 +174,23 @@ export const useSurfaceStore = create<SurfaceState>()(
   persist(
     set => ({
       surfaces: [HOME_SURFACE],
-      activeSurfaceId: HOME_SURFACE_ID,
 
       syncSurface: surface =>
         set((state) => {
           const surfaces = appendOrUpdateSurface(state.surfaces, surface)
-          if (surfaces === state.surfaces && state.activeSurfaceId === surface.id) {
+          if (surfaces === state.surfaces) {
             return state
           }
-          return {
-            surfaces,
-            activeSurfaceId: surface.id,
-          }
+          return { surfaces }
         }),
 
-      replaceActiveSurface: surface =>
+      replaceSurface: (replacedSurfaceId, surface) =>
         set((state) => {
-          const surfaces = replaceActiveSurface(state.surfaces, state.activeSurfaceId, surface)
-          if (surfaces === state.surfaces && state.activeSurfaceId === surface.id) {
+          const surfaces = replaceSurfaceInCollection(state.surfaces, replacedSurfaceId, surface)
+          if (surfaces === state.surfaces) {
             return state
           }
-          return {
-            surfaces,
-            activeSurfaceId: surface.id,
-          }
-        }),
-
-      setActiveSurfaceId: surfaceId =>
-        set((state) => {
-          if (
-            state.activeSurfaceId === surfaceId
-            || !state.surfaces.some(surface => surface.id === surfaceId)
-          ) {
-            return state
-          }
-          return { activeSurfaceId: surfaceId }
+          return { surfaces }
         }),
 
       closeSurface: surfaceId =>
@@ -240,16 +203,7 @@ export const useSurfaceStore = create<SurfaceState>()(
           const nextSurfaces = normalizeSurfaces(
             state.surfaces.filter(surface => surface.id !== surfaceId),
           )
-          const activeSurfaceId = readFallbackSurfaceId(
-            state.surfaces,
-            nextSurfaces,
-            surfaceId,
-            state.activeSurfaceId,
-          )
-          return {
-            surfaces: nextSurfaces,
-            activeSurfaceId,
-          }
+          return { surfaces: nextSurfaces }
         }),
 
       reorderSurfaces: orderedIds =>
@@ -286,16 +240,12 @@ export const useSurfaceStore = create<SurfaceState>()(
       resetSurfaces: () =>
         set((state) => {
           if (
-            state.activeSurfaceId === HOME_SURFACE_ID
-            && state.surfaces.length === 1
+            state.surfaces.length === 1
             && state.surfaces[0]?.id === HOME_SURFACE_ID
           ) {
             return state
           }
-          return {
-            surfaces: [HOME_SURFACE],
-            activeSurfaceId: HOME_SURFACE_ID,
-          }
+          return { surfaces: [HOME_SURFACE] }
         }),
     }),
     {
@@ -303,29 +253,18 @@ export const useSurfaceStore = create<SurfaceState>()(
       storage: createJSONStorage(() => (isTearoffWindow ? sessionStorage : localStorage)),
       partialize: (state): PersistedSurfaceState => ({
         surfaces: normalizeSurfaces(state.surfaces),
-        activeSurfaceId: state.activeSurfaceId,
       }),
       onRehydrateStorage: () => (state) => {
         clearLegacyTabsPersistence()
         if (!state) {
           return
         }
+        delete (state as LegacyPersistedSurfaceState).activeSurfaceId
         state.surfaces = normalizeSurfaces(state.surfaces)
-        if (
-          !state.activeSurfaceId
-          || !state.surfaces.some(surface => surface.id === state.activeSurfaceId)
-        ) {
-          state.activeSurfaceId = HOME_SURFACE_ID
-        }
       },
     },
   ),
 )
-
-export function readActiveSurface(): AppSurface {
-  const state = useSurfaceStore.getState()
-  return state.surfaces.find(surface => surface.id === state.activeSurfaceId) ?? HOME_SURFACE
-}
 
 export function readSurface(surfaceId: string): AppSurface | null {
   return useSurfaceStore.getState().surfaces.find(surface => surface.id === surfaceId) ?? null

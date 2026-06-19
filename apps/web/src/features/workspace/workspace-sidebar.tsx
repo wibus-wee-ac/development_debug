@@ -102,6 +102,7 @@ import { useFeatureFlag } from '~/features/settings/use-app-preferences'
 import type { Workspace } from '~/features/workspace/types'
 import { cn } from '~/lib/cn'
 import { authorizeDangerousAction, isElectron, nativeIpc } from '~/lib/electron'
+import { useIsActiveSurfaceId } from '~/navigation/active-surface'
 import {
   closeSurfaceById,
   openAutomation,
@@ -114,7 +115,6 @@ import {
 import type { ScreenCoordinates } from '~/navigation/screen-coordinates'
 import { getEventScreenCoordinates, isPointerOutsideWindow } from '~/navigation/screen-coordinates'
 import { chatSurfaceId } from '~/navigation/surface-identity'
-import { useSurfaceStore } from '~/navigation/surface-store'
 import { openTearoffSessionWindow } from '~/navigation/tearoff-sessions'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useSessionLayoutStore } from '~/store/session-layout'
@@ -1020,7 +1020,6 @@ SessionUnreadIndicator.displayName = 'SessionUnreadIndicator'
 const SessionItem = memo(
   ({
     session,
-    active,
     isStreaming,
     hasError,
     isRenaming,
@@ -1032,7 +1031,6 @@ const SessionItem = memo(
     onOpenSessionMenu
   }: {
     session: WorkspaceSession
-    active: boolean
     isStreaming: boolean
     hasError: boolean
     isRenaming: boolean
@@ -1043,6 +1041,8 @@ const SessionItem = memo(
     onRenameCancel: () => void
     onOpenSessionMenu: (request: SessionMenuRequest) => void
   }) => {
+    const sessionSurfaceId = chatSurfaceId(session.id)
+    const active = useIsActiveSurfaceId(sessionSurfaceId)
     const isUnread = session.unread
     const isRegeneratingTitle = useTitleRegenerationStore((state) =>
       state.regeneratingSessionIds.has(session.id)
@@ -1326,7 +1326,6 @@ SessionItem.displayName = 'SessionItem'
 
 interface SessionListProps {
   sessions: WorkspaceSession[]
-  activeSessionId: string | null
   renamingSessionId: string | null
   locallyStreamingSessionIds: Set<string>
   locallyErroredSessionIds: Set<string>
@@ -1341,7 +1340,6 @@ interface SessionListProps {
 const SessionListRows = memo(
   ({
     sessions,
-    activeSessionId,
     renamingSessionId,
     locallyStreamingSessionIds,
     locallyErroredSessionIds,
@@ -1360,7 +1358,6 @@ const SessionListRows = memo(
             <SessionItem
               key={session.id}
               session={session}
-              active={session.id === activeSessionId}
               isStreaming={isStreaming}
               hasError={
                 !isStreaming &&
@@ -1494,7 +1491,6 @@ WorkspaceGroupDisclosure.displayName = 'WorkspaceGroupDisclosure'
 function WorkspaceSessionListSection({
   workspaceId,
   sortedSessions,
-  activeSessionId,
   renamingSessionId,
   retainedSessionIds,
   locallyStreamingSessionIds,
@@ -1508,7 +1504,6 @@ function WorkspaceSessionListSection({
 }: {
   workspaceId: string
   sortedSessions: WorkspaceSession[]
-  activeSessionId: string | null
   renamingSessionId: string | null
   retainedSessionIds: Set<string>
   locallyStreamingSessionIds: Set<string>
@@ -1605,7 +1600,6 @@ function WorkspaceSessionListSection({
         )}
         <SessionListRows
           sessions={visibleSessions}
-          activeSessionId={activeSessionId}
           renamingSessionId={renamingSessionId}
           locallyStreamingSessionIds={locallyStreamingSessionIds}
           locallyErroredSessionIds={locallyErroredSessionIds}
@@ -1679,24 +1673,9 @@ const WorkspaceGroup = memo(
       }
       return byId
     }, [sessions])
-    const workspaceSessionIdSet = useMemo(() => new Set(workspaceSessionIds), [workspaceSessionIds])
     const activeMenuSession = sessionMenuState.sessionId
       ? (sessionsById.get(sessionMenuState.sessionId) ?? null)
       : null
-    const activeSessionId = useSurfaceStore(
-      useCallback(
-        (state) => {
-          const activeSurface = state.surfaces.find((surface) => surface.id === state.activeSurfaceId)
-          if (activeSurface?.kind !== 'chat' || activeSurface.route.to !== '/chat/$sessionId') {
-            return null
-          }
-
-          const sessionId = activeSurface.route.params.sessionId
-          return sessionId && workspaceSessionIdSet.has(sessionId) ? sessionId : null
-        },
-        [workspaceSessionIdSet]
-      )
-    )
     const locallyStreamingSessionIds = useChatStore(
       useCallback(
         (state) =>
@@ -2137,7 +2116,6 @@ const WorkspaceGroup = memo(
         <WorkspaceSessionListSection
           workspaceId={workspace.id}
           sortedSessions={sortedSessions}
-          activeSessionId={activeSessionId}
           renamingSessionId={renamingSessionId}
           retainedSessionIds={retainedSessionIds}
           locallyStreamingSessionIds={locallyStreamingSessionIds}

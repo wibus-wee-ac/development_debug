@@ -1,19 +1,22 @@
 import { router } from '~/router'
 
-import type { AppSurface, SurfaceDraft } from './surface-identity'
+import { readActiveSurface, readActiveSurfaceId } from './active-surface'
 import {
   clearRouteSurfaceSyncSuppressionForSurface,
   suppressRouteSurfaceSync,
-} from './route-surface-sync-guard'
+} from './route-surface-sync-key'
+import type { AppSurface, SurfaceDraft } from './surface-identity'
 import {
   chatSurfaceId,
   createHomeSurfaceDraft,
+  HOME_SURFACE,
   kanbanSurfaceId,
   pluginSurfaceId,
+  sortSurfaces,
   workspaceDiffsSurfaceId,
   workspaceSurfaceId,
 } from './surface-identity'
-import { readActiveSurface, readSurface, useSurfaceStore } from './surface-store'
+import { readSurface, useSurfaceStore } from './surface-store'
 
 type RouterNavigateOptions = Parameters<typeof router.navigate>[0]
 
@@ -32,7 +35,7 @@ export function navigateToSurface(surface: AppSurface, options: { replace?: bool
 function openSurface(surface: SurfaceDraft, options: { replace?: boolean } = {}): void {
   clearRouteSurfaceSyncSuppressionForSurface(surface.id)
   if (options.replace) {
-    useSurfaceStore.getState().replaceActiveSurface(surface)
+    useSurfaceStore.getState().replaceSurface(readActiveSurfaceId(), surface)
   }
   else {
     useSurfaceStore.getState().syncSurface(surface)
@@ -175,23 +178,42 @@ export function openUsage(options: { replace?: boolean } = {}): void {
   }, options)
 }
 
+function readFallbackSurface(
+  previousSurfaces: readonly AppSurface[],
+  nextSurfaces: readonly AppSurface[],
+  closedSurfaceId: string,
+): AppSurface {
+  const orderedPrevious = sortSurfaces(previousSurfaces)
+  const orderedNext = sortSurfaces(nextSurfaces)
+  const closedIndex = orderedPrevious.findIndex(surface => surface.id === closedSurfaceId)
+  return orderedNext[Math.min(Math.max(closedIndex, 0), orderedNext.length - 1)]
+    ?? orderedNext.at(-1)
+    ?? HOME_SURFACE
+}
+
 export function closeSurfaceById(surfaceId: string): void {
-  const previousActiveSurfaceId = useSurfaceStore.getState().activeSurfaceId
-  if (previousActiveSurfaceId === surfaceId) {
+  const previousSurfaces = useSurfaceStore.getState().surfaces
+  const activeSurfaceId = readActiveSurfaceId()
+  if (activeSurfaceId === surfaceId) {
     suppressRouteSurfaceSync(surfaceId)
   }
 
   useSurfaceStore.getState().closeSurface(surfaceId)
 
-  if (previousActiveSurfaceId !== surfaceId) {
+  if (activeSurfaceId !== surfaceId) {
     return
   }
 
-  navigateToSurface(readActiveSurface(), { replace: true })
+  const nextSurface = readFallbackSurface(
+    previousSurfaces,
+    useSurfaceStore.getState().surfaces,
+    surfaceId,
+  )
+  navigateToSurface(nextSurface, { replace: true })
 }
 
 export function closeActiveSurface(): void {
-  const activeSurfaceId = useSurfaceStore.getState().activeSurfaceId
+  const activeSurfaceId = readActiveSurfaceId()
   if (!activeSurfaceId) {
     return
   }
@@ -209,11 +231,12 @@ export function activateSurface(surfaceId: string): void {
 export function activateAdjacentSurface(direction: 1 | -1): void {
   const state = useSurfaceStore.getState()
   const surfaces = [...state.surfaces].sort((left, right) => left.order - right.order)
+  const activeSurfaceId = readActiveSurface()?.id ?? HOME_SURFACE.id
   if (surfaces.length <= 1) {
     return
   }
 
-  const currentIndex = Math.max(0, surfaces.findIndex(surface => surface.id === state.activeSurfaceId))
+  const currentIndex = Math.max(0, surfaces.findIndex(surface => surface.id === activeSurfaceId))
   const nextIndex = (currentIndex + direction + surfaces.length) % surfaces.length
   activateSurface(surfaces[nextIndex]!.id)
 }

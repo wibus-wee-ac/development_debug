@@ -121,11 +121,15 @@ const TAB_INSTANT_LABEL_TRANSITION = {
 } as const
 
 interface RightAsideProps {
+  active?: boolean
+  visible?: boolean
   sessionId?: string | null
   workspaceId?: string | null
   workspaceName?: string | null
   workspacePath?: string | null
 }
+
+type ActiveRightAsideProps = Omit<RightAsideProps, 'active'>
 
 interface RightAsidePanelContentProps {
   tabId: string
@@ -135,6 +139,7 @@ interface RightAsidePanelContentProps {
   issueEmptyLabel: string
   runtimeKind: RuntimeKind | null
   providerTargetId: string | null
+  active: boolean
 }
 
 function RightAsidePanelContent({
@@ -145,6 +150,7 @@ function RightAsidePanelContent({
   issueEmptyLabel,
   runtimeKind,
   providerTargetId,
+  active,
 }: RightAsidePanelContentProps) {
   if (tabId === 'files') {
     return (
@@ -225,6 +231,7 @@ function RightAsidePanelContent({
           sessionId={sessionId ?? null}
           runtimeKind={runtimeKind}
           providerTargetId={providerTargetId}
+          active={active}
         />
       </div>
     )
@@ -245,16 +252,36 @@ function RightAsidePanelContent({
 }
 
 export function RightAside({
+  active = true,
+  visible = active,
+  ...props
+}: RightAsideProps) {
+  if (!active) {
+    return (
+      <div
+        className="flex flex-1 flex-col overflow-hidden"
+        data-testid="right-aside"
+        data-active="false"
+      />
+    )
+  }
+
+  return <ActiveRightAside visible={visible} {...props} />
+}
+
+function ActiveRightAside({
+  visible = true,
   sessionId = null,
   workspaceId: explicitWorkspaceId = null,
   workspaceName: explicitWorkspaceName = null,
   workspacePath: explicitWorkspacePath = null,
-}: RightAsideProps) {
+}: ActiveRightAsideProps) {
   const { t } = useTranslation('chrome')
   const activeTab = useLayoutStore(s => s.asideActiveTab)
   const setActiveTab = useLayoutStore(s => s.setAsideActiveTab)
   const [panelDirection, setPanelDirection] = useState(1)
   const userInitiatedPanelTabRef = useRef<string | null>(null)
+  const needsSessionMeta = !!sessionId && (!explicitWorkspaceId || activeTab === 'runtime')
 
   // Derive workspaceId from session
   const { data: sessionMeta } = useQuery({
@@ -264,7 +291,7 @@ export function RightAside({
       runtimeKind: s?.runtimeKind as RuntimeKind | null,
       providerTargetId: s?.providerTargetId as string | null,
     }),
-    enabled: !!sessionId,
+    enabled: needsSessionMeta,
     staleTime: 60_000,
   })
   const workspaceId = explicitWorkspaceId ?? sessionMeta?.workspaceId ?? null
@@ -336,6 +363,7 @@ export function RightAside({
     <div
       className="flex flex-1 flex-col overflow-hidden"
       data-testid="right-aside"
+      data-visible={visible ? 'true' : 'false'}
       data-active-tab={resolvedActiveTab}
     >
       {/* ── Tab bar ─────────────────────────────────────── */}
@@ -450,6 +478,7 @@ export function RightAside({
               issueEmptyLabel={t('rightAside.issue.empty')}
               runtimeKind={sessionMeta?.runtimeKind ?? null}
               providerTargetId={sessionMeta?.providerTargetId ?? null}
+              active={visible}
             />
           </m.div>
         </AnimatePresence>

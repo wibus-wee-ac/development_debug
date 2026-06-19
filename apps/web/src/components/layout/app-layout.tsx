@@ -13,7 +13,6 @@ import {
   useRef,
   useState,
 } from 'react'
-import { useShallow } from 'zustand/react/shallow'
 
 import { AppFooter } from '~/components/layout/app-footer'
 import { AppHeader } from '~/components/layout/app-header'
@@ -34,8 +33,8 @@ import { useGlobalEventListeners } from '~/hooks/use-global-event-listeners'
 import { useShortcut } from '~/hooks/use-shortcut'
 import { cn } from '~/lib/cn'
 import { isElectron } from '~/lib/electron'
+import { useActiveSurface } from '~/navigation/active-surface'
 import { chatSessionIdForSurface } from '~/navigation/surface-identity'
-import { useSurfaceStore } from '~/navigation/surface-store'
 import type { BrowserTabSource } from '~/store/browser-panel'
 import { DEFAULT_BROWSER_PANEL_OWNER_ID, useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
@@ -439,6 +438,113 @@ function RetainedBottomPanels({
   )
 }
 
+interface RightAsideDescriptor {
+  ownerId: string
+  sessionId: string | null
+  workspaceId: string | null
+  workspaceName: string | null
+  workspacePath: string | null
+}
+
+function areRightAsideDescriptorsEqual(
+  left: RightAsideDescriptor,
+  right: RightAsideDescriptor,
+): boolean {
+  return (
+    left.ownerId === right.ownerId
+    && left.sessionId === right.sessionId
+    && left.workspaceId === right.workspaceId
+    && left.workspaceName === right.workspaceName
+    && left.workspacePath === right.workspacePath
+  )
+}
+
+function RetainedRightAsides({
+  acceptCurrentOwner,
+  ownerId,
+  sessionId,
+  validOwnerIds,
+  visible,
+  workspaceId,
+  workspaceName,
+  workspacePath,
+}: {
+  acceptCurrentOwner: boolean
+  ownerId: string | null
+  sessionId: string | null
+  validOwnerIds?: readonly string[]
+  visible: boolean
+  workspaceId: string | null
+  workspaceName: string | null
+  workspacePath: string | null
+}) {
+  const validOwnerIdsKey = validOwnerIds?.join('\0') ?? null
+  const [descriptors, setDescriptors] = useState<RightAsideDescriptor[]>([])
+
+  useLayoutEffect(() => {
+    setDescriptors((current) => {
+      const next = current.filter(descriptor =>
+        ownerIsInScope(descriptor.ownerId, validOwnerIds)
+        && (acceptCurrentOwner || descriptor.ownerId !== ownerId)
+      )
+      if (acceptCurrentOwner && ownerId) {
+        const descriptor: RightAsideDescriptor = {
+          ownerId,
+          sessionId,
+          workspaceId,
+          workspaceName,
+          workspacePath,
+        }
+        const index = next.findIndex(item => item.ownerId === ownerId)
+        if (index === -1) {
+          next.push(descriptor)
+        }
+        else if (!areRightAsideDescriptorsEqual(next[index]!, descriptor)) {
+          next[index] = descriptor
+        }
+      }
+      return next.length === current.length
+        && next.every((descriptor, index) => descriptor === current[index])
+        ? current
+        : next
+    })
+  }, [
+    acceptCurrentOwner,
+    ownerId,
+    sessionId,
+    validOwnerIds,
+    validOwnerIdsKey,
+    workspaceId,
+    workspaceName,
+    workspacePath,
+  ])
+
+  return (
+    <>
+      {descriptors.map((descriptor) => {
+        const asideVisible = visible && descriptor.ownerId === ownerId
+        return (
+          <Activity
+            key={descriptor.ownerId}
+            mode={asideVisible ? 'visible' : 'hidden'}
+            name={`right-aside:${descriptor.ownerId}`}
+          >
+            <Suspense fallback={null}>
+              <MemoizedRightAside
+                visible={asideVisible}
+                sessionId={descriptor.sessionId}
+                workspaceId={descriptor.workspaceId}
+                workspaceName={descriptor.workspaceName}
+                workspacePath={descriptor.workspacePath}
+              />
+            </Suspense>
+          </Activity>
+        )
+      })}
+    </>
+  )
+}
+
 function AppLayoutContent({
   children,
   hasBrowserPanel,
@@ -475,20 +581,7 @@ function AppLayoutContent({
 
   // Route surface layout slots registered by route content components.
   const { slots } = useLayoutSlotsCtx()
-  const activeSurface = useSurfaceStore(
-    useShallow((s) => {
-      const surface = s.surfaces.find(item => item.id === s.activeSurfaceId)
-      if (!surface) {
-        return undefined
-      }
-      return {
-        id: surface.id,
-        kind: surface.kind,
-        title: surface.title,
-        route: surface.route,
-      }
-    }),
-  )
+  const activeSurface = useActiveSurface()
   const activeTab = activeSurface
     ? {
         type: activeSurface.kind === 'workspace' ? 'workspace-detail' : activeSurface.kind,
@@ -787,7 +880,7 @@ function AppLayoutContent({
     <div className="flex flex-1 flex-col overflow-hidden text-foreground">
       {/* ── Full-width top header — toggle + breadcrumbs ── */}
       <AppHeader
-        hasAside={resolvedHasAside}
+        hasAside={canUseRightAside}
         hasBrowserPanel={resolvedHasBrowserPanel}
         hasPanel={resolvedHasPanel}
         browserPanelOwnerId={activeBrowserPanelOwnerId}
@@ -903,11 +996,13 @@ function AppLayoutContent({
 
         {/* Right Aside — layout-owned, independent of tab lifecycle */}
         <AppRightAside
-          active={!isSettings}
+          ownerId={activeChromeOwnerId}
+          enabled={canUseRightAside}
           sessionId={resolvedAsideSessionId}
           workspaceId={resolvedAsideWorkspaceId}
           workspaceName={resolvedAsideWorkspaceName}
           workspacePath={resolvedAsideWorkspacePath}
+          validOwnerIds={validChromeOwnerIds}
           onResizeStart={handleAsideLayoutResizeStart}
           onResizeEnd={handleAsideLayoutResizeEnd}
         />
@@ -921,8 +1016,10 @@ function AppLayoutContent({
 }
 
 interface AppRightAsideProps {
-  active: boolean
+  enabled: boolean
+  ownerId: string | null
   sessionId?: string | null
+  validOwnerIds?: readonly string[]
   workspaceId?: string | null
   workspaceName?: string | null
   workspacePath?: string | null
@@ -932,8 +1029,10 @@ interface AppRightAsideProps {
 
 const AppRightAside = memo(
   ({
-    active,
+    enabled,
+    ownerId,
     sessionId,
+    validOwnerIds,
     workspaceId,
     workspaceName,
     workspacePath,
@@ -943,9 +1042,10 @@ const AppRightAside = memo(
     const asideWidth = useLayoutStore(state => state.asideWidth)
     const setAsideWidth = useLayoutStore(state => state.setAsideWidth)
     const asideOpen = useLayoutStore(state => state.asideOpen)
-    const asideVisible = active && asideOpen
+    const asideVisible = enabled && asideOpen
     const asideMotionWidth = useAnimatedSize(asideVisible ? asideWidth : 0)
     const asideAnimationIdRef = useRef(0)
+    const previousEnabledRef = useRef(enabled)
 
     const handleAsideResize = useCallback(
       (width: number) => {
@@ -966,16 +1066,24 @@ const AppRightAside = memo(
       [asideMotionWidth, onResizeEnd, setAsideWidth],
     )
 
-    useEffect(() => {
+    useLayoutEffect(() => {
       const nextWidth = asideVisible ? asideWidth : 0
       if (Math.abs(asideMotionWidth.size.get() - nextWidth) < 0.5) {
+        previousEnabledRef.current = enabled
+        return
+      }
+      const enabledChanged = previousEnabledRef.current !== enabled
+      previousEnabledRef.current = enabled
+      if (!enabled || enabledChanged) {
+        asideAnimationIdRef.current += 1
+        asideMotionWidth.setSize(nextWidth)
         return
       }
       const animationId = asideAnimationIdRef.current + 1
       asideAnimationIdRef.current = animationId
       const controls = asideMotionWidth.animateSize(nextWidth, SPRING)
       void controls.finished.catch(() => undefined)
-    }, [asideMotionWidth, asideVisible, asideWidth])
+    }, [asideMotionWidth, asideVisible, asideWidth, enabled])
 
     return (
       <>
@@ -999,17 +1107,20 @@ const AppRightAside = memo(
           className="flex shrink-0 overflow-hidden bg-sidebar"
           data-testid="app-layout-right-aside"
           data-aside-open={asideVisible ? 'true' : 'false'}
+          data-aside-enabled={enabled ? 'true' : 'false'}
           aria-hidden={asideVisible ? undefined : 'true'}
         >
           <m.div className="flex flex-col flex-1 overflow-hidden" style={{ width: asideWidth }}>
-            <Suspense fallback={null}>
-              <MemoizedRightAside
-                sessionId={sessionId}
-                workspaceId={workspaceId}
-                workspaceName={workspaceName}
-                workspacePath={workspacePath}
-              />
-            </Suspense>
+            <RetainedRightAsides
+              acceptCurrentOwner={enabled}
+              ownerId={ownerId}
+              sessionId={sessionId ?? null}
+              validOwnerIds={validOwnerIds}
+              visible={asideVisible}
+              workspaceId={workspaceId ?? null}
+              workspaceName={workspaceName ?? null}
+              workspacePath={workspacePath ?? null}
+            />
           </m.div>
         </m.aside>
       </>

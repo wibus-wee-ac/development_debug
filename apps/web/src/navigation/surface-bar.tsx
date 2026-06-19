@@ -21,9 +21,11 @@ import {
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { shallow } from 'zustand/shallow'
 
+import { useUnreadSessionIds } from '~/features/workspace/use-session'
 import { cn } from '~/lib/cn'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
+import { useActiveSurfaceId } from './active-surface'
 import { activateSurface, closeSurfaceById, openNewChat } from './navigation-commands'
 import type { ScreenCoordinates } from './screen-coordinates'
 import { getEventScreenCoordinates } from './screen-coordinates'
@@ -34,6 +36,7 @@ import { openTearoffSessionWindow } from './tearoff-sessions'
 
 const META_TAB_HINT_DELAY_MS = 200
 const TEAR_OFF_RELEASE_DISTANCE_PX = 48
+const EMPTY_SESSION_ID_SET: ReadonlySet<string> = new Set()
 
 function readNumberShortcutIndex(event: KeyboardEvent): number | null {
   if (/^[1-9]$/.test(event.key)) {
@@ -245,8 +248,8 @@ SortableSurfacePill.displayName = 'SortableSurfacePill'
 export const SurfaceBar = memo(({
   className,
   sessionScoped = false,
-  runningSessionIds: serverRunningSessionIds = new Set<string>(),
-  unreadSessionIds = new Set<string>(),
+  runningSessionIds: externalRunningSessionIds,
+  unreadSessionIds: externalUnreadSessionIds,
 }: {
   className?: string
   sessionScoped?: boolean
@@ -256,8 +259,9 @@ export const SurfaceBar = memo(({
   'use no memo'
 
   const surfaces = useSurfaceStore(state => state.surfaces)
-  const activeSurfaceId = useSurfaceStore(state => state.activeSurfaceId)
+  const activeSurfaceId = useActiveSurfaceId()
   const reorderSurfaces = useSurfaceStore(state => state.reorderSurfaces)
+  const sessionListUnreadSessionIds = useUnreadSessionIds()
   const chatSessionIds = useMemo(() => {
     const ids: string[] = []
     for (const surface of surfaces) {
@@ -268,6 +272,8 @@ export const SurfaceBar = memo(({
     }
     return ids
   }, [surfaces])
+  const serverRunningSessionIds = externalRunningSessionIds ?? EMPTY_SESSION_ID_SET
+  const unreadSessionIds = externalUnreadSessionIds ?? sessionListUnreadSessionIds
   const locallyRunningSessionIds = useChatStore(
     useCallback(
       state => new Set(

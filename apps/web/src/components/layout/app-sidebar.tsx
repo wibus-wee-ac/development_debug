@@ -15,8 +15,8 @@ import { useShortcut } from '~/hooks/use-shortcut'
 import { cn } from '~/lib/cn'
 import type { DesktopUpdateStatus } from '~/lib/electron'
 import { isElectron, nativeIpc, subscribeDesktopUpdateStatus } from '~/lib/electron'
+import { useActiveSurface } from '~/navigation/active-surface'
 import { closeSurfaceById, openSettingsSection } from '~/navigation/navigation-commands'
-import { useSurfaceStore } from '~/navigation/surface-store'
 import { useLayoutStore } from '~/store/layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 
@@ -238,10 +238,8 @@ function SidebarUpdateButton({ collapsed }: { collapsed: boolean }) {
 function useAppSidebarContentController() {
   const settingsSection = useSettingsOverlayStore(s => s.settingsSection)
   const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
-  const isSettings = useSurfaceStore((s) => {
-    const activeSurface = s.surfaces.find(surface => surface.id === s.activeSurfaceId)
-    return activeSurface?.kind === 'settings'
-  })
+  const activeSurface = useActiveSurface()
+  const isSettings = activeSurface?.kind === 'settings'
 
   const closeSettings = useCallback(() => {
     closeSurfaceById('settings')

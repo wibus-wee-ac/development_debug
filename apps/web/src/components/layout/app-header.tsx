@@ -1,15 +1,14 @@
 import { GlobeIcon, PanelBottomIcon, PanelLeftCloseIcon, PanelLeftOpenIcon, PanelRightIcon } from 'lucide-react'
 import { m } from 'motion/react'
-import { useCallback, useMemo } from 'react'
+import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { ResourcesPopover } from '~/features/devtool/resources/resources-popover'
-import { useAllSessions } from '~/features/workspace/use-session'
 import { cn } from '~/lib/cn'
 import { isTearoffWindow, platform, tearoffSessionId } from '~/lib/electron'
+import { useActiveSurface } from '~/navigation/active-surface'
 import { SurfaceBar } from '~/navigation/surface-bar'
-import { useSurfaceStore } from '~/navigation/surface-store'
 import { useLayoutStore } from '~/store/layout'
 import { useSessionLayoutStore } from '~/store/session-layout'
 
@@ -50,19 +49,8 @@ export function AppHeader({
   const sidebarCollapsed = useLayoutStore(s => s.sidebarCollapsed)
   const toggleSidebar = useLayoutStore(s => s.toggleSidebar)
   const toggleBrowserPanel = useLayoutStore(s => s.toggleBrowserPanel)
-  const { sessions } = useAllSessions()
-  const unreadSessionIds = useMemo(
-    () => new Set(sessions.filter(session => session.unread).map(session => session.id)),
-    [sessions],
-  )
-  const runningSessionIds = useMemo(
-    () => new Set(sessions.filter(session => session.status === 'streaming').map(session => session.id)),
-    [sessions],
-  )
-  const isSettingsActive = useSurfaceStore((s) => {
-    const activeSurface = s.surfaces.find(surface => surface.id === s.activeSurfaceId)
-    return activeSurface?.kind === 'settings'
-  })
+  const activeSurface = useActiveSurface()
+  const isSettingsActive = activeSurface?.kind === 'settings'
   const isDrillIn = isSettingsActive
   const sidebarToggleLabel = sidebarInSheet
     ? sidebarSheetOpen
@@ -149,8 +137,6 @@ export function AppHeader({
           : (
             <SurfaceBar
               className="h-full"
-              runningSessionIds={runningSessionIds}
-              unreadSessionIds={unreadSessionIds}
             />
             )}
       </div>
@@ -187,7 +173,7 @@ export function AppHeader({
             <PanelBottomIcon aria-hidden="true" />
           </Button>
         )}
-        {!isSettingsActive && (hasAside || asidePresentationOpen) && (
+        {!isSettingsActive && hasAside && (
           <Button
             variant="ghost"
             size="icon-xs"
