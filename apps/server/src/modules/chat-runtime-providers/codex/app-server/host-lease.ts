@@ -39,6 +39,8 @@ export interface AcquireCodexAppServerHostLeaseInput {
 
 export type CodexAppServerHostLease = ProviderRuntimeLease<CodexAppServerHostResource>
 
+export const CODEX_PROVIDER_APP_SERVER_SCOPE_ID = 'provider'
+
 export async function acquireCodexAppServerHostLease(
   input: AcquireCodexAppServerHostLeaseInput,
 ): Promise<CodexAppServerHostLease> {

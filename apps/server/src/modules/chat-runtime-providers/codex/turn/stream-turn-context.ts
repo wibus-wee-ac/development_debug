@@ -15,6 +15,7 @@ import { buildCradleCodexAppServerEnv } from '../app-server/client'
 import type { CodexAppServerAuthCarrier, CodexAppServerAuthResolution } from '../app-server/chatgpt-auth'
 import type { ThreadForkParams } from '../app-server-protocol/v2/ThreadForkParams'
 import {
+  buildCodexAuthEnvironment,
   buildCodexConfig,
   codexConfigRequiresApiKey,
   projectCodexRuntimeAccessMode,
@@ -64,7 +65,7 @@ export interface CodexStreamTurnContextDeps {
   runtimeKind: RuntimeKind
   resolveAppServerAuth: (
     profile: CodexAppServerAuthCarrier,
-    configApiKey: string | undefined,
+    config: Pick<CodexConfig, 'apiKey' | 'authMode' | 'bedrock'>,
   ) => CodexAppServerAuthResolution
   resolveSkillPaths: (workspacePath: string) => string[]
   createServerRequestHandler: (
@@ -77,7 +78,7 @@ export function resolveCodexStreamTurnContext(
   deps: CodexStreamTurnContextDeps,
 ): CodexStreamTurnContext {
   const config = readTrustedCodexConfig(input.profile.configJson)
-  const auth = deps.resolveAppServerAuth(input.profile, config.apiKey)
+  const auth = deps.resolveAppServerAuth(input.profile, config)
   const effectiveModel = input.modelId ?? config.model
   const userInput = projectCodexUserInput(input.message, 'Codex provider')
   const userPromptText = extractUiMessageText(input.message).trim()
@@ -119,13 +120,16 @@ export function resolveCodexStreamTurnContext(
       codexConfig.approval_policy = runtimeAccess.approvalPolicy
       codexConfig.sandbox_mode = runtimeAccess.sandbox
     }
-    const codexEnv = buildCradleCodexAppServerEnv({
-      chatSessionId: input.runtimeSession.chatSessionId,
-      workspaceId: input.workspaceId,
-      workspacePath,
-      agentId,
-      agentHome: runtimeContext.agentHome,
-    })
+    const codexEnv = {
+      ...buildCradleCodexAppServerEnv({
+        chatSessionId: input.runtimeSession.chatSessionId,
+        workspaceId: input.workspaceId,
+        workspacePath,
+        agentId,
+        agentHome: runtimeContext.agentHome,
+      }),
+      ...buildCodexAuthEnvironment(auth),
+    }
 
     return {
       config,

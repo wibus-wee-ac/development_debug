@@ -4,6 +4,7 @@ import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../../chat
 import { providerRuntimeHostManager } from '../../../provider-runtime/host-manager'
 import { CodexAppServerBridge } from './bridge'
 import type { CodexAppServerClientOptions, CodexAppServerMessage } from './client'
+import { CODEX_PROVIDER_APP_SERVER_SCOPE_ID } from './host-lease'
 
 afterEach(() => {
   providerRuntimeHostManager.clear()
@@ -113,6 +114,15 @@ function createFakeChatgptJwt(input: {
     }),
     'sig',
   ].join('.')
+}
+
+function createSecretMetadata(id: string, secret: string, kind = 'chatgpt-auth') {
+  return {
+    id,
+    kind,
+    label: 'Codex credential',
+    secret,
+  }
 }
 
 function createBridge(client: FakeBridgeAppServerClient): CodexAppServerBridge {
@@ -264,7 +274,7 @@ describe('codexAppServerBridge stream lifecycle', () => {
       expect.objectContaining({
         runtimeKind: 'codex',
         providerTargetId: 'profile-codex',
-        scopeId: 'chat-session-1',
+        scopeId: CODEX_PROVIDER_APP_SERVER_SCOPE_ID,
         refCount: 2,
         hasResource: true,
       }),
@@ -310,23 +320,28 @@ describe('codexAppServerBridge stream lifecycle', () => {
       CRADLE_CHAT_SESSION_ID: 'chat-session-1',
       CRADLE_WORKSPACE_ID: 'workspace-1',
       CRADLE_WORKSPACE_PATH: '/tmp/cradle-workspace',
+      CRADLE_CODEX_API_KEY: 'sk-test',
+      CODEX_API_KEY: 'sk-test',
+      OPENAI_API_KEY: 'sk-test',
     })
   })
 
   it('uses ChatGPT auth with an OpenAI-compatible base URL without requiring an API key', async () => {
     const accessToken = createFakeChatgptJwt({ accountId: 'workspace-1', planType: 'plus' })
+    const chatgptSecret = JSON.stringify({
+      kind: 'chatgpt-auth',
+      accessToken,
+      refreshToken: 'refresh-token-1',
+      chatgptAccountId: 'workspace-1',
+      chatgptPlanType: 'plus',
+    })
     const appServerOptions: CodexAppServerClientOptions[] = []
     const client = new FakeBridgeAppServerClient({
       'config/read': { config: {} },
     })
     const bridge = new CodexAppServerBridge({
-      readSecret: () => JSON.stringify({
-        kind: 'chatgpt-auth',
-        accessToken,
-        refreshToken: 'refresh-token-1',
-        chatgptAccountId: 'workspace-1',
-        chatgptPlanType: 'plus',
-      }),
+      readSecret: () => chatgptSecret,
+      readSecretValueWithMetadata: credentialRef => createSecretMetadata(credentialRef, chatgptSecret),
       resolveSkillPaths: () => ['/tmp/cradle-skill'],
       createAppServerClient: (options) => {
         appServerOptions.push(options)

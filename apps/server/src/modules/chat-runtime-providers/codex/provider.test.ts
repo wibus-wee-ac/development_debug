@@ -15,6 +15,7 @@ import type {
 } from '../../chat-runtime/runtime-provider-types'
 import { providerRuntimeHostManager } from '../../provider-runtime/host-manager'
 import type { CodexAppServerClientOptions, CodexAppServerMessage, CodexAppServerServerRequest } from './app-server/client'
+import { CODEX_PROVIDER_APP_SERVER_SCOPE_ID } from './app-server/host-lease'
 import { isCodexAppServerInteractiveServerRequest } from './app-server/server-request-methods'
 import { CodexProvider } from './provider'
 
@@ -39,6 +40,17 @@ class FakeCodexAppServerClient {
   autoCompleteGeneratedTitle = true
   threadListData: unknown[] | null = null
   threadTurnsListData: unknown[] | null = null
+  backgroundTerminalsData: Array<{
+    itemId: string
+    processId: string
+    command: string
+    cwd: string
+    osPid: number | null
+    cpuPercent: number | null
+    rssKb: bigint | null
+  }> = []
+  backgroundTerminalTerminateResult = true
+  terminatedBackgroundProcesses: string[] = []
   hangingMethods = new Set<string>()
   unsupportedMethods = new Set<string>()
 
@@ -190,6 +202,17 @@ class FakeCodexAppServerClient {
           { id: 'crew' },
         ],
       }
+    }
+    if (method === 'thread/backgroundTerminals/list') {
+      return {
+        data: this.backgroundTerminalsData,
+        nextCursor: null,
+      }
+    }
+    if (method === 'thread/backgroundTerminals/terminate') {
+      const request = params as { processId: string }
+      this.terminatedBackgroundProcesses.push(request.processId)
+      return { terminated: this.backgroundTerminalTerminateResult }
     }
     if (method === 'thread/goal/get') {
       return { goal: null }
@@ -498,10 +521,10 @@ function createProfile(config: Record<string, unknown> = {}): RuntimeProviderTar
   }
 }
 
-function createRuntimeSession(providerSessionId: string | null = null): RuntimeSession {
+function createRuntimeSession(providerSessionId: string | null = null, chatSessionId = 'chat-session-1'): RuntimeSession {
   return {
-    id: 'runtime-session-1',
-    chatSessionId: 'chat-session-1',
+    id: chatSessionId,
+    chatSessionId,
     providerTargetId: 'profile-codex',
     runtimeKind: 'codex',
     providerSessionId,
@@ -521,6 +544,15 @@ function createMessage(parts: UIMessage['parts']): UIMessage {
     id: `user-${parts.length}`,
     role: 'user',
     parts,
+  }
+}
+
+function createSecretMetadata(id: string, secret: string, kind = 'chatgpt-auth') {
+  return {
+    id,
+    kind,
+    label: 'Codex credential',
+    secret,
   }
 }
 
@@ -935,7 +967,7 @@ describe('codexProvider app-server integration', () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
     const sideHostLease = providerRuntimeHostManager.acquireLease({
-      scopeId: 'child-chat-session-1',
+      scopeId: CODEX_PROVIDER_APP_SERVER_SCOPE_ID,
       providerTargetId: 'profile-codex',
       runtimeKind: 'codex',
       pinned: true,
@@ -957,7 +989,7 @@ describe('codexProvider app-server integration', () => {
       expect.objectContaining({
         runtimeKind: 'codex',
         providerTargetId: 'profile-codex',
-        scopeId: 'child-chat-session-1',
+        scopeId: CODEX_PROVIDER_APP_SERVER_SCOPE_ID,
         refCount: 1,
         pinnedCount: 1,
         hasResource: true,
@@ -1009,7 +1041,7 @@ describe('codexProvider app-server integration', () => {
     expect(providerRuntimeHostManager.listHosts()).toEqual([])
   })
 
-  it('reuses the session host across provider turns and provider-native app-server invokes', async () => {
+  it('reuses the provider host across provider turns and provider-native app-server invokes', async () => {
     const clients: FakeCodexAppServerClient[] = []
     const provider = new CodexProvider({
       readSecret: () => 'sk-secret',
@@ -1055,7 +1087,7 @@ describe('codexProvider app-server integration', () => {
       expect.objectContaining({
         runtimeKind: 'codex',
         providerTargetId: 'profile-codex',
-        scopeId: 'chat-session-1',
+        scopeId: CODEX_PROVIDER_APP_SERVER_SCOPE_ID,
         refCount: 1,
         hasResource: true,
       }),
@@ -1090,7 +1122,96 @@ describe('codexProvider app-server integration', () => {
     expect(providerRuntimeHostManager.listHosts()).toEqual([])
   })
 
-  it('shares the same session host between turn execution and UI slot reads', async () => {
+  it('shares one provider host across concurrent chat sessions', async () => {
+    const clients: FakeCodexAppServerClient[] = []
+    const provider = new CodexProvider({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        const client = new FakeCodexAppServerClient(options)
+        clients.push(client)
+        return client
+      },
+    })
+    const firstSession = createRuntimeSession('codex-thread-1', 'chat-session-1')
+    const secondSession = createRuntimeSession('codex-thread-2', 'chat-session-2')
+
+    const firstStream = provider.streamTurn({
+      runId: 'run-codex-provider-host-1',
+      runtimeSession: firstSession,
+      profile: createProfile(),
+      message: createUserMessage('Continue first session'),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })
+    const secondStream = provider.streamTurn({
+      runId: 'run-codex-provider-host-2',
+      runtimeSession: secondSession,
+      profile: createProfile(),
+      message: createUserMessage('Continue second session'),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })
+    const firstDrain = drainStream(firstStream)
+    const secondDrain = drainStream(secondStream)
+
+    await vi.waitFor(() => {
+      expect(clients[0]?.requests.filter(request => request.method === 'turn/start')).toHaveLength(2)
+    })
+
+    expect(clients).toHaveLength(1)
+    expect(providerRuntimeHostManager.listHosts()).toEqual([
+      expect.objectContaining({
+        runtimeKind: 'codex',
+        providerTargetId: 'profile-codex',
+        scopeId: CODEX_PROVIDER_APP_SERVER_SCOPE_ID,
+        refCount: 2,
+        hasResource: true,
+      }),
+    ])
+
+    clients[0]!.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-2',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-2',
+        delta: 'Second done',
+      },
+    })
+    clients[0]!.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-2',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    clients[0]!.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'First done',
+      },
+    })
+    clients[0]!.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    await Promise.all([firstDrain, secondDrain])
+
+    expect(clients).toHaveLength(1)
+    expect(clients[0]!.close).toHaveBeenCalledOnce()
+    expect(providerRuntimeHostManager.listHosts()).toEqual([])
+  })
+
+  it('shares the same provider host between turn execution and UI slot reads', async () => {
     const clients: FakeCodexAppServerClient[] = []
     const provider = new CodexProvider({
       readSecret: () => 'sk-secret',
@@ -2475,6 +2596,85 @@ describe('codexProvider app-server integration', () => {
         recentItems: [expect.objectContaining({ message: 'Sandbox warning', source: 'warning' })],
       }),
     ]))
+  })
+
+  it('projects and terminates Codex background terminals', async () => {
+    const client = new FakeCodexAppServerClient({})
+    client.backgroundTerminalsData = [
+      {
+        itemId: 'command-1',
+        processId: 'process-1',
+        command: 'pnpm dev',
+        cwd: '/tmp/cradle-workspace/apps/web',
+        osPid: 12345,
+        cpuPercent: 4.5,
+        rssKb: 2048n,
+      },
+    ]
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession('codex-thread-1')
+
+    await expect(provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })).resolves.toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'terminal',
+        slotId: 'codex:terminal',
+        threadId: 'codex-thread-1',
+        activeCount: 1,
+        backgroundTerminals: [
+          {
+            itemId: 'command-1',
+            processId: 'process-1',
+            command: 'pnpm dev',
+            cwd: '/tmp/cradle-workspace/apps/web',
+            osPid: 12345,
+            cpuPercent: 4.5,
+            rssKb: 2048,
+          },
+        ],
+      }),
+    ]))
+
+    await expect(provider.listBackgroundTerminals({
+      runtimeSession,
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+      limit: 20,
+    })).resolves.toEqual({
+      runtimeKind: 'codex',
+      providerSessionId: 'codex-thread-1',
+      terminals: [
+        {
+          itemId: 'command-1',
+          processId: 'process-1',
+          command: 'pnpm dev',
+          cwd: '/tmp/cradle-workspace/apps/web',
+          osPid: 12345,
+          cpuPercent: 4.5,
+          rssKb: 2048,
+        },
+      ],
+      nextCursor: null,
+    })
+
+    await expect(provider.terminateBackgroundTerminal({
+      runtimeSession,
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+      processId: 'process-1',
+    })).resolves.toEqual({
+      runtimeKind: 'codex',
+      providerSessionId: 'codex-thread-1',
+      processId: 'process-1',
+      terminated: true,
+    })
+    expect(client.terminatedBackgroundProcesses).toEqual(['process-1'])
   })
 
   it('projects Codex filesystem, skill, plugin, search, crew, usage, and config summaries into UI slot state', async () => {
@@ -3916,16 +4116,18 @@ describe('codexProvider app-server integration', () => {
 
   it('logs into Codex app-server with ChatGPT auth tokens without API key env', async () => {
     const accessToken = createFakeChatgptJwt({ accountId: 'workspace-1', planType: 'plus' })
+    const chatgptSecret = JSON.stringify({
+      kind: 'chatgpt-auth',
+      accessToken,
+      refreshToken: 'refresh-token-1',
+      chatgptAccountId: 'workspace-1',
+      chatgptPlanType: 'plus',
+    })
     const appServerOptions: CodexAppServerClientOptions[] = []
     const clients: FakeCodexAppServerClient[] = []
     const provider = new CodexProvider({
-      readSecret: () => JSON.stringify({
-        kind: 'chatgpt-auth',
-        accessToken,
-        refreshToken: 'refresh-token-1',
-        chatgptAccountId: 'workspace-1',
-        chatgptPlanType: 'plus',
-      }),
+      readSecret: () => chatgptSecret,
+      readSecretValueWithMetadata: credentialRef => createSecretMetadata(credentialRef, chatgptSecret),
       updateSecret: vi.fn(),
       resolveSkillPaths: () => ['/tmp/cradle-skill'],
       recordObservability: vi.fn(),
@@ -3989,16 +4191,18 @@ describe('codexProvider app-server integration', () => {
 
   it('uses ChatGPT auth with an OpenAI-compatible base URL without requiring an API key', async () => {
     const accessToken = createFakeChatgptJwt({ accountId: 'workspace-1', planType: 'plus' })
+    const chatgptSecret = JSON.stringify({
+      kind: 'chatgpt-auth',
+      accessToken,
+      refreshToken: 'refresh-token-1',
+      chatgptAccountId: 'workspace-1',
+      chatgptPlanType: 'plus',
+    })
     const appServerOptions: CodexAppServerClientOptions[] = []
     const clients: FakeCodexAppServerClient[] = []
     const provider = new CodexProvider({
-      readSecret: () => JSON.stringify({
-        kind: 'chatgpt-auth',
-        accessToken,
-        refreshToken: 'refresh-token-1',
-        chatgptAccountId: 'workspace-1',
-        chatgptPlanType: 'plus',
-      }),
+      readSecret: () => chatgptSecret,
+      readSecretValueWithMetadata: credentialRef => createSecretMetadata(credentialRef, chatgptSecret),
       updateSecret: vi.fn(),
       resolveSkillPaths: () => ['/tmp/cradle-skill'],
       recordObservability: vi.fn(),
@@ -4078,6 +4282,13 @@ describe('codexProvider app-server integration', () => {
     const accessToken = createFakeChatgptJwt({ accountId: 'workspace-1', planType: 'plus' })
     const refreshedAccessToken = createFakeChatgptJwt({ accountId: 'workspace-1', planType: 'pro' })
     const updateSecret = vi.fn()
+    const chatgptSecret = JSON.stringify({
+      kind: 'chatgpt-auth',
+      accessToken,
+      refreshToken: 'refresh-token-1',
+      chatgptAccountId: 'workspace-1',
+      chatgptPlanType: 'plus',
+    })
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
       access_token: refreshedAccessToken,
       refresh_token: 'refresh-token-2',
@@ -4088,13 +4299,8 @@ describe('codexProvider app-server integration', () => {
 
     const client = new FakeCodexAppServerClient({})
     const provider = new CodexProvider({
-      readSecret: () => JSON.stringify({
-        kind: 'chatgpt-auth',
-        accessToken,
-        refreshToken: 'refresh-token-1',
-        chatgptAccountId: 'workspace-1',
-        chatgptPlanType: 'plus',
-      }),
+      readSecret: () => chatgptSecret,
+      readSecretValueWithMetadata: credentialRef => createSecretMetadata(credentialRef, chatgptSecret),
       updateSecret,
       resolveSkillPaths: () => ['/tmp/cradle-skill'],
       recordObservability: vi.fn(),
@@ -4163,6 +4369,13 @@ describe('codexProvider app-server integration', () => {
       exp: nowSeconds + 3600,
     })
     const updateSecret = vi.fn()
+    const chatgptSecret = JSON.stringify({
+      kind: 'chatgpt-auth',
+      accessToken,
+      refreshToken: 'refresh-token-1',
+      chatgptAccountId: 'workspace-1',
+      chatgptPlanType: 'plus',
+    })
     vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({
       access_token: refreshedAccessToken,
       refresh_token: 'refresh-token-2',
@@ -4173,13 +4386,8 @@ describe('codexProvider app-server integration', () => {
 
     const client = new FakeCodexAppServerClient({})
     const provider = new CodexProvider({
-      readSecret: () => JSON.stringify({
-        kind: 'chatgpt-auth',
-        accessToken,
-        refreshToken: 'refresh-token-1',
-        chatgptAccountId: 'workspace-1',
-        chatgptPlanType: 'plus',
-      }),
+      readSecret: () => chatgptSecret,
+      readSecretValueWithMetadata: credentialRef => createSecretMetadata(credentialRef, chatgptSecret),
       updateSecret,
       resolveSkillPaths: () => ['/tmp/cradle-skill'],
       recordObservability: vi.fn(),
@@ -4259,14 +4467,16 @@ describe('codexProvider app-server integration', () => {
     })))
 
     const client = new FakeCodexAppServerClient({})
+    const chatgptSecret = JSON.stringify({
+      kind: 'chatgpt-auth',
+      accessToken,
+      refreshToken: 'refresh-token-1',
+      chatgptAccountId: 'workspace-1',
+      chatgptPlanType: 'plus',
+    })
     const provider = new CodexProvider({
-      readSecret: () => JSON.stringify({
-        kind: 'chatgpt-auth',
-        accessToken,
-        refreshToken: 'refresh-token-1',
-        chatgptAccountId: 'workspace-1',
-        chatgptPlanType: 'plus',
-      }),
+      readSecret: () => chatgptSecret,
+      readSecretValueWithMetadata: credentialRef => createSecretMetadata(credentialRef, chatgptSecret),
       updateSecret,
       resolveSkillPaths: () => ['/tmp/cradle-skill'],
       recordObservability: vi.fn(),
@@ -4294,6 +4504,148 @@ describe('codexProvider app-server integration', () => {
     })
     expect(client.requests).toEqual([])
     expect(updateSecret).not.toHaveBeenCalled()
+  })
+
+  it('projects Codex personal access token auth without API key env', async () => {
+    const appServerOptions: CodexAppServerClientOptions[] = []
+    const clients: FakeCodexAppServerClient[] = []
+    const provider = new CodexProvider({
+      readSecret: () => 'pat-token-1',
+      readSecretValueWithMetadata: credentialRef => createSecretMetadata(
+        credentialRef,
+        'pat-token-1',
+        'codex-personal-access-token',
+      ),
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        appServerOptions.push(options)
+        const client = new FakeCodexAppServerClient(options)
+        clients.push(client)
+        return client
+      },
+    })
+    const stream = provider.streamTurn({
+      runId: 'run-codex-personal-access-token',
+      runtimeSession: createRuntimeSession(),
+      profile: {
+        ...createProfile({ apiKey: undefined, authMode: 'personalAccessToken' }),
+        credentialRef: 'credential-pat',
+      },
+      message: createUserMessage('Use PAT auth'),
+      workspaceId: 'workspace-1',
+    })
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(clients[0]?.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+
+    expect(appServerOptions[0]?.apiKey).toBeUndefined()
+    expect(appServerOptions[0]?.env).toEqual({
+      CRADLE_CHAT_SESSION_ID: 'chat-session-1',
+      CRADLE_WORKSPACE_ID: 'workspace-1',
+      CRADLE_WORKSPACE_PATH: '/tmp/cradle-workspace',
+      CODEX_ACCESS_TOKEN: 'pat-token-1',
+    })
+    expect(appServerOptions[0]?.config).not.toHaveProperty('model_provider')
+
+    clients[0]?.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    clients[0]?.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    await drainStream(stream)
+  })
+
+  it('projects Codex Bedrock API key auth and region without API key env', async () => {
+    const appServerOptions: CodexAppServerClientOptions[] = []
+    const clients: FakeCodexAppServerClient[] = []
+    const provider = new CodexProvider({
+      readSecret: () => 'bedrock-token-1',
+      readSecretValueWithMetadata: credentialRef => createSecretMetadata(
+        credentialRef,
+        'bedrock-token-1',
+        'codex-bedrock-api-key',
+      ),
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        appServerOptions.push(options)
+        const client = new FakeCodexAppServerClient(options)
+        clients.push(client)
+        return client
+      },
+    })
+    const stream = provider.streamTurn({
+      runId: 'run-codex-bedrock-api-key',
+      runtimeSession: createRuntimeSession(),
+      profile: {
+        ...createProfile({
+          apiKey: undefined,
+          authMode: 'bedrockApiKey',
+          bedrock: { region: 'us-west-2' },
+        }),
+        credentialRef: 'credential-bedrock',
+      },
+      message: createUserMessage('Use Bedrock auth'),
+      workspaceId: 'workspace-1',
+    })
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(clients[0]?.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+
+    expect(appServerOptions[0]?.apiKey).toBeUndefined()
+    expect(appServerOptions[0]?.env).toEqual({
+      CRADLE_CHAT_SESSION_ID: 'chat-session-1',
+      CRADLE_WORKSPACE_ID: 'workspace-1',
+      CRADLE_WORKSPACE_PATH: '/tmp/cradle-workspace',
+      AWS_BEARER_TOKEN_BEDROCK: 'bedrock-token-1',
+      AWS_REGION: 'us-west-2',
+    })
+    expect(appServerOptions[0]?.config).toEqual(expect.objectContaining({
+      model_provider: 'amazon-bedrock',
+      model_providers: {
+        'amazon-bedrock': {
+          aws: {
+            region: 'us-west-2',
+          },
+        },
+      },
+    }))
+
+    clients[0]?.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    clients[0]?.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+    await drainStream(stream)
   })
 
   it('passes Cradle session context into the Codex app-server environment', async () => {
@@ -4324,6 +4676,9 @@ describe('codexProvider app-server integration', () => {
         CRADLE_CHAT_SESSION_ID: 'chat-session-1',
         CRADLE_WORKSPACE_ID: 'workspace-1',
         CRADLE_WORKSPACE_PATH: '/tmp/cradle-workspace',
+        CRADLE_CODEX_API_KEY: 'sk-test',
+        CODEX_API_KEY: 'sk-test',
+        OPENAI_API_KEY: 'sk-test',
       })
     })
 
@@ -4441,6 +4796,9 @@ describe('codexProvider app-server integration', () => {
         CRADLE_WORKSPACE_PATH: '/tmp/cradle-workspace',
         CRADLE_AGENT_ID: 'agent-007',
         CRADLE_AGENT_HOME: agentHome,
+        CRADLE_CODEX_API_KEY: 'sk-test',
+        CODEX_API_KEY: 'sk-test',
+        OPENAI_API_KEY: 'sk-test',
       })
       expect(clients[0]?.requests[0]).toEqual({
         method: 'thread/start',

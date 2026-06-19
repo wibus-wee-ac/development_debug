@@ -7,6 +7,8 @@ import type { ProviderMetadata, UIMessage, UIMessageChunk } from 'ai'
 import { readObjectRecord as readRecord } from '../../../helpers/json-record'
 import { aiTelemetryEnabled } from '../../../telemetry/config'
 import type {
+  BackgroundTerminalListResult,
+  BackgroundTerminalTerminateResult,
   CancelTurnInput,
   ChatRuntime,
   ExecuteShellCommandInput,
@@ -16,6 +18,7 @@ import type {
   GetCapabilitiesInput,
   GetContextUsageInput,
   GetUiSlotStatesInput,
+  ListBackgroundTerminalsInput,
   ProviderContext,
   ProviderNativeAppServerCapabilityManifest,
   ProviderNativeAppServerInvokeInput,
@@ -34,6 +37,7 @@ import type {
   ProviderThreadTurnsResult,
   QuickQuestionInput,
   ResumeChatSessionInput,
+  RuntimeBackgroundTerminal,
   RuntimeContextUsage,
   RuntimePresentationCapabilities,
   RuntimeSession,
@@ -42,6 +46,7 @@ import type {
   StartChatSessionInput,
   SteerTurnInput,
   StreamTurnInput,
+  TerminateBackgroundTerminalInput,
   UpdateRuntimeSettingsInput,
 } from '../../chat-runtime/runtime-provider-types'
 import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
@@ -56,14 +61,18 @@ import {
   getCodexAppServerCapabilities,
 } from './app-server/bridge'
 import type { CodexAppServerClientOptions, CodexAppServerMessage } from './app-server/client'
-import { buildCradleCodexAppServerEnv } from './app-server/client'
+import { buildCodexAppServerEnv } from './app-server/env'
+import { subscribeCodexAppServerHostNotifications } from './app-server/host-resource'
 import {
   isCodexAppServerToolApprovalRequest,
   isCodexAppServerUserInputRequest,
 } from './app-server/server-request-methods'
 import type { CodexAppServerHostLease } from './app-server/host-lease'
-import { acquireCodexAppServerHostLease } from './app-server/host-lease'
+import { CODEX_PROVIDER_APP_SERVER_SCOPE_ID, acquireCodexAppServerHostLease } from './app-server/host-lease'
 import type { Thread } from './app-server-protocol/v2/Thread'
+import type { ThreadBackgroundTerminal } from './app-server-protocol/v2/ThreadBackgroundTerminal'
+import type { ThreadBackgroundTerminalsListResponse } from './app-server-protocol/v2/ThreadBackgroundTerminalsListResponse'
+import type { ThreadBackgroundTerminalsTerminateResponse } from './app-server-protocol/v2/ThreadBackgroundTerminalsTerminateResponse'
 import type { ThreadForkParams } from './app-server-protocol/v2/ThreadForkParams'
 import type { ThreadListParams } from './app-server-protocol/v2/ThreadListParams'
 import type { ThreadListResponse } from './app-server-protocol/v2/ThreadListResponse'
@@ -74,6 +83,8 @@ import type { Turn } from './app-server-protocol/v2/Turn'
 import type { UserInput } from './app-server-protocol/v2/UserInput'
 import type { CodexAppServerAuthCarrier, CodexAppServerAuthResolution, CodexChatgptAuthCredential } from './app-server/chatgpt-auth'
 import {
+  readCodexApiKeyAuth,
+  readCodexChatgptAuth,
   resolveCodexAppServerAuth,
 } from './app-server/chatgpt-auth'
 import { projectCodexEstimatedContextUsage } from './projection/context-usage-projector'
@@ -166,6 +177,8 @@ import { buildCodexToolInput, buildCodexToolOutput, readCodexToolError, readCode
 import type {
   ActiveCodexTurn,
   CodexAppServerClientLike,
+  CodexAppServerHostResource,
+  CodexAppServerResourceRequestHandler,
   CodexAppsListResponse,
   CodexCollaborationModeListResponse,
   CodexConfigReadResponse,
@@ -190,6 +203,9 @@ import type {
 import { projectCodexUiSlotStates } from './projection/ui-slot-projector'
 
 const CODEX_EPHEMERAL_REQUEST_TIMEOUT_MS = 20_000
+function codexEphemeralAppServerScopeId(kind: string, id: string): string {
+  return `ephemeral:${kind}:${id}:${randomUUID()}`
+}
 
 export function createCodexProvider(ctx: ProviderContext, config: CodexProviderConfig = {}): ChatRuntime {
   return new CodexProvider({ ...ctx, ...config })
@@ -290,7 +306,7 @@ export class CodexProvider implements ChatRuntime {
     }
 
     const config = readTrustedCodexConfig(input.profile.configJson)
-    const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
+    const auth = this.resolveAppServerAuth(input.profile, config)
     if (codexConfigRequiresApiKey(config, auth)) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }
@@ -302,23 +318,24 @@ export class CodexProvider implements ChatRuntime {
     const effectiveModel = input.modelId ?? snapshot.models.currentModelId ?? config.model
     const skillExtraRoots = resolveCodexSkillExtraRoots(config, workspacePath, this.resolveSkillPaths)
     const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel, auth)
+    const chatgptAuth = readCodexChatgptAuth(auth)
     const hostLease = await this.acquireCodexAppServerHost({
       providerTargetId: input.profile.providerTargetId,
-      scopeId: input.childChatSessionId,
-      chatgptAuth: auth.chatgptAuth,
+      scopeId: CODEX_PROVIDER_APP_SERVER_SCOPE_ID,
+      chatgptAuth,
       pinned: true,
       options: {
-        apiKey: auth.apiKey ?? undefined,
+        apiKey: readCodexApiKeyAuth(auth) ?? undefined,
         config: codexConfig,
-        env: buildCradleCodexAppServerEnv({
+        env: buildCodexAppServerEnv({
           chatSessionId: input.childChatSessionId,
           workspaceId: input.workspaceId,
           workspacePath,
           agentId,
           agentHome: runtimeContext.agentHome,
-        }),
+        }, auth),
         serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
-          chatgptAuth: auth.chatgptAuth,
+          chatgptAuth,
           updateSecretValue: this.deps.updateSecret,
         }),
       },
@@ -386,7 +403,7 @@ export class CodexProvider implements ChatRuntime {
 
   async* quickQuestion(input: QuickQuestionInput): AsyncGenerator<UIMessageChunk, void, void> {
     const config = readTrustedCodexConfig(input.profile.configJson)
-    const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
+    const auth = this.resolveAppServerAuth(input.profile, config)
 
     if (codexConfigRequiresApiKey(config, auth)) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
@@ -405,25 +422,26 @@ export class CodexProvider implements ChatRuntime {
     codexConfig.use_bash = false
     delete codexConfig.mcp_servers
 
-    const codexEnv = buildCradleCodexAppServerEnv({
+    const chatgptAuth = readCodexChatgptAuth(auth)
+    const codexEnv = buildCodexAppServerEnv({
       chatSessionId: input.runtimeSession.chatSessionId,
       workspaceId: input.workspaceId,
       workspacePath,
       agentId: snapshot.agentId ?? null,
       agentHome: runtimeContext.agentHome,
-    })
+    }, auth)
 
     const hostLease = await this.acquireCodexAppServerHost({
       providerTargetId: input.profile.providerTargetId,
-      scopeId: `${input.runtimeSession.chatSessionId}:btw:${randomUUID()}`,
-      chatgptAuth: auth.chatgptAuth,
+      scopeId: codexEphemeralAppServerScopeId('quick-question', input.runtimeSession.chatSessionId),
+      chatgptAuth,
       pinned: false,
       options: {
-        apiKey: auth.apiKey ?? undefined,
+        apiKey: readCodexApiKeyAuth(auth) ?? undefined,
         config: codexConfig,
         env: codexEnv,
         serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
-          chatgptAuth: auth.chatgptAuth,
+          chatgptAuth,
           updateSecretValue: this.deps.updateSecret,
         }),
       },
@@ -543,7 +561,7 @@ export class CodexProvider implements ChatRuntime {
 
   async getUiSlotStates(input: GetUiSlotStatesInput): Promise<RuntimeUiSlotState[]> {
     const config = readTrustedCodexConfig(input.profile.configJson)
-    const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
+    const auth = this.resolveAppServerAuth(input.profile, config)
     if (codexConfigRequiresApiKey(config, auth)) {
       return []
     }
@@ -567,22 +585,23 @@ export class CodexProvider implements ChatRuntime {
     if (!runtimeSession.providerSessionId) {
       return []
     }
+    const chatgptAuth = readCodexChatgptAuth(auth)
     const hostLease = await this.acquireCodexAppServerHost({
       providerTargetId: input.profile.providerTargetId,
-      scopeId: input.runtimeSession.chatSessionId,
-      chatgptAuth: auth.chatgptAuth,
+      scopeId: CODEX_PROVIDER_APP_SERVER_SCOPE_ID,
+      chatgptAuth,
       options: {
-        apiKey: auth.apiKey ?? undefined,
+        apiKey: readCodexApiKeyAuth(auth) ?? undefined,
         config: buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, input.modelId ?? snapshot.models.currentModelId, auth),
-        env: buildCradleCodexAppServerEnv({
+        env: buildCodexAppServerEnv({
           chatSessionId: input.runtimeSession.chatSessionId,
           workspaceId: input.workspaceId,
           workspacePath,
           agentId: input.agentId ?? snapshot.agentId ?? null,
           agentHome: runtimeContext.agentHome,
-        }),
+        }, auth),
         serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
-          chatgptAuth: auth.chatgptAuth,
+          chatgptAuth,
           updateSecretValue: this.deps.updateSecret,
         }),
       },
@@ -591,7 +610,7 @@ export class CodexProvider implements ChatRuntime {
 
     try {
       await syncCodexSkillExtraRoots(client, skillExtraRoots)
-      const [goalResult, configResult, providerCapabilitiesResult, modelListResult, mcpStatusResult, rateLimitsResult, configRequirementsResult, skillsResult, pluginResult, appsResult, collaborationModesResult] = await Promise.allSettled([
+      const [goalResult, configResult, providerCapabilitiesResult, modelListResult, mcpStatusResult, rateLimitsResult, configRequirementsResult, skillsResult, pluginResult, appsResult, collaborationModesResult, backgroundTerminalsResult] = await Promise.allSettled([
         client.request('thread/goal/get', {
           threadId: runtimeSession.providerSessionId,
         }) as Promise<ThreadGoalGetResponse>,
@@ -619,6 +638,10 @@ export class CodexProvider implements ChatRuntime {
           limit: 100,
         }) as Promise<CodexAppsListResponse>,
         client.request('collaborationMode/list', {}) as Promise<CodexCollaborationModeListResponse>,
+        client.request('thread/backgroundTerminals/list', {
+          threadId: runtimeSession.providerSessionId,
+          limit: 20,
+        }) as Promise<ThreadBackgroundTerminalsListResponse>,
       ])
       const configResponse = configResult.status === 'fulfilled' ? configResult.value : null
       const providerCapabilities = providerCapabilitiesResult.status === 'fulfilled' ? providerCapabilitiesResult.value : null
@@ -630,6 +653,9 @@ export class CodexProvider implements ChatRuntime {
       const plugins = pluginResult.status === 'fulfilled' ? pluginResult.value : null
       const apps = appsResult.status === 'fulfilled' ? appsResult.value : null
       const collaborationModes = collaborationModesResult.status === 'fulfilled' ? collaborationModesResult.value : null
+      const backgroundTerminals = backgroundTerminalsResult.status === 'fulfilled'
+        ? projectCodexBackgroundTerminals(backgroundTerminalsResult.value.data)
+        : []
       return await projectCodexUiSlotStates({
         client,
         threadId: runtimeSession.providerSessionId,
@@ -645,6 +671,7 @@ export class CodexProvider implements ChatRuntime {
         plugins,
         apps,
         collaborationModes,
+        backgroundTerminals,
       })
     }
     catch {
@@ -652,6 +679,45 @@ export class CodexProvider implements ChatRuntime {
     }
     finally {
       hostLease.release()
+    }
+  }
+
+  async listBackgroundTerminals(input: ListBackgroundTerminalsInput): Promise<BackgroundTerminalListResult> {
+    const context = await this.createProviderThreadClient(input)
+    try {
+      const response = await context.client.request('thread/backgroundTerminals/list', {
+        threadId: context.runtimeSession.providerSessionId,
+        cursor: input.cursor ?? null,
+        limit: input.limit ?? 20,
+      }) as ThreadBackgroundTerminalsListResponse
+      return {
+        runtimeKind: this.runtimeKind,
+        providerSessionId: context.runtimeSession.providerSessionId,
+        terminals: projectCodexBackgroundTerminals(response.data),
+        nextCursor: response.nextCursor,
+      }
+    }
+    finally {
+      context.hostLease.release()
+    }
+  }
+
+  async terminateBackgroundTerminal(input: TerminateBackgroundTerminalInput): Promise<BackgroundTerminalTerminateResult> {
+    const context = await this.createProviderThreadClient(input)
+    try {
+      const response = await context.client.request('thread/backgroundTerminals/terminate', {
+        threadId: context.runtimeSession.providerSessionId,
+        processId: input.processId,
+      }) as ThreadBackgroundTerminalsTerminateResponse
+      return {
+        runtimeKind: this.runtimeKind,
+        providerSessionId: context.runtimeSession.providerSessionId,
+        processId: input.processId,
+        terminated: response.terminated,
+      }
+    }
+    finally {
+      context.hostLease.release()
     }
   }
 
@@ -782,7 +848,7 @@ export class CodexProvider implements ChatRuntime {
     workspacePath: string
   }> {
     const config = readTrustedCodexConfig(input.profile.configJson)
-    const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
+    const auth = this.resolveAppServerAuth(input.profile, config)
     if (codexConfigRequiresApiKey(config, auth)) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }
@@ -801,22 +867,23 @@ export class CodexProvider implements ChatRuntime {
           modelId: input.modelId,
         })
 
+    const chatgptAuth = readCodexChatgptAuth(auth)
     const hostLease = await this.acquireCodexAppServerHost({
       providerTargetId: input.profile.providerTargetId,
-      scopeId: input.runtimeSession.chatSessionId,
-      chatgptAuth: auth.chatgptAuth,
+      scopeId: CODEX_PROVIDER_APP_SERVER_SCOPE_ID,
+      chatgptAuth,
       options: {
-        apiKey: auth.apiKey ?? undefined,
+        apiKey: readCodexApiKeyAuth(auth) ?? undefined,
         config: buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, input.modelId ?? snapshot.models.currentModelId, auth),
-        env: buildCradleCodexAppServerEnv({
+        env: buildCodexAppServerEnv({
           chatSessionId: input.runtimeSession.chatSessionId,
           workspaceId: input.workspaceId,
           workspacePath,
           agentId,
           agentHome: runtimeContext.agentHome,
-        }),
+        }, auth),
         serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
-          chatgptAuth: auth.chatgptAuth,
+          chatgptAuth,
           updateSecretValue: this.deps.updateSecret,
         }),
       },
@@ -831,7 +898,7 @@ export class CodexProvider implements ChatRuntime {
     }
 
     const config = readTrustedCodexConfig(input.profile.configJson)
-    const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
+    const auth = this.resolveAppServerAuth(input.profile, config)
     if (codexConfigRequiresApiKey(config, auth)) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }
@@ -843,22 +910,23 @@ export class CodexProvider implements ChatRuntime {
     const effectiveModel = input.modelId ?? snapshot.models.currentModelId ?? config.model
     const skillExtraRoots = resolveCodexSkillExtraRoots(config, workspacePath, this.resolveSkillPaths)
     const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel, auth)
+    const chatgptAuth = readCodexChatgptAuth(auth)
     const hostLease = await this.acquireCodexAppServerHost({
       providerTargetId: input.profile.providerTargetId,
-      scopeId: input.runtimeSession.chatSessionId,
-      chatgptAuth: auth.chatgptAuth,
+      scopeId: CODEX_PROVIDER_APP_SERVER_SCOPE_ID,
+      chatgptAuth,
       options: {
-        apiKey: auth.apiKey ?? undefined,
+        apiKey: readCodexApiKeyAuth(auth) ?? undefined,
         config: codexConfig,
-        env: buildCradleCodexAppServerEnv({
+        env: buildCodexAppServerEnv({
           chatSessionId: input.runtimeSession.chatSessionId,
           workspaceId: input.workspaceId,
           workspacePath,
           agentId,
           agentHome: runtimeContext.agentHome,
-        }),
+        }, auth),
         serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
-          chatgptAuth: auth.chatgptAuth,
+          chatgptAuth,
           updateSecretValue: this.deps.updateSecret,
         }),
       },
@@ -908,12 +976,16 @@ export class CodexProvider implements ChatRuntime {
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const context = resolveCodexStreamTurnContext(input, {
       runtimeKind: this.runtimeKind,
-      resolveAppServerAuth: (profile, configApiKey) => this.resolveAppServerAuth(profile, configApiKey),
+      resolveAppServerAuth: (profile, config) => this.resolveAppServerAuth(profile, config),
       resolveSkillPaths: this.resolveSkillPaths,
-      createServerRequestHandler: auth => request => this.handleCodexServerRequest(input, request, {
-        chatgptAuth: auth.chatgptAuth,
-        updateSecretValue: this.deps.updateSecret,
-      }),
+      createServerRequestHandler: auth => {
+        const handler: CodexAppServerResourceRequestHandler = request => this.handleCodexServerRequest(input, request, {
+          chatgptAuth: readCodexChatgptAuth(auth),
+          updateSecretValue: this.deps.updateSecret,
+        })
+        handler.readThreadId = () => input.runtimeSession.providerSessionId
+        return handler
+      },
     })
     const hostLease = await this.acquireCodexStreamTurnHost(input, context)
 
@@ -932,10 +1004,10 @@ export class CodexProvider implements ChatRuntime {
     try {
       return await this.acquireCodexAppServerHost({
         providerTargetId: input.profile.providerTargetId,
-        scopeId: input.runtimeSession.chatSessionId,
-        chatgptAuth: context.auth.chatgptAuth,
+        scopeId: CODEX_PROVIDER_APP_SERVER_SCOPE_ID,
+        chatgptAuth: readCodexChatgptAuth(context.auth),
         options: {
-          apiKey: context.auth.apiKey ?? undefined,
+          apiKey: readCodexApiKeyAuth(context.auth) ?? undefined,
           config: context.codexConfig,
           env: context.codexEnv,
           serverRequestHandler: context.serverRequestHandler,
@@ -1092,10 +1164,16 @@ export class CodexProvider implements ChatRuntime {
       })
       this.generateCodexThreadTitleInBackground({
         providerTargetId: input.profile.providerTargetId,
-        apiKey: titleGeneration.auth.apiKey ?? null,
-        chatgptAuth: titleGeneration.auth.chatgptAuth,
+        apiKey: readCodexApiKeyAuth(titleGeneration.auth),
+        chatgptAuth: readCodexChatgptAuth(titleGeneration.auth),
         codexConfig: titleGeneration.codexConfig,
-        codexEnv: context.codexEnv,
+        codexEnv: buildCodexAppServerEnv({
+          chatSessionId: input.runtimeSession.chatSessionId,
+          workspaceId: input.workspaceId,
+          workspacePath: context.workspacePath,
+          agentId: context.agentId,
+          agentHome: context.runtimeContext.agentHome,
+        }, titleGeneration.auth),
         mainClient: client,
         mainThreadId: threadContext.threadId,
         promptText: context.goalCommandObjective ?? context.userPromptText,
@@ -1205,42 +1283,48 @@ export class CodexProvider implements ChatRuntime {
     outputTextCollector: CodexStreamOutputCollector
   }): AsyncGenerator<UIMessageChunk, void, void> {
     const { input: turnInput, context, client, abortController, threadContext, mapperState, diagnostics } = input
-    for await (const event of streamCodexMappedTurnEvents({
-      client,
-      threadId: threadContext.threadId,
-      turnId: input.turnId,
-      signal: abortController.signal,
-      mapperState,
-      diagnostics,
-      readGoal: () => readCodexProviderSnapshot(turnInput.runtimeSession.providerStateSnapshot).codex?.goal ?? null,
-      onProviderNotification: providerNotification => publishProviderThreadEvent(
-        turnInput.onProviderThreadEvent,
-        providerNotification,
-        input.providerThreadMapperStates,
-      ),
-    })) {
-      const { notification } = event
-      for (const chunk of event.chunks) {
-        if (input.generation && chunk.type === 'text-delta' && 'delta' in chunk) {
-          input.outputTextCollector.append((chunk as { delta: string }).delta)
+    const notificationClient = createCodexSubscribedNotificationClient(client, input.activeEntry.hostLease.resource, abortController.signal)
+    try {
+      for await (const event of streamCodexMappedTurnEvents({
+        client: notificationClient,
+        threadId: threadContext.threadId,
+        turnId: input.turnId,
+        signal: abortController.signal,
+        mapperState,
+        diagnostics,
+        readGoal: () => readCodexProviderSnapshot(turnInput.runtimeSession.providerStateSnapshot).codex?.goal ?? null,
+        onProviderNotification: providerNotification => publishProviderThreadEvent(
+          turnInput.onProviderThreadEvent,
+          providerNotification,
+          input.providerThreadMapperStates,
+        ),
+      })) {
+        const { notification } = event
+        for (const chunk of event.chunks) {
+          if (input.generation && chunk.type === 'text-delta' && 'delta' in chunk) {
+            input.outputTextCollector.append((chunk as { delta: string }).delta)
+          }
+          yield chunk
         }
-        yield chunk
-      }
 
-      if (notification.method === 'turn/started') {
-        input.activeEntry.turnId = getTurnId(notification) ?? input.activeEntry.turnId
-      }
-      if (notification.method === 'thread/name/updated') {
-        const title = readThreadNameUpdate(notification, threadContext.threadId)
-        if (title) {
-          turnInput.reportSessionTitle?.(title)
+        if (notification.method === 'turn/started') {
+          input.activeEntry.turnId = getTurnId(notification) ?? input.activeEntry.turnId
+        }
+        if (notification.method === 'thread/name/updated') {
+          const title = readThreadNameUpdate(notification, threadContext.threadId)
+          if (title) {
+            turnInput.reportSessionTitle?.(title)
+          }
+        }
+        projectCodexProviderStateSnapshot(turnInput.runtimeSession, notification, threadContext.threadId)
+        this.captureLastTokenUsage(notification)
+        if (isCompletedGoalUpdate(notification)) {
+          await client.request('thread/goal/clear', { threadId: threadContext.threadId }).catch(() => undefined)
         }
       }
-      projectCodexProviderStateSnapshot(turnInput.runtimeSession, notification, threadContext.threadId)
-      this.captureLastTokenUsage(notification)
-      if (isCompletedGoalUpdate(notification)) {
-        await client.request('thread/goal/clear', { threadId: threadContext.threadId }).catch(() => undefined)
-      }
+    }
+    finally {
+      notificationClient.close()
     }
 
     const finalTitle = await readLatestThreadTitle(client, threadContext.threadId)
@@ -1477,6 +1561,7 @@ export class CodexProvider implements ChatRuntime {
   private createAppServerBridge(): CodexAppServerBridge {
     return new CodexAppServerBridge({
       readSecret: credentialRef => this.deps.readSecret(credentialRef),
+      readSecretValueWithMetadata: this.deps.readSecretValueWithMetadata,
       updateSecretValue: this.deps.updateSecret,
       resolveSkillPaths: this.resolveSkillPaths,
       createAppServerClient: this.deps.createAppServerClient,
@@ -1486,9 +1571,9 @@ export class CodexProvider implements ChatRuntime {
 
   private resolveAppServerAuth(
     profile: CodexAppServerAuthCarrier,
-    configApiKey: string | undefined,
+    config: Parameters<typeof resolveCodexAppServerAuth>[1],
   ): CodexAppServerAuthResolution {
-    return resolveCodexAppServerAuth(profile, configApiKey, 'OPENAI_API_KEY', this.deps)
+    return resolveCodexAppServerAuth(profile, config, 'OPENAI_API_KEY', this.deps)
   }
 
   private async acquireCodexAppServerHost(input: {
@@ -1555,7 +1640,7 @@ export class CodexProvider implements ChatRuntime {
 
     const config = readTrustedCodexConfig(profile.configJson)
     const model = explicitModelId ?? config.model ?? null
-    const auth = this.resolveAppServerAuth(profile, config.apiKey)
+    const auth = this.resolveAppServerAuth(profile, config)
     return {
       auth,
       codexConfig: buildCodexConfig(config, input.workspacePath, this.resolveSkillPaths, null, model, auth),
@@ -1590,7 +1675,7 @@ export class CodexProvider implements ChatRuntime {
         try {
           hostLease = await this.acquireCodexAppServerHost({
             providerTargetId: input.providerTargetId,
-            scopeId: `title:${input.mainThreadId}:${randomUUID()}`,
+            scopeId: codexEphemeralAppServerScopeId('title', input.mainThreadId),
             chatgptAuth: input.chatgptAuth,
             options: {
               apiKey: input.apiKey ?? undefined,
@@ -1631,7 +1716,7 @@ export class CodexProvider implements ChatRuntime {
 
   async generateSessionTitle(input: GenerateSessionTitleInput): Promise<string | null> {
     const config = readTrustedCodexConfig(input.profile.configJson)
-    const auth = this.resolveAppServerAuth(input.profile, config.apiKey)
+    const auth = this.resolveAppServerAuth(input.profile, config)
     if (codexConfigRequiresApiKey(config, auth)) {
       throw new ProviderRuntimeError(ProviderErrors.authFailed(this.runtimeKind))
     }
@@ -1642,23 +1727,25 @@ export class CodexProvider implements ChatRuntime {
     const runtimeContext = resolveCodexRuntimeContext(workspacePath, agentId)
     const effectiveModel = input.modelId ?? snapshot.models.currentModelId ?? config.model ?? null
     const codexConfig = buildCodexConfig(config, workspacePath, this.resolveSkillPaths, null, effectiveModel, auth)
-    const codexEnv = buildCradleCodexAppServerEnv({
+    const chatgptAuth = readCodexChatgptAuth(auth)
+    const codexEnvInput = {
       chatSessionId: input.runtimeSession.chatSessionId,
       workspaceId: input.workspaceId,
       workspacePath,
       agentId,
       agentHome: runtimeContext.agentHome,
-    })
+    }
+    const codexEnv = buildCodexAppServerEnv(codexEnvInput, auth)
     const mainHostLease = await this.acquireCodexAppServerHost({
       providerTargetId: input.profile.providerTargetId,
-      scopeId: input.runtimeSession.chatSessionId,
-      chatgptAuth: auth.chatgptAuth,
+      scopeId: CODEX_PROVIDER_APP_SERVER_SCOPE_ID,
+      chatgptAuth,
       options: {
-        apiKey: auth.apiKey ?? undefined,
+        apiKey: readCodexApiKeyAuth(auth) ?? undefined,
         config: codexConfig,
         env: codexEnv,
         serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
-          chatgptAuth: auth.chatgptAuth,
+          chatgptAuth,
           updateSecretValue: this.deps.updateSecret,
         }),
       },
@@ -1688,16 +1775,17 @@ export class CodexProvider implements ChatRuntime {
       })
       const titleModel = titleGeneration.model ?? titleGeneration.fallbackModel
       const titleCodexConfig = buildCodexTitleConfig(titleGeneration.codexConfig, titleModel)
+      const titleChatgptAuth = readCodexChatgptAuth(titleGeneration.auth)
       titleHostLease = await this.acquireCodexAppServerHost({
         providerTargetId: input.profile.providerTargetId,
-        scopeId: `title:${threadStart.threadId}:${randomUUID()}`,
-        chatgptAuth: titleGeneration.auth.chatgptAuth,
+        scopeId: codexEphemeralAppServerScopeId('title', threadStart.threadId),
+        chatgptAuth: titleChatgptAuth,
         options: {
-          apiKey: titleGeneration.auth.apiKey ?? undefined,
+          apiKey: readCodexApiKeyAuth(titleGeneration.auth) ?? undefined,
           config: titleCodexConfig,
-          env: codexEnv,
+          env: buildCodexAppServerEnv(codexEnvInput, titleGeneration.auth),
           serverRequestHandler: request => buildDefaultCodexAppServerRequestResult(request, {
-            chatgptAuth: titleGeneration.auth.chatgptAuth,
+            chatgptAuth: titleChatgptAuth,
             updateSecretValue: this.deps.updateSecret,
           }),
         },
@@ -1777,6 +1865,20 @@ function projectCodexThread(thread: Thread): ProviderThread {
   }
 }
 
+function projectCodexBackgroundTerminals(
+  terminals: ThreadBackgroundTerminal[]
+): RuntimeBackgroundTerminal[] {
+  return terminals.map(terminal => ({
+    itemId: terminal.itemId,
+    processId: terminal.processId,
+    command: terminal.command,
+    cwd: terminal.cwd,
+    osPid: terminal.osPid,
+    cpuPercent: terminal.cpuPercent,
+    rssKb: terminal.rssKb === null ? null : Number(terminal.rssKb),
+  }))
+}
+
 function projectCodexTurn(turn: Turn): ProviderThreadTurn {
   return {
     id: turn.id,
@@ -1786,6 +1888,81 @@ function projectCodexTurn(turn: Turn): ProviderThreadTurn {
     durationMs: turn.durationMs ?? null,
     itemsView: turn.itemsView,
     items: turn.items,
+  }
+}
+
+function createCodexSubscribedNotificationClient(
+  client: CodexAppServerClientLike,
+  resource: CodexAppServerHostResource,
+  streamSignal: AbortSignal,
+): CodexAppServerClientLike {
+  const queue: CodexAppServerMessage[] = []
+  const waiters: Array<(message: CodexAppServerMessage | null) => void> = []
+  let closed = false
+  const unsubscribe = subscribeCodexAppServerHostNotifications(resource, {
+    onMessage: (message) => {
+      const waiter = waiters.shift()
+      if (waiter) {
+        waiter(message)
+      }
+      else {
+        queue.push(message)
+      }
+      return false
+    },
+    onClose: () => {
+      closed = true
+      for (const waiter of waiters.splice(0)) {
+        waiter(null)
+      }
+    },
+  })
+
+  const close = () => {
+    if (closed) {
+      return
+    }
+    closed = true
+    unsubscribe()
+    for (const waiter of waiters.splice(0)) {
+      waiter(null)
+    }
+  }
+  if (streamSignal.aborted) {
+    close()
+  }
+  else {
+    streamSignal.addEventListener('abort', close, { once: true })
+  }
+
+  return {
+    initialize: client.initialize.bind(client),
+    request: client.request.bind(client),
+    nextNotification: async (signal?: AbortSignal) => {
+      if (queue.length > 0) {
+        return queue.shift() ?? null
+      }
+      if (closed || signal?.aborted) {
+        return null
+      }
+      return await new Promise<CodexAppServerMessage | null>((resolve) => {
+        let waiter: ((message: CodexAppServerMessage | null) => void) | null = null
+        const onAbort = () => {
+          const index = waiter ? waiters.indexOf(waiter) : -1
+          if (index >= 0) {
+            waiters.splice(index, 1)
+          }
+          resolve(null)
+        }
+        signal?.addEventListener('abort', onAbort, { once: true })
+        waiter = (message) => {
+          signal?.removeEventListener('abort', onAbort)
+          resolve(message)
+        }
+        waiters.push(waiter)
+      })
+    },
+    close,
   }
 }
 

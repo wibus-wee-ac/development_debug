@@ -15,10 +15,18 @@ import type { ReasoningEffort } from '../app-server-protocol/ReasoningEffort'
 import type { ThreadForkParams } from '../app-server-protocol/v2/ThreadForkParams'
 import type { SandboxPolicy } from '../app-server-protocol/v2/SandboxPolicy'
 import type { CodexAppServerAuthResolution } from '../app-server/chatgpt-auth'
+import {
+  CODEX_BEDROCK_API_KEY_ENV,
+  CODEX_BEDROCK_REGION_ENV,
+  CODEX_PERSONAL_ACCESS_TOKEN_ENV,
+} from '../app-server/chatgpt-auth'
 import { toSandboxPolicy } from './sandbox-policy'
 
 export const CRADLE_CODEX_MODEL_PROVIDER = 'cradle-openai-compatible'
+export const CODEX_AMAZON_BEDROCK_MODEL_PROVIDER = 'amazon-bedrock'
 export const CRADLE_CODEX_API_KEY_ENV = 'CRADLE_CODEX_API_KEY'
+export const CODEX_API_KEY_ENV = 'CODEX_API_KEY'
+export const OPENAI_API_KEY_ENV = 'OPENAI_API_KEY'
 
 export function resolveCodexExternalModelProviderBaseUrl(
   config: CodexConfig,
@@ -31,13 +39,18 @@ export function resolveCodexAuthMode(
   config: CodexConfig,
   auth: CodexAppServerAuthResolution,
 ): CodexAuthMode {
-  if (auth.chatgptAuth) {
-    return 'chatgptAuthTokens'
+  switch (auth.kind) {
+    case 'apiKey':
+      return 'apikey'
+    case 'chatgptAuthTokens':
+      return 'chatgptAuthTokens'
+    case 'personalAccessToken':
+      return 'personalAccessToken'
+    case 'bedrockApiKey':
+      return 'bedrockApiKey'
+    case 'none':
+      return config.authMode ?? 'apikey'
   }
-  if (auth.apiKey) {
-    return 'apikey'
-  }
-  return config.authMode ?? 'apikey'
 }
 
 export function codexConfigRequiresApiKey(
@@ -46,7 +59,11 @@ export function codexConfigRequiresApiKey(
 ): boolean {
   return resolveCodexExternalModelProviderBaseUrl(config) !== null
     && resolveCodexAuthMode(config, auth) === 'apikey'
-    && !auth.apiKey
+    && !codexAuthHasApiKey(auth)
+}
+
+export function codexAuthHasApiKey(auth: CodexAppServerAuthResolution): boolean {
+  return auth.kind === 'apiKey'
 }
 
 export function buildCodexExternalModelProviderConfig(
@@ -64,6 +81,40 @@ export function buildCodexExternalModelProviderConfig(
         requires_openai_auth: true,
       },
     },
+  }
+}
+
+export function buildCodexBedrockModelProviderConfig(region: string): Record<string, unknown> {
+  return {
+    model_provider: CODEX_AMAZON_BEDROCK_MODEL_PROVIDER,
+    model_providers: {
+      [CODEX_AMAZON_BEDROCK_MODEL_PROVIDER]: {
+        aws: {
+          region,
+        },
+      },
+    },
+  }
+}
+
+export function buildCodexAuthEnvironment(auth: CodexAppServerAuthResolution): Record<string, string> {
+  switch (auth.kind) {
+    case 'apiKey':
+      return {
+        [CRADLE_CODEX_API_KEY_ENV]: auth.apiKey,
+        [CODEX_API_KEY_ENV]: auth.apiKey,
+        [OPENAI_API_KEY_ENV]: auth.apiKey,
+      }
+    case 'personalAccessToken':
+      return { [CODEX_PERSONAL_ACCESS_TOKEN_ENV]: auth.personalAccessToken }
+    case 'bedrockApiKey':
+      return {
+        [CODEX_BEDROCK_API_KEY_ENV]: auth.bedrockApiKey,
+        [CODEX_BEDROCK_REGION_ENV]: auth.region,
+      }
+    case 'chatgptAuthTokens':
+    case 'none':
+      return {}
   }
 }
 
@@ -118,6 +169,9 @@ export function buildCodexConfig(
   const externalBaseUrl = resolveCodexExternalModelProviderBaseUrl(config)
   if (externalBaseUrl) {
     Object.assign(codexConfig, buildCodexExternalModelProviderConfig(externalBaseUrl, authMode))
+  }
+  if (auth.kind === 'bedrockApiKey') {
+    Object.assign(codexConfig, buildCodexBedrockModelProviderConfig(auth.region))
   }
   if (effectiveModel) {
     codexConfig.model = effectiveModel

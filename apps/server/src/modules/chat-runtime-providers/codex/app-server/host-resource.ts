@@ -41,7 +41,7 @@ export async function dispatchCodexAppServerHostRequest(
   resource: CodexAppServerHostResource,
   request: CodexAppServerServerRequest,
 ): Promise<unknown> {
-  const handlers = [...resource.serverRequestHandlers]
+  const handlers = selectCodexAppServerHostRequestHandlers(resource, request)
   if (handlers.length === 0) {
     throw new Error(`Codex app-server host has no handler for server request: ${request.method}`)
   }
@@ -52,6 +52,28 @@ export async function dispatchCodexAppServerHostRequest(
     await Promise.resolve(handler(request)).catch(() => undefined)
   }
   return result
+}
+
+function selectCodexAppServerHostRequestHandlers(
+  resource: CodexAppServerHostResource,
+  request: CodexAppServerServerRequest,
+): CodexAppServerResourceRequestHandler[] {
+  const handlers = [...resource.serverRequestHandlers]
+  const threadId = readCodexAppServerRequestThreadId(request)
+  if (!threadId) {
+    return handlers
+  }
+  const matchingHandlers = handlers.filter(handler => handler.readThreadId?.() === threadId)
+  return matchingHandlers.length > 0 ? matchingHandlers : handlers.filter(handler => !handler.readThreadId)
+}
+
+function readCodexAppServerRequestThreadId(request: CodexAppServerServerRequest): string | null {
+  const params = request.params
+  if (!params || typeof params !== 'object' || !('threadId' in params)) {
+    return null
+  }
+  const threadId = (params as { threadId?: unknown }).threadId
+  return typeof threadId === 'string' ? threadId : null
 }
 
 export function subscribeCodexAppServerHostNotifications(

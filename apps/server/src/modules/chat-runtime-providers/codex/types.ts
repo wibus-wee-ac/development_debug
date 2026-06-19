@@ -43,7 +43,10 @@ export interface CodexAppServerClientLike {
   close: () => void
 }
 
-export type CodexAppServerResourceRequestHandler = (request: CodexAppServerServerRequest) => Promise<unknown> | unknown
+export interface CodexAppServerResourceRequestHandler {
+  (request: CodexAppServerServerRequest): Promise<unknown> | unknown
+  readThreadId?: () => string | null
+}
 
 export interface CodexAppServerNotificationSubscriber {
   onMessage: (message: CodexAppServerMessage) => boolean

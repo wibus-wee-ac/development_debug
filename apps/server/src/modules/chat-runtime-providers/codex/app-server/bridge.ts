@@ -2,19 +2,24 @@ import { getRegisteredMcpServers } from '../../../../plugins/mcp-registry'
 import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../../chat-runtime/runtime-provider-types'
 import type { CodexConfig } from '../../../provider-contracts/provider-base'
 import { readTrustedCodexConfig } from '../../../provider-contracts/provider-base'
+import type { SecretValueWithMetadata } from '../../../secrets/service'
 import type { CodexAppServerCapabilityManifest, CodexAppServerMethodCapability } from './capabilities'
 import { CODEX_APP_SERVER_CAPABILITIES, CODEX_APP_SERVER_CLIENT_METHOD_SET, readCodexAppServerMethodCapability } from './capabilities'
 import type { CodexAppServerClientOptions, CodexAppServerServerRequest } from './client'
-import { buildCradleCodexAppServerEnv, isCodexAppServerUnknownMethodError } from './client'
+import { isCodexAppServerUnknownMethodError } from './client'
+import { buildCodexAppServerEnv } from './env'
 import type { CodexAppServerHostLease } from './host-lease'
-import { acquireCodexAppServerHostLease, invalidateCodexAppServerHost } from './host-lease'
+import { CODEX_PROVIDER_APP_SERVER_SCOPE_ID, acquireCodexAppServerHostLease, invalidateCodexAppServerHost } from './host-lease'
 import { subscribeCodexAppServerHostNotifications } from './host-resource'
 import type { CodexAppServerAuthResolution, CodexChatgptAuthCredential } from './chatgpt-auth'
 import {
+  readCodexApiKeyAuth,
+  readCodexChatgptAuth,
   refreshCodexChatgptAuthCredential,
   resolveCodexAppServerAuth,
 } from './chatgpt-auth'
 import {
+  buildCodexBedrockModelProviderConfig,
   buildCodexExternalModelProviderConfig,
   codexConfigRequiresApiKey,
   resolveCodexAuthMode,
@@ -54,6 +59,7 @@ async function syncBridgeCodexSkillExtraRoots(client: CodexAppServerClientLike, 
 
 interface CodexAppServerBridgeDeps {
   readSecret: (credentialRef: string) => string
+  readSecretValueWithMetadata?: (credentialRef: string) => SecretValueWithMetadata
   updateSecretValue?: (credentialRef: string, secret: string) => void
   resolveSkillPaths: (workspacePath: string) => string[]
   createAppServerClient?: (options: CodexAppServerClientOptions) => CodexAppServerClientLike
@@ -222,7 +228,8 @@ export class CodexAppServerBridge {
     options: { serverRequestHandler?: CodexAppServerBridgeRequestHandler } = {},
   ): Promise<CodexAppServerHostLease> {
     const config = readTrustedCodexConfig(context.profile.configJson)
-    const auth = resolveCodexAppServerAuth(context.profile, config.apiKey, 'OPENAI_API_KEY', this.deps)
+    const auth = resolveCodexAppServerAuth(context.profile, config, 'OPENAI_API_KEY', this.deps)
+    const chatgptAuth = readCodexChatgptAuth(auth)
     if (codexConfigRequiresApiKey(config, auth)) {
       throw new Error('Codex app-server bridge requires an API key for external model providers')
     }
@@ -230,26 +237,26 @@ export class CodexAppServerBridge {
     const skillExtraRoots = resolveBridgeCodexSkillExtraRoots(config, context.workspacePath, this.deps.resolveSkillPaths)
     const requestHandler: CodexAppServerClientOptions['serverRequestHandler']
       = options.serverRequestHandler
-      ? request => options.serverRequestHandler!(request, auth.chatgptAuth)
+      ? request => options.serverRequestHandler!(request, chatgptAuth)
       : undefined
     const clientOptions: CodexAppServerClientOptions = {
-      apiKey: auth.apiKey ?? undefined,
+      apiKey: readCodexApiKeyAuth(auth) ?? undefined,
       config: buildBridgeCodexConfig(config, context.workspacePath, this.deps.resolveSkillPaths, context.modelId, auth),
-      env: buildCradleCodexAppServerEnv({
+      env: buildCodexAppServerEnv({
         chatSessionId: context.runtimeSession.chatSessionId,
         workspaceId: context.workspaceId,
         workspacePath: context.workspacePath,
         agentId: context.agentId,
         agentHome: runtimeContext.agentHome,
-      }),
+      }, auth),
       serverRequestHandler: requestHandler,
     }
     const hostLease = await acquireCodexAppServerHostLease({
       runtimeKind: context.runtimeSession.runtimeKind,
       providerTargetId: context.profile.providerTargetId,
-      scopeId: context.runtimeSession.chatSessionId,
+      scopeId: CODEX_PROVIDER_APP_SERVER_SCOPE_ID,
       options: clientOptions,
-      chatgptAuth: auth.chatgptAuth,
+      chatgptAuth,
       authenticateChatgpt: !isAccountAuthMutationMethod(requestedMethod),
       deps: {
         createAppServerClient: this.deps.createAppServerClient,
@@ -305,6 +312,9 @@ function buildBridgeCodexConfig(
     ...(Object.keys(mcpServers).length > 0 ? { mcp_servers: mcpServers } : {}),
     ...(externalBaseUrl
       ? buildCodexExternalModelProviderConfig(externalBaseUrl, authMode)
+      : {}),
+    ...(auth.kind === 'bedrockApiKey'
+      ? buildCodexBedrockModelProviderConfig(auth.region)
       : {}),
     ...(effectiveModel ?? config.model ? { model: effectiveModel ?? config.model } : {}),
   }

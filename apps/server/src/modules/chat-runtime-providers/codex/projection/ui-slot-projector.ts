@@ -7,6 +7,7 @@
 import type {
   RuntimeAlertUiSlotState,
   RuntimeApprovalsUiSlotState,
+  RuntimeBackgroundTerminal,
   RuntimeCompactUiSlotState,
   RuntimeConfigUiSlotState,
   RuntimeCrewAgentItem,
@@ -158,6 +159,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     aliases: ['shell'],
     iconKey: 'terminal',
     commandText: '/terminal ',
+    surfaces: ['slashCommand', 'composerState', 'runtimePanel'],
     anyMethods: ['command/exec', 'process/spawn', 'thread/shellCommand'],
     anyNotifications: [
       'item/commandExecution/outputDelta',
@@ -492,6 +494,7 @@ export interface CodexUiSlotStateProjectionInput {
   plugins: CodexPluginListResponse | null
   apps: CodexAppsListResponse | null
   collaborationModes: CodexCollaborationModeListResponse | null
+  backgroundTerminals: RuntimeBackgroundTerminal[]
 }
 
 export async function projectCodexUiSlotStates(
@@ -524,7 +527,7 @@ export async function projectCodexUiSlotStates(
     projectCodexToolActivityState(input.threadId, snapshot),
     projectCodexMcpState(input.threadId, snapshot, input.mcpStatus),
     projectCodexDiffState(input.threadId, snapshot),
-    projectCodexTerminalState(input.threadId, snapshot),
+    projectCodexTerminalState(input.threadId, snapshot, input.backgroundTerminals),
     projectCodexApprovalsState(input.threadId, snapshot),
     projectCodexAlertState(input.threadId, snapshot),
     projectCodexFilesystemState(input.threadId, snapshot),
@@ -857,24 +860,33 @@ function projectCodexDiffState(
 
 function projectCodexTerminalState(
   threadId: string,
-  snapshot: CodexProviderSnapshot
+  snapshot: CodexProviderSnapshot,
+  backgroundTerminals: RuntimeBackgroundTerminal[]
 ): RuntimeTerminalUiSlotState | null {
   const terminal = snapshot.codex?.terminal
-  if (!terminal || terminal.threadId !== threadId || terminal.commands.length === 0) {
+  if (
+    (!terminal || terminal.threadId !== threadId || terminal.commands.length === 0) &&
+    backgroundTerminals.length === 0
+  ) {
     return null
   }
-  const lastCommand = terminal.commands[0]
+  const commands = terminal?.threadId === threadId ? terminal.commands : []
+  const lastCommand = commands[0]
   return {
     kind: 'terminal',
     slotId: 'codex:terminal',
     threadId,
-    turnId: terminal.turnId,
-    activeCount: terminal.commands.filter((command) => command.status === 'running').length,
-    completedCount: terminal.commands.filter((command) => command.status === 'completed').length,
-    failedCount: terminal.commands.filter((command) => command.status === 'failed').length,
+    turnId: terminal?.threadId === threadId ? terminal.turnId : null,
+    activeCount: Math.max(
+      commands.filter((command) => command.status === 'running').length,
+      backgroundTerminals.length
+    ),
+    completedCount: commands.filter((command) => command.status === 'completed').length,
+    failedCount: commands.filter((command) => command.status === 'failed').length,
     lastCommand: lastCommand?.command ?? null,
     lastOutputPreview: lastCommand?.outputPreview ?? null,
-    updatedAt: terminal.updatedAt
+    backgroundTerminals,
+    updatedAt: terminal?.updatedAt ?? Date.now()
   }
 }
 
