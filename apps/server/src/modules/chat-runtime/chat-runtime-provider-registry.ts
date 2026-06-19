@@ -294,6 +294,7 @@ let registry: RuntimeRegistry | null = null
 function createProviderContext(): ProviderContext {
   return {
     readSecret: ref => Secrets.readSecret(ref),
+    readSecretValueWithMetadata: ref => Secrets.readSecretValueWithMetadata(ref),
     updateSecret: (ref, val) => Secrets.updateSecretValue(ref, val),
     resolveSkillPaths: resolveRuntimeSkillPaths,
     requestUserInput: requestRuntimeUserInput,

@@ -63,12 +63,3 @@ export function readSessionEvents(aggregateId: string): StoredChatSessionEvent[]
     .all()
     .map(parseStoredChatSessionEvent)
 }
-
-export function readAllSessionEvents(): StoredChatSessionEvent[] {
-  return db()
-    .select()
-    .from(sessionEvents)
-    .orderBy(sessionEvents.aggregateId, sessionEvents.version)
-    .all()
-    .map(parseStoredChatSessionEvent)
-}

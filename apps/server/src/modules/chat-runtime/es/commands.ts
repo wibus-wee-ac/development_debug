@@ -1,20 +1,25 @@
 import type { BackendRun, ChatSessionQueueItem, Message } from '@cradle/db'
-import { backendRuns, chatSessionQueueItems, messages } from '@cradle/db'
-import { and, eq, isNull, or } from 'drizzle-orm'
+import { backendRuns, chatSessionQueueItems, messages, sessionEvents } from '@cradle/db'
+import { and, eq, isNull, or, sql } from 'drizzle-orm'
 
 import { currentUnixSeconds } from '../../../helpers/time'
 import { db } from '../../../infra'
 import { parseStoredMessageSnapshot } from '../ui-message'
 import type { ChatMessageStatus } from '../run/stream-chunks'
-import { appendSessionEvent, readAllSessionEvents, readSessionEvents } from './event-store'
+import { appendSessionEvent } from './event-store'
 import type { ChatSessionEvent, QueueProjectionStatus, TerminalRunEventType } from './events'
 import { projectSessionEvent } from './projectors'
-import { reduceChatSessionEvents } from './aggregate'
 import { runSessionActorTask } from './session-actor'
 
 const INTERRUPTED_RUN_STOP_REASON = 'response.interrupted'
 const INTERRUPTED_RUN_ERROR_TEXT =
   'Response interrupted because the Cradle server process exited while the run was streaming.'
+const RECOVERY_BATCH_SIZE = 100
+
+export interface ChatRuntimeRecoveryResult {
+  interruptedRunsFinalized: number
+  terminalFactsProjected: number
+}
 
 export function commitSessionEvents(sessionId: string, events: ChatSessionEvent[]): Promise<void> {
   if (events.length === 0) {
@@ -271,55 +276,68 @@ export async function recordQueuePositions(
   await commitSessionEvents(sessionId, events)
 }
 
-export async function finalizeInterruptedSessionEventStreams(): Promise<number> {
-  const grouped = new Map<string, ReturnType<typeof readSessionEvents>>()
-  for (const event of readAllSessionEvents()) {
-    const current = grouped.get(event.aggregateId) ?? []
-    current.push(event)
-    grouped.set(event.aggregateId, current)
+export async function recoverChatRuntimeProjections(): Promise<ChatRuntimeRecoveryResult> {
+  return {
+    interruptedRunsFinalized: await finalizeInterruptedSessionEventStreams(),
+    terminalFactsProjected: await projectTerminalRunFacts()
   }
+}
 
-  let recovered = 0
-  for (const [sessionId, events] of grouped) {
-    const state = reduceChatSessionEvents(events)
-    if (!state.activeRun) {
-      continue
-    }
-    if (await finalizeInterruptedRun(sessionId, state.activeRun.runId)) {
-      recovered += 1
-    }
+export async function recoverChatRuntimeSession(
+  sessionId: string
+): Promise<ChatRuntimeRecoveryResult> {
+  return {
+    interruptedRunsFinalized: await finalizeInterruptedRunsForSession(sessionId),
+    terminalFactsProjected: await projectTerminalRunFactsForSession(sessionId)
   }
-  for (const run of readStreamingRuns()) {
-    if (await finalizeInterruptedRun(run.chatSessionId, run.id)) {
-      recovered += 1
+}
+
+export async function finalizeInterruptedSessionEventStreams(): Promise<number> {
+  return await finalizeInterruptedRunsForSession()
+}
+
+async function finalizeInterruptedRunsForSession(sessionId?: string): Promise<number> {
+  let recovered = 0
+  let batch = readStreamingRuns(sessionId, RECOVERY_BATCH_SIZE)
+  while (batch.length > 0) {
+    for (const run of batch) {
+      if (await finalizeInterruptedRun(run.chatSessionId, run.id)) {
+        recovered += 1
+      }
     }
+    batch = readStreamingRuns(sessionId, RECOVERY_BATCH_SIZE)
   }
   return recovered
 }
 
 export async function finalizeInterruptedSessionEventStream(sessionId: string): Promise<boolean> {
-  return await runSessionActorTask(sessionId, () =>
-    finalizeInterruptedSessionEventStreamInActor(sessionId)
-  )
+  return (await finalizeInterruptedRunsForSession(sessionId)) > 0
 }
 
-function finalizeInterruptedSessionEventStreamInActor(sessionId: string): boolean {
-  const state = reduceChatSessionEvents(readSessionEvents(sessionId))
-  if (!state.activeRun) {
-    return readStreamingRuns(sessionId).reduce(
-      (changed, run) => finalizeInterruptedRunInActor(sessionId, run.id) || changed,
-      false
-    )
+export async function projectTerminalRunFacts(): Promise<number> {
+  let count = 0
+  let batch = readTerminalRunsMissingTerminalFact(undefined, RECOVERY_BATCH_SIZE)
+  while (batch.length > 0) {
+    for (const run of batch) {
+      if (await projectTerminalRunFact(run)) {
+        count += 1
+      }
+    }
+    batch = readTerminalRunsMissingTerminalFact(undefined, RECOVERY_BATCH_SIZE)
   }
-  return finalizeInterruptedRunInActor(sessionId, state.activeRun.runId)
+  return count
 }
 
 export async function projectTerminalRunFactsForSession(sessionId: string): Promise<number> {
   let count = 0
-  for (const run of readTerminalRuns(sessionId)) {
-    if (await projectTerminalRunFact(run)) {
-      count += 1
+  let batch = readTerminalRunsMissingTerminalFact(sessionId, RECOVERY_BATCH_SIZE)
+  while (batch.length > 0) {
+    for (const run of batch) {
+      if (await projectTerminalRunFact(run)) {
+        count += 1
+      }
     }
+    batch = readTerminalRunsMissingTerminalFact(sessionId, RECOVERY_BATCH_SIZE)
   }
   return count
 }
@@ -375,22 +393,24 @@ function projectTerminalRunFactInActor(sessionId: string, runId: string): boolea
 }
 
 function hasTerminalRunFact(sessionId: string, runId: string): boolean {
-  return readSessionEvents(sessionId).some((event) => {
-    if (
-      event.type !== 'RunCompleted' &&
-      event.type !== 'RunFailed' &&
-      event.type !== 'RunAborted'
-    ) {
-      return false
-    }
-    return event.payload.runId === runId
-  })
+  return (
+    db()
+      .select({ sequenceId: sessionEvents.sequenceId })
+      .from(sessionEvents)
+      .where(
+        and(
+          eq(sessionEvents.aggregateId, sessionId),
+          eq(sessionEvents.subjectRunId, runId),
+          terminalRunFactEventPredicate()
+        )
+      )
+      .limit(1)
+      .get() !== undefined
+  )
 }
 
 export async function finalizeInterruptedRun(sessionId: string, runId: string): Promise<boolean> {
-  return await runSessionActorTask(sessionId, () =>
-    finalizeInterruptedRunInActor(sessionId, runId)
-  )
+  return await runSessionActorTask(sessionId, () => finalizeInterruptedRunInActor(sessionId, runId))
 }
 
 function finalizeInterruptedRunInActor(sessionId: string, runId: string): boolean {
@@ -490,28 +510,60 @@ function readRun(sessionId: string, runId: string): BackendRun | undefined {
     .get()
 }
 
-function readStreamingRuns(sessionId?: string): BackendRun[] {
+function readStreamingRuns(sessionId?: string, limit = RECOVERY_BATCH_SIZE): BackendRun[] {
   const predicate = sessionId
     ? and(eq(backendRuns.chatSessionId, sessionId), eq(backendRuns.status, 'streaming'))
     : eq(backendRuns.status, 'streaming')
-  return db().select().from(backendRuns).where(predicate).all()
-}
-
-function readTerminalRuns(sessionId: string): BackendRun[] {
   return db()
     .select()
     .from(backendRuns)
-    .where(
-      and(
-        eq(backendRuns.chatSessionId, sessionId),
-        or(
-          eq(backendRuns.status, 'complete'),
-          eq(backendRuns.status, 'aborted'),
-          eq(backendRuns.status, 'failed')
-        )
-      )
-    )
+    .where(predicate)
+    .orderBy(backendRuns.startedAt, backendRuns.id)
+    .limit(limit)
     .all()
+}
+
+function readTerminalRunsMissingTerminalFact(
+  sessionId: string | undefined,
+  limit: number
+): BackendRun[] {
+  const predicate = sessionId
+    ? and(
+        eq(backendRuns.chatSessionId, sessionId),
+        terminalRunStatusPredicate(),
+        missingTerminalRunFactPredicate()
+      )
+    : and(terminalRunStatusPredicate(), missingTerminalRunFactPredicate())
+
+  return db()
+    .select()
+    .from(backendRuns)
+    .where(predicate)
+    .orderBy(backendRuns.startedAt, backendRuns.id)
+    .limit(limit)
+    .all()
+}
+
+function terminalRunStatusPredicate() {
+  return or(
+    eq(backendRuns.status, 'complete'),
+    eq(backendRuns.status, 'aborted'),
+    eq(backendRuns.status, 'failed')
+  )
+}
+
+function terminalRunFactEventPredicate() {
+  return sql`${sessionEvents.eventType} in ('RunCompleted', 'RunFailed', 'RunAborted')`
+}
+
+function missingTerminalRunFactPredicate() {
+  return sql`not exists (
+    select 1
+    from ${sessionEvents}
+    where ${sessionEvents.aggregateId} = ${backendRuns.chatSessionId}
+      and ${sessionEvents.subjectRunId} = ${backendRuns.id}
+      and ${sessionEvents.eventType} in ('RunCompleted', 'RunFailed', 'RunAborted')
+  )`
 }
 
 function readMessage(sessionId: string, messageId: string): Message | undefined {

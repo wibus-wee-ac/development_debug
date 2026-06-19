@@ -1,4 +1,5 @@
 import type { AnySQLiteColumn } from 'drizzle-orm/sqlite-core'
+import { sql } from 'drizzle-orm'
 import { index, int, real, sqliteTable, text, uniqueIndex } from 'drizzle-orm/sqlite-core'
 
 import { agents } from './identity'
@@ -151,6 +152,14 @@ export const sessionEvents = sqliteTable('session_events', {
   version: int('version').notNull(),
   eventType: text('event_type').notNull(),
   payload: text('payload').notNull().default('{}'),
+  subjectRunId: text('subject_run_id').generatedAlwaysAs(
+    sql`case
+      when event_type = 'RunStarted' then json_extract(payload, '$.run.id')
+      when event_type in ('RunCompleted', 'RunFailed', 'RunAborted') then json_extract(payload, '$.runId')
+      else null
+    end`,
+    { mode: 'virtual' },
+  ),
   occurredAt: int('occurred_at').notNull(),
 }, table => ({
   byAggregateVersion: uniqueIndex('session_events_aggregate_version_unique').on(
@@ -159,6 +168,9 @@ export const sessionEvents = sqliteTable('session_events', {
   ),
   byAggregate: index('session_events_aggregate_id_idx').on(table.aggregateId),
   byEventType: index('session_events_event_type_idx').on(table.eventType),
+  terminalFactByRun: uniqueIndex('session_events_terminal_fact_run_unique')
+    .on(table.aggregateId, table.subjectRunId)
+    .where(sql`${table.eventType} in ('RunCompleted', 'RunFailed', 'RunAborted') and ${table.subjectRunId} is not null`),
 }))
 
 export type Session = typeof sessions.$inferSelect

@@ -532,6 +532,41 @@ export const chatRuntime = new Elysia({
       response: { 200: ChatRuntimeModel.contextUsageResponse }
     }
   )
+  // GET /chat/sessions/:sessionId/background-terminals -> provider-owned background terminal process list
+  .get(
+    '/sessions/:sessionId/background-terminals',
+    async ({ params, query }) => {
+      return (await loadChatRuntime()).listBackgroundTerminals(params.sessionId, {
+        cursor: query.cursor ?? null,
+        limit: query.limit ?? null
+      })
+    },
+    {
+      detail: {
+        summary: 'List background terminals for a chat session'
+      },
+      params: ChatRuntimeModel.sessionIdParams,
+      query: ChatRuntimeModel.backgroundTerminalsQuery,
+      response: { 200: ChatRuntimeModel.backgroundTerminals }
+    }
+  )
+  // POST /chat/sessions/:sessionId/background-terminals/:processId/terminate -> terminate a provider-owned background terminal process
+  .post(
+    '/sessions/:sessionId/background-terminals/:processId/terminate',
+    async ({ params }) => {
+      return (await loadChatRuntime()).terminateBackgroundTerminal(
+        params.sessionId,
+        params.processId
+      )
+    },
+    {
+      detail: {
+        summary: 'Terminate a background terminal for a chat session'
+      },
+      params: ChatRuntimeModel.backgroundTerminalParams,
+      response: { 200: ChatRuntimeModel.backgroundTerminalTerminate }
+    }
+  )
   // GET /chat/sessions/:sessionId/provider-threads -> provider-native subagent/thread list
   .get(
     '/sessions/:sessionId/provider-threads',

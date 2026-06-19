@@ -5,7 +5,7 @@ import { join } from 'node:path'
 import { backendRuns, backendRunSnapshots, backendSessionBindings, chatSessionQueueItems, messages, providerTargets, sessionEvents, sessions, workspaces } from '@cradle/db'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { readUIMessageStream } from 'ai'
-import { eq } from 'drizzle-orm'
+import { eq, sql } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createServerApp } from '../src/app'
@@ -16,6 +16,7 @@ import { ProviderErrors, ProviderRuntimeError } from '../src/modules/chat-runtim
 import {
   flushAllActiveRunSnapshots,
   getActiveRunReplayBufferSummary,
+  recoverPersistedRunProjections,
   reportRuntimeSessionTitle,
 } from '../src/modules/chat-runtime/service'
 import {
@@ -4169,7 +4170,7 @@ describe('chat runtime capability', () => {
     }
   })
 
-  it('repairs persisted streaming state when message snapshots find no active run', async () => {
+  it('keeps message reads projection-only and repairs persisted run state through explicit recovery', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
@@ -4338,6 +4339,28 @@ describe('chat runtime capability', () => {
         summaryJson: '{}',
       }).run()
 
+      expect(db()
+        .select()
+        .from(sessionEvents)
+        .where(eq(sessionEvents.aggregateId, 'session-chat-orphan'))
+        .all()).toHaveLength(0)
+
+      const rowsBeforeRecovery = await getChatMessages(app, 'session-chat-orphan')
+      expect(rowsBeforeRecovery).toEqual([
+        expect.objectContaining({ messageId: 'message-orphan-assistant', role: 'assistant', status: 'streaming' }),
+        expect.objectContaining({ messageId: 'message-terminal-projection-assistant', role: 'assistant', status: 'streaming' }),
+      ])
+      expect(db()
+        .select()
+        .from(sessionEvents)
+        .where(eq(sessionEvents.aggregateId, 'session-chat-orphan'))
+        .all()).toHaveLength(0)
+
+      await expect(recoverPersistedRunProjections()).resolves.toEqual({
+        interruptedRunsFinalized: 1,
+        terminalFactsProjected: 1,
+      })
+
       const rows = await getChatMessages(app, 'session-chat-orphan')
       expect(rows).toEqual([
         expect.objectContaining({ messageId: 'message-orphan-assistant', role: 'assistant', status: 'failed' }),
@@ -4446,6 +4469,11 @@ describe('chat runtime capability', () => {
         .where(eq(backendRuns.id, run.id))
         .run()
 
+      const eventCountBeforeStatus = db()
+        .select({ count: sql<number>`count(*)` })
+        .from(sessionEvents)
+        .where(eq(sessionEvents.aggregateId, 'session-stale-active-run'))
+        .get()!.count
       const statusResponse = await app.handle(new Request('http://localhost/chat/sessions/session-stale-active-run/runtime-status'))
       expect(statusResponse.status).toBe(200)
       const runtimeStatus = await statusResponse.json() as {
@@ -4458,6 +4486,20 @@ describe('chat runtime capability', () => {
         activeRun: null,
         latestRun: expect.objectContaining({ status: 'failed' }),
       }))
+      expect(db()
+        .select({ count: sql<number>`count(*)` })
+        .from(sessionEvents)
+        .where(eq(sessionEvents.aggregateId, 'session-stale-active-run'))
+        .get()!.count).toBe(eventCountBeforeStatus)
+
+      expect((await getChatMessages(app, 'session-stale-active-run')).find(row => row.role === 'assistant')).toEqual(
+        expect.objectContaining({ status: 'streaming' }),
+      )
+
+      await expect(recoverPersistedRunProjections()).resolves.toEqual({
+        interruptedRunsFinalized: 0,
+        terminalFactsProjected: 1,
+      })
 
       expect((await getChatMessages(app, 'session-stale-active-run')).find(row => row.role === 'assistant')).toEqual(
         expect.objectContaining({ status: 'failed', errorText: 'persisted terminal failure' }),

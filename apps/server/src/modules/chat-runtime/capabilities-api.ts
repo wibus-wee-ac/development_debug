@@ -15,12 +15,16 @@ import {
   createEmptyRuntimePresentation
 } from './runtime-provider-types'
 import type {
+  BackgroundTerminalListResult,
+  BackgroundTerminalTerminateResult,
+  ListBackgroundTerminalsInput,
   ProviderThreadListInput,
   ProviderThreadListResult,
   ProviderThreadDeleteResult,
   ProviderThreadReadResult,
   ProviderThreadSourceKind,
   ProviderThreadTurnsResult,
+  TerminateBackgroundTerminalInput,
   RuntimeContextUsage,
   RuntimePresentationCapabilities,
   RuntimeUiSlotState
@@ -292,6 +296,47 @@ export async function listProviderThreadTurns(
     threadId,
     ...query
   })
+}
+
+export async function listBackgroundTerminals(
+  sessionId: string,
+  query: {
+    cursor?: string | null
+    limit?: number | null
+  } = {}
+): Promise<BackgroundTerminalListResult> {
+  const resolved = await resolveRuntimeSessionContext(sessionId)
+  if (!resolved.runtime.listBackgroundTerminals) {
+    throw new AppError({
+      code: 'chat_background_terminals_not_supported',
+      status: 501,
+      message: 'Runtime does not support background terminal listing',
+      details: { sessionId, runtimeKind: resolved.runtimeKind }
+    })
+  }
+  return await resolved.runtime.listBackgroundTerminals({
+    ...buildRuntimeProviderInput(resolved),
+    ...query
+  } satisfies ListBackgroundTerminalsInput)
+}
+
+export async function terminateBackgroundTerminal(
+  sessionId: string,
+  processId: string
+): Promise<BackgroundTerminalTerminateResult> {
+  const resolved = await resolveRuntimeSessionContext(sessionId)
+  if (!resolved.runtime.terminateBackgroundTerminal) {
+    throw new AppError({
+      code: 'chat_background_terminals_not_supported',
+      status: 501,
+      message: 'Runtime does not support background terminal termination',
+      details: { sessionId, runtimeKind: resolved.runtimeKind }
+    })
+  }
+  return await resolved.runtime.terminateBackgroundTerminal({
+    ...buildRuntimeProviderInput(resolved),
+    processId
+  } satisfies TerminateBackgroundTerminalInput)
 }
 
 export async function readContextUsage(sessionId: string): Promise<ChatSessionContextUsageDto> {

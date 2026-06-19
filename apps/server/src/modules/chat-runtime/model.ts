@@ -354,6 +354,16 @@ const runtimeDiffUiSlotStateSchema = t.Object({
   updatedAt: t.Number()
 })
 
+const runtimeBackgroundTerminalSchema = t.Object({
+  itemId: t.String(),
+  processId: t.String(),
+  command: t.String(),
+  cwd: t.String(),
+  osPid: t.Union([t.Number(), t.Null()]),
+  cpuPercent: t.Union([t.Number(), t.Null()]),
+  rssKb: t.Union([t.Number(), t.Null()])
+})
+
 const runtimeTerminalUiSlotStateSchema = t.Object({
   kind: t.Literal('terminal'),
   slotId: t.String(),
@@ -364,6 +374,7 @@ const runtimeTerminalUiSlotStateSchema = t.Object({
   failedCount: t.Number(),
   lastCommand: t.Union([t.String(), t.Null()]),
   lastOutputPreview: t.Union([t.String(), t.Null()]),
+  backgroundTerminals: t.Array(runtimeBackgroundTerminalSchema),
   updatedAt: t.Number()
 })
 
@@ -912,6 +923,11 @@ export const ChatRuntimeModel = {
     threadId: t.String({ minLength: 1 })
   }),
 
+  backgroundTerminalParams: t.Object({
+    sessionId: t.String({ minLength: 1 }),
+    processId: t.String({ minLength: 1 })
+  }),
+
   draftRuntimeCapabilitiesQuery: t.Object({
     runtimeKind: runtimeKindSchema
   }),
@@ -930,6 +946,11 @@ export const ChatRuntimeModel = {
     cursor: t.Optional(t.String()),
     limit: t.Optional(t.Number()),
     sortDirection: t.Optional(t.Union([t.Literal('asc'), t.Literal('desc')]))
+  }),
+
+  backgroundTerminalsQuery: t.Object({
+    cursor: t.Optional(t.String()),
+    limit: t.Optional(t.Number())
   }),
 
   queueItemParams: t.Object({
@@ -1147,6 +1168,20 @@ export const ChatRuntimeModel = {
     messages: t.Array(uiMessageSchema),
     nextCursor: t.Union([t.String(), t.Null()]),
     backwardsCursor: t.Union([t.String(), t.Null()])
+  }),
+
+  backgroundTerminals: t.Object({
+    runtimeKind: t.String(),
+    providerSessionId: t.Union([t.String(), t.Null()]),
+    terminals: t.Array(runtimeBackgroundTerminalSchema),
+    nextCursor: t.Union([t.String(), t.Null()])
+  }),
+
+  backgroundTerminalTerminate: t.Object({
+    runtimeKind: t.String(),
+    providerSessionId: t.Union([t.String(), t.Null()]),
+    processId: t.String(),
+    terminated: t.Boolean()
   }),
 
   chatMessages: t.Array(chatMessageSnapshotSchema),

@@ -3,6 +3,7 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 import type { Logger } from '../../logging/logger'
 import type { CreateEventInput } from '../observability/contract'
 import type { ProviderKind, RuntimeKind } from '../provider-contracts/types'
+import type { SecretValueWithMetadata } from '../secrets/service'
 import type { CradleTurnTranscript } from './transcript'
 
 export interface RuntimeProviderTargetProfile {
@@ -333,6 +334,16 @@ export interface RuntimeDiffUiSlotState {
   updatedAt: number
 }
 
+export interface RuntimeBackgroundTerminal {
+  itemId: string
+  processId: string
+  command: string
+  cwd: string
+  osPid: number | null
+  cpuPercent: number | null
+  rssKb: number | null
+}
+
 export interface RuntimeTerminalUiSlotState {
   kind: 'terminal'
   slotId: string
@@ -343,6 +354,7 @@ export interface RuntimeTerminalUiSlotState {
   failedCount: number
   lastCommand: string | null
   lastOutputPreview: string | null
+  backgroundTerminals: RuntimeBackgroundTerminal[]
   updatedAt: number
 }
 
@@ -555,6 +567,7 @@ export interface ChatRuntimeHealthItem extends ProviderHealthStatus {
 
 export interface ProviderContext {
   readSecret: (credentialRef: string) => string
+  readSecretValueWithMetadata?: (credentialRef: string) => SecretValueWithMetadata
   updateSecret?: (credentialRef: string, value: string) => void
   resolveSkillPaths?: (workspacePath: string) => string[]
   requestUserInput?: (input: RuntimeUserInputRequest) => Promise<RuntimeUserInputResolution>
@@ -834,6 +847,15 @@ export interface ProviderThreadTurnsInput extends GetCapabilitiesInput {
   sortDirection?: 'asc' | 'desc' | null
 }
 
+export interface ListBackgroundTerminalsInput extends GetCapabilitiesInput {
+  cursor?: string | null
+  limit?: number | null
+}
+
+export interface TerminateBackgroundTerminalInput extends GetCapabilitiesInput {
+  processId: string
+}
+
 export interface ProviderThreadListResult {
   runtimeKind: RuntimeKind
   providerSessionId: string | null
@@ -863,6 +885,20 @@ export interface ProviderThreadTurnsResult {
   messages: UIMessage[]
   nextCursor: string | null
   backwardsCursor: string | null
+}
+
+export interface BackgroundTerminalListResult {
+  runtimeKind: RuntimeKind
+  providerSessionId: string | null
+  terminals: RuntimeBackgroundTerminal[]
+  nextCursor: string | null
+}
+
+export interface BackgroundTerminalTerminateResult {
+  runtimeKind: RuntimeKind
+  providerSessionId: string | null
+  processId: string
+  terminated: boolean
 }
 
 export interface ProviderThread {
@@ -1029,6 +1065,12 @@ export interface ChatRuntime {
   readProviderThread?: (input: ProviderThreadReadInput) => Promise<ProviderThreadReadResult>
   deleteProviderThread?: (input: ProviderThreadDeleteInput) => Promise<ProviderThreadDeleteResult>
   listProviderThreadTurns?: (input: ProviderThreadTurnsInput) => Promise<ProviderThreadTurnsResult>
+  listBackgroundTerminals?: (
+    input: ListBackgroundTerminalsInput
+  ) => Promise<BackgroundTerminalListResult>
+  terminateBackgroundTerminal?: (
+    input: TerminateBackgroundTerminalInput
+  ) => Promise<BackgroundTerminalTerminateResult>
   generateSessionTitle?: (input: GenerateSessionTitleInput) => Promise<string | null>
   /**
    * Stream a turn, yielding AI SDK UIMessageChunk events directly.

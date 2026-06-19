@@ -56,11 +56,7 @@ import {
   providerThreadStreamKey,
   publishProviderThreadEvent
 } from './provider-threads/live-streams'
-import {
-  appendRunSnapshotEvent,
-  finalizeRunSnapshot,
-  startRunSnapshot
-} from './run-snapshot'
+import { appendRunSnapshotEvent, finalizeRunSnapshot, startRunSnapshot } from './run-snapshot'
 import type {
   FinalMessageProjectionRun,
   FinalMessageProjectionState
@@ -187,14 +183,13 @@ import {
   abortProjectedStreamingRun,
   cancelQueuedSessionItem,
   commitSessionEvents,
-  finalizeInterruptedSessionEventStream,
-  finalizeInterruptedSessionEventStreams,
   normalizeSessionQueuePositions,
-  projectTerminalRunFact,
-  projectTerminalRunFactsForSession,
   recordQueuePositions,
+  recoverChatRuntimeProjections,
+  recoverChatRuntimeSession,
   readRunStopReason,
-  readRunTerminalEventType
+  readRunTerminalEventType,
+  type ChatRuntimeRecoveryResult
 } from './es/commands'
 import type { ResolvedRuntimeSessionContext, SessionRunContext } from './runtime-session-context'
 import {
@@ -218,29 +213,30 @@ import {
   reportRuntimeSessionTitle
 } from './title-service'
 export { regenerateSessionTitle, reportRuntimeSessionTitle }
-import {
-  getSessionRuntimeSettings,
-  updateSessionRuntimeSettings
-} from './runtime-settings-api'
+import { getSessionRuntimeSettings, updateSessionRuntimeSettings } from './runtime-settings-api'
 export { getSessionRuntimeSettings, updateSessionRuntimeSettings }
 export type { ChatRuntimeSettingsDto } from './runtime-settings-api'
 import {
   getCapabilities,
   getUiSlotStates,
   deleteProviderThread,
+  listBackgroundTerminals,
   listProviderThreadTurns,
   listProviderThreads,
   readContextUsage,
-  readProviderThread
+  readProviderThread,
+  terminateBackgroundTerminal
 } from './capabilities-api'
 export {
   getCapabilities,
   getUiSlotStates,
   deleteProviderThread,
+  listBackgroundTerminals,
   listProviderThreadTurns,
   listProviderThreads,
   readContextUsage,
-  readProviderThread
+  readProviderThread,
+  terminateBackgroundTerminal
 }
 export type { ChatSessionContextUsageDto } from './capabilities-api'
 
@@ -848,10 +844,6 @@ export async function getRuntimeSessionStatus(
   }
 
   await releaseTerminalPersistedActiveRunForSession(sessionId)
-  if (!runRegistry.hasActiveRunForSession(sessionId) && !runRegistry.hasPendingRun(sessionId)) {
-    await finalizeInterruptedSessionEventStream(sessionId)
-    await projectTerminalRunFactsForSession(sessionId)
-  }
 
   const binding = session.providerTargetId
     ? readReusableDurableProviderRuntimeBinding({
@@ -906,7 +898,7 @@ export async function getRuntimeSessionStatus(
   const hasActiveGoal =
     binding?.runtimeKind === 'codex' &&
     hasContinuableCodexGoal(binding.backendStateSnapshot, {
-      continueBlockedGoals: shouldContinueBlockedCodexGoals(),
+      continueBlockedGoals: shouldContinueBlockedCodexGoals()
     }) &&
     providerTargetAvailable
   const status: RuntimeSessionStatusKind = activeRun
@@ -922,7 +914,7 @@ export async function getRuntimeSessionStatus(
         sessionId,
         providerTargetId: providerTargetId ?? undefined,
         modelId: modelId ?? undefined,
-        continueBlockedGoals: shouldContinueBlockedCodexGoals(),
+        continueBlockedGoals: shouldContinueBlockedCodexGoals()
       },
       codexGoalContinuationDeps
     )
@@ -1073,9 +1065,7 @@ function compactStoredMessageSnapshot(message: UIMessage): UIMessage {
 
     if (part.type === 'reasoning') {
       const nextText =
-        part.text.length <= remainingReasoning
-          ? part.text
-          : part.text.slice(0, remainingReasoning)
+        part.text.length <= remainingReasoning ? part.text : part.text.slice(0, remainingReasoning)
       remainingReasoning = Math.max(0, remainingReasoning - nextText.length)
       if (nextText !== part.text) {
         changed = true
@@ -1171,7 +1161,10 @@ export async function executeBangCommand(input: {
   }
 
   const activeRunId = runRegistry.getActiveRunIdForSession(input.sessionId)
-  if (activeRunId && runRegistry.getActiveRun(activeRunId)?.runtimeSession.runtimeKind === 'codex') {
+  if (
+    activeRunId &&
+    runRegistry.getActiveRun(activeRunId)?.runtimeSession.runtimeKind === 'codex'
+  ) {
     throw new AppError({
       code: 'chat_bang_command_runtime_busy',
       status: 409,
@@ -1228,11 +1221,6 @@ export async function executeBangCommand(input: {
 
 export async function getMessageGroups(sessionId: string): Promise<ChatMessageSnapshotRow[]> {
   assertStoredSession(sessionId)
-
-  if (!runRegistry.hasActiveRunForSession(sessionId) && !runRegistry.hasPendingRun(sessionId)) {
-    await finalizeInterruptedSessionEventStream(sessionId)
-    await projectTerminalRunFactsForSession(sessionId)
-  }
 
   const rows = db()
     .select()
@@ -1447,7 +1435,10 @@ export async function createRun(input: {
   internalContinuation?: 'codexGoal'
 }) {
   await finalizeInterruptedPersistedStreamingSessionIfIdle(input.sessionId)
-  if (runRegistry.hasActiveRunForSession(input.sessionId) || runRegistry.hasPendingRun(input.sessionId)) {
+  if (
+    runRegistry.hasActiveRunForSession(input.sessionId) ||
+    runRegistry.hasPendingRun(input.sessionId)
+  ) {
     throw new AppError({
       code: 'chat_run_in_progress',
       status: 409,
@@ -2427,7 +2418,12 @@ async function executeRun(activeRun: ActiveRun, input: ExecuteRunInput): Promise
   const diagnostics = createTurnOutputDiagnostics()
   const profile = startChatRuntimeProfile()
 
-  const { finalChunk, failurePayload } = await pumpRuntimeStream(activeRun, input, diagnostics, profile)
+  const { finalChunk, failurePayload } = await pumpRuntimeStream(
+    activeRun,
+    input,
+    diagnostics,
+    profile
+  )
   const actualModelId = await persistRunTerminalAndUsage(
     activeRun,
     finalChunk,
@@ -2687,7 +2683,7 @@ function completeRun(
       sessionId: activeRun.sessionId,
       runtimeKind: activeRun.runtimeSession.runtimeKind,
       cancelRequested: activeRun.cancelRequested === true,
-      internalContinuation: activeRun.internalContinuation,
+      internalContinuation: activeRun.internalContinuation
     },
     finalChunk
   )
@@ -2697,13 +2693,15 @@ function completeRun(
       sessionId: activeRun.sessionId,
       runtimeKind: activeRun.runtimeSession.runtimeKind,
       cancelRequested: activeRun.cancelRequested === true,
-      internalContinuation: activeRun.internalContinuation,
+      internalContinuation: activeRun.internalContinuation
     },
     finalChunk,
     binding,
-    providerTargetAvailable: Boolean(binding && isProviderTargetAvailable(binding.providerTargetId)),
+    providerTargetAvailable: Boolean(
+      binding && isProviderTargetAvailable(binding.providerTargetId)
+    ),
     pendingQueueItemCount: listPendingQueueRows(activeRun.sessionId).length,
-    continueBlockedGoals: shouldContinueBlockedCodexGoals(),
+    continueBlockedGoals: shouldContinueBlockedCodexGoals()
   })
   finalizeActiveRunSnapshot(activeRun, finalChunk, {
     modelId: actualModelId,
@@ -2733,7 +2731,7 @@ function completeRun(
         sessionId: activeRun.sessionId,
         providerTargetId: activeRun.providerTargetId,
         modelId: actualModelId ?? undefined,
-        continueBlockedGoals: shouldContinueBlockedCodexGoals(),
+        continueBlockedGoals: shouldContinueBlockedCodexGoals()
       },
       codexGoalContinuationDeps
     )
@@ -2787,10 +2785,11 @@ export function flushAllActiveRunSnapshots(): void {
   }
 }
 
-export async function recoverPersistedRunProjections(): Promise<number> {
-  const recovered = await finalizeInterruptedSessionEventStreams()
+export async function recoverPersistedRunProjections(): Promise<ChatRuntimeRecoveryResult> {
+  const recovered = await recoverChatRuntimeProjections()
+  const recoveredCount = recovered.interruptedRunsFinalized + recovered.terminalFactsProjected
 
-  if (recovered > 0) {
+  if (recoveredCount > 0) {
     chatLogger.warn('recovered persisted run projections', { recovered })
   }
 
@@ -2852,10 +2851,7 @@ function publishRuntimeChunk(activeRun: ActiveRun, chunk: UIMessageChunk): void 
     activeRun.pendingDeltaChunk = merged
     if (
       readDeltaChunkTextLength(merged) >=
-      readPositiveIntegerEnv(
-        'CRADLE_CHAT_RUN_DELTA_FLUSH_CHARS',
-        DEFAULT_RUN_DELTA_FLUSH_CHARS
-      )
+      readPositiveIntegerEnv('CRADLE_CHAT_RUN_DELTA_FLUSH_CHARS', DEFAULT_RUN_DELTA_FLUSH_CHARS)
     ) {
       flushPendingRunDelta(activeRun)
       return
@@ -2877,10 +2873,13 @@ function schedulePendingRunDeltaFlush(activeRun: ActiveRun): void {
   if (activeRun.pendingDeltaFlushTimer) {
     return
   }
-  activeRun.pendingDeltaFlushTimer = setTimeout(() => {
-    activeRun.pendingDeltaFlushTimer = null
-    flushPendingRunDelta(activeRun)
-  }, readPositiveIntegerEnv('CRADLE_CHAT_RUN_DELTA_FLUSH_MS', DEFAULT_RUN_DELTA_FLUSH_MS))
+  activeRun.pendingDeltaFlushTimer = setTimeout(
+    () => {
+      activeRun.pendingDeltaFlushTimer = null
+      flushPendingRunDelta(activeRun)
+    },
+    readPositiveIntegerEnv('CRADLE_CHAT_RUN_DELTA_FLUSH_MS', DEFAULT_RUN_DELTA_FLUSH_MS)
+  )
 }
 
 function flushPendingRunDelta(activeRun: ActiveRun): void {
@@ -2954,10 +2953,7 @@ function coalesceReplayChunk(activeRun: ActiveRun, chunk: UIMessageChunk): boole
   const merged = mergeBufferedStreamChunk(
     existing,
     chunk,
-    readPositiveIntegerEnv(
-      'CRADLE_CHAT_RUN_DELTA_FLUSH_CHARS',
-      DEFAULT_RUN_DELTA_FLUSH_CHARS
-    )
+    readPositiveIntegerEnv('CRADLE_CHAT_RUN_DELTA_FLUSH_CHARS', DEFAULT_RUN_DELTA_FLUSH_CHARS)
   )
   if (!merged) {
     activeRun.chunkBufferIndexByKey.set(key, activeRun.chunkBuffer.length)
@@ -3008,7 +3004,12 @@ async function finalizeActiveRun(
   await flushProjectedToolInputs(activeRun)
 
   const bindingId = recordTerminalRunBindingId(activeRun)
-  const snapshotResult = await persistTerminalMessageSnapshot(activeRun, status, errorText, bindingId)
+  const snapshotResult = await persistTerminalMessageSnapshot(
+    activeRun,
+    status,
+    errorText,
+    bindingId
+  )
   if (profile) {
     profile.finalMessageJsonBytes = snapshotResult?.messageJsonBytes ?? null
   }
@@ -3185,15 +3186,15 @@ async function releaseTerminalPersistedActiveRunForSession(sessionId: string): P
   } else {
     runRegistry.deleteActiveRunIdForSession(sessionId)
   }
-  await projectTerminalRunFact(run)
   return true
 }
 
-async function finalizeInterruptedPersistedStreamingSessionIfIdle(sessionId: string): Promise<void> {
+async function finalizeInterruptedPersistedStreamingSessionIfIdle(
+  sessionId: string
+): Promise<void> {
   await releaseTerminalPersistedActiveRunForSession(sessionId)
   if (!runRegistry.hasActiveRunForSession(sessionId) && !runRegistry.hasPendingRun(sessionId)) {
-    await finalizeInterruptedSessionEventStream(sessionId)
-    await projectTerminalRunFactsForSession(sessionId)
+    await recoverChatRuntimeSession(sessionId)
   }
 }
 
