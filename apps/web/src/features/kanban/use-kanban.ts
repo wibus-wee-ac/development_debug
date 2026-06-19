@@ -19,6 +19,7 @@ import {
   getIssuesByIdComments,
   getIssuesByIdFieldChanges,
   getIssuesByIdRelations,
+  getIssuesByIdSessions,
   getIssuesMilestones,
   getIssuesSearch,
   getIssuesStatuses,
@@ -52,6 +53,7 @@ import type {
   KanbanIssueActivityItem,
   KanbanIssueCommentView,
   KanbanIssueFieldChangeView,
+  IssueLinkedSession,
   KanbanIssueRelation,
   KanbanMilestone,
   KanbanStatus,
@@ -68,6 +70,7 @@ export const kanbanKeys = {
   searchIssues: (query: string, limit: number) => ['kanban', 'searchIssues', query, limit] as const,
   issue: (id: string) => ['kanban', 'issue', id] as const,
   agentSessions: (issueId: string) => ['kanban', 'agentSessions', issueId] as const,
+  linkedSessions: (issueId: string) => ['kanban', 'linkedSessions', issueId] as const,
   activity: (issueId: string) => ['kanban', 'activity', issueId] as const,
   comments: (issueId: string) => ['kanban', 'comments', issueId] as const,
   fieldChanges: (issueId: string) => ['kanban', 'fieldChanges', issueId] as const,
@@ -402,6 +405,29 @@ const AgentSessionSchema = z
     isCurrentDelegation: z.boolean(),
     createdAt: z.number(),
     updatedAt: z.number(),
+  })
+  .passthrough()
+const IssueLinkedSessionSchema = z
+  .object({
+    id: z.string(),
+    parentSessionId: z.string().nullable(),
+    sideContextSource: z.enum(['provider-native', 'cradle-context']).nullable(),
+    workspaceId: z.string().nullable(),
+    title: z.string().nullable(),
+    providerTargetId: z.string().nullable(),
+    agentId: z.string().nullable(),
+    modelId: z.string().nullable(),
+    linkedIssueId: z.string().nullable(),
+    runtimeKind: z.string(),
+    status: z.enum(['idle', 'streaming', 'error']),
+    pinned: z.number(),
+    archivedAt: z.number().nullable(),
+    lastReadAt: z.number().nullable(),
+    createdAt: z.number(),
+    updatedAt: z.number(),
+    latestUserMessageAt: z.number().nullable(),
+    latestAssistantMessageAt: z.number().nullable(),
+    unread: z.boolean(),
   })
   .passthrough()
 const LinkedIssueRefSchema = z
@@ -845,6 +871,18 @@ export function useIssueAgentSessions(issueId: string, enabled = true) {
   })
 }
 
+export function useIssueLinkedSessions(issueId: string, enabled = true) {
+  return useQuery({
+    queryKey: kanbanKeys.linkedSessions(issueId),
+    queryFn: async () => {
+      const { data } = await getIssuesByIdSessions({ path: { id: issueId } })
+      return z.array(IssueLinkedSessionSchema).parse(data) satisfies IssueLinkedSession[]
+    },
+    enabled: enabled && !!issueId,
+    ...queryRefreshPolicies.interactive,
+  })
+}
+
 export function useComments(issueId: string) {
   return useQuery({
     queryKey: kanbanKeys.comments(issueId),
@@ -955,6 +993,7 @@ export function useDelegateIssue() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
       qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.linkedSessions(vars.issueId) })
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
       qc.invalidateQueries({ queryKey: kanbanKeys.activity(vars.issueId) })
       qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) })
@@ -976,6 +1015,7 @@ export function useRerunIssueAgentSession() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
       qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.linkedSessions(vars.issueId) })
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
       qc.invalidateQueries({ queryKey: kanbanKeys.activity(vars.issueId) })
       qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) })
@@ -993,6 +1033,7 @@ export function useUndelegateIssue() {
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: kanbanKeys.issue(vars.issueId) })
       qc.invalidateQueries({ queryKey: kanbanKeys.agentSessions(vars.issueId) })
+      qc.invalidateQueries({ queryKey: kanbanKeys.linkedSessions(vars.issueId) })
       qc.invalidateQueries({ queryKey: ['kanban', 'issues'] })
       qc.invalidateQueries({ queryKey: kanbanKeys.activity(vars.issueId) })
       qc.invalidateQueries({ queryKey: kanbanKeys.comments(vars.issueId) })
@@ -1067,6 +1108,7 @@ export function useLinkIssue() {
     },
     onSuccess: (_data, vars) => {
       qc.invalidateQueries({ queryKey: ['kanban', 'linkedIssue', vars.chatSessionId] })
+      qc.invalidateQueries({ queryKey: kanbanKeys.linkedSessions(vars.issueId) })
     },
   })
 }

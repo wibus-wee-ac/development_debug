@@ -29,7 +29,7 @@ import {
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { AgentAvatar } from '~/features/agent-runtime/agent-avatar'
 import { useAgents } from '~/features/agent-runtime/use-agents'
-import type { AgentSession, KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
+import type { AgentSession, IssueLinkedSession, KanbanIssue, KanbanMilestone, KanbanStatus } from '~/features/kanban/types'
 import { cn } from '~/lib/cn'
 import { openChatSession } from '~/navigation/navigation-commands'
 
@@ -47,7 +47,7 @@ import {
 import { PriorityIcon } from '../shared/priority-icon'
 import { StatusIcon } from '../shared/status-icon'
 import type { IssuePriority } from '../use-kanban'
-import { useDelegateIssue, useIssueAgentSessions, usePatchIssueLabels, useRerunIssueAgentSession, useUndelegateIssue } from '../use-kanban'
+import { useDelegateIssue, useIssueAgentSessions, useIssueLinkedSessions, usePatchIssueLabels, useRerunIssueAgentSession, useUndelegateIssue } from '../use-kanban'
 import type { StatusCategory } from '../use-view-config'
 import { RelationManager } from './relation-manager'
 
@@ -264,6 +264,12 @@ const rerunnableAgentSessionStatuses = new Set<AgentSession['status']>([
   'failed',
 ])
 
+const linkedSessionStatusText = {
+  idle: 'Idle',
+  streaming: 'Running',
+  error: 'Error',
+} satisfies Record<IssueLinkedSession['status'], string>
+
 function AgentSessionPanel({
   issue,
   readOnly = false,
@@ -271,20 +277,21 @@ function AgentSessionPanel({
   issue: KanbanIssue
   readOnly?: boolean
 }) {
-  const { data: sessions = [] } = useIssueAgentSessions(
-    issue.id,
-    !!issue.delegateAgentId || !!issue.delegateProviderTargetId,
-  )
+  const { data: sessions = [] } = useIssueAgentSessions(issue.id)
+  const { data: linkedSessions = [] } = useIssueLinkedSessions(issue.id)
   const rerunSession = useRerunIssueAgentSession()
   const currentSession = sessions.find(session => session.isCurrentDelegation) ?? null
+  const currentAgentChatSessionId = currentSession?.chatSessionId ?? null
+  const ordinaryLinkedSessions = linkedSessions.filter(session => session.id !== currentAgentChatSessionId)
 
-  if (!currentSession) {
+  if (!currentSession && ordinaryLinkedSessions.length === 0) {
     return null
   }
 
-  const canOpenChat = !!currentSession.chatSessionId
+  const canOpenChat = !!currentSession?.chatSessionId
   const canRerun
-    = !readOnly
+    = currentSession !== null
+      && !readOnly
       && rerunnableAgentSessionStatuses.has(currentSession.status)
       && !rerunSession.isPending
 
@@ -293,61 +300,92 @@ function AgentSessionPanel({
       className="mt-2 rounded-lg border border-border bg-card px-3 py-2 text-sm shadow-xs"
       data-testid="issue-agent-session"
     >
-      <div className="flex items-center justify-between gap-2">
-        <div className="min-w-0">
-          <div className="text-[12px] font-medium text-muted-foreground">Agent session</div>
-          <div
-            className="mt-0.5 text-[13px] font-semibold text-foreground"
-            data-testid="issue-agent-session-phase"
-          >
-            {agentSessionStatusText[currentSession.status]}
+      {currentSession && (
+        <div className="flex items-center justify-between gap-2">
+          <div className="min-w-0">
+            <div className="text-[12px] font-medium text-muted-foreground">Agent session</div>
+            <div
+              className="mt-0.5 text-[13px] font-semibold text-foreground"
+              data-testid="issue-agent-session-phase"
+            >
+              {agentSessionStatusText[currentSession.status]}
+            </div>
           </div>
-        </div>
-        <div className="flex shrink-0 items-center gap-1">
-          <button
-            type="button"
-            className={cn(
-              'flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors',
-              canOpenChat
-                ? 'hover:bg-fill hover:text-foreground'
-                : 'cursor-not-allowed opacity-50',
-            )}
-            disabled={!canOpenChat}
-            aria-label="Open chat"
-            title="Open chat"
-            data-testid="issue-agent-session-open-chat"
-            onClick={() => {
-              if (currentSession.chatSessionId) {
-                openChatSession(currentSession.chatSessionId)
-              }
-            }}
-          >
-            <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
-          </button>
-          {rerunnableAgentSessionStatuses.has(currentSession.status) && (
+          <div className="flex shrink-0 items-center gap-1">
             <button
               type="button"
               className={cn(
                 'flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors',
-                canRerun
+                canOpenChat
                   ? 'hover:bg-fill hover:text-foreground'
                   : 'cursor-not-allowed opacity-50',
               )}
-              disabled={!canRerun}
-              aria-label="Rerun"
-              title="Rerun"
-              data-testid="issue-agent-rerun-btn"
-              onClick={() =>
-                rerunSession.mutate({
-                  issueId: issue.id,
-                  agentSessionId: currentSession.id,
-                })}
+              disabled={!canOpenChat}
+              aria-label="Open chat"
+              title="Open chat"
+              data-testid="issue-agent-session-open-chat"
+              onClick={() => {
+                if (currentSession.chatSessionId) {
+                  openChatSession(currentSession.chatSessionId)
+                }
+              }}
             >
-              <RotateCwIcon className={cn('size-3.5', rerunSession.isPending && 'animate-spin')} aria-hidden="true" />
+              <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
             </button>
-          )}
+            {rerunnableAgentSessionStatuses.has(currentSession.status) && (
+              <button
+                type="button"
+                className={cn(
+                  'flex size-7 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors',
+                  canRerun
+                    ? 'hover:bg-fill hover:text-foreground'
+                    : 'cursor-not-allowed opacity-50',
+                )}
+                disabled={!canRerun}
+                aria-label="Rerun"
+                title="Rerun"
+                data-testid="issue-agent-rerun-btn"
+                onClick={() =>
+                  rerunSession.mutate({
+                    issueId: issue.id,
+                    agentSessionId: currentSession.id,
+                  })}
+              >
+                <RotateCwIcon className={cn('size-3.5', rerunSession.isPending && 'animate-spin')} aria-hidden="true" />
+              </button>
+            )}
+          </div>
         </div>
-      </div>
+      )}
+      {ordinaryLinkedSessions.length > 0 && (
+        <div className={cn('space-y-1.5', currentSession && 'mt-3 border-t border-border pt-2.5')}>
+          <div className="text-[12px] font-medium text-muted-foreground">
+            {ordinaryLinkedSessions.length === 1 ? 'Linked chat' : 'Linked chats'}
+          </div>
+          {ordinaryLinkedSessions.map(session => (
+            <div key={session.id} className="flex items-center justify-between gap-2">
+              <div className="min-w-0">
+                <div className="truncate text-[13px] font-semibold text-foreground">
+                  {session.title ?? 'Untitled chat'}
+                </div>
+                <div className="mt-0.5 text-[12px] text-muted-foreground">
+                  {linkedSessionStatusText[session.status]}
+                </div>
+              </div>
+              <button
+                type="button"
+                className="flex size-7 shrink-0 items-center justify-center rounded-md border border-border text-muted-foreground transition-colors hover:bg-fill hover:text-foreground"
+                aria-label="Open linked chat"
+                title="Open linked chat"
+                data-testid="issue-linked-session-open-chat"
+                onClick={() => openChatSession(session.id)}
+              >
+                <ExternalLinkIcon className="size-3.5" aria-hidden="true" />
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   )
 }

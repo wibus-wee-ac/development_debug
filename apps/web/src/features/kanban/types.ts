@@ -4,6 +4,7 @@ import type {
   GetIssuesByIdCommentsResponse,
   GetIssuesByIdFieldChangesResponse,
   GetIssuesByIdRelationsResponse,
+  GetIssuesByIdSessionsResponse,
   GetIssuesResponse,
   GetIssuesStatusesResponse,
   GetKanbanBoardsResponse,
@@ -24,6 +25,7 @@ export type KanbanIssueRelation = GetIssuesByIdRelationsResponse[number]
 export type KanbanIssueCommentView = GetIssuesByIdCommentsResponse[number]
 export type KanbanIssueFieldChangeView = GetIssuesByIdFieldChangesResponse[number]
 export type AgentSession = GetIssuesByIdAgentSessionsResponse[number]
+export type IssueLinkedSession = GetIssuesByIdSessionsResponse[number]
 
 export function isExternalKanbanIssue(issue: KanbanBoardIssue | null | undefined): issue is ExternalKanbanIssue {
   return (issue as Partial<ExternalKanbanIssue> | null | undefined)?.sourceKind === 'external'
