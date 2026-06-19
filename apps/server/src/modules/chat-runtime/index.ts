@@ -569,6 +569,20 @@ export const chatRuntime = new Elysia({
       response: { 200: ChatRuntimeModel.providerThread }
     }
   )
+  // DELETE /chat/sessions/:sessionId/provider-threads/:threadId -> delete a provider-native thread after session-scoped ownership validation
+  .delete(
+    '/sessions/:sessionId/provider-threads/:threadId',
+    async ({ params }) => {
+      return (await loadChatRuntime()).deleteProviderThread(params.sessionId, params.threadId)
+    },
+    {
+      detail: {
+        summary: 'Delete a provider-native thread for a chat session'
+      },
+      params: ChatRuntimeModel.providerThreadParams,
+      response: { 200: ChatRuntimeModel.providerThreadDelete }
+    }
+  )
   // GET /chat/sessions/:sessionId/provider-threads/:threadId/turns -> provider-native thread turns and projected UI messages
   .get(
     '/sessions/:sessionId/provider-threads/:threadId/turns',

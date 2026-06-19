@@ -41,12 +41,21 @@ export interface CodexAppServerNotification {
 
 interface ItemNotificationParams {
   item?: CodexAppServerItem
+  threadId?: string
   turnId?: string
 }
 
 interface DeltaNotificationParams {
+  threadId?: string
+  turnId?: string
   itemId?: string
   delta?: string
+}
+
+interface RawResponseItemCompletedParams {
+  threadId?: string
+  turnId?: string
+  item?: unknown
 }
 
 interface ServerRequestHandledParams {
@@ -67,6 +76,12 @@ interface TurnCompletedParams {
     id?: string
     status?: string
   }
+}
+
+interface TurnModerationMetadataParams {
+  threadId?: string
+  turnId?: string
+  metadata?: unknown
 }
 
 interface CodexCompletedPlan {
@@ -101,11 +116,15 @@ export function mapCodexAppServerNotificationToChunks(
 ): UIMessageChunk[] {
   switch (notification.method) {
     case 'item/started':
-      return mapStartedItem(getItem(notification), state)
+      return mapStartedItem(notification.params, state)
     case 'item/completed':
       return mapCompletedItem(notification.params, state)
+    case 'rawResponseItem/completed':
+      return mapRawResponseItemCompleted(notification.params)
     case 'turn/completed':
       return mapCompletedTurn(notification.params, state)
+    case 'turn/moderationMetadata':
+      return mapTurnModerationMetadata(notification.params)
     case 'item/agentMessage/delta':
       return mapAgentMessageDelta(notification.params, state)
     case 'item/reasoning/textDelta':
@@ -149,13 +168,15 @@ export function closeOpenCodexAppServerText(state: CodexAppServerMapperState): U
   return chunks
 }
 
-function mapStartedItem(item: CodexAppServerItem | null, state: CodexAppServerMapperState): UIMessageChunk[] {
+function mapStartedItem(rawParams: unknown, state: CodexAppServerMapperState): UIMessageChunk[] {
+  const params = rawParams as ItemNotificationParams
+  const item = params.item ?? null
   if (!item) {
     return []
   }
   switch (item.type) {
     case 'agentMessage':
-      return mapAgentMessageSnapshot(item, state)
+      return mapAgentMessageSnapshot(item, state, params)
     case 'reasoning':
       return mapReasoningSnapshot(item, state, false)
     case 'commandExecution':
@@ -201,7 +222,7 @@ function mapCompletedItem(rawParams: unknown, state: CodexAppServerMapperState):
   }
   switch (item.type) {
     case 'agentMessage':
-      return mapAgentMessageSnapshot(item, state)
+      return mapAgentMessageSnapshot(item, state, params)
     case 'reasoning':
       return mapReasoningSnapshot(item, state, true)
     case 'commandExecution':
@@ -302,6 +323,46 @@ function mapAgentMessageDelta(rawParams: unknown, state: CodexAppServerMapperSta
   }
   chunks.push({ type: 'text-delta', id: params.itemId, delta: params.delta })
   return chunks
+}
+
+function mapRawResponseItemCompleted(rawParams: unknown): UIMessageChunk[] {
+  const params = rawParams as RawResponseItemCompletedParams
+  if (!params.threadId || !params.turnId || params.item === undefined) {
+    return []
+  }
+  return [{
+    type: 'message-metadata',
+    messageMetadata: {
+      codex: {
+        responseItems: [{
+          threadId: params.threadId,
+          turnId: params.turnId,
+          item: params.item,
+        }],
+      },
+    },
+  }]
+}
+
+function mapTurnModerationMetadata(rawParams: unknown): UIMessageChunk[] {
+  const params = rawParams as TurnModerationMetadataParams
+  if (!params.turnId) {
+    return []
+  }
+  return [{
+    type: 'message-metadata',
+    messageMetadata: {
+      codex: {
+        moderationMetadataByTurnId: {
+          [params.turnId]: {
+            threadId: params.threadId ?? null,
+            turnId: params.turnId,
+            metadata: params.metadata,
+          },
+        },
+      },
+    },
+  }]
 }
 
 function mapReasoningDelta(rawParams: unknown, state: CodexAppServerMapperState): UIMessageChunk[] {
@@ -455,7 +516,11 @@ function toSafeToolName(value: string): string {
   return value.replace(/[^\w-]/g, '_')
 }
 
-function mapAgentMessageSnapshot(item: CodexAppServerItem, state: CodexAppServerMapperState): UIMessageChunk[] {
+function mapAgentMessageSnapshot(
+  item: CodexAppServerItem,
+  state: CodexAppServerMapperState,
+  params: ItemNotificationParams,
+): UIMessageChunk[] {
   const text = item.text ?? ''
   const previousTextLength = state.emittedTextLengthById.get(item.id) ?? 0
   if (text.length <= previousTextLength) {
@@ -464,8 +529,12 @@ function mapAgentMessageSnapshot(item: CodexAppServerItem, state: CodexAppServer
     }
     return []
   }
-  const delta = text.slice(previousTextLength)
-  const chunks = mapAgentMessageDelta({ itemId: item.id, delta }, state)
+  const chunks = mapAgentMessageDelta({
+    itemId: item.id,
+    threadId: params.threadId,
+    turnId: params.turnId,
+    delta: text.slice(previousTextLength),
+  }, state)
   state.startedAgentMessageIds.delete(item.id)
   chunks.push({ type: 'text-end', id: item.id })
   return chunks
@@ -506,10 +575,6 @@ function mapReasoningSnapshotText(item: CodexAppServerItem): string[] {
     return item.summary
   }
   return []
-}
-
-function getItem(notification: CodexAppServerNotification): CodexAppServerItem | null {
-  return ((notification.params as ItemNotificationParams | undefined)?.item ?? null)
 }
 
 function closeOpenAgentMessageSegments(state: CodexAppServerMapperState): UIMessageChunk[] {

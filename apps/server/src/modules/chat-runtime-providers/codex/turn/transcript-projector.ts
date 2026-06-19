@@ -19,6 +19,11 @@ function projectMessage(message: UIMessage): CodexResponseItem[] {
     return bangItems
   }
 
+  const codexResponseItems = readCodexResponseItems(message)
+  if (codexResponseItems) {
+    return codexResponseItems
+  }
+
   const items: CodexResponseItem[] = []
   let pendingContent: CodexContentItem[] = []
 
@@ -103,6 +108,25 @@ function projectBangMetadataMessage(message: UIMessage): CodexResponseItem[] | n
   }
 
   return null
+}
+
+function readCodexResponseItems(message: UIMessage): CodexResponseItem[] | null {
+  const codexMetadata = asRecord(asRecord(message.metadata)?.codex)
+  const responseItems = Array.isArray(codexMetadata?.responseItems)
+    ? codexMetadata.responseItems
+    : null
+  if (!responseItems) {
+    return null
+  }
+
+  const items: CodexResponseItem[] = []
+  for (const responseItem of responseItems) {
+    const item = asRecord(asRecord(responseItem)?.item)
+    if (typeof item?.type === 'string') {
+      items.push(item as CodexResponseItem)
+    }
+  }
+  return items.length > 0 ? items : null
 }
 
 function projectContentPart(role: UIMessage['role'], part: MessagePart): CodexContentItem[] | null {

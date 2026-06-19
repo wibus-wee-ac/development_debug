@@ -17,6 +17,7 @@ import {
 import type {
   ProviderThreadListInput,
   ProviderThreadListResult,
+  ProviderThreadDeleteResult,
   ProviderThreadReadResult,
   ProviderThreadSourceKind,
   ProviderThreadTurnsResult,
@@ -246,6 +247,25 @@ export async function readProviderThread(
     ...buildRuntimeProviderInput(resolved),
     threadId,
     includeTurns: false
+  })
+}
+
+export async function deleteProviderThread(
+  sessionId: string,
+  threadId: string
+): Promise<ProviderThreadDeleteResult> {
+  const resolved = await resolveRuntimeSessionContext(sessionId)
+  if (!resolved.runtime.deleteProviderThread) {
+    throw new AppError({
+      code: 'chat_provider_threads_not_supported',
+      status: 501,
+      message: 'Runtime does not support provider thread deletes',
+      details: { sessionId, runtimeKind: resolved.runtimeKind }
+    })
+  }
+  return await resolved.runtime.deleteProviderThread({
+    ...buildRuntimeProviderInput(resolved),
+    threadId
   })
 }
 

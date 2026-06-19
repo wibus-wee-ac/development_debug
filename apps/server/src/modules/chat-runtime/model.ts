@@ -1132,6 +1132,13 @@ export const ChatRuntimeModel = {
     thread: providerThreadSchema
   }),
 
+  providerThreadDelete: t.Object({
+    runtimeKind: t.String(),
+    providerSessionId: t.Union([t.String(), t.Null()]),
+    threadId: t.String(),
+    deleted: t.Literal(true)
+  }),
+
   providerThreadTurns: t.Object({
     runtimeKind: t.String(),
     providerSessionId: t.Union([t.String(), t.Null()]),

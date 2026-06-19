@@ -2,7 +2,7 @@ import { randomUUID } from 'node:crypto'
 
 import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
-import type { UIMessage, UIMessageChunk } from 'ai'
+import type { ProviderMetadata, UIMessage, UIMessageChunk } from 'ai'
 
 import { readObjectRecord as readRecord } from '../../../helpers/json-record'
 import { aiTelemetryEnabled } from '../../../telemetry/config'
@@ -22,6 +22,8 @@ import type {
   ProviderNativeAppServerInvokeResponse,
   ProviderNativeAppServerStreamInput,
   ProviderThread,
+  ProviderThreadDeleteInput,
+  ProviderThreadDeleteResult,
   ProviderThreadListInput,
   ProviderThreadListResult,
   ProviderThreadReadInput,
@@ -711,6 +713,30 @@ export class CodexProvider implements ChatRuntime {
         runtimeKind: this.runtimeKind,
         providerSessionId: context.runtimeSession.providerSessionId,
         thread: projectCodexThread(response.thread),
+      }
+    }
+    finally {
+      context.hostLease.release()
+    }
+  }
+
+  async deleteProviderThread(input: ProviderThreadDeleteInput): Promise<ProviderThreadDeleteResult> {
+    const context = await this.createProviderThreadClient(input)
+    try {
+      if (input.threadId === context.runtimeSession.providerSessionId) {
+        throw codexRequestError('thread/delete', 'Cannot delete the parent runtime thread through the provider-thread API')
+      }
+      const response = await context.client.request('thread/read', {
+        threadId: input.threadId,
+        includeTurns: false,
+      }) as ThreadReadResponse
+      await assertCodexThreadBelongsToRuntimeSession(context.client, context.runtimeSession.providerSessionId, response.thread)
+      await context.client.request('thread/delete', { threadId: input.threadId })
+      return {
+        runtimeKind: this.runtimeKind,
+        providerSessionId: context.runtimeSession.providerSessionId,
+        threadId: input.threadId,
+        deleted: true,
       }
     }
     finally {
@@ -1776,6 +1802,7 @@ function projectCodexTurnsToUiMessages(threadId: string, turns: Turn[]): UIMessa
         id: `provider-thread:${threadId}:turn:${turn.id}:assistant:${assistantMessageIndex}`,
         role: 'assistant',
         parts: assistantParts,
+        metadata: codexProviderThreadMessageMetadata(threadId, turn.id),
       })
       assistantParts = []
       assistantMessageIndex += 1
@@ -1789,6 +1816,7 @@ function projectCodexTurnsToUiMessages(threadId: string, turns: Turn[]): UIMessa
             id: `provider-thread:${threadId}:turn:${turn.id}:user:${item.id}`,
             role: 'user',
             parts: projectCodexUserInputsToUiParts(item.content),
+            metadata: codexProviderThreadMessageMetadata(threadId, turn.id, item.id, item.type),
           })
           break
         case 'agentMessage':
@@ -1797,6 +1825,7 @@ function projectCodexTurnsToUiMessages(threadId: string, turns: Turn[]): UIMessa
               type: 'text',
               text: item.text,
               state: 'done',
+              providerMetadata: codexProviderThreadPartMetadata(threadId, turn.id, item.id, item.type, item),
             })
           }
           break
@@ -1807,6 +1836,7 @@ function projectCodexTurnsToUiMessages(threadId: string, turns: Turn[]): UIMessa
               type: 'reasoning',
               text,
               state: 'done',
+              providerMetadata: codexProviderThreadPartMetadata(threadId, turn.id, item.id, item.type, item),
             })
           }
           break
@@ -1814,7 +1844,7 @@ function projectCodexTurnsToUiMessages(threadId: string, turns: Turn[]): UIMessa
         case 'hookPrompt':
           break
         default:
-          assistantParts.push(projectCodexToolItemToUiPart(item as CodexAppServerItem))
+          assistantParts.push(projectCodexToolItemToUiPart(item as CodexAppServerItem, threadId, turn.id))
           break
       }
     }
@@ -1845,10 +1875,15 @@ function projectCodexUserInputsToUiParts(inputs: UserInput[]): UIMessage['parts'
   return parts.length > 0 ? parts : [{ type: 'text', text: '', state: 'done' }]
 }
 
-function projectCodexToolItemToUiPart(item: CodexAppServerItem): UIMessage['parts'][number] {
+function projectCodexToolItemToUiPart(
+  item: CodexAppServerItem,
+  threadId: string,
+  turnId: string,
+): UIMessage['parts'][number] {
   const errorText = readCodexToolError(item)
   const toolName = readCodexToolName(item)
   const input = buildCodexToolInput(item)
+  const providerMetadata = codexProviderThreadPartMetadata(threadId, turnId, item.id, item.type, item)
   if (errorText) {
     return {
       type: 'dynamic-tool',
@@ -1857,6 +1892,8 @@ function projectCodexToolItemToUiPart(item: CodexAppServerItem): UIMessage['part
       state: 'output-error',
       input,
       errorText,
+      callProviderMetadata: providerMetadata,
+      resultProviderMetadata: providerMetadata,
     }
   }
   return {
@@ -1866,7 +1903,43 @@ function projectCodexToolItemToUiPart(item: CodexAppServerItem): UIMessage['part
     state: 'output-available',
     input,
     output: buildCodexToolOutput(item),
+    callProviderMetadata: providerMetadata,
+    resultProviderMetadata: providerMetadata,
   }
+}
+
+function codexProviderThreadMessageMetadata(
+  threadId: string,
+  turnId: string,
+  itemId?: string,
+  itemType?: string,
+): Record<string, unknown> {
+  return {
+    codex: {
+      threadId,
+      turnId,
+      ...(itemId ? { itemId } : {}),
+      ...(itemType ? { itemType } : {}),
+    },
+  }
+}
+
+function codexProviderThreadPartMetadata(
+  threadId: string,
+  turnId: string,
+  itemId: string,
+  itemType: string,
+  item: unknown,
+): ProviderMetadata {
+  return {
+    codex: {
+      threadId,
+      turnId,
+      itemId,
+      itemType,
+      item,
+    },
+  } as unknown as ProviderMetadata
 }
 
 function readThreadStatusType(status: Thread['status']): string {

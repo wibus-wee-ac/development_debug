@@ -48,6 +48,13 @@ export interface ProviderThreadTurnsResponse {
   backwardsCursor: string | null
 }
 
+export interface ProviderThreadDeleteResponse {
+  runtimeKind: string
+  providerSessionId: string | null
+  threadId: string
+  deleted: true
+}
+
 export function providerThreadQueryKey(sessionId: string, threadId: string): readonly unknown[] {
   return ['chat', 'provider-thread', sessionId, threadId]
 }
@@ -80,6 +87,22 @@ export async function getProviderThreadTurns(
     throw new Error(`Failed to load provider thread turns: ${res.status} ${body}`)
   }
   return await res.json() as ProviderThreadTurnsResponse
+}
+
+export async function deleteProviderThread(
+  sessionId: string,
+  threadId: string,
+  signal?: AbortSignal,
+): Promise<ProviderThreadDeleteResponse> {
+  const res = await fetch(`${SERVER_BASE}/chat/sessions/${encodeURIComponent(sessionId)}/provider-threads/${encodeURIComponent(threadId)}`, {
+    method: 'DELETE',
+    signal,
+  })
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw new Error(`Failed to delete provider thread: ${res.status} ${body}`)
+  }
+  return await res.json() as ProviderThreadDeleteResponse
 }
 
 export function subscribeProviderThreadStream(args: {

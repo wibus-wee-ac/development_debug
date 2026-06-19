@@ -56,6 +56,11 @@ export function projectFinalMessageChunk(
   const projection = activeRun.finalProjection
 
   switch (chunk.type) {
+    case 'start':
+    case 'message-metadata':
+    case 'finish':
+      mergeFinalMessageMetadata(message, chunk.messageMetadata)
+      break
     case 'text-start': {
       const part = {
         type: 'text',
@@ -223,6 +228,57 @@ export function projectFinalMessageChunk(
       })
       break
   }
+}
+
+function mergeFinalMessageMetadata(message: UIMessage, nextMetadata: unknown): void {
+  if (nextMetadata === undefined) {
+    return
+  }
+
+  const nextRecord = readPlainRecord(nextMetadata)
+  if (!nextRecord) {
+    if (message.metadata === undefined) {
+      message.metadata = nextMetadata
+    }
+    return
+  }
+
+  const currentRecord = readPlainRecord(message.metadata)
+  if (!currentRecord) {
+    message.metadata = { ...nextRecord }
+    return
+  }
+
+  message.metadata = mergeMetadataRecords(currentRecord, nextRecord)
+}
+
+function mergeMetadataRecords(
+  currentRecord: Record<string, unknown>,
+  nextRecord: Record<string, unknown>
+): Record<string, unknown> {
+  const merged: Record<string, unknown> = { ...currentRecord }
+  for (const [key, nextValue] of Object.entries(nextRecord)) {
+    merged[key] = mergeMetadataValue(merged[key], nextValue)
+  }
+  return merged
+}
+
+function mergeMetadataValue(currentValue: unknown, nextValue: unknown): unknown {
+  const currentNested = readPlainRecord(currentValue)
+  const nextNested = readPlainRecord(nextValue)
+  if (currentNested && nextNested) {
+    return mergeMetadataRecords(currentNested, nextNested)
+  }
+  if (Array.isArray(currentValue) && Array.isArray(nextValue)) {
+    return [...currentValue, ...nextValue]
+  }
+  return nextValue
+}
+
+function readPlainRecord(value: unknown): Record<string, unknown> | null {
+  return typeof value === 'object' && value !== null && !Array.isArray(value)
+    ? value as Record<string, unknown>
+    : null
 }
 
 export function flushFinalMessageProjection(activeRun: FinalMessageProjectionRun): void {

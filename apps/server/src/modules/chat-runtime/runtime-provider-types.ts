@@ -823,6 +823,10 @@ export interface ProviderThreadReadInput extends GetCapabilitiesInput {
   includeTurns?: boolean
 }
 
+export interface ProviderThreadDeleteInput extends GetCapabilitiesInput {
+  threadId: string
+}
+
 export interface ProviderThreadTurnsInput extends GetCapabilitiesInput {
   threadId: string
   cursor?: string | null
@@ -842,6 +846,13 @@ export interface ProviderThreadReadResult {
   runtimeKind: RuntimeKind
   providerSessionId: string | null
   thread: ProviderThread
+}
+
+export interface ProviderThreadDeleteResult {
+  runtimeKind: RuntimeKind
+  providerSessionId: string | null
+  threadId: string
+  deleted: true
 }
 
 export interface ProviderThreadTurnsResult {
@@ -1016,6 +1027,7 @@ export interface ChatRuntime {
   ) => ReadableStream<Uint8Array>
   listProviderThreads?: (input: ProviderThreadListInput) => Promise<ProviderThreadListResult>
   readProviderThread?: (input: ProviderThreadReadInput) => Promise<ProviderThreadReadResult>
+  deleteProviderThread?: (input: ProviderThreadDeleteInput) => Promise<ProviderThreadDeleteResult>
   listProviderThreadTurns?: (input: ProviderThreadTurnsInput) => Promise<ProviderThreadTurnsResult>
   generateSessionTitle?: (input: GenerateSessionTitleInput) => Promise<string | null>
   /**

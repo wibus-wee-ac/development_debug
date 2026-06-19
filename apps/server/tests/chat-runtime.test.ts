@@ -11,7 +11,7 @@ import { describe, expect, it, vi } from 'vitest'
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 import { getRuntimeRegistry, registerRuntime } from '../src/modules/chat-runtime/chat-runtime-provider-registry'
-import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata, ExecuteShellCommandInput, ExecuteShellCommandResult, ForkRuntimeSessionInput, GenerateSessionTitleInput, ProviderNativeAppServerInvokeInput, ProviderNativeAppServerInvokeResponse, ProviderNativeAppServerStreamInput, ProviderThreadListInput, ProviderThreadListResult, QuickQuestionInput, ResumeChatSessionInput, RuntimePresentationCapabilities, RuntimeSession, StartChatSessionInput, SteerTurnInput, StreamTurnInput, UpdateRuntimeSettingsInput } from '../src/modules/chat-runtime/runtime-provider-types'
+import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata, ExecuteShellCommandInput, ExecuteShellCommandResult, ForkRuntimeSessionInput, GenerateSessionTitleInput, ProviderNativeAppServerInvokeInput, ProviderNativeAppServerInvokeResponse, ProviderNativeAppServerStreamInput, ProviderThreadDeleteInput, ProviderThreadDeleteResult, ProviderThreadListInput, ProviderThreadListResult, QuickQuestionInput, ResumeChatSessionInput, RuntimePresentationCapabilities, RuntimeSession, StartChatSessionInput, SteerTurnInput, StreamTurnInput, UpdateRuntimeSettingsInput } from '../src/modules/chat-runtime/runtime-provider-types'
 import { ProviderErrors, ProviderRuntimeError } from '../src/modules/chat-runtime/runtime-provider-types'
 import {
   flushAllActiveRunSnapshots,
@@ -572,6 +572,7 @@ class TestCodexSideRuntime implements ChatRuntime {
   readonly forkHostSnapshots: ReturnType<typeof providerRuntimeHostManager.listHosts>[] = []
   readonly streamInputs: StreamTurnInput[] = []
   readonly providerThreadListInputs: ProviderThreadListInput[] = []
+  readonly providerThreadDeleteInputs: ProviderThreadDeleteInput[] = []
   blockStreams = false
   startWithNullProviderSessionId = false
   assignProviderSessionOnStream = false
@@ -686,6 +687,16 @@ class TestCodexSideRuntime implements ChatRuntime {
       ],
       nextCursor: null,
       backwardsCursor: null,
+    }
+  }
+
+  async deleteProviderThread(input: ProviderThreadDeleteInput): Promise<ProviderThreadDeleteResult> {
+    this.providerThreadDeleteInputs.push(input)
+    return {
+      runtimeKind: 'codex',
+      providerSessionId: input.runtimeSession.providerSessionId,
+      threadId: input.threadId,
+      deleted: true,
     }
   }
 
@@ -1094,6 +1105,78 @@ describe('chat runtime capability', () => {
           await collectSseChunks(runResponse).catch(() => undefined)
         }
       }
+      if (originalCodexRuntime) {
+        registerRuntime(originalCodexRuntime)
+      }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('deletes provider-native threads through the session runtime capability', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    const runtime = new TestCodexSideRuntime()
+    const originalCodexRuntime = getRuntimeRegistry().get('codex')
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      registerRuntime(runtime)
+      db().insert(workspaces).values({
+        id: 'workspace-provider-thread-delete',
+        name: 'Workspace Provider Thread Delete',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-provider-thread-delete', {
+        providerTargetId: 'provider-target-provider-thread-delete',
+        sessionId: 'session-provider-thread-delete',
+        runtimeKind: 'codex',
+      })
+
+      db().insert(backendSessionBindings).values({
+        id: 'binding-provider-thread-delete',
+        chatSessionId: 'session-provider-thread-delete',
+        providerTargetId: 'provider-target-provider-thread-delete',
+        runtimeKind: 'codex',
+        backendSessionId: 'codex-thread-provider-thread-delete-parent',
+        backendStateSnapshot: JSON.stringify({ models: { currentModelId: 'codex-side-model' } }),
+        requestedModelId: 'codex-side-model',
+        createdAt: 1_700_000_000,
+        updatedAt: 1_700_000_000,
+      }).run()
+
+      const response = await app.handle(new Request('http://localhost/chat/sessions/session-provider-thread-delete/provider-threads/codex-side-thread', {
+        method: 'DELETE',
+      }))
+
+      expect(response.status).toBe(200)
+      expect(await response.json()).toEqual({
+        runtimeKind: 'codex',
+        providerSessionId: 'codex-thread-provider-thread-delete-parent',
+        threadId: 'codex-side-thread',
+        deleted: true,
+      })
+      expect(runtime.providerThreadDeleteInputs).toHaveLength(1)
+      expect(runtime.providerThreadDeleteInputs[0]).toEqual(expect.objectContaining({
+        threadId: 'codex-side-thread',
+        workspaceId: 'workspace-provider-thread-delete',
+        workspacePath: workspaceRoot,
+        runtimeSession: expect.objectContaining({
+          providerSessionId: 'codex-thread-provider-thread-delete-parent',
+        }),
+      }))
+    }
+    finally {
       if (originalCodexRuntime) {
         registerRuntime(originalCodexRuntime)
       }

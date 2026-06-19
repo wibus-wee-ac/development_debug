@@ -32,18 +32,18 @@ export function projectCodexNativeTurnsToCodexItems(turns: Turn[] | undefined): 
       continue
     }
     for (const item of turn.items) {
-      items.push(...projectThreadItem(item))
+      items.push(...projectThreadItem(item, turn.id))
     }
   }
   return items
 }
 
-function projectThreadItem(item: ThreadItem): CodexResponseItem[] {
+function projectThreadItem(item: ThreadItem, turnId: string): CodexResponseItem[] {
   switch (item.type) {
     case 'userMessage':
-      return projectUserMessage(item.content)
+      return projectUserMessage(item.content, turnId)
     case 'hookPrompt':
-      return projectOpaqueThreadItem(item)
+      return projectOpaqueThreadItem(item, turnId)
     case 'agentMessage':
       return item.text
         ? [{
@@ -51,18 +51,19 @@ function projectThreadItem(item: ThreadItem): CodexResponseItem[] {
             role: 'assistant',
             content: [{ type: 'output_text', text: item.text }],
             ...(item.phase ? { phase: item.phase } : {}),
+            ...codexTurnMetadata(turnId),
           }]
         : []
     case 'reasoning':
-      return projectReasoningItem(item)
+      return projectReasoningItem(item, turnId)
     default:
       return TOOL_LIKE_ITEM_TYPES.has(item.type)
-        ? projectToolLikeItem(item)
-        : projectOpaqueThreadItem(item)
+        ? projectToolLikeItem(item, turnId)
+        : projectOpaqueThreadItem(item, turnId)
   }
 }
 
-function projectUserMessage(content: UserInput[]): CodexResponseItem[] {
+function projectUserMessage(content: UserInput[], turnId: string): CodexResponseItem[] {
   const projectedContent = content.flatMap(projectUserInput)
   if (projectedContent.length === 0) {
     return []
@@ -71,6 +72,7 @@ function projectUserMessage(content: UserInput[]): CodexResponseItem[] {
     type: 'message',
     role: 'user',
     content: projectedContent,
+    ...codexTurnMetadata(turnId),
   }]
 }
 
@@ -94,7 +96,10 @@ function projectUserInput(input: UserInput): CodexContentItem[] {
   }
 }
 
-function projectReasoningItem(item: Extract<ThreadItem, { type: 'reasoning' }>): CodexResponseItem[] {
+function projectReasoningItem(
+  item: Extract<ThreadItem, { type: 'reasoning' }>,
+  turnId: string,
+): CodexResponseItem[] {
   const summary = item.summary
     .filter(Boolean)
     .map(text => ({ type: 'summary_text' as const, text }))
@@ -111,10 +116,11 @@ function projectReasoningItem(item: Extract<ThreadItem, { type: 'reasoning' }>):
     summary,
     ...(content.length > 0 ? { content } : {}),
     encrypted_content: null,
+    ...codexTurnMetadata(turnId),
   }]
 }
 
-function projectToolLikeItem(item: ThreadItem): CodexResponseItem[] {
+function projectToolLikeItem(item: ThreadItem, turnId: string): CodexResponseItem[] {
   const codexItem = item as CodexAppServerItem
   const callId = item.id
   const toolName = readCodexToolName(codexItem)
@@ -124,16 +130,18 @@ function projectToolLikeItem(item: ThreadItem): CodexResponseItem[] {
       name: toolName,
       arguments: stringifyForCodex(buildCodexToolArgs(codexItem)),
       call_id: callId,
+      ...codexTurnMetadata(turnId),
     },
     {
       type: 'function_call_output',
       call_id: callId,
       output: stringifyForCodex(buildCodexToolResult(codexItem)),
+      ...codexTurnMetadata(turnId),
     },
   ]
 }
 
-function projectOpaqueThreadItem(item: ThreadItem): CodexResponseItem[] {
+function projectOpaqueThreadItem(item: ThreadItem, turnId: string): CodexResponseItem[] {
   return [{
     type: 'message',
     role: 'assistant',
@@ -144,7 +152,12 @@ function projectOpaqueThreadItem(item: ThreadItem): CodexResponseItem[] {
         value: item,
       }),
     }],
+    ...codexTurnMetadata(turnId),
   }]
+}
+
+function codexTurnMetadata(turnId: string): { metadata: { turn_id: string } } {
+  return { metadata: { turn_id: turnId } }
 }
 
 function stringifyForCodex(value: unknown): string {

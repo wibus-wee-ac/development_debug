@@ -227,6 +227,7 @@ export type { ChatRuntimeSettingsDto } from './runtime-settings-api'
 import {
   getCapabilities,
   getUiSlotStates,
+  deleteProviderThread,
   listProviderThreadTurns,
   listProviderThreads,
   readContextUsage,
@@ -235,6 +236,7 @@ import {
 export {
   getCapabilities,
   getUiSlotStates,
+  deleteProviderThread,
   listProviderThreadTurns,
   listProviderThreads,
   readContextUsage,
@@ -3001,6 +3003,7 @@ async function finalizeActiveRun(
   if (profile) {
     profile.finalizeStartedAtMs = performance.now()
   }
+  projectFinalMessageChunk(activeRun, terminalChunk)
   flushFinalMessageProjection(activeRun)
   await flushProjectedToolInputs(activeRun)
 

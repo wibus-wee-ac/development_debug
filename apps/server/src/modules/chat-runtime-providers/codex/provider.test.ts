@@ -734,6 +734,66 @@ describe('codexProvider app-server integration', () => {
     })).rejects.toThrow('Provider thread foreign-thread-1 does not belong to runtime thread codex-thread-1')
   })
 
+  it('deletes Codex subagent threads after parent ownership validation', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+
+    await expect(provider.deleteProviderThread({
+      runtimeSession: createRuntimeSession('codex-thread-1'),
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+      threadId: 'subagent-thread-1',
+    })).resolves.toEqual({
+      runtimeKind: 'codex',
+      providerSessionId: 'codex-thread-1',
+      threadId: 'subagent-thread-1',
+      deleted: true,
+    })
+    expect(client.requests).toEqual(expect.arrayContaining([
+      {
+        method: 'thread/read',
+        params: { threadId: 'subagent-thread-1', includeTurns: false },
+      },
+      {
+        method: 'thread/read',
+        params: { threadId: 'codex-thread-1', includeTurns: false },
+      },
+      {
+        method: 'thread/delete',
+        params: { threadId: 'subagent-thread-1' },
+      },
+    ]))
+  })
+
+  it('does not delete unrelated Codex provider threads', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+
+    await expect(provider.deleteProviderThread({
+      runtimeSession: createRuntimeSession('codex-thread-1'),
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+      threadId: 'foreign-thread-1',
+    })).rejects.toThrow('Provider thread foreign-thread-1 does not belong to runtime thread codex-thread-1')
+    expect(client.requests.some(request => request.method === 'thread/delete')).toBe(false)
+  })
+
+  it('does not delete the parent Codex runtime thread through provider-thread delete', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+
+    await expect(provider.deleteProviderThread({
+      runtimeSession: createRuntimeSession('codex-thread-1'),
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+      threadId: 'codex-thread-1',
+    })).rejects.toThrow('Cannot delete the parent runtime thread through the provider-thread API')
+    expect(client.requests.some(request => request.method === 'thread/delete')).toBe(false)
+  })
+
   it('projects draft Codex capabilities without starting an app-server session', () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
@@ -3593,23 +3653,27 @@ describe('codexProvider app-server integration', () => {
             type: 'message',
             role: 'user',
             content: [{ type: 'input_text', text: 'Earlier Codex request' }],
+            metadata: { turn_id: 'previous-turn-1' },
           },
           {
             type: 'reasoning',
             summary: [{ type: 'summary_text', text: 'I checked the prior native history.' }],
             content: [{ type: 'reasoning_text', text: 'The important fact is already known.' }],
             encrypted_content: null,
+            metadata: { turn_id: 'previous-turn-1' },
           },
           {
             type: 'message',
             role: 'assistant',
             content: [{ type: 'output_text', text: 'Earlier Codex answer' }],
+            metadata: { turn_id: 'previous-turn-1' },
           },
           {
             type: 'function_call',
             name: 'github/search',
             arguments: JSON.stringify({ query: 'cradle' }),
             call_id: 'previous-mcp-item',
+            metadata: { turn_id: 'previous-turn-1' },
           },
           {
             type: 'function_call_output',
@@ -3620,6 +3684,7 @@ describe('codexProvider app-server integration', () => {
               result: { content: [], structuredContent: { total: 1 }, _meta: null },
               content: [],
             }),
+            metadata: { turn_id: 'previous-turn-1' },
           },
         ],
       },

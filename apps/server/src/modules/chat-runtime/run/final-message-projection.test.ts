@@ -28,6 +28,51 @@ function readToolPart(message: UIMessage, toolCallId: string): UIMessage['parts'
 }
 
 describe('projectFinalMessageChunk', () => {
+  it('merges message metadata chunks into the final message', () => {
+    const run = createProjectionRun()
+
+    projectFinalMessageChunk(run, {
+      type: 'start',
+      messageMetadata: {
+        codex: { responseItems: [{ turnId: 'turn-1' }] },
+        cradle: { started: true },
+      },
+    })
+    projectFinalMessageChunk(run, {
+      type: 'message-metadata',
+      messageMetadata: {
+        codex: {
+          responseItems: [{ turnId: 'turn-2' }],
+          moderationMetadataByTurnId: {
+            'turn-2': { flagged: false },
+          },
+        },
+        cradle: { updated: true },
+      },
+    })
+    projectFinalMessageChunk(run, {
+      type: 'finish',
+      finishReason: 'stop',
+      messageMetadata: {
+        codex: { finished: true },
+      },
+    })
+
+    expect(run.finalMessage.metadata).toEqual({
+      codex: {
+        responseItems: [{ turnId: 'turn-1' }, { turnId: 'turn-2' }],
+        moderationMetadataByTurnId: {
+          'turn-2': { flagged: false },
+        },
+        finished: true,
+      },
+      cradle: {
+        started: true,
+        updated: true,
+      },
+    })
+  })
+
   it('clears preliminary tool output state when the terminal output arrives', () => {
     const run = createProjectionRun()
 
