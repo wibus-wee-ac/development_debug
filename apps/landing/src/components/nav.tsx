@@ -78,7 +78,8 @@ export function Nav() {
         <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
           <ThemeToggle />
           <a
-            href="#download"
+            href="https://github.com/wibus-wee/cradle-app/releases"
+            target='_block'
             style={{
               display: 'inline-flex',
               alignItems: 'center',

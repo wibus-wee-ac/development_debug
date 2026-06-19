@@ -26,7 +26,8 @@ export function CTASection() {
 
         <div style={{ display: 'flex', flexWrap: 'wrap', alignItems: 'center', justifyContent: 'center', gap: 10 }}>
           <a
-            href="#download"
+            href="https://github.com/wibus-wee/cradle-app/releases"
+            target='_block'
             style={{
               display: 'inline-flex', alignItems: 'center', gap: 8, padding: '10px 22px',
               background: 'var(--text)', color: 'var(--bg)',
@@ -40,7 +41,7 @@ export function CTASection() {
           </a>
 
           <a
-            href="https://github.com/wibus-wee/Cradle"
+            href="https://github.com/wibus-wee/Cradle-app"
             target="_blank"
             rel="noopener noreferrer"
             style={{

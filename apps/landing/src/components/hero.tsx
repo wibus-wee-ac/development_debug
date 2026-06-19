@@ -120,7 +120,8 @@ export function Hero() {
       {/* CTAs */}
       <div className="hero-ctas" style={{ position: 'relative', zIndex: 1, display: 'flex', gap: 10, flexWrap: 'wrap', justifyContent: 'center' }}>
         <motion.a
-          href="#download"
+          href="https://github.com/wibus-wee/cradle-app/releases"
+          target='_block'
           whileHover={{ scale: 1.02 }}
           whileTap={{ scale: 0.98 }}
           style={{
