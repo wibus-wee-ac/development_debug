@@ -16,6 +16,7 @@ const firstPartyPluginManifests = [
   'plugins/system-info/package.json',
   'plugins/browser-use/package.json',
   'plugins/cc-switch/package.json',
+  'plugins/nowledge-mem/package.json',
 ]
 
 describe('plugin manifest SDK boundary', () => {
