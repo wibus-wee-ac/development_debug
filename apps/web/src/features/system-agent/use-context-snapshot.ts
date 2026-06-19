@@ -1,9 +1,6 @@
 import type { ContextEnvelope } from '~/features/context/context-items'
-import { jarvisContextRegistry } from '~/features/context/context-registry'
-
-import { installSystemAgentContextProvider } from './system-context-provider'
+import { rendererContextRegistry } from '~/features/context/context-registry'
 
 export function collectContextEnvelope(): ContextEnvelope {
-  installSystemAgentContextProvider()
-  return jarvisContextRegistry.collectEnvelope()
+  return rendererContextRegistry.collectEnvelope()
 }

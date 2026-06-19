@@ -3,7 +3,6 @@ import { useSyncExternalStore } from 'react'
 import type { ContextItem, ContextReference, ContextSensitivity } from '~/features/context/context-items'
 import { estimateContextTokens } from '~/features/context/context-items'
 import type { ContextProvider } from '~/features/context/context-registry'
-import { jarvisContextRegistry } from '~/features/context/context-registry'
 
 const MAX_TEXT_SELECTION_CHARS = 2_000
 const MAX_REFERENCE_CONTENT_CHARS = 4_000
@@ -29,7 +28,6 @@ export interface ExplicitContextAttachment extends Required<Omit<ExplicitContext
 
 const attachmentsById = new Map<string, ExplicitContextAttachment>()
 const listeners = new Set<() => void>()
-let providerInstalled = false
 let attachmentsSnapshot: ExplicitContextAttachment[] = []
 
 function emitChange(): void {
@@ -155,13 +153,4 @@ export function createExplicitContextProvider(): ContextProvider {
       return readAttachmentsSnapshot().map(attachment => createContextItem(attachment, input.now))
     },
   }
-}
-
-export function installExplicitContextProvider(): void {
-  if (providerInstalled) {
-    return
-  }
-
-  jarvisContextRegistry.registerProvider(createExplicitContextProvider())
-  providerInstalled = true
 }

@@ -1,79 +1,28 @@
-import { describe, expect, it } from 'vitest'
+import { describe, expect, it, vi } from 'vitest'
 
-import { createContextRegistry } from '~/features/context/context-registry'
+import { useSurfaceStore } from '~/navigation/surface-store'
 import { useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 import { useNewChatStore } from '~/store/new-chat'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
-import { useSurfaceStore } from '~/navigation/surface-store'
 
 import { readSystemAgentContextItems } from './system-context-provider'
 
-describe('jarvis context registry', () => {
-  it('collects provider items into a typed envelope with active surface metadata', () => {
-    const registry = createContextRegistry({
-      readActiveSurface: () => ({ id: 'chat:session-1', type: 'chat', params: { sessionId: 'session-1' }, search: {} }),
-      readNow: () => 1779781200000,
-      createEnvelopeId: now => `ctx-test-${now}`,
-    })
+const readActiveSurfaceMock = vi.hoisted(() => vi.fn())
 
-    registry.registerProvider({
-      owner: 'chat',
-      readContext: input => [{
-        id: `chat:attention:${input.activeSurfaceId}`,
-        kind: 'attention',
-        owner: 'chat',
-        title: 'Chat attention',
-        summary: 'User is viewing historical messages.',
-        priority: 90,
-        freshness: 'live',
-        sensitivity: 'private',
-        tokenEstimate: 8,
-        createdAt: input.now,
-      }],
-    })
-
-    expect(registry.collectEnvelope()).toEqual({
-      id: 'ctx-test-1779781200000',
-      capturedAt: 1779781200000,
-      activeSurfaceId: 'chat:session-1',
-      activeSurfaceType: 'chat',
-      activeSurfaceParams: { sessionId: 'session-1' },
-      activeSurfaceSearch: {},
-      items: [{
-        id: 'chat:attention:chat:session-1',
-        kind: 'attention',
-        owner: 'chat',
-        title: 'Chat attention',
-        summary: 'User is viewing historical messages.',
-        priority: 90,
-        freshness: 'live',
-        sensitivity: 'private',
-        tokenEstimate: 8,
-        createdAt: 1779781200000,
-      }],
-    })
-  })
-
-  it('rejects duplicate provider owners to preserve ownership boundaries', () => {
-    const registry = createContextRegistry({
-      readActiveSurface: () => ({ id: null, type: null }),
-    })
-    const provider = {
-      owner: 'chat',
-      readContext: () => [],
-    }
-
-    registry.registerProvider(provider)
-
-    expect(() => registry.registerProvider(provider)).toThrow('Context provider already registered: chat')
-  })
-})
+vi.mock('~/navigation/active-surface', () => ({
+  readActiveSurface: readActiveSurfaceMock,
+}))
 
 describe('system-agent Jarvis context provider', () => {
   it('represents current shell stores as typed context items', () => {
+    readActiveSurfaceMock.mockReturnValue({
+      id: 'chat:session-1',
+      kind: 'chat',
+      title: 'Architecture discussion',
+      route: { to: '/chat/$sessionId', params: { sessionId: 'session-1' } },
+    })
     useSurfaceStore.setState({
-      activeSurfaceId: 'chat:session-1',
       surfaces: [
         { id: 'home', kind: 'home', title: 'Home', route: { to: '/' }, order: 0, closable: false },
         {

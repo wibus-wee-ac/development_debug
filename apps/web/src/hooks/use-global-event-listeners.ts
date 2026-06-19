@@ -10,8 +10,9 @@ import { runtimeSessionStatusQueryKey } from '~/features/chat/runtime/use-runtim
 import { onAnyChatRunEvent, onChatRunSettled } from '~/features/chat/transport/sse-chat-transport'
 import { isSessionsQueryKey, updateSessionReadState } from '~/features/workspace/use-session'
 import { isTearoffWindow, nativeIpc } from '~/lib/electron'
+import { useActiveSurface } from '~/navigation/active-surface'
 import { activateAdjacentSurface, closeActiveSurface, openNewChat } from '~/navigation/navigation-commands'
-import { useSurfaceStore } from '~/navigation/surface-store'
+import { chatSessionIdForSurface } from '~/navigation/surface-identity'
 import {
   BROWSER_PANEL_WEBVIEW_TAB_SHORTCUT_CHANNEL,
   handleBrowserPanelTabShortcut,
@@ -19,24 +20,6 @@ import {
 } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 import { useSessionActivityStore } from '~/store/session-activity'
-
-function deriveVisibleChatSessionId(args: {
-  activeSurfaceId: string | null
-  surfaces: Array<{ id: string, kind: string, route: { params?: Record<string, unknown> } }>
-}) {
-  const { activeSurfaceId, surfaces } = args
-  if (!activeSurfaceId) {
-    return null
-  }
-
-  const activeSurface = surfaces.find(surface => surface.id === activeSurfaceId)
-  if (activeSurface?.kind !== 'chat') {
-    return null
-  }
-
-  const sessionId = activeSurface.route.params?.sessionId
-  return typeof sessionId === 'string' ? sessionId : null
-}
 
 function invalidateChatSessionRuntimeQueries(queryClient: QueryClient, sessionId: string): void {
   void queryClient.invalidateQueries({
@@ -56,10 +39,7 @@ export function useGlobalEventListeners() {
   const queryClient = useQueryClient()
   const toggleBottomPanel = useLayoutStore(s => s.toggleBottomPanel)
   const toggleAside = useLayoutStore(s => s.toggleAside)
-  const visibleSessionId = useSurfaceStore(s => deriveVisibleChatSessionId({
-    activeSurfaceId: s.activeSurfaceId,
-    surfaces: s.surfaces,
-  }))
+  const visibleSessionId = chatSessionIdForSurface(useActiveSurface())
 
   // Panel + tab keyboard shortcuts
   useEffect(() => {

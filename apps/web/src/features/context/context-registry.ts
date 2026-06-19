@@ -1,4 +1,4 @@
-import { useSurfaceStore } from '~/navigation/surface-store'
+import { readActiveSurface as readRouterActiveSurface } from '~/navigation/active-surface'
 
 import type { ContextEnvelope, ContextItem } from './context-items'
 
@@ -15,8 +15,13 @@ export interface ContextProvider {
   readContext: (input: ContextProviderInput) => ContextItem[]
 }
 
+export interface ContextProviderRegistration {
+  owner: string
+  dispose: () => void
+}
+
 export interface ContextRegistry {
-  registerProvider: (provider: ContextProvider) => () => void
+  setProvider: (provider: ContextProvider) => ContextProviderRegistration
   collectEnvelope: () => ContextEnvelope
 }
 
@@ -57,10 +62,7 @@ function readCradleActiveSurface(): {
   params: Record<string, string | undefined>
   search: Record<string, string | undefined>
 } {
-  const surfaceState = useSurfaceStore.getState()
-  const activeSurface = surfaceState.activeSurfaceId
-    ? surfaceState.surfaces.find(surface => surface.id === surfaceState.activeSurfaceId) ?? null
-    : null
+  const activeSurface = readRouterActiveSurface()
 
   return {
     id: activeSurface?.id ?? null,
@@ -71,20 +73,26 @@ function readCradleActiveSurface(): {
 }
 
 export function createContextRegistry(options: ContextRegistryOptions = {}): ContextRegistry {
-  const providers = new Map<string, ContextProvider>()
+  const providerSlots = new Map<string, { generation: number, provider: ContextProvider }>()
   const readActiveSurface = options.readActiveSurface ?? readCradleActiveSurface
   const readNow = options.readNow ?? Date.now
   const createEnvelopeId = options.createEnvelopeId ?? defaultEnvelopeId
+  let nextGeneration = 0
 
   return {
-    registerProvider(provider) {
-      if (providers.has(provider.owner)) {
-        throw new Error(`Context provider already registered: ${provider.owner}`)
-      }
+    setProvider(provider) {
+      const generation = nextGeneration + 1
+      nextGeneration = generation
+      providerSlots.set(provider.owner, { generation, provider })
 
-      providers.set(provider.owner, provider)
-      return () => {
-        providers.delete(provider.owner)
+      return {
+        owner: provider.owner,
+        dispose() {
+          const slot = providerSlots.get(provider.owner)
+          if (slot?.generation === generation) {
+            providerSlots.delete(provider.owner)
+          }
+        },
       }
     },
 
@@ -98,7 +106,7 @@ export function createContextRegistry(options: ContextRegistryOptions = {}): Con
         activeSurfaceSearch: activeSurface.search ?? {},
         now,
       }
-      const items = [...providers.values()].flatMap(provider => provider.readContext(input))
+      const items = [...providerSlots.values()].flatMap(slot => slot.provider.readContext(input))
 
       return {
         id: createEnvelopeId(now),
@@ -113,4 +121,25 @@ export function createContextRegistry(options: ContextRegistryOptions = {}): Con
   }
 }
 
-export const jarvisContextRegistry = createContextRegistry()
+export function installContextProviders(
+  providers: ContextProvider[],
+  registry: ContextRegistry = rendererContextRegistry,
+): () => void {
+  const owners = new Set<string>()
+  for (const provider of providers) {
+    if (owners.has(provider.owner)) {
+      throw new Error(`Duplicate context provider owner: ${provider.owner}`)
+    }
+    owners.add(provider.owner)
+  }
+
+  const registrations = providers.map(provider => registry.setProvider(provider))
+
+  return () => {
+    for (let index = registrations.length - 1; index >= 0; index -= 1) {
+      registrations[index].dispose()
+    }
+  }
+}
+
+export const rendererContextRegistry = createContextRegistry()

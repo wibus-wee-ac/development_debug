@@ -39,7 +39,7 @@ describe('explicit Jarvis context', () => {
       readNow: () => 1779783600000,
       createEnvelopeId: now => `ctx-${now}`,
     })
-    registry.registerProvider(createExplicitContextProvider())
+    registry.setProvider(createExplicitContextProvider())
 
     expect(registry.collectEnvelope().items).toEqual([
       expect.objectContaining({

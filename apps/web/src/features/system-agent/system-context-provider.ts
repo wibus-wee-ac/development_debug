@@ -1,19 +1,17 @@
 import type { ContextItem } from '~/features/context/context-items'
 import { estimateContextTokens } from '~/features/context/context-items'
 import type { ContextProvider } from '~/features/context/context-registry'
-import { jarvisContextRegistry } from '~/features/context/context-registry'
 import { readUnreadSessionIdsSnapshot } from '~/features/workspace/use-session'
+import { readActiveSurface } from '~/navigation/active-surface'
+import { useSurfaceStore } from '~/navigation/surface-store'
 import { chatSelectors, useChatStore } from '~/store/chat'
 import { useLayoutStore } from '~/store/layout'
 import { useNewChatStore } from '~/store/new-chat'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
-import { useSurfaceStore } from '~/navigation/surface-store'
 
 const OWNER = 'system-agent'
 const MAX_RECENT_MESSAGES = 5
 const CONTENT_PREVIEW_LENGTH = 120
-
-let providerInstalled = false
 
 function createItem(input: Omit<ContextItem, 'createdAt' | 'tokenEstimate'> & { createdAt: number, tokenEstimate?: number }): ContextItem {
   const tokenEstimate = input.tokenEstimate ?? estimateContextTokens([
@@ -56,15 +54,13 @@ function surfaceKindToContextType(kind: string): string {
 }
 
 export function readSystemAgentContextItems(now: number): ContextItem[] {
-  const surfaceState = useSurfaceStore.getState()
   const chatState = useChatStore.getState()
   const layoutState = useLayoutStore.getState()
   const settingsState = useSettingsOverlayStore.getState()
   const newChatState = useNewChatStore.getState()
+  const surfaceState = useSurfaceStore.getState()
   const unreadSessionIds = readUnreadSessionIdsSnapshot()
-  const activeSurface = surfaceState.activeSurfaceId
-    ? surfaceState.surfaces.find(surface => surface.id === surfaceState.activeSurfaceId) ?? null
-    : null
+  const activeSurface = readActiveSurface()
   const items: ContextItem[] = []
 
   if (activeSurface) {
@@ -214,13 +210,4 @@ export function createSystemAgentContextProvider(): ContextProvider {
       return readSystemAgentContextItems(input.now)
     },
   }
-}
-
-export function installSystemAgentContextProvider(): void {
-  if (providerInstalled) {
-    return
-  }
-
-  jarvisContextRegistry.registerProvider(createSystemAgentContextProvider())
-  providerInstalled = true
 }
