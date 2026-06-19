@@ -70,11 +70,21 @@ const CLAUDE_AGENT_PLAN_SLOT: RuntimeUiSlot = {
   surfaces: ['composerState', 'runtimePanel'],
 }
 
+const CLAUDE_AGENT_PROGRESS_SLOT: RuntimeUiSlot = {
+  id: 'claude-agent:progress',
+  name: 'progress',
+  label: 'Progress',
+  description: 'Show the current task progress.',
+  argumentHint: '',
+  iconKey: 'progress',
+  surfaces: ['composerState', 'runtimePanel'],
+}
+
 export function projectClaudeAgentPresentation(slashCommands: SlashCommand[]): RuntimePresentationCapabilities {
   return {
     runtimeKind: CLAUDE_AGENT_RUNTIME_KIND,
     slashCommands: slashCommands.map(toRuntimeSlashCommand),
-    uiSlots: [CLAUDE_AGENT_COMPACT_SLOT, CLAUDE_AGENT_QUICK_QUESTION_SLOT, CLAUDE_AGENT_PLAN_SLOT],
+    uiSlots: [CLAUDE_AGENT_COMPACT_SLOT, CLAUDE_AGENT_QUICK_QUESTION_SLOT, CLAUDE_AGENT_PLAN_SLOT, CLAUDE_AGENT_PROGRESS_SLOT],
     skills: [],
   }
 }

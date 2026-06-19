@@ -346,6 +346,9 @@ function shouldPollRuntimeSlotStates(states: ChatRuntimeUiSlotState[]): boolean 
     if (state.kind === 'toolActivity') {
       return state.activeCount > 0
     }
+    if (state.kind === 'progress') {
+      return state.inProgressCount > 0
+    }
     if (state.kind === 'terminal') {
       return state.activeCount > 0 || state.backgroundTerminals.length > 0
     }

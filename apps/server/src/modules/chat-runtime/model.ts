@@ -95,6 +95,7 @@ const runtimeUiSlotSchema = t.Object({
       t.Literal('personality'),
       t.Literal('plugin'),
       t.Literal('plan'),
+      t.Literal('progress'),
       t.Literal('quick-question'),
       t.Literal('user-input'),
       t.Literal('reasoning'),
@@ -240,6 +241,27 @@ const runtimePlanUiSlotStateSchema = t.Object({
     })
   ),
   currentStep: t.Union([t.String(), t.Null()]),
+  pendingCount: t.Number(),
+  inProgressCount: t.Number(),
+  completedCount: t.Number(),
+  updatedAt: t.Number()
+})
+
+const runtimeProgressUiSlotStateSchema = t.Object({
+  kind: t.Literal('progress'),
+  slotId: t.String(),
+  threadId: t.String(),
+  turnId: t.Union([t.String(), t.Null()]),
+  source: t.String(),
+  items: t.Array(
+    t.Object({
+      id: t.Union([t.String(), t.Null()]),
+      label: t.String(),
+      status: runtimePlanStepStatusSchema,
+      sourceStatus: t.Union([t.String(), t.Null()])
+    })
+  ),
+  currentItem: t.Union([t.String(), t.Null()]),
   pendingCount: t.Number(),
   inProgressCount: t.Number(),
   completedCount: t.Number(),
@@ -604,6 +626,7 @@ const runtimeUiSlotStateSchema = t.Union([
   runtimeModelUiSlotStateSchema,
   runtimeReasoningUiSlotStateSchema,
   runtimePlanUiSlotStateSchema,
+  runtimeProgressUiSlotStateSchema,
   runtimeUserInputUiSlotStateSchema,
   runtimeToolActivityUiSlotStateSchema,
   runtimeMcpUiSlotStateSchema,

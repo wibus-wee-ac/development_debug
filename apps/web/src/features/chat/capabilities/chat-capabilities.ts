@@ -55,6 +55,7 @@ export type ChatRuntimeUiSlotIconKey =
   | 'personality'
   | 'plugin'
   | 'plan'
+  | 'progress'
   | 'quick-question'
   | 'user-input'
   | 'reasoning'
@@ -192,6 +193,27 @@ export interface ChatRuntimePlanUiSlotState {
   content: string | null
   steps: ChatRuntimePlanStep[]
   currentStep: string | null
+  pendingCount: number
+  inProgressCount: number
+  completedCount: number
+  updatedAt: number
+}
+
+export interface ChatRuntimeProgressItem {
+  id: string | null
+  label: string
+  status: ChatRuntimePlanStepStatus
+  sourceStatus: string | null
+}
+
+export interface ChatRuntimeProgressUiSlotState {
+  kind: 'progress'
+  slotId: string
+  threadId: string
+  turnId: string | null
+  source: string
+  items: ChatRuntimeProgressItem[]
+  currentItem: string | null
   pendingCount: number
   inProgressCount: number
   completedCount: number
@@ -474,6 +496,7 @@ export type ChatRuntimeUiSlotState =
   | ChatRuntimeMcpUiSlotState
   | ChatRuntimeModelUiSlotState
   | ChatRuntimePlanUiSlotState
+  | ChatRuntimeProgressUiSlotState
   | ChatRuntimePluginUiSlotState
   | ChatRuntimeReasoningUiSlotState
   | ChatRuntimeSearchUiSlotState

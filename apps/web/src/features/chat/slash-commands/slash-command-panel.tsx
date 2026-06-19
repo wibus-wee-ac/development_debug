@@ -10,6 +10,7 @@ import {
   FolderTreeIcon,
   GaugeIcon,
   HammerIcon,
+  ListChecksIcon,
   MessageCircleIcon,
   MessageCircleQuestionIcon,
   MousePointer2Icon,
@@ -164,6 +165,8 @@ function renderCommandIcon(command: ChatComposerSlashCommand): ReactNode {
     case 'plan':
     case 'side-chat':
       return <CircleDotIcon className={className} aria-hidden="true" />
+    case 'progress':
+      return <ListChecksIcon className={className} aria-hidden="true" />
     case 'quick-question':
       return <MessageCircleQuestionIcon className={className} aria-hidden="true" />
     case 'user-input':

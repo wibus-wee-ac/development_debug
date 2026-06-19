@@ -5,6 +5,7 @@ import { useEffect, useMemo, useRef, useState } from 'react'
 import type {
   ChatRuntimeGoalUiSlotState,
   ChatRuntimePlanUiSlotState,
+  ChatRuntimeProgressUiSlotState,
   ChatRuntimeTerminalUiSlotState,
   ChatRuntimeUiSlot,
   ChatRuntimeUiSlotState,
@@ -46,6 +47,7 @@ const COMPOSER_SLOT_REDUCED_TRANSITION = { duration: 0 } as const
 const COMPOSER_SLOT_STAGGER_SECONDS = 0.035
 
 type ComposerSlotEntry = { key: string, node: ReactNode }
+type ComposerProgressState = ChatRuntimePlanUiSlotState | ChatRuntimeProgressUiSlotState
 
 interface ComposerSlotStatesProps {
   sessionId?: string | null
@@ -89,8 +91,12 @@ export function ComposerSlotStates({
   const goalState = states.find((state): state is ChatRuntimeGoalUiSlotState => {
     return state.kind === 'goal' && composerSlotIds.has(state.slotId)
   })
-  const progressState = states.find((state): state is ChatRuntimePlanUiSlotState => {
-    return state.kind === 'plan' && composerSlotIds.has(state.slotId) && isComposerProgressState(state)
+  const progressState = states.find((state): state is ComposerProgressState => {
+    return (
+      (state.kind === 'progress' || state.kind === 'plan')
+      && composerSlotIds.has(state.slotId)
+      && isComposerProgressState(state)
+    )
   })
   const planState = states.find((state): state is ChatRuntimePlanUiSlotState => {
     return (
@@ -166,7 +172,7 @@ export function ComposerSlotStates({
       : null,
     standaloneProgressState
       ? {
-          key: `progress:${standaloneProgressState.threadId}:${standaloneProgressState.turnId ?? 'turn'}`,
+          key: `progress:${standaloneProgressState.slotId}:${standaloneProgressState.threadId}:${standaloneProgressState.turnId ?? 'turn'}`,
           node: <ProgressSlotState state={standaloneProgressState} className={className} />,
         }
       : null,
@@ -286,10 +292,14 @@ function isComposerPlanReadyState(state: ChatRuntimePlanUiSlotState): boolean {
   return !!state.content?.trim()
 }
 
-function isComposerProgressState(state: ChatRuntimePlanUiSlotState): boolean {
-  return state.steps.length > 0
+function isComposerProgressState(state: ComposerProgressState): boolean {
+  return readComposerProgressItemCount(state) > 0
 }
 
-function isComposerStandaloneProgressState(state: ChatRuntimePlanUiSlotState): boolean {
-  return state.steps.length > 0 && (state.pendingCount > 0 || state.inProgressCount > 0)
+function isComposerStandaloneProgressState(state: ComposerProgressState): boolean {
+  return readComposerProgressItemCount(state) > 0 && (state.pendingCount > 0 || state.inProgressCount > 0)
+}
+
+function readComposerProgressItemCount(state: ComposerProgressState): number {
+  return state.kind === 'progress' ? state.items.length : state.steps.length
 }

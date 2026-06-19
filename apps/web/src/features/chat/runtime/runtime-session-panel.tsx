@@ -25,6 +25,7 @@ import type {
   ChatRuntimeCrewCallItem,
   ChatRuntimeCrewUiSlotState,
   ChatRuntimePlanUiSlotState,
+  ChatRuntimeProgressUiSlotState,
   ChatRuntimeUiSlotState
 } from '../capabilities/chat-capabilities'
 import {
@@ -119,8 +120,9 @@ export function RuntimeSessionPanel({
   const status = runtimeStatus?.status ?? visibleStatus
   const displayedRun = runtimeStatus?.activeRun ?? runtimeStatus?.latestRun ?? null
   const planState = runtimeUiSlotStates?.states.find(isRuntimePlanState) ?? null
+  const progressStates = runtimeUiSlotStates?.states.filter(isRuntimeProgressState) ?? []
   const crewState = runtimeUiSlotStates?.states.find(isRuntimeCrewState) ?? null
-  const progressItems = buildProgressItems(planState, todoSnapshot)
+  const progressItems = buildProgressItems(planState, progressStates, todoSnapshot)
 
   if (!sessionId) {
     return (
@@ -434,12 +436,17 @@ function isRuntimePlanState(state: ChatRuntimeUiSlotState): state is ChatRuntime
   return state.kind === 'plan'
 }
 
+function isRuntimeProgressState(state: ChatRuntimeUiSlotState): state is ChatRuntimeProgressUiSlotState {
+  return state.kind === 'progress'
+}
+
 function isRuntimeCrewState(state: ChatRuntimeUiSlotState): state is ChatRuntimeCrewUiSlotState {
   return state.kind === 'crew'
 }
 
 function buildProgressItems(
   planState: ChatRuntimePlanUiSlotState | null,
+  progressStates: ChatRuntimeProgressUiSlotState[],
   todoSnapshot: SessionTodoSnapshot | null
 ): ProgressTaskItem[] {
   const itemByKey = new Map<string, ProgressTaskItem>()
@@ -453,12 +460,24 @@ function buildProgressItems(
     })
   })
 
-  todoSnapshot?.todos.forEach((todo, index) => {
+  progressStates.forEach((state, stateIndex) => {
+    state.items.forEach((item, index) => {
+      mergeProgressItem(itemByKey, {
+        id: `progress:${state.slotId}:${item.id ?? index}:${item.label}`,
+        label: item.label,
+        status: item.status,
+        order: (planState?.steps.length ?? 0) + stateIndex * 1_000 + index
+      })
+    })
+  })
+
+  const fallbackTodoSnapshot = progressStates.length > 0 ? null : todoSnapshot
+  fallbackTodoSnapshot?.todos.forEach((todo, index) => {
     mergeProgressItem(itemByKey, {
       id: `todo:${todo.id ?? index}:${todo.content}`,
       label: todo.content,
       status: mapTodoProgressStatus(todo),
-      order: (planState?.steps.length ?? 0) + index
+      order: (planState?.steps.length ?? 0) + progressStates.length * 1_000 + index
     })
   })
 
@@ -630,6 +649,9 @@ function statusShouldPoll(status: RuntimeSessionStatusKind | undefined): boolean
 function shouldPollRuntimeSlotStates(states: ChatRuntimeUiSlotState[]): boolean {
   return states.some((state) => {
     if (state.kind === 'plan') {
+      return state.inProgressCount > 0
+    }
+    if (state.kind === 'progress') {
       return state.inProgressCount > 0
     }
     if (state.kind === 'status') {

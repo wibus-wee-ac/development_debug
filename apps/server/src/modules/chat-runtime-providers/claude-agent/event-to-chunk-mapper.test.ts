@@ -249,6 +249,16 @@ describe('mapClaudeAgentMessageToChunks', () => {
         },
       },
     ])
+    expect(result.capturedTodos).toEqual([
+      {
+        toolCallId: 'toolu_todo_1',
+        todos: [
+          { id: 'todo-1', content: 'Inspect', status: 'todo', sourceStatus: 'pending' },
+          { id: 'todo-2', content: 'Patching', status: 'processing', sourceStatus: 'in_progress' },
+          { id: 'todo-3', content: 'Verify', status: 'completed', sourceStatus: 'completed' },
+        ],
+      },
+    ])
   })
 
   it('throttles preliminary subagent snapshots while keeping the terminal output complete', async () => {

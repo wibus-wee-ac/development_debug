@@ -465,6 +465,104 @@ describe('claudeAgentProvider MCP integration', () => {
     ])
   })
 
+  it('projects captured TodoWrite state into progress UI slot state', async () => {
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-progress-slot',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'toolu_todo_1',
+              name: 'TodoWrite',
+              input: {
+                todos: [
+                  { id: 'todo-1', content: 'Inspect', status: 'pending' },
+                  { id: 'todo-2', content: 'Patch', activeForm: 'Patching', status: 'in_progress' },
+                  { id: 'todo-3', content: 'Verify', status: 'completed' },
+                ],
+              },
+            },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        session_id: 'claude-session-progress-slot',
+        message: {
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'toolu_todo_1',
+              content: { ok: true },
+            },
+          ],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-session-progress-slot',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const runtimeSession = createRuntimeSession()
+    for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-progress-slot',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Work through todos'),
+      workspaceId: 'workspace-1',
+    })) {
+      // Drain stream.
+    }
+
+    expect(JSON.parse(runtimeSession.providerStateSnapshot!).claudeAgent.progress).toEqual(expect.objectContaining({
+      threadId: 'chat-session-1',
+      turnId: 'toolu_todo_1',
+      source: 'TodoWrite',
+      items: [
+        { id: 'todo-1', content: 'Inspect', status: 'todo', sourceStatus: 'pending' },
+        { id: 'todo-2', content: 'Patching', status: 'processing', sourceStatus: 'in_progress' },
+        { id: 'todo-3', content: 'Verify', status: 'completed', sourceStatus: 'completed' },
+      ],
+      updatedAt: expect.any(Number),
+    }))
+
+    const slotStates = await provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+    })
+
+    expect(slotStates).toEqual([
+      expect.objectContaining({
+        kind: 'progress',
+        slotId: 'claude-agent:progress',
+        threadId: 'chat-session-1',
+        turnId: 'toolu_todo_1',
+        source: 'TodoWrite',
+        currentItem: 'Patching',
+        pendingCount: 1,
+        inProgressCount: 1,
+        completedCount: 1,
+        items: [
+          { id: 'todo-1', label: 'Inspect', status: 'pending', sourceStatus: 'pending' },
+          { id: 'todo-2', label: 'Patching', status: 'inProgress', sourceStatus: 'in_progress' },
+          { id: 'todo-3', label: 'Verify', status: 'completed', sourceStatus: 'completed' },
+        ],
+      }),
+      expect.objectContaining({
+        kind: 'compact',
+        slotId: 'claude-agent:compact',
+      }),
+    ])
+  })
+
   it('runs agent-scoped Claude Agent sessions from the agent home while keeping workspace context explicit', async () => {
     const homeDir = mkdtempSync(join(tmpdir(), 'cradle-claude-agent-home-'))
     const previousHome = process.env.HOME
@@ -677,6 +775,15 @@ describe('claudeAgentProvider MCP integration', () => {
           argumentHint: '',
           iconKey: 'plan',
           commandText: '/plan ',
+          surfaces: ['composerState', 'runtimePanel'],
+        },
+        {
+          id: 'claude-agent:progress',
+          name: 'progress',
+          label: 'Progress',
+          description: 'Show the current task progress.',
+          argumentHint: '',
+          iconKey: 'progress',
           surfaces: ['composerState', 'runtimePanel'],
         },
       ],

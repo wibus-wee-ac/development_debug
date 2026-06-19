@@ -19,6 +19,7 @@ import {
   projectClaudeAgentSubagentOutputChunk,
 } from './subagent-projector'
 import { createClaudeCodeToolInputPayload, createClaudeCodeToolResultPayload } from './tools/mapper'
+import type { TodoPluginItem } from './tools/todo-plugin-state'
 import { isTodoWriteToolName, synthesizeTodoWritePluginState } from './tools/todo-plugin-state'
 
 const CLAUDE_EXIT_PLAN_MODE_CAPTURED_MESSAGE = 'Cradle captured the proposed plan. Stop here and wait for the user to refine or implement it in a later turn.'
@@ -102,11 +103,17 @@ export interface ClaudeAgentCapturedPlan {
   content: string
 }
 
+export interface ClaudeAgentCapturedTodos {
+  toolCallId: string
+  todos: TodoPluginItem[]
+}
+
 export interface ClaudeAgentChunkMapperResult {
   chunks: UIMessageChunk[]
   sessionId: string | null
   usage: TokenUsage | null
   capturedPlans: ClaudeAgentCapturedPlan[]
+  capturedTodos: ClaudeAgentCapturedTodos[]
 }
 
 export async function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: ClaudeAgentChunkMapperState): Promise<ClaudeAgentChunkMapperResult> {
@@ -125,6 +132,7 @@ export async function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: Clau
       ...result,
       chunks: preliminaryChunk ? [preliminaryChunk] : [],
       capturedPlans: [],
+      capturedTodos: [],
     }
   }
 
@@ -182,6 +190,7 @@ async function mapClaudeAgentMessageToChunksWithoutParentProjection(msg: SDKMess
     sessionId: null,
     usage: null,
     capturedPlans: [],
+    capturedTodos: [],
   }
 
   switch (msg.type) {
@@ -301,11 +310,12 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
       }
     : null
 
-  return { chunks, sessionId: msg.session_id, usage, capturedPlans }
+  return { chunks, sessionId: msg.session_id, usage, capturedPlans, capturedTodos: [] }
 }
 
 async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState): Promise<ClaudeAgentChunkMapperResult> {
   const chunks: UIMessageChunk[] = []
+  const capturedTodos: ClaudeAgentCapturedTodos[] = []
   const content = msg.message.content
 
   // Extract tool_result blocks from user message content
@@ -335,6 +345,10 @@ async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState):
               normalizedOutput,
               state,
             )
+            const todoCapture = readTodoWriteCapture(b.tool_use_id, state)
+            if (todoCapture) {
+              capturedTodos.push(todoCapture)
+            }
             chunks.push({
               type: 'tool-output-available',
               toolCallId: b.tool_use_id,
@@ -348,7 +362,7 @@ async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState):
     }
   }
 
-  return { chunks, sessionId: msg.session_id ?? null, usage: null, capturedPlans: [] }
+  return { chunks, sessionId: msg.session_id ?? null, usage: null, capturedPlans: [], capturedTodos }
 }
 
 function mapContentBlock(
@@ -482,7 +496,7 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
     }
   }
 
-  return { chunks, sessionId: msg.session_id, usage, capturedPlans: [] }
+  return { chunks, sessionId: msg.session_id, usage, capturedPlans: [], capturedTodos: [] }
 }
 
 function ensureTextBlockStarted(state: ClaudeAgentChunkMapperState, blockIndex: number): UIMessageChunk[] {
@@ -555,6 +569,7 @@ function mapResult(msg: SDKResultMessage, state: ClaudeAgentChunkMapperState): C
     sessionId: msg.session_id,
     usage,
     capturedPlans: [],
+    capturedTodos: [],
   }
 }
 
@@ -748,13 +763,27 @@ function createClaudeCodeToolResult(
     return result
   }
 
-  const args = state.toolArgsByToolCallId.get(toolCallId) ?? parseToolInputText(readAccumulatedText(state.toolInputTextByToolCallId.get(toolCallId)))
+  const args = readToolCallArgs(toolCallId, state)
   const enrichedResult = attachTodoWritePluginState(toolName, args, result)
   return createClaudeCodeToolResultPayload({
     apiName: toolName,
     args,
     result: enrichedResult,
   })
+}
+
+function readTodoWriteCapture(toolCallId: string, state: ClaudeAgentChunkMapperState): ClaudeAgentCapturedTodos | null {
+  const toolName = state.toolNamesByToolCallId.get(toolCallId)
+  if (!toolName || !isTodoWriteToolName(toolName)) {
+    return null
+  }
+  const pluginState = synthesizeTodoWritePluginState(readToolCallArgs(toolCallId, state))
+  return pluginState ? { toolCallId, todos: pluginState.todos } : null
+}
+
+function readToolCallArgs(toolCallId: string, state: ClaudeAgentChunkMapperState): unknown {
+  return state.toolArgsByToolCallId.get(toolCallId)
+    ?? parseToolInputText(readAccumulatedText(state.toolInputTextByToolCallId.get(toolCallId)))
 }
 
 function attachTodoWritePluginState(

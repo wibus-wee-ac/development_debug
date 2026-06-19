@@ -55,6 +55,7 @@ export type RuntimeUiSlotIconKey =
   | 'personality'
   | 'plugin'
   | 'plan'
+  | 'progress'
   | 'quick-question'
   | 'user-input'
   | 'reasoning'
@@ -90,6 +91,7 @@ export type RuntimeUiSlotStateKind =
   | 'mcp'
   | 'model'
   | 'plan'
+  | 'progress'
   | 'plugin'
   | 'reasoning'
   | 'search'
@@ -241,6 +243,27 @@ export interface RuntimePlanUiSlotState {
   content: string | null
   steps: RuntimePlanStep[]
   currentStep: string | null
+  pendingCount: number
+  inProgressCount: number
+  completedCount: number
+  updatedAt: number
+}
+
+export interface RuntimeProgressItem {
+  id: string | null
+  label: string
+  status: RuntimePlanStepStatus
+  sourceStatus: string | null
+}
+
+export interface RuntimeProgressUiSlotState {
+  kind: 'progress'
+  slotId: string
+  threadId: string
+  turnId: string | null
+  source: string
+  items: RuntimeProgressItem[]
+  currentItem: string | null
   pendingCount: number
   inProgressCount: number
   completedCount: number
@@ -514,6 +537,7 @@ export type RuntimeUiSlotState =
   | RuntimeMcpUiSlotState
   | RuntimeModelUiSlotState
   | RuntimePlanUiSlotState
+  | RuntimeProgressUiSlotState
   | RuntimePluginUiSlotState
   | RuntimeReasoningUiSlotState
   | RuntimeSearchUiSlotState

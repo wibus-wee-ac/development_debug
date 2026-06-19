@@ -45,6 +45,7 @@ export type ChatSlashCommandIconKey =
   | 'personality'
   | 'plugin'
   | 'plan'
+  | 'progress'
   | 'quick-question'
   | 'user-input'
   | 'reasoning'

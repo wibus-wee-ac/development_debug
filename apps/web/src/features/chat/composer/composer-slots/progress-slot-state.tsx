@@ -10,20 +10,22 @@ import { CheckCircle2Icon, ListChecksIcon } from 'lucide-react'
 import { cn } from '~/lib/cn'
 
 import type {
-  ChatRuntimePlanStep,
   ChatRuntimePlanStepStatus,
   ChatRuntimePlanUiSlotState,
+  ChatRuntimeProgressUiSlotState,
 } from '../../capabilities/chat-capabilities'
 import { ComposerSlotShell } from './composer-slot-shell'
 
 /** Above this step count dots get unreadable; fall back to a `done/total` fraction. */
 const PROGRESS_STEP_DOTS_MAX = 10
+type ComposerProgressState = ChatRuntimePlanUiSlotState | ChatRuntimeProgressUiSlotState
+type ComposerProgressStep = { label: string, status: ChatRuntimePlanStepStatus }
 
 export function ProgressSlotState({
   state,
   className,
 }: {
-  state: ChatRuntimePlanUiSlotState
+  state: ComposerProgressState
   className?: string
 }) {
   return (
@@ -33,7 +35,7 @@ export function ProgressSlotState({
   )
 }
 
-function ProgressSlotContent({ state }: { state: ChatRuntimePlanUiSlotState }) {
+function ProgressSlotContent({ state }: { state: ComposerProgressState }) {
   const progress = readPlanProgress(state)
   if (!progress) {
     return null
@@ -80,7 +82,7 @@ function ProgressStepDots({
   steps,
   fraction,
 }: {
-  steps: ChatRuntimePlanStep[]
+  steps: ComposerProgressStep[]
   fraction: { completedCount: number, totalCount: number }
 }) {
   if (steps.length > PROGRESS_STEP_DOTS_MAX) {
@@ -123,28 +125,41 @@ function ProgressStepDot({ status }: { status: ChatRuntimePlanStepStatus }) {
   )
 }
 
-function readPlanProgress(state: ChatRuntimePlanUiSlotState) {
-  const totalCount = state.steps.length
+function readPlanProgress(state: ComposerProgressState) {
+  const steps = readProgressSteps(state)
+  const totalCount = steps.length
   if (totalCount === 0) {
     return null
   }
 
-  const inProgressIndex = state.steps.findIndex(step => step.status === 'inProgress')
-  const pendingIndex = state.steps.findIndex(step => step.status === 'pending')
-  const completedCount = state.steps.filter(step => step.status === 'completed').length
+  const inProgressIndex = steps.findIndex(step => step.status === 'inProgress')
+  const pendingIndex = steps.findIndex(step => step.status === 'pending')
+  const completedCount = steps.filter(step => step.status === 'completed').length
   const complete = completedCount === totalCount
   const currentIndex = inProgressIndex >= 0
     ? inProgressIndex
     : pendingIndex >= 0
       ? pendingIndex
       : Math.max(0, totalCount - 1)
-  const currentStep = state.steps[currentIndex]?.step?.trim() || state.currentStep?.trim() || null
+  const currentStep = steps[currentIndex]?.label?.trim() || readCurrentProgressLabel(state)
 
   return {
     complete,
-    steps: state.steps,
+    steps,
     currentStep,
     stepLabel: `Step ${currentIndex + 1}/${totalCount}`,
     fraction: { completedCount, totalCount },
   }
+}
+
+function readProgressSteps(state: ComposerProgressState): ComposerProgressStep[] {
+  if (state.kind === 'progress') {
+    return state.items.map(item => ({ label: item.label, status: item.status }))
+  }
+  return state.steps.map(step => ({ label: step.step, status: step.status }))
+}
+
+function readCurrentProgressLabel(state: ComposerProgressState): string | null {
+  const value = state.kind === 'progress' ? state.currentItem : state.currentStep
+  return value?.trim() || null
 }

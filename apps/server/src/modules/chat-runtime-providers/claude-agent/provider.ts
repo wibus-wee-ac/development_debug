@@ -55,9 +55,11 @@ import {
   clearClaudeAgentCapturedPlan,
   clearClaudeAgentPendingModelSwitch,
   projectClaudeAgentPlanUiSlotState,
+  projectClaudeAgentProgressUiSlotState,
   readClaudeAgentPendingModelSwitchId,
   resolveClaudeAgentPendingModelSwitchId,
   writeClaudeAgentCapturedPlan,
+  writeClaudeAgentProgress,
   writeClaudeAgentPendingModelSwitch,
 } from './state-projector'
 import type { ClaudeAgentProviderDeps, ClaudeAgentSessionInfo, ClaudeTitleGenerationThinkingEffort } from './types'
@@ -174,10 +176,14 @@ export class ClaudeAgentProvider implements ChatRuntime {
 
   async getUiSlotStates(input: GetUiSlotStatesInput): Promise<RuntimeUiSlotState[]> {
     const planState = projectClaudeAgentPlanUiSlotState(input.runtimeSession)
+    const progressState = projectClaudeAgentProgressUiSlotState(input.runtimeSession)
     const compactState = await this.readCompactState(input)
     const states: RuntimeUiSlotState[] = []
     if (planState) {
       states.push(planState)
+    }
+    if (progressState) {
+      states.push(progressState)
     }
     if (compactState) {
       states.push(compactState)
@@ -367,6 +373,9 @@ export class ClaudeAgentProvider implements ChatRuntime {
         const result = await mapClaudeAgentMessageToChunks(message, mapperState)
         for (const plan of result.capturedPlans) {
           writeClaudeAgentCapturedPlan(input.runtimeSession, plan)
+        }
+        for (const progress of result.capturedTodos) {
+          writeClaudeAgentProgress(input.runtimeSession, progress)
         }
 
         if (isChatStreamTraceEnabled()) {

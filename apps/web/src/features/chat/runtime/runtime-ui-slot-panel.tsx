@@ -11,6 +11,7 @@ import {
   HardDriveIcon,
   HelpCircleIcon,
   KeyRoundIcon,
+  ListChecksIcon,
   PackageIcon,
   PuzzleIcon,
   SearchIcon,
@@ -84,13 +85,15 @@ const GROUP_ORDER: SlotGroupKey[] = ['environment', 'activity', 'available']
 const RUNTIME_PANEL_OWNED_ELSEWHERE = new Set<ChatRuntimeUiSlotState['kind']>([
   'compact',
   'goal',
-  'plan'
+  'plan',
+  'progress'
 ])
 
 const RUNTIME_PANEL_EXCLUDED_ICON_KEYS = new Set<ChatRuntimeUiSlotIconKey>([
   'compact',
   'goal',
-  'plan'
+  'plan',
+  'progress'
 ])
 
 const KIND_GROUPS: Partial<Record<ChatRuntimeUiSlotState['kind'], SlotGroupKey>> = {
@@ -103,6 +106,7 @@ const KIND_GROUPS: Partial<Record<ChatRuntimeUiSlotState['kind'], SlotGroupKey>>
   mcp: 'environment',
   model: 'environment',
   plugin: 'environment',
+  progress: 'activity',
   reasoning: 'environment',
   search: 'activity',
   skills: 'environment',
@@ -116,6 +120,7 @@ const KIND_GROUPS: Partial<Record<ChatRuntimeUiSlotState['kind'], SlotGroupKey>>
 const STATE_ORDER: Record<ChatRuntimeUiSlotState['kind'], number> = {
   goal: 10,
   plan: 20,
+  progress: 25,
   compact: 30,
   status: 100,
   model: 110,
@@ -773,6 +778,8 @@ function readSlotIcon(iconKey?: ChatRuntimeUiSlotIconKey, kind?: ChatRuntimeUiSl
       return SparklesIcon
     case 'plugin':
       return PuzzleIcon
+    case 'progress':
+      return ListChecksIcon
     case 'reasoning':
       return ZapIcon
     case 'search':
