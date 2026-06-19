@@ -7,10 +7,11 @@ import { Button } from '~/components/ui/button'
 import { ResourcesPopover } from '~/features/devtool/resources/resources-popover'
 import { useAllSessions } from '~/features/workspace/use-session'
 import { cn } from '~/lib/cn'
-import { isTearoffWindow, platform } from '~/lib/electron'
+import { isTearoffWindow, platform, tearoffSessionId } from '~/lib/electron'
 import { SurfaceBar } from '~/navigation/surface-bar'
 import { useSurfaceStore } from '~/navigation/surface-store'
 import { useLayoutStore } from '~/store/layout'
+import { useSessionLayoutStore } from '~/store/session-layout'
 
 interface AppHeaderProps {
   hasAside?: boolean
@@ -41,6 +42,7 @@ export function AppHeader({
 }: AppHeaderProps) {
   'use no memo'
   const { t } = useTranslation('chrome')
+  const { t: tWorkspace } = useTranslation('workspace')
   const bottomPanelOpen = useLayoutStore(s => s.bottomPanelOpen)
   const asideOpen = useLayoutStore(s => s.asideOpen)
   const toggleBottomPanel = useLayoutStore(s => s.toggleBottomPanel)
@@ -71,6 +73,9 @@ export function AppHeader({
       : t('header.action.collapseSidebar')
   const reserveTrafficLightSpace = platform === 'darwin' && (isTearoffWindow || sidebarInSheet)
   const asidePresentationOpen = asideOpen
+  const tearoffSessionTitle = useSessionLayoutStore(state =>
+    sessionScoped && tearoffSessionId ? state.sessions[tearoffSessionId]?.sessionTitle : null)
+  const sessionScopedTitle = tearoffSessionTitle || tWorkspace('session.fallbackTitle')
 
   const handleSidebarToggle = useCallback(() => {
     if (sidebarInSheet) {
@@ -130,13 +135,24 @@ export function AppHeader({
 
       {/* Surface bar */}
       <div className="flex-1 min-w-0 ml-0.5 mr-1 h-full" style={{ WebkitAppRegion: isTearoffWindow ? 'drag' : 'no-drag' } as React.CSSProperties}>
-        {!sessionScoped && (
-          <SurfaceBar
-            className="h-full"
-            runningSessionIds={runningSessionIds}
-            unreadSessionIds={unreadSessionIds}
-          />
-        )}
+        {sessionScoped
+          ? (
+            <div className="flex h-full min-w-0 items-center">
+              <div
+                className="min-w-0 truncate px-2 text-[13px] font-medium text-foreground"
+                title={sessionScopedTitle}
+              >
+                {sessionScopedTitle}
+              </div>
+            </div>
+            )
+          : (
+            <SurfaceBar
+              className="h-full"
+              runningSessionIds={runningSessionIds}
+              unreadSessionIds={unreadSessionIds}
+            />
+            )}
       </div>
 
       {/* Right: panel toggles */}
