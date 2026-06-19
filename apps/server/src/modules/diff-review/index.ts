@@ -264,6 +264,21 @@ export const diffReview = new Elysia({
     body: DiffReviewModel.generateGuideBody,
     response: { 200: DiffReviewModel.review },
   })
+  .post('/:id/diff-reviews/:reviewId/guide/cancel', async ({ params }) => {
+    return await DiffReview.cancelGuide({
+      workspaceId: params.id,
+      reviewId: params.reviewId,
+    })
+  }, {
+    detail: {
+      'summary': 'Cancel diff change walkthrough generation',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'guide', 'cancel'],
+      },
+    },
+    params: DiffReviewModel.reviewParams,
+    response: { 200: DiffReviewModel.review },
+  })
   .post('/:id/diff-reviews/:reviewId/agent-fixes', ({ params, body }) => {
     const input = body as {
       threadId?: string | null

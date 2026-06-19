@@ -158,6 +158,7 @@ const guideStatus = t.Union([
   t.Literal('running'),
   t.Literal('ready'),
   t.Literal('failed'),
+  t.Literal('cancelled'),
 ])
 
 const guide = t.Object({
@@ -166,6 +167,8 @@ const guide = t.Object({
   providerTargetId: t.Nullable(t.String()),
   runtimeKind: t.Nullable(guideRuntimeKind),
   modelId: t.Nullable(t.String()),
+  sessionId: t.Nullable(t.String()),
+  runId: t.Nullable(t.String()),
   errorMessage: t.Nullable(t.String()),
   createdAt: t.Nullable(t.Number()),
   updatedAt: t.Nullable(t.Number()),

@@ -169,6 +169,30 @@ function resolveCredentialAuthMode(credentialRef: string | null): z.infer<typeof
   }
 }
 
+function assertChatgptCredentialProviderInvariant(input: UpsertManualProviderTargetInput): void {
+  if (resolveCredentialAuthMode(input.credentialRef ?? null) !== 'chatgptAuthTokens') {
+    return
+  }
+  if (input.providerKind !== 'openai-compatible') {
+    throw new AppError({
+      code: 'invalid_provider_target',
+      status: 400,
+      message: 'ChatGPT login credentials can only be used by OpenAI-compatible provider targets',
+      details: { providerKind: input.providerKind },
+    })
+  }
+  const config = JsonObjectTextSchema.parse(input.connectionConfigJson)
+  const storedAuthMode = CodexAuthModeSchema.safeParse(config.authMode)
+  if (storedAuthMode.success && storedAuthMode.data !== 'chatgptAuthTokens') {
+    throw new AppError({
+      code: 'invalid_provider_target',
+      status: 400,
+      message: 'ChatGPT login authentication mode cannot be changed',
+      details: { authMode: storedAuthMode.data },
+    })
+  }
+}
+
 function toResolvedProviderTarget(row: ProviderTargetRow): ResolvedProviderTarget {
   const sourceMetadata
     = row.kind === 'external' && row.sourceKey && row.externalRecordId
@@ -275,6 +299,7 @@ export function upsertManualProviderTarget(
       details: { providerTargetId: id },
     })
   }
+  assertChatgptCredentialProviderInvariant(input)
 
   const nextEnabled = input.enabled ?? existing?.enabled ?? true
   const connectionConfigJson = normalizeManualConnectionConfig(input)

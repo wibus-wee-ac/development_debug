@@ -33,18 +33,15 @@ import {
   diffReviewSubmissions,
   diffReviewThreadReactions,
   diffReviewThreads,
-  workspaces,
 } from '@cradle/db'
-import type { UIMessageChunk } from 'ai'
 import { and, asc, desc, eq } from 'drizzle-orm'
 
 import { AppError } from '../../errors/app-error'
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
 import { getRuntimeRegistry } from '../chat-runtime/chat-runtime-provider-registry'
-import type { ChatRuntimeSettings, RuntimeProviderTargetProfile, RuntimeSession } from '../chat-runtime/runtime-provider-types'
+import type { ChatRuntimeSettings, RuntimeProviderTargetProfile } from '../chat-runtime/runtime-provider-types'
 import * as ChatRuntime from '../chat-runtime/service'
-import { createUserMessage } from '../chat-runtime/ui-message'
 import * as Git from '../git/service'
 import * as ModelRegistry from '../model-registry/service'
 import * as Session from '../session/service'
@@ -257,6 +254,8 @@ function emptyGuideView(revisionId: string | null): ReviewGuideView {
     providerTargetId: null,
     runtimeKind: null,
     modelId: null,
+    sessionId: null,
+    runId: null,
     errorMessage: null,
     createdAt: null,
     updatedAt: null,
@@ -357,6 +356,8 @@ function toGuideView(row: DiffReviewGuide | null | undefined, revision: DiffRevi
     providerTargetId: row.providerTargetId,
     runtimeKind: row.runtimeKind as GuideRuntimeKind,
     modelId: row.modelId,
+    sessionId: row.sessionId,
+    runId: row.runId,
     errorMessage: row.errorMessage,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
@@ -1429,40 +1430,6 @@ function buildGuideProfile(providerTargetId: string): RuntimeProviderTargetProfi
   }
 }
 
-function getWorkspacePath(workspaceId: string): string {
-  const workspace = db().select().from(workspaces).where(eq(workspaces.id, workspaceId)).get()
-  if (!workspace) {
-    throw new AppError({
-      code: 'workspace_not_found',
-      status: 404,
-      message: 'Workspace not found',
-      details: { workspaceId },
-    })
-  }
-  return workspace.path
-}
-
-function buildGuideRuntimeSession(input: {
-  workspaceId: string
-  providerTargetId: string
-  runtimeKind: GuideRuntimeKind
-  workspacePath: string
-  modelId?: string | null
-}): RuntimeSession {
-  return {
-    id: `diff-review-guide-${randomUUID()}`,
-    chatSessionId: `diff-review-guide-${input.workspaceId}-${randomUUID()}`,
-    providerTargetId: input.providerTargetId,
-    runtimeKind: input.runtimeKind,
-    providerSessionId: null,
-    providerStateSnapshot: JSON.stringify({
-      workspacePath: input.workspacePath,
-      agentId: null,
-      models: { currentModelId: input.modelId ?? null },
-    }),
-  }
-}
-
 function shellQuote(value: string): string {
   return `'${value.replace(/'/g, "'\\''")}'`
 }
@@ -1566,50 +1533,6 @@ function buildGuideAgentInstruction(input: {
       threads,
     }),
   ].join('\n')
-}
-
-function collectTextDelta(chunk: UIMessageChunk): string {
-  if (chunk.type === 'text-delta') {
-    return chunk.delta
-  }
-  return ''
-}
-
-async function runGuideAgentTurn(input: {
-  runtimeKind: GuideRuntimeKind
-  profile: RuntimeProviderTargetProfile
-  runtimeSession: RuntimeSession
-  workspaceId: string
-  workspacePath: string
-  instruction: string
-  modelId?: string | null
-}): Promise<string> {
-  const runtime = getRuntimeRegistry().get(input.runtimeKind)
-  if (!runtime) {
-    throw new AppError({
-      code: 'diff_review_guide_provider_unsupported',
-      status: 400,
-      message: 'Provider target runtime does not support change walkthrough generation',
-      details: { runtimeKind: input.runtimeKind, providerTargetId: input.profile.providerTargetId },
-    })
-  }
-
-  let output = ''
-  for await (const chunk of runtime.streamTurn({
-    runId: `diff-review-guide-${randomUUID()}`,
-    runtimeSession: input.runtimeSession,
-    profile: input.profile,
-    message: createUserMessage(randomUUID(), input.instruction),
-    modelId: input.modelId ?? undefined,
-    workspaceId: input.workspaceId,
-    workspacePath: input.workspacePath,
-    providerOptions: {
-      runtimeSettings: GUIDE_RUNTIME_SETTINGS,
-    },
-  })) {
-    output += collectTextDelta(chunk)
-  }
-  return output.trim()
 }
 
 function parseGuideJson(raw: string): unknown {
@@ -1801,6 +1724,8 @@ function upsertGuide(input: {
   providerTargetId: string
   runtimeKind: GuideRuntimeKind
   modelId?: string | null
+  sessionId?: string | null
+  runId?: string | null
   inputHash: string
   status: ReviewGuideStatus
   steps?: ReviewGuideStepView[]
@@ -1815,6 +1740,8 @@ function upsertGuide(input: {
     providerTargetId: input.providerTargetId,
     runtimeKind: input.runtimeKind,
     modelId: input.modelId ?? null,
+    sessionId: input.sessionId ?? null,
+    runId: input.runId ?? null,
     inputHash: input.inputHash,
     status: input.status,
     stepsJson: jsonStringify(steps),
@@ -1827,6 +1754,8 @@ function upsertGuide(input: {
       providerTargetId: input.providerTargetId,
       runtimeKind: input.runtimeKind,
       modelId: input.modelId ?? null,
+      sessionId: input.sessionId ?? null,
+      runId: input.runId ?? null,
       inputHash: input.inputHash,
       status: input.status,
       stepsJson: jsonStringify(steps),
@@ -1891,42 +1820,22 @@ async function runGuideGenerationTask(input: {
   revision: DiffReviewRevision
   files: DiffReviewFile[]
   threads: ReviewThreadView[]
-  profile: RuntimeProviderTargetProfile
   providerTargetId: string
   runtimeKind: GuideRuntimeKind
   modelId?: string | null
-  workspacePath: string
-  instruction: string
   inputHash: string
-  runtimeSession: RuntimeSession
+  sessionId: string
+  runId: string
 }): Promise<void> {
   try {
-    const runtime = getRuntimeRegistry().get(input.runtimeKind)
-    if (!runtime) {
-      throw new AppError({
-        code: 'diff_review_guide_provider_unsupported',
-        status: 400,
-        message: 'Provider target runtime does not support change walkthrough generation',
-        details: { runtimeKind: input.runtimeKind, providerTargetId: input.providerTargetId },
-      })
+    const run = await ChatRuntime.waitForRunCompletion(input.runId)
+    if (run.status !== 'complete') {
+      throw new Error(run.errorText ?? (run.status === 'aborted' ? 'Guide generation run was aborted' : 'Guide generation run failed'))
     }
-
-    const startedRuntimeSession = await runtime.startChatSession({
-      chatSessionId: input.runtimeSession.chatSessionId,
-      profile: input.profile,
-      workspacePath: input.workspacePath,
-      modelId: input.modelId ?? undefined,
-      previousProviderStateSnapshot: input.runtimeSession.providerStateSnapshot,
-    })
-    const rawOutput = await runGuideAgentTurn({
-      runtimeKind: input.runtimeKind,
-      profile: input.profile,
-      runtimeSession: startedRuntimeSession,
-      workspaceId: input.workspaceId,
-      workspacePath: input.workspacePath,
-      instruction: input.instruction,
-      modelId: input.modelId,
-    })
+    const rawOutput = Session.getRunMessageContents([input.runId])[0]?.content?.trim()
+    if (!rawOutput) {
+      throw new Error('Guide generation completed without assistant output')
+    }
     await assertGuideWorktreeMatchesRevision({
       workspaceId: input.workspaceId,
       review: input.review,
@@ -1951,6 +1860,8 @@ async function runGuideGenerationTask(input: {
       providerTargetId: input.providerTargetId,
       runtimeKind: input.runtimeKind,
       modelId: input.modelId,
+      sessionId: input.sessionId,
+      runId: input.runId,
       inputHash: input.inputHash,
       status: 'ready',
       steps,
@@ -1972,6 +1883,8 @@ async function runGuideGenerationTask(input: {
       providerTargetId: input.providerTargetId,
       runtimeKind: input.runtimeKind,
       modelId: input.modelId,
+      sessionId: input.sessionId,
+      runId: input.runId,
       inputHash: input.inputHash,
       status: 'failed',
       steps: [],
@@ -2032,7 +1945,6 @@ export async function generateGuide(input: {
     providerTargetId: input.providerTargetId,
   })
 
-  const workspacePath = getWorkspacePath(input.workspaceId)
   const threads = loadThreads(review.id)
   const instruction = buildGuideAgentInstruction({ review, revision, files, threads })
   const inputHash = hashText(JSON.stringify({
@@ -2043,13 +1955,6 @@ export async function generateGuide(input: {
     modelId: input.modelId ?? null,
     instructionHash: hashText(instruction),
   }))
-  const runtimeSession = buildGuideRuntimeSession({
-    workspaceId: input.workspaceId,
-    providerTargetId: input.providerTargetId,
-    runtimeKind,
-    workspacePath,
-    modelId: input.modelId,
-  })
   if (!getRuntimeRegistry().get(runtimeKind)) {
     throw new AppError({
       code: 'diff_review_guide_provider_unsupported',
@@ -2059,12 +1964,29 @@ export async function generateGuide(input: {
     })
   }
 
+  const session = Session.create({
+    workspaceId: review.workspaceId,
+    title: `Diff guide: ${review.title}`,
+    providerTargetId: input.providerTargetId,
+    modelId: input.modelId ?? null,
+    runtimeKind,
+    runtimeSettings: GUIDE_RUNTIME_SETTINGS,
+  })
+  const run = await ChatRuntime.createRun({
+    sessionId: session.id,
+    text: instruction,
+    modelId: input.modelId ?? undefined,
+    runtimeSettings: GUIDE_RUNTIME_SETTINGS,
+  })
+
   upsertGuide({
     reviewId: review.id,
     revisionId: revision.id,
     providerTargetId: input.providerTargetId,
     runtimeKind,
     modelId: input.modelId,
+    sessionId: session.id,
+    runId: run.runId,
     inputHash,
     status: 'running',
     steps: [],
@@ -2076,19 +1998,70 @@ export async function generateGuide(input: {
     revision,
     files,
     threads,
-    profile,
     providerTargetId: input.providerTargetId,
     runtimeKind,
     modelId: input.modelId,
-    workspacePath,
-    instruction,
     inputHash,
-    runtimeSession,
+    sessionId: session.id,
+    runId: run.runId,
   }).catch((error) => {
     console.error('Diff review guide generation background task failed', error)
   })
 
   return loadReviewView(review, { userId: input.userId })
+}
+
+export async function cancelGuide(input: {
+  workspaceId: string
+  reviewId: string
+  userId?: string
+}): Promise<DiffReviewView> {
+  const review = getReviewRow(input.workspaceId, input.reviewId)
+  const revision = getCurrentRevision(review)
+  const guide = db().select().from(diffReviewGuides).where(and(
+    eq(diffReviewGuides.reviewId, review.id),
+    eq(diffReviewGuides.revisionId, revision.id),
+  )).get()
+
+  if (!guide || guide.status === 'cancelled') {
+    return loadReviewView(review, { userId: input.userId })
+  }
+  if (guide.status === 'ready') {
+    throw new AppError({
+      code: 'diff_review_guide_ready',
+      status: 409,
+      message: 'Completed guide generation cannot be cancelled',
+      details: { reviewId: review.id, revisionId: revision.id },
+    })
+  }
+  if (isGuideGenerationActive(guide.status) && guide.sessionId) {
+    await ChatRuntime.cancelSession(guide.sessionId)
+  }
+
+  const now = currentUnixSeconds()
+  db().update(diffReviewGuides)
+    .set({
+      status: 'cancelled',
+      stepsJson: '[]',
+      errorMessage: null,
+      updatedAt: now,
+    })
+    .where(eq(diffReviewGuides.id, guide.id))
+    .run()
+  recordEvent({
+    reviewId: review.id,
+    eventKind: 'guide_cancelled',
+    actorKind: 'user',
+    actorId: input.userId ?? LOCAL_USER_ID,
+    payload: {
+      revisionId: revision.id,
+      sessionId: guide.sessionId,
+      runId: guide.runId,
+      previousStatus: guide.status,
+    },
+    createdAt: now,
+  })
+  return loadReviewView(getReviewRow(input.workspaceId, input.reviewId), { userId: input.userId })
 }
 
 export function createAgentFix(input: {

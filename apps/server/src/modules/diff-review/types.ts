@@ -121,6 +121,7 @@ export interface ReviewEventView {
     | 'agent_fix_completed'
     | 'agent_fix_failed'
     | 'agent_fix_cancelled'
+    | 'guide_cancelled'
     | 'commit_plan_created'
     | 'commit_plan_updated'
     | 'commit_plan_applied'
@@ -209,7 +210,7 @@ export interface ReviewGuideStepView {
 }
 
 export type GuideRuntimeKind = 'codex' | 'claude-agent'
-export type ReviewGuideStatus = 'pending' | 'running' | 'ready' | 'failed'
+export type ReviewGuideStatus = 'pending' | 'running' | 'ready' | 'failed' | 'cancelled'
 
 export interface ReviewGuideView {
   revisionId: string | null
@@ -217,6 +218,8 @@ export interface ReviewGuideView {
   providerTargetId: string | null
   runtimeKind: GuideRuntimeKind | null
   modelId: string | null
+  sessionId: string | null
+  runId: string | null
   errorMessage: string | null
   createdAt: number | null
   updatedAt: number | null

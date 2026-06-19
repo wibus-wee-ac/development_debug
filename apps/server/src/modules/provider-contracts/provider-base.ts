@@ -66,6 +66,8 @@ export const ClaudeAgentConfigSchema = BaseProviderConfig.extend({
 
 export const UniversalProviderConfigSchema = z.object({
   baseUrl: z.string().nullable().default(null),
+  openaiBaseUrl: z.string().nullable().default(null),
+  anthropicBaseUrl: z.string().nullable().default(null),
   model: z.string().nullable().default(null),
   enabledModels: z.array(z.string()).default([]),
   maxMessages: z.number().default(50),
@@ -80,8 +82,11 @@ export type CodexAuthMode = z.infer<typeof CodexAuthModeSchema>
 
 export function readTrustedUniversalConfig(raw: string): UniversalProviderConfig {
   const config = JSON.parse(raw) as Partial<UniversalProviderConfig>
+  const legacyBaseUrl = config.baseUrl ?? null
   return {
-    baseUrl: config.baseUrl ?? null,
+    baseUrl: legacyBaseUrl,
+    openaiBaseUrl: config.openaiBaseUrl ?? legacyBaseUrl,
+    anthropicBaseUrl: config.anthropicBaseUrl ?? legacyBaseUrl,
     model: config.model ?? null,
     enabledModels: config.enabledModels ?? [],
     maxMessages: config.maxMessages ?? 50,
