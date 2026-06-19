@@ -2,10 +2,18 @@
  * Owns Cradle-side ChatGPT OAuth material for Codex app-server external auth.
  */
 import { readOptionalObjectRecord as readRecord } from '../../../../helpers/json-record'
-import { getLogger } from '../../../../logging/logger'
+import type { CodexAuthMode, CodexConfig } from '../../../provider-contracts/provider-base'
+import type { SecretValueWithMetadata } from '../../../secrets/service'
 import type { LoginAccountParams } from '../app-server-protocol/v2/LoginAccountParams'
 
-const CODEX_CHATGPT_AUTH_KIND = 'chatgpt-auth'
+export const CODEX_CHATGPT_AUTH_SECRET_KIND = 'chatgpt-auth'
+export const CODEX_PERSONAL_ACCESS_TOKEN_SECRET_KIND = 'codex-personal-access-token'
+export const CODEX_BEDROCK_API_KEY_SECRET_KIND = 'codex-bedrock-api-key'
+
+export const CODEX_PERSONAL_ACCESS_TOKEN_ENV = 'CODEX_ACCESS_TOKEN'
+export const CODEX_BEDROCK_API_KEY_ENV = 'AWS_BEARER_TOKEN_BEDROCK'
+export const CODEX_BEDROCK_REGION_ENV = 'AWS_REGION'
+
 const CODEX_CLIENT_ID = 'app_EMoamEEZ73f0CkXaXp7hrann'
 const OPENAI_OAUTH_TOKEN_URL = 'https://auth.openai.com/oauth/token'
 const ACCESS_TOKEN_REFRESH_SKEW_SECONDS = 5 * 60
@@ -31,10 +39,12 @@ export interface CodexChatgptAuthDeps {
   updateSecretValue?: (credentialRef: string, secret: string) => void
 }
 
-export interface CodexAppServerAuthResolution {
-  apiKey: string | null
-  chatgptAuth: CodexChatgptAuthCredential | null
-}
+export type CodexAppServerAuthResolution =
+  | { kind: 'apiKey', apiKey: string }
+  | { kind: 'chatgptAuthTokens', chatgptAuth: CodexChatgptAuthCredential }
+  | { kind: 'personalAccessToken', personalAccessToken: string }
+  | { kind: 'bedrockApiKey', bedrockApiKey: string, region: string }
+  | { kind: 'none' }
 
 export interface CodexAppServerAuthCarrier {
   credentialRef?: string | null
@@ -42,6 +52,7 @@ export interface CodexAppServerAuthCarrier {
 }
 
 export interface CodexAppServerAuthResolverDeps {
+  readSecretValueWithMetadata?: (credentialRef: string) => SecretValueWithMetadata
   readSecret: (credentialRef: string) => string
 }
 
@@ -119,40 +130,89 @@ export function readCodexChatgptAuthCredential(
 
 export function resolveCodexAppServerAuth(
   rawInput: CodexAppServerAuthCarrier,
-  configApiKey: string | undefined,
+  config: Pick<CodexConfig, 'apiKey' | 'authMode' | 'bedrock'>,
   envVar: string,
   deps: CodexAppServerAuthResolverDeps,
 ): CodexAppServerAuthResolution {
   const credentialRef = rawInput.secretRef ?? rawInput.credentialRef ?? null
   if (credentialRef) {
-    try {
-      const secret = deps.readSecret(credentialRef)
-      const chatgptAuth = readCodexChatgptAuthCredential(credentialRef, secret)
-      if (chatgptAuth) {
-        return { apiKey: null, chatgptAuth }
-      }
-      return { apiKey: secret, chatgptAuth: null }
+    if (!deps.readSecretValueWithMetadata) {
+      throw new Error('Codex auth resolution requires secret metadata reader')
     }
-    catch (err) {
-      // If credential decryption fails, log the error and fall through to other auth methods
-      // This prevents server crashes when CRADLE_CREDENTIAL_SECRET changes or data is corrupted
-      const logger = getLogger()
-      if (err instanceof Error && err.message.includes('authenticate data')) {
-        logger.warn('Failed to decrypt credential - CRADLE_CREDENTIAL_SECRET may have changed', {
-          credentialRef,
-          error: err.message,
-        })
+    const credential = deps.readSecretValueWithMetadata(credentialRef)
+    const auth = resolveCodexAppServerCredentialAuth(credential, config)
+    assertSelectedCodexAuthMode(config.authMode, auth, credential.kind)
+    return auth
+  }
+  if (config.apiKey) {
+    assertNoNativeCodexAuthModeWithoutCredential(config.authMode)
+    return { kind: 'apiKey', apiKey: config.apiKey }
+  }
+  assertNoNativeCodexAuthModeWithoutCredential(config.authMode)
+  const envApiKey = process.env[envVar]
+  if (envApiKey) {
+    return { kind: 'apiKey', apiKey: envApiKey }
+  }
+  return { kind: 'none' }
+}
+
+export function readCodexApiKeyAuth(auth: CodexAppServerAuthResolution): string | null {
+  return auth.kind === 'apiKey' ? auth.apiKey : null
+}
+
+export function readCodexChatgptAuth(auth: CodexAppServerAuthResolution): CodexChatgptAuthCredential | null {
+  return auth.kind === 'chatgptAuthTokens' ? auth.chatgptAuth : null
+}
+
+function resolveCodexAppServerCredentialAuth(
+  credential: SecretValueWithMetadata,
+  config: Pick<CodexConfig, 'bedrock'>,
+): CodexAppServerAuthResolution {
+  switch (credential.kind) {
+    case CODEX_CHATGPT_AUTH_SECRET_KIND: {
+      const chatgptAuth = readCodexChatgptAuthCredential(credential.id, credential.secret)
+      if (!chatgptAuth) {
+        throw new Error('Codex ChatGPT credential metadata is invalid')
       }
-      else {
-        logger.error('Failed to read credential', { credentialRef, err })
-      }
-      // Fall through to try other auth methods
+      return { kind: 'chatgptAuthTokens', chatgptAuth }
     }
+    case CODEX_PERSONAL_ACCESS_TOKEN_SECRET_KIND:
+      return { kind: 'personalAccessToken', personalAccessToken: credential.secret }
+    case CODEX_BEDROCK_API_KEY_SECRET_KIND: {
+      const region = config.bedrock?.region
+      if (!region) {
+        throw new Error('Codex Bedrock auth requires bedrock.region in provider config')
+      }
+      return { kind: 'bedrockApiKey', bedrockApiKey: credential.secret, region }
+    }
+    default:
+      return { kind: 'apiKey', apiKey: credential.secret }
   }
-  if (configApiKey) {
-    return { apiKey: configApiKey, chatgptAuth: null }
+}
+
+function assertSelectedCodexAuthMode(
+  selected: CodexAuthMode | undefined,
+  auth: CodexAppServerAuthResolution,
+  credentialKind: string,
+): void {
+  if (!selected) {
+    return
   }
-  return { apiKey: process.env[envVar] ?? null, chatgptAuth: null }
+  if (selected === 'personalAccessToken' && auth.kind !== 'personalAccessToken') {
+    throw new Error(`Codex personal access token auth requires a ${CODEX_PERSONAL_ACCESS_TOKEN_SECRET_KIND} credential, got ${credentialKind}`)
+  }
+  if (selected === 'bedrockApiKey' && auth.kind !== 'bedrockApiKey') {
+    throw new Error(`Codex Bedrock API key auth requires a ${CODEX_BEDROCK_API_KEY_SECRET_KIND} credential, got ${credentialKind}`)
+  }
+}
+
+function assertNoNativeCodexAuthModeWithoutCredential(selected: CodexAuthMode | undefined): void {
+  if (selected === 'personalAccessToken') {
+    throw new Error(`Codex personal access token auth requires a ${CODEX_PERSONAL_ACCESS_TOKEN_SECRET_KIND} credential`)
+  }
+  if (selected === 'bedrockApiKey') {
+    throw new Error(`Codex Bedrock API key auth requires a ${CODEX_BEDROCK_API_KEY_SECRET_KIND} credential`)
+  }
 }
 
 export async function ensureCodexChatgptAuthAccessToken(
@@ -235,7 +295,7 @@ export async function refreshCodexChatgptAuthCredential(
     chatgptPlanType,
   }
   deps.updateSecretValue?.(credential.credentialRef, JSON.stringify({
-    kind: CODEX_CHATGPT_AUTH_KIND,
+    kind: CODEX_CHATGPT_AUTH_SECRET_KIND,
     accessToken,
     refreshToken: nextRefreshToken,
     chatgptAccountId,

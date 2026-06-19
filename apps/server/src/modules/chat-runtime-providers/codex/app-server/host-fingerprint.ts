@@ -1,5 +1,10 @@
 import type { CodexAppServerClientOptions } from './client'
 import type { CodexChatgptAuthCredential } from './chatgpt-auth'
+import {
+  CODEX_BEDROCK_API_KEY_ENV,
+  CODEX_BEDROCK_REGION_ENV,
+  CODEX_PERSONAL_ACCESS_TOKEN_ENV,
+} from './chatgpt-auth'
 
 /**
  * Creates a fingerprint for Codex app-server host resource that includes only
@@ -17,6 +22,9 @@ export function createCodexAppServerHostFingerprint(input: {
   const processLevelConfig = input.options.config
     ? extractProcessLevelConfig(input.options.config)
     : null
+  const processLevelEnv = input.options.env
+    ? extractProcessLevelEnv(input.options.env)
+    : null
 
   return JSON.stringify({
     apiKey: input.options.apiKey ?? null,
@@ -29,6 +37,7 @@ export function createCodexAppServerHostFingerprint(input: {
       : null,
     codexPath: input.options.codexPath ?? null,
     processLevelConfig: stableJson(processLevelConfig),
+    processLevelEnv: stableJson(processLevelEnv),
     userAgentMode: input.options.userAgentMode ?? null,
   })
 }
@@ -42,6 +51,21 @@ function extractProcessLevelConfig(config: Record<string, unknown>): Record<stri
     }
   }
   return Object.keys(processConfig).length > 0 ? processConfig : null
+}
+
+function extractProcessLevelEnv(env: Record<string, string | undefined>): Record<string, string> | null {
+  const processEnv: Record<string, string> = {}
+  for (const key of [
+    CODEX_PERSONAL_ACCESS_TOKEN_ENV,
+    CODEX_BEDROCK_API_KEY_ENV,
+    CODEX_BEDROCK_REGION_ENV,
+  ]) {
+    const value = env[key]
+    if (value) {
+      processEnv[key] = value
+    }
+  }
+  return Object.keys(processEnv).length > 0 ? processEnv : null
 }
 
 function stableJson(value: unknown): string {

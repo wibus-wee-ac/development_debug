@@ -1,0 +1,184 @@
+import { describe, expect, it, vi } from 'vitest'
+
+import type { ResolvedProviderTarget } from '../../../provider-targets/service'
+import { CODEX_CHATGPT_AUTH_SECRET_KIND } from './chatgpt-auth'
+import type { CodexAppServerClientLike } from '../types'
+import {
+  consumeCodexRateLimitResetCredit,
+  readCodexAccountDiagnostics,
+} from './account-diagnostics'
+
+class FakeCodexAccountClient implements CodexAppServerClientLike {
+  readonly requests: Array<{ method: string, params?: unknown }> = []
+  readonly close = vi.fn()
+  readonly initialize = vi.fn(async () => undefined)
+
+  async request(method: string, params?: unknown): Promise<unknown> {
+    this.requests.push({ method, params })
+    switch (method) {
+      case 'account/login/start':
+        return {}
+      case 'account/rateLimits/read':
+        return {
+          rateLimits: {
+            limitId: 'codex',
+            limitName: 'Codex',
+            primary: { usedPercent: 40, windowDurationMins: 300, resetsAt: 1_800_000_000 },
+            secondary: null,
+            credits: { hasCredits: true, unlimited: false, balance: '20.00' },
+            individualLimit: null,
+            planType: 'plus',
+            rateLimitReachedType: null,
+          },
+          rateLimitsByLimitId: null,
+          rateLimitResetCredits: { availableCount: 2n },
+        }
+      case 'account/usage/read':
+        return {
+          summary: {
+            lifetimeTokens: 1234567890123456789n,
+            peakDailyTokens: 42n,
+            longestRunningTurnSec: 7n,
+            currentStreakDays: 3n,
+            longestStreakDays: 5n,
+          },
+          dailyUsageBuckets: [
+            { startDate: '2026-06-19', tokens: 42n },
+          ],
+        }
+      case 'account/rateLimitResetCredit/consume':
+        return { outcome: 'reset' }
+      default:
+        throw new Error(`Unexpected Codex request: ${method}`)
+    }
+  }
+
+  async nextNotification(): Promise<null> {
+    return null
+  }
+}
+
+describe('codex account diagnostics', () => {
+  it('returns unsupported without creating an app-server client', async () => {
+    const createAppServerClient = vi.fn()
+    const diagnostics = await readCodexAccountDiagnostics({
+      providerTargetId: 'anthropic-target',
+    }, {
+      ...createDiagnosticsDeps({
+        providerTargetId: 'anthropic-target',
+        providerKind: 'anthropic',
+        credentialRef: null,
+      }),
+      createAppServerClient,
+    })
+
+    expect(diagnostics.supported).toBe(false)
+    expect(diagnostics.unavailableReason).toBe('Codex account diagnostics are only available for Codex provider targets.')
+    expect(createAppServerClient).not.toHaveBeenCalled()
+  })
+
+  it('projects rate limits, reset credits, and token usage for ChatGPT auth', async () => {
+    const client = new FakeCodexAccountClient()
+    const diagnostics = await readCodexAccountDiagnostics({
+      providerTargetId: 'codex-chatgpt-target',
+    }, createDiagnosticsDeps({
+      providerTargetId: 'codex-chatgpt-target',
+      providerKind: 'openai-compatible',
+      credentialRef: 'credential-chatgpt',
+      client,
+    }))
+
+    expect(diagnostics.supported).toBe(true)
+    expect(diagnostics.rateLimits?.primary?.usedPercent).toBe(40)
+    expect(diagnostics.rateLimitResetCredits?.availableCount).toBe('2')
+    expect(diagnostics.tokenUsage?.summary.lifetimeTokens).toBe('1234567890123456789')
+    expect(diagnostics.tokenUsage?.dailyUsageBuckets).toEqual([
+      { startDate: '2026-06-19', tokens: '42' },
+    ])
+    expect(client.requests.map(request => request.method)).toEqual([
+      'account/login/start',
+      'account/rateLimits/read',
+      'account/usage/read',
+    ])
+    expect(client.close).toHaveBeenCalled()
+  })
+
+  it('passes the reset credit idempotency key to Codex app-server', async () => {
+    const client = new FakeCodexAccountClient()
+    const result = await consumeCodexRateLimitResetCredit({
+      providerTargetId: 'codex-chatgpt-reset-target',
+      idempotencyKey: 'reset-attempt-1',
+    }, createDiagnosticsDeps({
+      providerTargetId: 'codex-chatgpt-reset-target',
+      providerKind: 'openai-compatible',
+      credentialRef: 'credential-chatgpt',
+      client,
+    }))
+
+    expect(result.outcome).toBe('reset')
+    expect(client.requests).toContainEqual({
+      method: 'account/rateLimitResetCredit/consume',
+      params: { idempotencyKey: 'reset-attempt-1' },
+    })
+  })
+})
+
+function createDiagnosticsDeps(input: {
+  providerTargetId: string
+  providerKind: ResolvedProviderTarget['providerKind']
+  credentialRef: string | null
+  client?: CodexAppServerClientLike
+}) {
+  return {
+    resolveProviderTarget: () => createResolvedProviderTarget(input),
+    readSecret: () => createChatgptSecret(),
+    readSecretValueWithMetadata: () => ({
+      id: input.credentialRef ?? 'credential-chatgpt',
+      kind: CODEX_CHATGPT_AUTH_SECRET_KIND,
+      label: 'ChatGPT',
+      secret: createChatgptSecret(),
+    }),
+    updateSecretValue: vi.fn(),
+    readCodexPreferences: () => ({ useCradleUserAgent: true }),
+    createAppServerClient: input.client ? () => input.client! : undefined,
+  }
+}
+
+function createResolvedProviderTarget(input: {
+  providerTargetId: string
+  providerKind: ResolvedProviderTarget['providerKind']
+  credentialRef: string | null
+}): ResolvedProviderTarget {
+  return {
+    target: {
+      id: input.providerTargetId,
+      kind: 'manual',
+    },
+    id: input.providerTargetId,
+    kind: 'manual',
+    label: 'Provider',
+    providerKind: input.providerKind,
+    enabled: true,
+    connectionConfigJson: '{}',
+    configJson: JSON.stringify({
+      authMode: input.credentialRef ? 'chatgptAuthTokens' : 'apikey',
+      enabledModels: [],
+      skillPaths: [],
+      additionalDirectories: [],
+    }),
+    credentialRef: input.credentialRef,
+    enabledModelsJson: '[]',
+    customModelsJson: '[]',
+    iconSlug: null,
+    sourceMetadata: null,
+  }
+}
+
+function createChatgptSecret(): string {
+  return JSON.stringify({
+    accessToken: 'access-token',
+    refreshToken: 'refresh-token',
+    chatgptAccountId: 'account-id',
+    chatgptPlanType: 'plus',
+  })
+}

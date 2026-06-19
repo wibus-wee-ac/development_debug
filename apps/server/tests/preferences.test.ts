@@ -34,6 +34,7 @@ describe('preferences capability', () => {
         featureFlags: {
           multiWorkspacePoc: false,
           localAuthForDangerousActions: false,
+          continueBlockedCodexGoals: false,
         },
       })
 
@@ -57,6 +58,7 @@ describe('preferences capability', () => {
         featureFlags: {
           multiWorkspacePoc: true,
           localAuthForDangerousActions: true,
+          continueBlockedCodexGoals: false,
         },
       })
 
@@ -66,6 +68,7 @@ describe('preferences capability', () => {
         featureFlags: {
           multiWorkspacePoc: true,
           localAuthForDangerousActions: true,
+          continueBlockedCodexGoals: false,
         },
       })
     }
@@ -501,6 +504,99 @@ describe('preferences capability', () => {
     }
     finally {
       vi.unstubAllGlobals()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousCredentialSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousCredentialSecret
+      }
+    }
+  })
+
+  it('normalizes Codex PAT and Bedrock provider-target auth modes from credential kind', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousCredentialSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'test-secret'
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const patCredential = saveSecret({
+        kind: 'codex-personal-access-token',
+        label: 'Codex PAT',
+        secret: 'pat-token-1',
+      })
+      const bedrockCredential = saveSecret({
+        kind: 'codex-bedrock-api-key',
+        label: 'Codex Bedrock',
+        secret: 'bedrock-token-1',
+      })
+
+      const patRes = await app.handle(new Request('http://localhost/provider-targets/codex-pat', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          displayName: 'Codex PAT',
+          providerKind: 'openai-compatible',
+          enabled: true,
+          connectionConfig: {
+            authMode: 'apikey',
+            model: 'gpt-5-codex',
+          },
+          credentialRef: patCredential.id,
+        }),
+      }))
+      expect(patRes.status).toBe(200)
+      const patTarget = await patRes.json() as { connectionConfigJson: string, credentialRef: string }
+      expect(patTarget.credentialRef).toBe(patCredential.id)
+      expect(JSON.parse(patTarget.connectionConfigJson)).toEqual({
+        authMode: 'personalAccessToken',
+        model: 'gpt-5-codex',
+      })
+      expect(patTarget.connectionConfigJson).not.toContain('pat-token-1')
+
+      const bedrockRes = await app.handle(new Request('http://localhost/provider-targets/codex-bedrock', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          displayName: 'Codex Bedrock',
+          providerKind: 'openai-compatible',
+          enabled: true,
+          connectionConfig: {
+            authMode: 'apikey',
+            model: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+            bedrock: {
+              region: 'us-west-2',
+            },
+          },
+          credentialRef: bedrockCredential.id,
+        }),
+      }))
+      expect(bedrockRes.status).toBe(200)
+      const bedrockTarget = await bedrockRes.json() as { connectionConfigJson: string, credentialRef: string }
+      expect(bedrockTarget.credentialRef).toBe(bedrockCredential.id)
+      expect(JSON.parse(bedrockTarget.connectionConfigJson)).toEqual({
+        authMode: 'bedrockApiKey',
+        model: 'anthropic.claude-3-5-sonnet-20241022-v2:0',
+        bedrock: {
+          region: 'us-west-2',
+        },
+      })
+      expect(bedrockTarget.connectionConfigJson).not.toContain('bedrock-token-1')
+      expect(readSecret(patCredential.id)).toBe('pat-token-1')
+      expect(readSecret(bedrockCredential.id)).toBe('bedrock-token-1')
+    }
+    finally {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       if (previousDataDir === undefined) {

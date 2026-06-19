@@ -19,6 +19,11 @@ import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
+import {
+  CODEX_BEDROCK_API_KEY_SECRET_KIND,
+  CODEX_CHATGPT_AUTH_SECRET_KIND,
+  CODEX_PERSONAL_ACCESS_TOKEN_SECRET_KIND,
+} from '../chat-runtime-providers/codex/app-server/chatgpt-auth'
 import { CodexAuthModeSchema } from '../provider-contracts/provider-base'
 import { runtimeSupportsProviderKind } from '../provider-contracts/runtime-compatibility'
 import type { ModelCapabilities, ProviderKind, RuntimeKind } from '../provider-contracts/types'
@@ -152,7 +157,16 @@ function resolveCredentialAuthMode(credentialRef: string | null): z.infer<typeof
   if (!credential) {
     return null
   }
-  return credential.kind === 'chatgpt-auth' ? 'chatgptAuthTokens' : 'apikey'
+  switch (credential.kind) {
+    case CODEX_CHATGPT_AUTH_SECRET_KIND:
+      return 'chatgptAuthTokens'
+    case CODEX_PERSONAL_ACCESS_TOKEN_SECRET_KIND:
+      return 'personalAccessToken'
+    case CODEX_BEDROCK_API_KEY_SECRET_KIND:
+      return 'bedrockApiKey'
+    default:
+      return 'apikey'
+  }
 }
 
 function toResolvedProviderTarget(row: ProviderTargetRow): ResolvedProviderTarget {

@@ -113,6 +113,54 @@ describe('createCodexAppServerHostFingerprint', () => {
     expect(fp1).not.toBe(fp2)
   })
 
+  it('includes personal access token env in fingerprint', () => {
+    const fp1 = createCodexAppServerHostFingerprint({
+      options: {
+        env: {
+          CODEX_ACCESS_TOKEN: 'pat-token-1',
+          CRADLE_CHAT_SESSION_ID: 'session-1',
+        },
+      },
+      chatgptAuth: null,
+    })
+
+    const fp2 = createCodexAppServerHostFingerprint({
+      options: {
+        env: {
+          CODEX_ACCESS_TOKEN: 'pat-token-2',
+          CRADLE_CHAT_SESSION_ID: 'session-1',
+        },
+      },
+      chatgptAuth: null,
+    })
+
+    expect(fp1).not.toBe(fp2)
+  })
+
+  it('includes Bedrock auth env and region in fingerprint', () => {
+    const fp1 = createCodexAppServerHostFingerprint({
+      options: {
+        env: {
+          AWS_BEARER_TOKEN_BEDROCK: 'bedrock-token-1',
+          AWS_REGION: 'us-east-1',
+        },
+      },
+      chatgptAuth: null,
+    })
+
+    const fp2 = createCodexAppServerHostFingerprint({
+      options: {
+        env: {
+          AWS_BEARER_TOKEN_BEDROCK: 'bedrock-token-1',
+          AWS_REGION: 'us-west-2',
+        },
+      },
+      chatgptAuth: null,
+    })
+
+    expect(fp1).not.toBe(fp2)
+  })
+
   it('includes codexPath in fingerprint', () => {
     const fp1 = createCodexAppServerHostFingerprint({
       options: {

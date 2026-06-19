@@ -5,6 +5,54 @@ import { modelCapabilitiesSchema, providerKindSchema } from '../provider-contrac
 const providerTargetKind = t.Union([t.Literal('manual'), t.Literal('external')])
 const providerKind = providerKindSchema
 const nullableString = t.Union([t.String(), t.Null()])
+const nullableNumber = t.Union([t.Number(), t.Null()])
+
+const codexRateLimitWindowDiagnostics = t.Object({
+  usedPercent: t.Number(),
+  windowDurationMins: nullableNumber,
+  resetsAt: nullableNumber,
+}, { additionalProperties: false })
+
+const codexSpendControlLimitDiagnostics = t.Object({
+  limit: t.String(),
+  used: t.String(),
+  remainingPercent: t.Number(),
+  resetsAt: t.Number(),
+}, { additionalProperties: false })
+
+const codexRateLimitSnapshotDiagnostics = t.Object({
+  limitId: nullableString,
+  limitName: nullableString,
+  primary: t.Union([codexRateLimitWindowDiagnostics, t.Null()]),
+  secondary: t.Union([codexRateLimitWindowDiagnostics, t.Null()]),
+  credits: t.Union([
+    t.Object({
+      hasCredits: t.Boolean(),
+      unlimited: t.Boolean(),
+      balance: nullableString,
+    }, { additionalProperties: false }),
+    t.Null(),
+  ]),
+  individualLimit: t.Union([codexSpendControlLimitDiagnostics, t.Null()]),
+  planType: nullableString,
+  rateLimitReachedType: nullableString,
+}, { additionalProperties: false })
+
+const codexTokenUsageDiagnostics = t.Object({
+  summary: t.Object({
+    lifetimeTokens: nullableString,
+    peakDailyTokens: nullableString,
+    longestRunningTurnSec: nullableString,
+    currentStreakDays: nullableString,
+    longestStreakDays: nullableString,
+  }, { additionalProperties: false }),
+  dailyUsageBuckets: t.Array(
+    t.Object({
+      startDate: t.String(),
+      tokens: t.String(),
+    }, { additionalProperties: false }),
+  ),
+}, { additionalProperties: false })
 
 export const ProviderTargetsModel = {
   providerTarget: t.Object({
@@ -109,4 +157,45 @@ export const ProviderTargetsModel = {
   chatgptCredentialLoginParams: t.Object({
     loginId: t.String({ minLength: 1 }),
   }),
+
+  codexAccountDiagnostics: t.Object({
+    providerTargetId: t.String(),
+    supported: t.Boolean(),
+    unavailableReason: nullableString,
+    refreshedAt: nullableNumber,
+    account: t.Union([
+      t.Object({
+        authMode: t.Literal('chatgptAuthTokens'),
+        planType: nullableString,
+      }, { additionalProperties: false }),
+      t.Null(),
+    ]),
+    rateLimits: t.Union([codexRateLimitSnapshotDiagnostics, t.Null()]),
+    rateLimitsByLimitId: t.Union([
+      t.Object({}, { additionalProperties: codexRateLimitSnapshotDiagnostics }),
+      t.Null(),
+    ]),
+    rateLimitResetCredits: t.Union([
+      t.Object({
+        availableCount: t.String(),
+      }, { additionalProperties: false }),
+      t.Null(),
+    ]),
+    tokenUsage: t.Union([codexTokenUsageDiagnostics, t.Null()]),
+  }, { additionalProperties: false }),
+
+  codexRateLimitResetCreditConsumeBody: t.Object({
+    idempotencyKey: t.String({ minLength: 1 }),
+  }, { additionalProperties: false }),
+
+  codexRateLimitResetCreditConsumeResponse: t.Object({
+    providerTargetId: t.String(),
+    outcome: t.Union([
+      t.Literal('reset'),
+      t.Literal('nothingToReset'),
+      t.Literal('noCredit'),
+      t.Literal('alreadyRedeemed'),
+    ]),
+    consumedAt: t.Number(),
+  }, { additionalProperties: false }),
 }

@@ -3,7 +3,14 @@ import { z } from 'zod'
 export const CODEX_DEFAULT_APPROVAL_POLICY = 'never'
 export const CODEX_DEFAULT_SANDBOX_MODE = 'danger-full-access'
 
-export const CodexAuthModeSchema = z.enum(['apikey', 'chatgpt', 'chatgptAuthTokens', 'agentIdentity'])
+export const CodexAuthModeSchema = z.enum([
+  'apikey',
+  'chatgpt',
+  'chatgptAuthTokens',
+  'agentIdentity',
+  'personalAccessToken',
+  'bedrockApiKey',
+])
 
 export const BaseProviderConfig = z.object({
   baseUrl: z.string().optional(),
@@ -32,6 +39,9 @@ export const CodexConfigSchema = BaseProviderConfig.extend({
   approvalPolicy: z.enum(['never', 'on-request', 'on-failure', 'untrusted']).default(CODEX_DEFAULT_APPROVAL_POLICY),
   sandboxMode: z.enum(['read-only', 'workspace-write', 'danger-full-access']).default(CODEX_DEFAULT_SANDBOX_MODE),
   reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).default('high'),
+  bedrock: z.object({
+    region: z.string().trim().min(1),
+  }).optional(),
 })
 
 const ClaudeAgentModelEnvValueSchema = z.string().trim()
@@ -149,11 +159,15 @@ export function readTrustedOpenAICompatibleConfig(raw: string): OpenAICompatible
 
 export function readTrustedCodexConfig(raw: string): CodexConfig {
   const config = readTrustedRecord(raw) as Partial<CodexConfig>
+  const bedrock = config.bedrock && typeof config.bedrock.region === 'string' && config.bedrock.region.trim()
+    ? { region: config.bedrock.region.trim() }
+    : undefined
   return {
     baseUrl: config.baseUrl,
     model: config.model,
     apiKey: config.apiKey,
     authMode: config.authMode,
+    bedrock,
     enabledModels: config.enabledModels ?? [],
     skillPaths: config.skillPaths ?? [],
     additionalDirectories: config.additionalDirectories ?? [],

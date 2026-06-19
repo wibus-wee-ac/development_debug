@@ -512,7 +512,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
           output: expect.objectContaining({
             type: 'cradle.builtin-tool-call.result.v1',
             identifier: 'claude-code',
-            apiName: 'bash',
+            apiName: 'Bash',
             result: 'hello\n',
           }),
         }),

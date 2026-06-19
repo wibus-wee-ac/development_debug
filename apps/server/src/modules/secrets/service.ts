@@ -34,6 +34,13 @@ export interface UpsertSecretInput extends SaveSecretInput {
   id: string
 }
 
+export interface SecretValueWithMetadata {
+  id: string
+  kind: string
+  label: string
+  secret: string
+}
+
 // ── cipher ──
 
 const ALGORITHM = 'aes-256-gcm'
@@ -253,6 +260,25 @@ export function readSecret(id: string): string {
     })
   }
   return decrypt(secret.encryptedSecret)
+}
+
+export function readSecretValueWithMetadata(id: string): SecretValueWithMetadata {
+  ensureConfigured()
+  const secret = db().select().from(agentCredentials).where(eq(agentCredentials.id, id)).get()
+  if (!secret) {
+    throw new AppError({
+      code: 'secret_not_found',
+      status: 400,
+      message: 'Secret not found',
+      details: { id },
+    })
+  }
+  return {
+    id: secret.id,
+    kind: secret.kind,
+    label: secret.label,
+    secret: decrypt(secret.encryptedSecret),
+  }
 }
 
 function readChatgptCredentialSummary(rawSecret: string): ChatgptCredentialSummary | null {

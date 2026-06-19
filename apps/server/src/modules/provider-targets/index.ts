@@ -5,6 +5,10 @@ import {
   readCodexChatgptCredentialLoginStatus,
   startCodexChatgptCredentialLogin,
 } from '../chat-runtime-providers/codex/app-server/account-service'
+import {
+  consumeCodexRateLimitResetCredit,
+  readCodexAccountDiagnostics,
+} from '../chat-runtime-providers/codex/app-server/account-diagnostics'
 import { ProviderTargetsModel } from './model'
 import * as ProviderTargets from './service'
 
@@ -101,6 +105,34 @@ export const providerTargets = new Elysia({
       },
       params: ProviderTargetsModel.idParams,
       response: { 200: ProviderTargetsModel.modelSettings },
+    },
+  )
+  .get(
+    '/:providerTargetId/codex/account-diagnostics',
+    ({ params }) => readCodexAccountDiagnostics({ providerTargetId: params.providerTargetId }),
+    {
+      detail: {
+        summary: 'Read Codex account diagnostics for a provider target',
+        description: 'Explicitly starts or reuses Codex app-server to read ChatGPT account usage and rate limits.',
+      },
+      params: ProviderTargetsModel.idParams,
+      response: { 200: ProviderTargetsModel.codexAccountDiagnostics },
+    },
+  )
+  .post(
+    '/:providerTargetId/codex/rate-limit-reset-credit/consume',
+    ({ params, body }) => consumeCodexRateLimitResetCredit({
+      providerTargetId: params.providerTargetId,
+      idempotencyKey: body.idempotencyKey,
+    }),
+    {
+      detail: {
+        summary: 'Consume a Codex rate-limit reset credit',
+        description: 'Consumes one ChatGPT account reset credit using the supplied idempotency key.',
+      },
+      params: ProviderTargetsModel.idParams,
+      body: ProviderTargetsModel.codexRateLimitResetCreditConsumeBody,
+      response: { 200: ProviderTargetsModel.codexRateLimitResetCreditConsumeResponse },
     },
   )
   .patch(
