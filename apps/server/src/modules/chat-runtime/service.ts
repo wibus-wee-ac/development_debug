@@ -100,7 +100,7 @@ import {
   readRunDeltaCoalesceKey,
   readTerminalStatus
 } from './run/stream-chunks'
-import { readRunWriteFence } from './run/run-write-fence'
+import { readRunWriteFence, type RunWriteFence } from './run/run-write-fence'
 import {
   finalizeActiveRunSnapshot as finalizeRunSnapshotEvent,
   readChunkTraceToolCallId,
@@ -2425,14 +2425,14 @@ async function executeRun(activeRun: ActiveRun, input: ExecuteRunInput): Promise
     diagnostics,
     profile
   )
-  const actualModelId = await persistRunTerminalAndUsage(
+  const { actualModelId, shouldFinalizeDiagnostics } = await persistRunTerminalAndUsage(
     activeRun,
     finalChunk,
     failurePayload,
     diagnostics,
     profile
   )
-  completeRun(activeRun, finalChunk, diagnostics, profile, actualModelId)
+  completeRun(activeRun, finalChunk, diagnostics, profile, actualModelId, shouldFinalizeDiagnostics)
 }
 
 async function pumpRuntimeStream(
@@ -2567,11 +2567,14 @@ async function persistRunTerminalAndUsage(
   failurePayload: SerializedChatError['payload'] | undefined,
   diagnostics: TurnOutputDiagnostics,
   profile: ChatRuntimeProfile
-): Promise<string | null> {
+): Promise<{ actualModelId: string | null; shouldFinalizeDiagnostics: boolean }> {
   let actualModelId = activeRun.modelId
   try {
     if (!activeRun.cancelRequested) {
-      await publishTerminalChunk(activeRun, finalChunk, profile)
+      const finalized = await publishTerminalChunk(activeRun, finalChunk, profile)
+      if (!finalized) {
+        return { actualModelId, shouldFinalizeDiagnostics: false }
+      }
 
       const finalFailureText = finalChunk.type === 'error' ? finalChunk.errorText : null
 
@@ -2657,7 +2660,7 @@ async function persistRunTerminalAndUsage(
       error
     })
   }
-  return actualModelId
+  return { actualModelId, shouldFinalizeDiagnostics: true }
 }
 
 function completeRun(
@@ -2665,7 +2668,8 @@ function completeRun(
   finalChunk: UIMessageChunk,
   diagnostics: TurnOutputDiagnostics,
   profile: ChatRuntimeProfile,
-  actualModelId: string | null
+  actualModelId: string | null,
+  shouldFinalizeDiagnostics: boolean
 ): void {
   // Persist updated providerSessionId/state obtained during the run
   try {
@@ -2704,11 +2708,13 @@ function completeRun(
     pendingQueueItemCount: listPendingQueueRows(activeRun.sessionId).length,
     continueBlockedGoals: shouldContinueBlockedCodexGoals()
   })
-  finalizeActiveRunSnapshot(activeRun, finalChunk, {
-    modelId: actualModelId,
-    diagnostics,
-    profile
-  })
+  if (shouldFinalizeDiagnostics) {
+    finalizeActiveRunSnapshot(activeRun, finalChunk, {
+      modelId: actualModelId,
+      diagnostics,
+      profile
+    })
+  }
   recordChatRuntimeProfile({
     run: {
       sessionId: activeRun.sessionId,
@@ -2777,10 +2783,7 @@ function persistStreamingMessageSnapshot(activeRun: ActiveRun): void {
 
   // Run is already terminal (or gone): a stale active run continued after
   // recovery. Stop writing and release it. The persisted terminal fact wins.
-  if (fence.status !== 'missing') {
-    activeRun.terminalStatus ??= fence.status
-  }
-  releaseActiveRun(activeRun)
+  releaseStaleActiveRun(activeRun, fence)
 }
 
 function startSnapshotTimer(activeRun: ActiveRun): void {
@@ -2818,7 +2821,10 @@ export function flushAllActiveRunSnapshots(): void {
 
 export async function recoverPersistedRunProjections(): Promise<ChatRuntimeRecoveryResult> {
   const recovered = await recoverChatRuntimeProjections()
-  const recoveredCount = recovered.interruptedRunsFinalized + recovered.terminalFactsProjected
+  const recoveredCount =
+    recovered.interruptedRunsFinalized +
+    recovered.terminalFactsProjected +
+    recovered.terminalProjectionDriftsRepaired
 
   if (recoveredCount > 0) {
     chatLogger.warn('recovered persisted run projections', { recovered })
@@ -2921,6 +2927,11 @@ function flushPendingRunDelta(activeRun: ActiveRun): void {
   const chunk = activeRun.pendingDeltaChunk
   activeRun.pendingDeltaChunk = null
   if (chunk && !activeRun.terminalStatus) {
+    const fence = readRunWriteFence(activeRun.runId)
+    if (fence.status !== 'streaming') {
+      releaseStaleActiveRun(activeRun, fence)
+      return
+    }
     publishUIMessageChunk(activeRun, chunk, false)
   }
 }
@@ -3006,13 +3017,17 @@ async function publishTerminalChunk(
   activeRun: ActiveRun,
   chunk: UIMessageChunk,
   profile?: ChatRuntimeProfile
-): Promise<void> {
+): Promise<boolean> {
   publishRunStartChunk(activeRun)
   flushPendingRunDelta(activeRun)
   const status = readTerminalStatus(chunk)
   const errorText = chunk.type === 'error' ? chunk.errorText : null
-  await finalizeActiveRun(activeRun, status, errorText, chunk, profile)
+  const finalized = await finalizeActiveRun(activeRun, status, errorText, chunk, profile)
+  if (!finalized) {
+    return false
+  }
   publishUIMessageChunk(activeRun, chunk, true)
+  return true
 }
 
 async function finalizeActiveRun(
@@ -3021,9 +3036,18 @@ async function finalizeActiveRun(
   errorText: string | null,
   terminalChunk: UIMessageChunk,
   profile?: ChatRuntimeProfile
-): Promise<void> {
+): Promise<boolean> {
   if (status === 'streaming' || activeRun.terminalStatus) {
-    return
+    return false
+  }
+
+  const fence = readRunWriteFence(activeRun.runId)
+  if (fence.status !== 'streaming') {
+    publishUIMessageChunk(activeRun, terminalChunkForFence(fence), true)
+    if (fence.status !== 'missing') {
+      activeRun.terminalStatus = fence.status
+    }
+    return false
   }
 
   activeRun.terminalStatus = status
@@ -3067,6 +3091,29 @@ async function finalizeActiveRun(
         message: activeRun.finalMessage
       }
     })
+  }
+  return true
+}
+
+function releaseStaleActiveRun(activeRun: ActiveRun, fence: RunWriteFence): void {
+  if (fence.status !== 'streaming' && fence.status !== 'missing') {
+    activeRun.terminalStatus ??= fence.status
+  }
+  publishUIMessageChunk(activeRun, terminalChunkForFence(fence), true)
+  releaseActiveRun(activeRun)
+}
+
+function terminalChunkForFence(fence: RunWriteFence): UIMessageChunk {
+  switch (fence.status) {
+    case 'streaming':
+    case 'complete':
+      return { type: 'finish', finishReason: 'stop' }
+    case 'aborted':
+      return { type: 'abort', reason: 'user' }
+    case 'failed':
+      return { type: 'error', errorText: fence.errorText ?? 'Chat run failed' }
+    case 'missing':
+      return { type: 'error', errorText: 'Chat run is no longer available' }
   }
 }
 

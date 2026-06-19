@@ -2,7 +2,14 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { backendRuns, chatSessionQueueItems, messages, sessionEvents, sessions } from '@cradle/db'
+import {
+  backendRunSnapshots,
+  backendRuns,
+  chatSessionQueueItems,
+  messages,
+  sessionEvents,
+  sessions
+} from '@cradle/db'
 import { eq, sql } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
@@ -217,11 +224,13 @@ describe('chat runtime recovery', () => {
 
       expect(first).toEqual({
         interruptedRunsFinalized: 0,
-        terminalFactsProjected: 1
+        terminalFactsProjected: 1,
+        terminalProjectionDriftsRepaired: 0
       })
       expect(second).toEqual({
         interruptedRunsFinalized: 0,
-        terminalFactsProjected: 0
+        terminalFactsProjected: 0,
+        terminalProjectionDriftsRepaired: 0
       })
 
       expect(
@@ -283,11 +292,13 @@ describe('chat runtime recovery', () => {
 
       expect(first).toEqual({
         interruptedRunsFinalized: 1,
-        terminalFactsProjected: 0
+        terminalFactsProjected: 0,
+        terminalProjectionDriftsRepaired: 0
       })
       expect(second).toEqual({
         interruptedRunsFinalized: 0,
-        terminalFactsProjected: 0
+        terminalFactsProjected: 0,
+        terminalProjectionDriftsRepaired: 0
       })
       expect(
         db().select().from(backendRuns).where(eq(backendRuns.id, 'run-streaming-recovery')).get()
@@ -318,6 +329,135 @@ describe('chat runtime recovery', () => {
           status: 'failed',
           errorText: INTERRUPTED_RUN_ERROR_TEXT,
           startedRunId: 'run-streaming-recovery'
+        })
+      )
+    })
+  })
+
+  it('repairs terminal fact drift without appending new events', async () => {
+    await withTempDataDir(async () => {
+      seedSession('session-terminal-drift')
+      seedAssistantMessage({
+        id: 'message-terminal-drift',
+        sessionId: 'session-terminal-drift',
+        status: 'streaming',
+        content: 'late streaming overwrite',
+        updatedAt: 1700000200
+      })
+      seedBackendRun({
+        id: 'run-terminal-drift',
+        sessionId: 'session-terminal-drift',
+        messageId: 'message-terminal-drift',
+        status: 'failed',
+        stopReason: 'response.interrupted',
+        errorText: 'terminal failure',
+        finishedAt: 1700000100
+      })
+      db()
+        .insert(backendRunSnapshots)
+        .values({
+          id: 'snapshot-terminal-drift',
+          schemaVersion: 1,
+          traceId: 'run-terminal-drift',
+          chatSessionId: 'session-terminal-drift',
+          runId: 'run-terminal-drift',
+          messageId: 'message-terminal-drift',
+          providerTargetId: null,
+          runtimeKind: 'standard',
+          providerSessionId: null,
+          modelId: 'gpt-4o-mini',
+          agentId: null,
+          workspaceId: null,
+          status: 'complete',
+          startedAt: 1700000000000,
+          completedAt: 1700000200000,
+          completionReason: 'response.completed',
+          errorText: null,
+          summaryJson: '{}'
+        })
+        .run()
+      db()
+        .insert(sessionEvents)
+        .values([
+          {
+            aggregateId: 'session-terminal-drift',
+            aggregateType: 'ChatSession',
+            version: 1,
+            eventType: 'AssistantMessageCompleted',
+            payload: JSON.stringify({
+              message: {
+                id: 'message-terminal-drift',
+                sessionId: 'session-terminal-drift',
+                content: 'failed response',
+                messageJson: JSON.stringify({
+                  id: 'message-terminal-drift',
+                  role: 'assistant',
+                  parts: [{ type: 'text', text: 'failed response' }]
+                }),
+                status: 'failed',
+                errorText: 'terminal failure',
+                updatedAt: 1700000100
+              }
+            }),
+            occurredAt: 1700000100
+          },
+          {
+            aggregateId: 'session-terminal-drift',
+            aggregateType: 'ChatSession',
+            version: 2,
+            eventType: 'RunFailed',
+            payload: JSON.stringify({
+              runId: 'run-terminal-drift',
+              sessionId: 'session-terminal-drift',
+              queueItemId: null,
+              status: 'failed',
+              stopReason: 'response.interrupted',
+              errorText: 'terminal failure',
+              finishedAt: 1700000100
+            }),
+            occurredAt: 1700000100
+          }
+        ])
+        .run()
+
+      const eventsBefore = countSessionEvents('session-terminal-drift')
+      const first = await recoverChatRuntimeSession('session-terminal-drift')
+      const second = await recoverChatRuntimeProjections()
+
+      expect(first).toEqual({
+        interruptedRunsFinalized: 0,
+        terminalFactsProjected: 0,
+        terminalProjectionDriftsRepaired: 1
+      })
+      expect(second).toEqual({
+        interruptedRunsFinalized: 0,
+        terminalFactsProjected: 0,
+        terminalProjectionDriftsRepaired: 0
+      })
+      expect(countSessionEvents('session-terminal-drift')).toBe(eventsBefore)
+      expect(db().select().from(messages).where(eq(messages.id, 'message-terminal-drift')).get()).toEqual(
+        expect.objectContaining({
+          status: 'failed',
+          content: 'failed response',
+          errorText: 'terminal failure',
+          updatedAt: 1700000100
+        })
+      )
+      expect(
+        db().select().from(backendRuns).where(eq(backendRuns.id, 'run-terminal-drift')).get()
+      ).toEqual(expect.objectContaining({ status: 'failed' }))
+      expect(
+        db()
+          .select()
+          .from(backendRunSnapshots)
+          .where(eq(backendRunSnapshots.id, 'snapshot-terminal-drift'))
+          .get()
+      ).toEqual(
+        expect.objectContaining({
+          status: 'failed',
+          completedAt: 1700000100000,
+          completionReason: 'response.interrupted',
+          errorText: 'terminal failure'
         })
       )
     })

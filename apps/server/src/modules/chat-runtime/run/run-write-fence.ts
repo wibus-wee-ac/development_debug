@@ -1,7 +1,7 @@
 import { backendRuns } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 
-import { db } from '../../infra'
+import { db } from '../../../infra'
 import type { TerminalChatMessageStatus } from './stream-chunks'
 
 /**

@@ -1,13 +1,25 @@
 import type { BackendRun, ChatSessionQueueItem, Message } from '@cradle/db'
-import { backendRuns, chatSessionQueueItems, messages, sessionEvents } from '@cradle/db'
-import { and, eq, isNull, or, sql } from 'drizzle-orm'
+import {
+  backendRunSnapshots,
+  backendRuns,
+  chatSessionQueueItems,
+  messages,
+  sessionEvents
+} from '@cradle/db'
+import { and, desc, eq, isNull, or, sql } from 'drizzle-orm'
 
 import { currentUnixSeconds } from '../../../helpers/time'
 import { db } from '../../../infra'
 import { parseStoredMessageSnapshot } from '../ui-message'
 import type { ChatMessageStatus } from '../run/stream-chunks'
 import { appendSessionEvent } from './event-store'
-import type { ChatSessionEvent, QueueProjectionStatus, TerminalRunEventType } from './events'
+import type {
+  ChatSessionEvent,
+  QueueProjectionStatus,
+  StoredChatSessionEvent,
+  TerminalRunEventType
+} from './events'
+import { parseStoredChatSessionEvent } from './events'
 import { projectSessionEvent } from './projectors'
 import { runSessionActorTask } from './session-actor'
 
@@ -19,6 +31,7 @@ const RECOVERY_BATCH_SIZE = 100
 export interface ChatRuntimeRecoveryResult {
   interruptedRunsFinalized: number
   terminalFactsProjected: number
+  terminalProjectionDriftsRepaired: number
 }
 
 export function commitSessionEvents(sessionId: string, events: ChatSessionEvent[]): Promise<void> {
@@ -279,7 +292,8 @@ export async function recordQueuePositions(
 export async function recoverChatRuntimeProjections(): Promise<ChatRuntimeRecoveryResult> {
   return {
     interruptedRunsFinalized: await finalizeInterruptedSessionEventStreams(),
-    terminalFactsProjected: await projectTerminalRunFacts()
+    terminalFactsProjected: await projectTerminalRunFacts(),
+    terminalProjectionDriftsRepaired: await repairTerminalProjectionDrifts()
   }
 }
 
@@ -288,7 +302,8 @@ export async function recoverChatRuntimeSession(
 ): Promise<ChatRuntimeRecoveryResult> {
   return {
     interruptedRunsFinalized: await finalizeInterruptedRunsForSession(sessionId),
-    terminalFactsProjected: await projectTerminalRunFactsForSession(sessionId)
+    terminalFactsProjected: await projectTerminalRunFactsForSession(sessionId),
+    terminalProjectionDriftsRepaired: await repairTerminalProjectionDrifts(sessionId)
   }
 }
 
@@ -390,6 +405,76 @@ function projectTerminalRunFactInActor(sessionId: string, runId: string): boolea
   })
   commitSessionEventsInTransaction(run.chatSessionId, events)
   return true
+}
+
+export async function repairTerminalProjectionDrifts(sessionId?: string): Promise<number> {
+  let repaired = 0
+  let batch = readTerminalProjectionDriftRuns(sessionId, RECOVERY_BATCH_SIZE)
+  while (batch.length > 0) {
+    for (const run of batch) {
+      if (await repairTerminalProjectionDrift(run.chatSessionId, run.id)) {
+        repaired += 1
+      }
+    }
+    batch = readTerminalProjectionDriftRuns(sessionId, RECOVERY_BATCH_SIZE)
+  }
+  return repaired
+}
+
+async function repairTerminalProjectionDrift(sessionId: string, runId: string): Promise<boolean> {
+  return await runSessionActorTask(sessionId, () =>
+    repairTerminalProjectionDriftInActor(sessionId, runId)
+  )
+}
+
+function repairTerminalProjectionDriftInActor(sessionId: string, runId: string): boolean {
+  const run = readRun(sessionId, runId)
+  if (!run || run.status === 'streaming') {
+    return false
+  }
+
+  const terminalFact = readTerminalRunFact(sessionId, run.id)
+  if (!terminalFact) {
+    return false
+  }
+  const assistantFact = run.messageId
+    ? readAssistantMessageCompletedFact(sessionId, run.messageId, terminalFact.version)
+    : undefined
+
+  let repaired = false
+  db().transaction((tx) => {
+    if (run.messageId) {
+      const message = tx
+        .select()
+        .from(messages)
+        .where(and(eq(messages.id, run.messageId), eq(messages.sessionId, sessionId)))
+        .get()
+      if (message?.status === 'streaming' && assistantFact) {
+        projectSessionEvent(tx, assistantFact)
+        repaired = true
+      }
+    }
+
+    const snapshot = tx
+      .select()
+      .from(backendRunSnapshots)
+      .where(eq(backendRunSnapshots.runId, run.id))
+      .get()
+    if (snapshot && snapshot.status !== terminalFact.payload.status) {
+      tx.update(backendRunSnapshots)
+        .set({
+          status: terminalFact.payload.status,
+          completedAt: terminalFact.payload.finishedAt * 1000,
+          completionReason: terminalFact.payload.stopReason,
+          errorText: terminalFact.payload.errorText
+        })
+        .where(eq(backendRunSnapshots.id, snapshot.id))
+        .run()
+      repaired = true
+    }
+  })
+
+  return repaired
 }
 
 function hasTerminalRunFact(sessionId: string, runId: string): boolean {
@@ -544,6 +629,45 @@ function readTerminalRunsMissingTerminalFact(
     .all()
 }
 
+function readTerminalProjectionDriftRuns(
+  sessionId: string | undefined,
+  limit: number
+): BackendRun[] {
+  const predicate = sessionId
+    ? and(
+        eq(backendRuns.chatSessionId, sessionId),
+        terminalRunStatusPredicate(),
+        hasTerminalRunFactPredicate(),
+        terminalProjectionDriftPredicate()
+      )
+    : and(
+        terminalRunStatusPredicate(),
+        hasTerminalRunFactPredicate(),
+        terminalProjectionDriftPredicate()
+      )
+
+  return db()
+    .selectDistinct({
+      id: backendRuns.id,
+      bindingId: backendRuns.bindingId,
+      chatSessionId: backendRuns.chatSessionId,
+      messageId: backendRuns.messageId,
+      origin: backendRuns.origin,
+      status: backendRuns.status,
+      stopReason: backendRuns.stopReason,
+      errorText: backendRuns.errorText,
+      startedAt: backendRuns.startedAt,
+      finishedAt: backendRuns.finishedAt
+    })
+    .from(backendRuns)
+    .leftJoin(messages, eq(messages.id, backendRuns.messageId))
+    .leftJoin(backendRunSnapshots, eq(backendRunSnapshots.runId, backendRuns.id))
+    .where(predicate)
+    .orderBy(backendRuns.startedAt, backendRuns.id)
+    .limit(limit)
+    .all()
+}
+
 function terminalRunStatusPredicate() {
   return or(
     eq(backendRuns.status, 'complete'),
@@ -564,6 +688,77 @@ function missingTerminalRunFactPredicate() {
       and ${sessionEvents.subjectRunId} = ${backendRuns.id}
       and ${sessionEvents.eventType} in ('RunCompleted', 'RunFailed', 'RunAborted')
   )`
+}
+
+function hasTerminalRunFactPredicate() {
+  return sql`exists (
+    select 1
+    from ${sessionEvents}
+    where ${sessionEvents.aggregateId} = ${backendRuns.chatSessionId}
+      and ${sessionEvents.subjectRunId} = ${backendRuns.id}
+      and ${sessionEvents.eventType} in ('RunCompleted', 'RunFailed', 'RunAborted')
+  )`
+}
+
+function terminalProjectionDriftPredicate() {
+  return or(
+    eq(messages.status, 'streaming'),
+    and(
+      sql`${backendRunSnapshots.id} is not null`,
+      sql`${backendRunSnapshots.status} != ${backendRuns.status}`
+    )
+  )
+}
+
+function readTerminalRunFact(
+  sessionId: string,
+  runId: string
+): Extract<StoredChatSessionEvent, { type: TerminalRunEventType }> | undefined {
+  const row = db()
+    .select()
+    .from(sessionEvents)
+    .where(
+      and(
+        eq(sessionEvents.aggregateId, sessionId),
+        eq(sessionEvents.subjectRunId, runId),
+        terminalRunFactEventPredicate()
+      )
+    )
+    .limit(1)
+    .get()
+  return row
+    ? (parseStoredChatSessionEvent(row) as Extract<
+        StoredChatSessionEvent,
+        { type: TerminalRunEventType }
+      >)
+    : undefined
+}
+
+function readAssistantMessageCompletedFact(
+  sessionId: string,
+  messageId: string,
+  maxVersion: number
+): Extract<StoredChatSessionEvent, { type: 'AssistantMessageCompleted' }> | undefined {
+  const row = db()
+    .select()
+    .from(sessionEvents)
+    .where(
+      and(
+        eq(sessionEvents.aggregateId, sessionId),
+        eq(sessionEvents.eventType, 'AssistantMessageCompleted'),
+        sql`${sessionEvents.version} <= ${maxVersion}`,
+        sql`json_extract(${sessionEvents.payload}, '$.message.id') = ${messageId}`
+      )
+    )
+    .orderBy(desc(sessionEvents.version))
+    .limit(1)
+    .get()
+  return row
+    ? (parseStoredChatSessionEvent(row) as Extract<
+        StoredChatSessionEvent,
+        { type: 'AssistantMessageCompleted' }
+      >)
+    : undefined
 }
 
 function readMessage(sessionId: string, messageId: string): Message | undefined {

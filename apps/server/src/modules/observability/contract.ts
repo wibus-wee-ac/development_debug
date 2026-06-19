@@ -23,6 +23,7 @@ export const OBSERVABILITY_SCHEMA_VERSION = 1
 
 export const OBSERVABILITY_CODES = {
   chatEmptyOutputCompletion: 'CHAT_EMPTY_OUTPUT_COMPLETION',
+  chatLateRunFinalizationIgnored: 'CHAT_LATE_RUN_FINALIZATION_IGNORED',
   chatSessionTitleGenerationFailed: 'CHAT_SESSION_TITLE_GENERATION_FAILED',
   turnStreamFailed: 'TURN_STREAM_FAILED',
   domainEventHandlerFailed: 'DOMAIN_EVENT_HANDLER_FAILED',

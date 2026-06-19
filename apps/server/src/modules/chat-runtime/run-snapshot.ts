@@ -15,6 +15,8 @@ import { z } from 'zod'
 import { db } from '../../infra'
 import { readNonNegativeIntegerEnv, readPositiveIntegerEnv } from '../../helpers/env'
 import { createChildLogger } from '../../logging/logger'
+import { OBSERVABILITY_CODES } from '../observability/contract'
+import * as Observability from '../observability/service'
 
 const logger = createChildLogger({ module: 'chat-runtime.run-snapshot' })
 
@@ -208,7 +210,36 @@ export function finalizeRunSnapshot(input: FinalizeRunSnapshotInput): void {
   }
 
   try {
-    db().update(backendRunSnapshots).set(values).where(eq(backendRunSnapshots.id, input.snapshotId)).run()
+    const previous = db()
+      .select()
+      .from(backendRunSnapshots)
+      .where(eq(backendRunSnapshots.id, input.snapshotId))
+      .get()
+    const result = db()
+      .update(backendRunSnapshots)
+      .set(values)
+      .where(
+        and(eq(backendRunSnapshots.id, input.snapshotId), eq(backendRunSnapshots.status, 'running'))
+      )
+      .run()
+    if (result.changes === 0 && previous && previous.status !== 'running') {
+      Observability.record({
+        source: 'chat-engine',
+        code: OBSERVABILITY_CODES.chatLateRunFinalizationIgnored,
+        severity: 'warn',
+        category: 'chat',
+        message: 'Ignored late run snapshot finalization because the snapshot is already terminal.',
+        chatSessionId: previous.chatSessionId ?? undefined,
+        runId: previous.runId ?? undefined,
+        messageId: previous.messageId ?? undefined,
+        attrs: {
+          snapshotId: input.snapshotId,
+          previousStatus: previous.status,
+          attemptedStatus: input.status,
+          providerTargetId: previous.providerTargetId,
+        },
+      })
+    }
   }
   catch (error) {
     logger.error('failed to finalize run snapshot', { input, error })

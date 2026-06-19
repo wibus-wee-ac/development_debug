@@ -4063,6 +4063,37 @@ describe('chat runtime capability', () => {
         status: 'streaming',
         content: 'Side response',
       }))
+
+      db().update(backendRuns)
+        .set({
+          status: 'failed',
+          stopReason: 'response.interrupted',
+          errorText: 'persisted terminal failure',
+          finishedAt: 1700000100,
+        })
+        .where(eq(backendRuns.id, run.id))
+        .run()
+      db().update(messages)
+        .set({
+          status: 'failed',
+          content: 'terminal response',
+          errorText: 'persisted terminal failure',
+          updatedAt: 1700000100,
+        })
+        .where(eq(messages.id, run.messageId!))
+        .run()
+
+      flushAllActiveRunSnapshots()
+
+      expect(db()
+        .select()
+        .from(messages)
+        .where(eq(messages.id, run.messageId!))
+        .get()).toEqual(expect.objectContaining({
+          status: 'failed',
+          content: 'terminal response',
+          errorText: 'persisted terminal failure',
+        }))
     }
     finally {
       runtime.releaseBlockedStreams()
@@ -4359,6 +4390,7 @@ describe('chat runtime capability', () => {
       await expect(recoverPersistedRunProjections()).resolves.toEqual({
         interruptedRunsFinalized: 1,
         terminalFactsProjected: 1,
+        terminalProjectionDriftsRepaired: 0,
       })
 
       const rows = await getChatMessages(app, 'session-chat-orphan')
@@ -4499,6 +4531,7 @@ describe('chat runtime capability', () => {
       await expect(recoverPersistedRunProjections()).resolves.toEqual({
         interruptedRunsFinalized: 0,
         terminalFactsProjected: 1,
+        terminalProjectionDriftsRepaired: 0,
       })
 
       expect((await getChatMessages(app, 'session-stale-active-run')).find(row => row.role === 'assistant')).toEqual(
