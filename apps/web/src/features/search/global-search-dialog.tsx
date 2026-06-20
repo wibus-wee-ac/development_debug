@@ -6,7 +6,7 @@ import {
   CornerDownLeftLine as CornerDownLeftIcon,
   FileLine as FileIcon,
   Message1Line as MessageSquareIcon,
-  PuzzledLine as PuzzleIcon,
+  Plugin2Line,
   Settings2Line as SettingsIcon,
   TerminalLine as TerminalIcon
 } from '@mingcute/react'
@@ -157,7 +157,7 @@ function normalizeCommandKeywords(value: string | string[] | undefined): string 
 }
 
 function getPluginCommandIcon(command: WebCommandRegistration): ComponentType<{ className?: string }> {
-  return typeof command.icon === 'function' ? command.icon : PuzzleIcon
+  return typeof command.icon === 'function' ? command.icon : Plugin2Line
 }
 
 function useActiveFileSearchWorkspaceId(enabled: boolean): {

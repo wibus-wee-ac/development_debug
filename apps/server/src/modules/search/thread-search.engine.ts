@@ -5,7 +5,7 @@ import {
 } from '@cradle/db'
 import { Jieba } from '@node-rs/jieba'
 import { dict } from '@node-rs/jieba/dict.js'
-import { desc, eq, inArray, sql } from 'drizzle-orm'
+import { and, desc, eq, inArray, sql } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { db } from '../../infra'
@@ -28,6 +28,7 @@ export interface ThreadSearchHit {
   workspaceId: string | null
   workspaceName: string | null
   sessionTitle: string
+  origin: string
   titleRanges: MatchRange[]
   snippets: ThreadSearchSnippet[]
   matchCount: number
@@ -38,6 +39,7 @@ export interface ThreadSearchHit {
 export interface ThreadSearchParams {
   query: string
   workspaceId?: string
+  origin?: string
   limit?: number
   snippetsPerHit?: number
 }
@@ -53,6 +55,7 @@ const CONTENT_WEIGHT = 1
 const ThreadSearchParamsSchema = z.object({
   query: z.string(),
   workspaceId: z.string().optional(),
+  origin: z.string().optional(),
   limit: z.number().finite().positive().default(DEFAULT_LIMIT),
   snippetsPerHit: z.number().finite().positive().default(DEFAULT_SNIPPETS_PER_HIT),
 })
@@ -228,9 +231,13 @@ function searchFts(params: ParsedThreadSearchParams): ThreadSearchHit[] {
   }>()
 
   for (const row of rows) {
-    if (params.workspaceId) {
+    if (params.workspaceId || params.origin) {
       const session = d.select().from(sessions).where(eq(sessions.id, row.session_id)).get()
-      if (!session || session.workspaceId !== params.workspaceId) {
+      if (
+        !session
+        || (params.workspaceId && session.workspaceId !== params.workspaceId)
+        || (params.origin && session.origin !== params.origin)
+      ) {
         continue
       }
     }
@@ -277,6 +284,7 @@ function searchFts(params: ParsedThreadSearchParams): ThreadSearchHit[] {
       workspaceId: session.workspaceId,
       workspaceName: session.workspaceId ? workspaceNameById.get(session.workspaceId) ?? null : null,
       sessionTitle: session.title,
+      origin: session.origin,
       titleRanges,
       snippets,
       matchCount: titleRanges.length + entry.snippets.length,
@@ -297,9 +305,16 @@ function searchLegacy(params: ParsedThreadSearchParams): ThreadSearchHit[] {
 
   const d = db()
 
-  const sessionRows = params.workspaceId
-    ? d.select().from(sessions).where(eq(sessions.workspaceId, params.workspaceId)).orderBy(desc(sessions.updatedAt)).all()
-    : d.select().from(sessions).orderBy(desc(sessions.updatedAt)).all()
+  const sessionRows = params.workspaceId && params.origin
+    ? d.select().from(sessions).where(and(
+      eq(sessions.workspaceId, params.workspaceId),
+      eq(sessions.origin, params.origin),
+    )).orderBy(desc(sessions.updatedAt)).all()
+    : params.workspaceId
+      ? d.select().from(sessions).where(eq(sessions.workspaceId, params.workspaceId)).orderBy(desc(sessions.updatedAt)).all()
+      : params.origin
+        ? d.select().from(sessions).where(eq(sessions.origin, params.origin)).orderBy(desc(sessions.updatedAt)).all()
+        : d.select().from(sessions).orderBy(desc(sessions.updatedAt)).all()
 
   if (sessionRows.length === 0) {
     return []
@@ -366,6 +381,7 @@ function searchLegacy(params: ParsedThreadSearchParams): ThreadSearchHit[] {
       workspaceId: session.workspaceId,
       workspaceName: session.workspaceId ? workspaceNameById.get(session.workspaceId) ?? null : null,
       sessionTitle: session.title,
+      origin: session.origin,
       titleRanges,
       snippets: candidateSnippets.slice(0, params.snippetsPerHit).map(({ matchCount: _ignored, ...snippet }) => snippet),
       matchCount,

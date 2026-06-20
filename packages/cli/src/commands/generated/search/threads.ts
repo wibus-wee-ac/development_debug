@@ -26,6 +26,12 @@ const spec = {
       "disableEnvDefaultFlag": "allWorkspaces"
     },
     {
+      "name": "origin",
+      "required": false,
+      "target": "query.origin",
+      "type": "string"
+    },
+    {
       "name": "limit",
       "required": false,
       "target": "query.limit",

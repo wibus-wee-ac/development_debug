@@ -23,6 +23,7 @@ export const ThreadSearchHitSchema = z.object({
   workspaceId: z.string().min(1),
   workspaceName: z.string().nullable().default(null),
   sessionTitle: z.string().default(''),
+  origin: z.string().default('manual'),
   titleRanges: z.array(MatchRangeSchema).default([]),
   snippets: z.array(ThreadSearchSnippetSchema).default([]),
   matchCount: z.number().optional(),

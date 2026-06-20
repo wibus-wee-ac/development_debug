@@ -11,6 +11,7 @@ export const search = new Elysia({
   .get('/threads', ({ query }) => Search.searchThreads({
     query: query.query,
     workspaceId: query.workspaceId,
+    origin: query.origin,
     limit: query.limit,
     snippetsPerHit: query.snippetsPerHit,
   }), {

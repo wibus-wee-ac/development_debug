@@ -154,6 +154,119 @@ describe('search capability', () => {
     }
   })
 
+  it('filters thread search results by coarse session origin', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const d = db()
+
+      const workspaceId = randomUUID()
+      const providerTargetId = randomUUID()
+      const reviewSessionId = randomUUID()
+      const manualSessionId = randomUUID()
+      const reviewMessageId = randomUUID()
+      const manualMessageId = randomUUID()
+      const now = Math.floor(Date.now() / 1000)
+
+      d.insert(workspaces).values({
+        id: workspaceId,
+        name: 'Origin Search Workspace',
+        path: workspaceRoot,
+      }).run()
+      d.insert(providerTargets).values({
+        id: providerTargetId,
+        kind: 'manual',
+        providerKind: 'openai-compatible',
+        displayName: 'Search Provider',
+      }).run()
+      d.insert(sessions).values([
+        {
+          id: reviewSessionId,
+          workspaceId,
+          title: 'Review generated walkthrough',
+          origin: 'cradle-review',
+          providerTargetId,
+        },
+        {
+          id: manualSessionId,
+          workspaceId,
+          title: 'Manual generated walkthrough',
+          providerTargetId,
+        },
+      ]).run()
+      d.insert(messages).values([
+        {
+          id: reviewMessageId,
+          sessionId: reviewSessionId,
+          role: 'assistant',
+          status: 'complete',
+          content: 'shared origin sentinel content',
+          messageJson: JSON.stringify({
+            id: reviewMessageId,
+            role: 'assistant',
+            parts: [{ type: 'text', text: 'shared origin sentinel content' }],
+          }),
+          createdAt: now,
+          updatedAt: now,
+        },
+        {
+          id: manualMessageId,
+          sessionId: manualSessionId,
+          role: 'assistant',
+          status: 'complete',
+          content: 'shared origin sentinel content',
+          messageJson: JSON.stringify({
+            id: manualMessageId,
+            role: 'assistant',
+            parts: [{ type: 'text', text: 'shared origin sentinel content' }],
+          }),
+          createdAt: now + 1,
+          updatedAt: now + 1,
+        },
+      ]).run()
+
+      const reviewSearch = await app.handle(
+        new Request('http://localhost/search/threads?query=shared%20origin%20sentinel&origin=cradle-review'),
+      )
+      expect(reviewSearch.status).toBe(200)
+      expect(await reviewSearch.json()).toEqual([
+        expect.objectContaining({
+          sessionId: reviewSessionId,
+          origin: 'cradle-review',
+          sessionTitle: 'Review generated walkthrough',
+        }),
+      ])
+
+      const manualSearch = await app.handle(
+        new Request('http://localhost/search/threads?query=shared%20origin%20sentinel&origin=manual'),
+      )
+      expect(manualSearch.status).toBe(200)
+      expect(await manualSearch.json()).toEqual([
+        expect.objectContaining({
+          sessionId: manualSessionId,
+          origin: 'manual',
+          sessionTitle: 'Manual generated walkthrough',
+        }),
+      ])
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
   it('searches Chronicle memories and knowledge cards with workspace filtering', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRootOne = makeTempDir('cradle-workspace-one-')
