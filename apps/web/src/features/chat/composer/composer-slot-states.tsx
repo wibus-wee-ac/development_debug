@@ -91,13 +91,7 @@ export function ComposerSlotStates({
   const goalState = states.find((state): state is ChatRuntimeGoalUiSlotState => {
     return state.kind === 'goal' && composerSlotIds.has(state.slotId)
   })
-  const progressState = states.find((state): state is ComposerProgressState => {
-    return (
-      (state.kind === 'progress' || state.kind === 'plan')
-      && composerSlotIds.has(state.slotId)
-      && isComposerProgressState(state)
-    )
-  })
+  const standaloneProgressState = findComposerStandaloneProgressState(states, composerSlotIds)
   const planState = states.find((state): state is ChatRuntimePlanUiSlotState => {
     return (
       state.kind === 'plan' && composerSlotIds.has(state.slotId) && isComposerPlanReadyState(state)
@@ -119,10 +113,6 @@ export function ComposerSlotStates({
   const visiblePlanState = renderedPlanState && dismissedPlanKey !== planKey && !hidePlan
     ? renderedPlanState
     : null
-  const standaloneProgressState = progressState && isComposerStandaloneProgressState(progressState)
-    ? progressState
-    : null
-
   useEffect(() => {
     if (!planState) {
       return
@@ -292,8 +282,28 @@ function isComposerPlanReadyState(state: ChatRuntimePlanUiSlotState): boolean {
   return !!state.content?.trim()
 }
 
-function isComposerProgressState(state: ComposerProgressState): boolean {
-  return readComposerProgressItemCount(state) > 0
+function findComposerStandaloneProgressState(
+  states: ChatRuntimeUiSlotState[],
+  composerSlotIds: ReadonlySet<string>,
+): ComposerProgressState | null {
+  const progressState = states.find((state): state is ChatRuntimeProgressUiSlotState => {
+    return (
+      state.kind === 'progress'
+      && composerSlotIds.has(state.slotId)
+      && isComposerStandaloneProgressState(state)
+    )
+  })
+  if (progressState) {
+    return progressState
+  }
+
+  return states.find((state): state is ChatRuntimePlanUiSlotState => {
+    return (
+      state.kind === 'plan'
+      && composerSlotIds.has(state.slotId)
+      && isComposerStandaloneProgressState(state)
+    )
+  }) ?? null
 }
 
 function isComposerStandaloneProgressState(state: ComposerProgressState): boolean {

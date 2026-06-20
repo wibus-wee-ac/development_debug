@@ -2,7 +2,8 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { RuntimeKind } from '~/features/agent-runtime/types'
-import type { ClaudeMatrixMenuSlot } from './provider-model-menu'
+import type { ClaudeMatrixSlot, ClaudeAgentMatrixProviderOption } from '~/features/chat/runtime/claude-session-model-matrix-control'
+import { ClaudeAgentMatrixSelector } from '~/features/chat/runtime/claude-session-model-matrix-control'
 
 import { AgentSelector } from './agent-selector'
 import { ChatAgentIdentity } from './chat-agent-identity'
@@ -16,7 +17,7 @@ const AGENTS_RUNTIME_SELECTOR_VALUE = 'agents'
 interface ComposerToolbarProps {
   context: ComposerContext
   state: ComposerStateResult
-  claudeMatrix?: ClaudeMatrixMenuSlot | null
+  claudeMatrix?: { slot: ClaudeMatrixSlot, providerSettingsLoading?: boolean } | null
 }
 
 export function ComposerToolbar({ context, state, claudeMatrix }: ComposerToolbarProps) {
@@ -64,6 +65,19 @@ export function ComposerToolbar({ context, state, claudeMatrix }: ComposerToolba
     setRuntimeKind(kind)
   }
 
+  const isClaudeAgent = selection.targetMode === 'provider'
+    && selection.runtimeKind === 'claude-agent'
+    && !!claudeMatrix
+  const matrixProfiles: ClaudeAgentMatrixProviderOption[] = useMemo(
+    () => profiles.map(profile => ({
+      id: profile.id,
+      name: profile.name,
+      providerKind: profile.providerKind,
+      iconSlug: profile.iconSlug,
+    })),
+    [profiles],
+  )
+
   return (
     <div className="flex items-center gap-1">
       <RuntimeSelector
@@ -83,23 +97,37 @@ export function ComposerToolbar({ context, state, claudeMatrix }: ComposerToolba
           occludeNativeBrowserSurface
         />
       )}
-      {selection.targetMode === 'provider' && selection.runtimeKind !== 'cli-tui' && (
-        <ProviderModelSelector
-          profiles={profiles}
-          selectedProfileId={selection.profileId}
-          selectedModelId={selection.modelId}
-          models={models}
-          modelsByProfileId={modelsByProfileId}
-          loadingProfileIds={loadingProfileIds}
-          thinkingEffort={selection.thinkingEffort}
-          isLoadingModels={isLoadingModels}
-          requestProfileModels={requestProfileModels}
-          onSelectProfile={setProfileId}
-          onSelectModel={setModelId}
-          onSelectThinkingEffort={setThinkingEffort}
-          claudeMatrix={claudeMatrix}
-        />
-      )}
+      {isClaudeAgent
+        ? (
+            <ClaudeAgentMatrixSelector
+              profiles={matrixProfiles}
+              selectedProfileId={selection.profileId}
+              models={models}
+              selectedModelId={selection.modelId}
+              matrix={claudeMatrix!.slot}
+              loadingModels={isLoadingModels || claudeMatrix!.providerSettingsLoading}
+              onSelectProfile={setProfileId}
+              occludeNativeBrowserSurface
+            />
+          )
+        : selection.targetMode === 'provider' && selection.runtimeKind !== 'cli-tui'
+          ? (
+              <ProviderModelSelector
+                profiles={profiles}
+                selectedProfileId={selection.profileId}
+                selectedModelId={selection.modelId}
+                models={models}
+                modelsByProfileId={modelsByProfileId}
+                loadingProfileIds={loadingProfileIds}
+                thinkingEffort={selection.thinkingEffort}
+                isLoadingModels={isLoadingModels}
+                requestProfileModels={requestProfileModels}
+                onSelectProfile={setProfileId}
+                onSelectModel={setModelId}
+                onSelectThinkingEffort={setThinkingEffort}
+              />
+            )
+          : null}
     </div>
   )
 }

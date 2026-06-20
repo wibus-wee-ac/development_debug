@@ -47,8 +47,8 @@ function ProgressSlotContent({ state }: { state: ComposerProgressState }) {
         className={cn(
           'size-3.5 shrink-0',
           progress.complete
-            ? 'text-emerald-600 dark:text-emerald-400'
-            : 'text-primary/75',
+            ? '!text-emerald-600 dark:!text-emerald-400'
+            : '!text-primary/75',
         )}
         aria-hidden="true"
       />

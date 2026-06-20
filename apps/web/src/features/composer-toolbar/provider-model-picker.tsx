@@ -8,7 +8,7 @@ import type { ModelDescriptor } from '~/features/agent-runtime/types'
 import { BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS } from '~/features/browser/native-surface-occlusion'
 
 import { presetForProviderKind, providerTargetDisplayIconSlug } from '../agent-management/provider-settings-utils'
-import type { ClaudeMatrixMenuSlot, ModelsByProviderTargetId, ThinkingOption } from './provider-model-menu'
+import type { ModelsByProviderTargetId, ThinkingOption } from './provider-model-menu'
 import { ProviderModelMenu } from './provider-model-menu'
 import type { ProviderModelOption } from './types'
 
@@ -37,7 +37,6 @@ interface ProviderModelPickerProps<TThinking extends string | null> {
     active: boolean
     onSelect: () => void
   }
-  claudeMatrix?: ClaudeMatrixMenuSlot | null
   getThinkingOptionsForModel?: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
   onRequestProviderTargetModels?: (id: string, options?: { refresh?: boolean }) => void
   onSelectProviderTarget: (id: string) => void
@@ -65,7 +64,6 @@ export function ProviderModelPicker<TThinking extends string | null>({
   showProviderLabel = false,
   occludeNativeBrowserSurface = false,
   leadingSelection,
-  claudeMatrix,
   getThinkingOptionsForModel,
   onRequestProviderTargetModels,
   onSelectProviderTarget,
@@ -162,7 +160,6 @@ export function ProviderModelPicker<TThinking extends string | null>({
           emptyProviderTargetsLabel={emptyProviderTargetsLabel}
           occludeNativeBrowserSurface={occludeNativeBrowserSurface}
           leadingSelection={leadingSelection}
-          claudeMatrix={claudeMatrix}
           onRequestProviderTargetModels={onRequestProviderTargetModels}
           onSelectProviderTarget={onSelectProviderTarget}
           onSelectModel={onSelectModel}
