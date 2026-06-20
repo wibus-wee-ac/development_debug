@@ -43,6 +43,13 @@
       "when": 1781890260825,
       "tag": "0005_right_gauntlet",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "6",
+      "when": 1781922587241,
+      "tag": "0006_flat_greymalkin",
+      "breakpoints": true
     }
   ]
 }

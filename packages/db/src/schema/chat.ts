@@ -16,6 +16,7 @@ export const sessions = sqliteTable('sessions', {
     .references(() => workspaces.id, { onDelete: 'cascade' }),
   title: text('title').notNull(),
   titleSource: text('title_source', { enum: ['user', 'provider', 'initial'] }).notNull().default('initial'),
+  origin: text('origin').notNull().default('manual'),
   providerTargetId: text('provider_target_id')
     .references(() => providerTargets.id, { onDelete: 'restrict' }),
   runtimeKind: text('runtime_kind').notNull().default('standard'),
@@ -32,6 +33,7 @@ export const sessions = sqliteTable('sessions', {
 }, table => ({
   byParentSession: index('sessions_parent_session_id_idx').on(table.parentSessionId),
   byWorkspace: index('sessions_workspace_id_idx').on(table.workspaceId),
+  byOrigin: index('sessions_origin_idx').on(table.origin),
   byProviderTarget: index('sessions_provider_target_id_idx').on(table.providerTargetId),
   byLinkedIssue: index('sessions_linked_issue_id_idx').on(table.linkedIssueId),
   byArchived: index('sessions_archived_at_idx').on(table.archivedAt),
