@@ -495,7 +495,16 @@ export async function startDesktopApp(): Promise<void> {
     return
   }
 
-  updateManager = new DesktopUpdateManager()
+  updateManager = new DesktopUpdateManager({
+    requestQuitForUpdate: () => {
+      quitGuard.allowNextQuit()
+      requestDesktopExit({
+        reason: 'desktop update',
+        exitCode: 0,
+        stopServerRuntime: true,
+      })
+    },
+  })
   const appBadgeManager = new DesktopAppBadgeManager()
   desktopAppBadgeManager = appBadgeManager
   macBridgeManager = new MacBridgeManager({

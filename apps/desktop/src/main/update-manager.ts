@@ -1,42 +1,28 @@
 import { EventEmitter } from 'node:events'
-import { access, copyFile, mkdir } from 'node:fs/promises'
-import { basename, extname, join } from 'node:path'
 
-import { app, shell } from 'electron'
-import type { AppUpdater, ProgressInfo, UpdateInfo } from 'electron-updater'
-import { autoUpdater } from 'electron-updater'
+import { app } from 'electron'
+
+import { DesktopUpdateDownloader } from './update-downloader'
+import { DesktopUpdateInstaller } from './update-installer'
+import { readUpdateFeedUrl, DesktopUpdateSource } from './update-source'
+import type {
+  DesktopUpdateCandidate,
+  DesktopUpdateInstallerPlan,
+  DesktopUpdatePreferences,
+  DesktopUpdateStatus,
+} from './update-types'
+import { readErrorMessage } from './update-types'
+
+export type {
+  DesktopUpdateFile,
+  DesktopUpdateInfo,
+  DesktopUpdatePreferences,
+  DesktopUpdateStatus,
+} from './update-types'
 
 const BACKGROUND_CHECK_INTERVAL_MS = 5 * 60 * 1000
 const DEFAULT_RETRY_COUNT = 3
 const DEFAULT_RETRY_DELAY_MS = 1000
-
-declare const __CRADLE_DESKTOP_UPDATE_URL__: string
-
-export type DesktopUpdateFile = {
-  url: string
-  size: number | null
-  sha512: string | null
-}
-
-export type DesktopUpdateInfo = {
-  version: string
-  releaseName: string | null
-  releaseNotes: string | null
-  releaseDate: string | null
-  files: DesktopUpdateFile[]
-}
-
-export type DesktopUpdateStatus = {
-  unsupported: boolean
-  currentVersion: string
-  isCheckingForUpdates: boolean
-  isDownloadingUpdate: boolean
-  downloadingProgress: number
-  updateDownloaded: boolean
-  downloadedFilePath: string | null
-  updateInfo: DesktopUpdateInfo | null
-  errorMessage: string | null
-}
 
 export type DesktopUpdateManagerEvents = {
   statusChanged: [status: DesktopUpdateStatus]
@@ -44,14 +30,10 @@ export type DesktopUpdateManagerEvents = {
 
 type DesktopUpdateEventName = keyof DesktopUpdateManagerEvents
 
-export type DesktopUpdatePreferences = {
-  autoCheckForUpdates: boolean
-  autoDownloadUpdates: boolean
-}
-
 export type DesktopUpdateManagerOptions = {
   updateFeedUrl?: string | null
   preferences?: Partial<DesktopUpdatePreferences>
+  requestQuitForUpdate?: () => void | Promise<void>
 }
 
 type CheckForUpdatesOptions = {
@@ -81,78 +63,50 @@ async function retryWithBackoff<T>(
   throw lastError
 }
 
-function readErrorMessage(error: unknown): string {
-  if (error instanceof Error) {
-    return error.message
-  }
-  return String(error)
-}
-
-function readUpdateFeedUrl(): string | null {
-  const url = (process.env.CRADLE_DESKTOP_UPDATE_URL ?? __CRADLE_DESKTOP_UPDATE_URL__).trim()
-  return url || null
-}
-
-function readReleaseNotes(updateInfo: UpdateInfo): string | null {
-  if (Array.isArray(updateInfo.releaseNotes)) {
-    const notes = updateInfo.releaseNotes
-      .map(note => [note.version, note.note].filter(Boolean).join('\n'))
-      .filter(Boolean)
-      .join('\n\n')
-    return notes || null
-  }
-  return updateInfo.releaseNotes ?? null
-}
-
-function projectUpdateInfo(updateInfo: UpdateInfo): DesktopUpdateInfo {
-  return {
-    version: updateInfo.version,
-    releaseName: updateInfo.releaseName ?? null,
-    releaseNotes: readReleaseNotes(updateInfo),
-    releaseDate: updateInfo.releaseDate ?? null,
-    files: updateInfo.files.map(file => ({
-      url: file.url,
-      size: typeof file.size === 'number' ? file.size : null,
-      sha512: file.sha512 ?? null,
-    })),
-  }
-}
-
-function readProgressPercent(progress: ProgressInfo): number {
-  if (Number.isFinite(progress.percent)) {
-    return Math.max(0, Math.min(100, progress.percent))
-  }
-  return 0
-}
-
 export class DesktopUpdateManager {
   private readonly events = new EventEmitter()
-  private readonly updateFeedUrl: string | null
-  private readonly updater: AppUpdater | null
+  private readonly requestQuitForUpdate: (() => void | Promise<void>) | null
+  private readonly source: DesktopUpdateSource | null
+  private readonly downloader: DesktopUpdateDownloader | null
+  private readonly installer: DesktopUpdateInstaller
   private preferences: DesktopUpdatePreferences
   private statusSnapshot: DesktopUpdateStatus
   private backgroundTimer: NodeJS.Timeout | null = null
   private backgroundCheckRunning = false
+  private availableUpdate: DesktopUpdateCandidate | null = null
+  private installerPlan: DesktopUpdateInstallerPlan | null = null
 
   constructor(options: DesktopUpdateManagerOptions = {}) {
+    const currentVersion = app.getVersion()
     const updateFeedUrl = options.updateFeedUrl ?? readUpdateFeedUrl()
-    this.updateFeedUrl = updateFeedUrl
-    this.updater = this.createUpdater(updateFeedUrl)
+    const unsupportedReason = readUnsupportedReason(updateFeedUrl)
+
+    this.requestQuitForUpdate = options.requestQuitForUpdate ?? null
+    this.source = unsupportedReason
+      ? null
+      : new DesktopUpdateSource({
+          updateFeedUrl,
+          currentVersion,
+        })
+    this.downloader = unsupportedReason ? null : new DesktopUpdateDownloader()
+    this.installer = new DesktopUpdateInstaller()
     this.preferences = {
       autoCheckForUpdates: options.preferences?.autoCheckForUpdates ?? true,
       autoDownloadUpdates: options.preferences?.autoDownloadUpdates ?? false,
     }
     this.statusSnapshot = {
-      unsupported: this.updater === null,
-      currentVersion: app.getVersion(),
+      unsupported: unsupportedReason !== null,
+      currentVersion,
       isCheckingForUpdates: false,
       isDownloadingUpdate: false,
       downloadingProgress: 0,
       updateDownloaded: false,
       downloadedFilePath: null,
       updateInfo: null,
-      errorMessage: this.updater === null ? this.getUnsupportedReason(updateFeedUrl) : null,
+      errorMessage: unsupportedReason,
     }
+
+    void this.loadLastApplyResult()
   }
 
   get status(): DesktopUpdateStatus {
@@ -177,7 +131,7 @@ export class DesktopUpdateManager {
 
   startBackgroundChecks(): void {
     if (
-      !this.updater
+      !this.source
       || this.backgroundTimer
       || this.backgroundCheckRunning
       || !this.preferences.autoCheckForUpdates
@@ -189,6 +143,9 @@ export class DesktopUpdateManager {
       this.backgroundCheckRunning = true
       try {
         await this.checkForUpdates({ quiet: true })
+        if (this.preferences.autoDownloadUpdates && this.statusSnapshot.updateInfo) {
+          await this.downloadUpdate()
+        }
       }
       finally {
         this.backgroundCheckRunning = false
@@ -222,7 +179,7 @@ export class DesktopUpdateManager {
   }
 
   async checkForUpdates(options: CheckForUpdatesOptions = {}): Promise<DesktopUpdateStatus> {
-    if (!this.updater || this.statusSnapshot.isCheckingForUpdates || this.statusSnapshot.isDownloadingUpdate) {
+    if (!this.source || this.statusSnapshot.isCheckingForUpdates || this.statusSnapshot.isDownloadingUpdate) {
       return this.statusSnapshot
     }
 
@@ -232,20 +189,26 @@ export class DesktopUpdateManager {
     })
 
     try {
-      const result = await retryWithBackoff(() => this.updater!.checkForUpdates())
-      const updateInfo = result?.isUpdateAvailable ? projectUpdateInfo(result.updateInfo) : null
+      const candidate = await retryWithBackoff(() => this.source!.checkForUpdates())
+      this.availableUpdate = candidate
+      this.installerPlan = null
       this.setStatus({
         isCheckingForUpdates: false,
-        updateInfo,
+        updateInfo: candidate?.info ?? null,
         updateDownloaded: false,
         downloadedFilePath: null,
         downloadingProgress: 0,
       })
     }
     catch (error) {
+      this.availableUpdate = null
+      this.installerPlan = null
       this.setStatus({
         isCheckingForUpdates: false,
         updateInfo: null,
+        updateDownloaded: false,
+        downloadedFilePath: null,
+        downloadingProgress: 0,
         errorMessage: options.quiet ? this.statusSnapshot.errorMessage : readErrorMessage(error),
       })
     }
@@ -254,7 +217,11 @@ export class DesktopUpdateManager {
   }
 
   async downloadUpdate(): Promise<DesktopUpdateStatus> {
-    if (!this.updater || this.statusSnapshot.isDownloadingUpdate || !this.statusSnapshot.updateInfo) {
+    if (
+      !this.downloader
+      || this.statusSnapshot.isDownloadingUpdate
+      || !this.availableUpdate
+    ) {
       return this.statusSnapshot
     }
 
@@ -267,17 +234,23 @@ export class DesktopUpdateManager {
     })
 
     try {
-      const downloadedPaths = await retryWithBackoff(() => this.updater!.downloadUpdate())
-      const desktopPath = await this.copyInstallerToDesktop(downloadedPaths)
-      await this.openDownloadedInstaller(desktopPath)
+      const download = await retryWithBackoff(() => this.downloader!.download(this.availableUpdate!, (progress) => {
+        this.setStatus({
+          isDownloadingUpdate: true,
+          downloadingProgress: progress.percent,
+        })
+      }))
+      const plan = await this.installer.prepare(download, this.availableUpdate.info.version)
+      this.installerPlan = plan
       this.setStatus({
         isDownloadingUpdate: false,
         downloadingProgress: 100,
         updateDownloaded: true,
-        downloadedFilePath: desktopPath,
+        downloadedFilePath: plan.archivePath,
       })
     }
     catch (error) {
+      this.installerPlan = null
       this.setStatus({
         isDownloadingUpdate: false,
         updateDownloaded: false,
@@ -290,12 +263,22 @@ export class DesktopUpdateManager {
   }
 
   async applyUpdate(): Promise<void> {
-    if (!this.statusSnapshot.downloadedFilePath) {
+    if (!this.installerPlan) {
+      this.setStatus({
+        errorMessage: 'No prepared desktop update is available',
+      })
+      return
+    }
+    if (!this.requestQuitForUpdate) {
+      this.setStatus({
+        errorMessage: 'Desktop update quit hook is not configured',
+      })
       return
     }
 
     try {
-      await this.openDownloadedInstaller(this.statusSnapshot.downloadedFilePath)
+      this.installer.launch(this.installerPlan)
+      await this.requestQuitForUpdate()
     }
     catch (error) {
       this.setStatus({
@@ -304,131 +287,15 @@ export class DesktopUpdateManager {
     }
   }
 
-  private createUpdater(updateFeedUrl: string | null): AppUpdater | null {
-    if (!updateFeedUrl) {
-      return null
-    }
-    if (!app.isPackaged && process.env.CRADLE_DESKTOP_ALLOW_DEV_UPDATES !== 'true') {
-      return null
+  private async loadLastApplyResult(): Promise<void> {
+    const result = await this.installer.readLastResult()
+    if (!result || result.ok) {
+      return
     }
 
-    autoUpdater.autoDownload = false
-    autoUpdater.autoInstallOnAppQuit = false
-    autoUpdater.allowDowngrade = false
-    autoUpdater.setFeedURL({
-      provider: 'generic',
-      url: updateFeedUrl,
+    this.setStatus({
+      errorMessage: result.error ?? `Desktop update ${result.version} failed`,
     })
-
-    this.bindUpdaterEvents(autoUpdater)
-    return autoUpdater
-  }
-
-  private bindUpdaterEvents(updater: AppUpdater): void {
-    updater.on('checking-for-update', () => {
-      this.setStatus({
-        isCheckingForUpdates: true,
-        errorMessage: null,
-      })
-    })
-    updater.on('update-available', (info) => {
-      this.setStatus({
-        isCheckingForUpdates: false,
-        updateInfo: projectUpdateInfo(info),
-        updateDownloaded: false,
-        downloadedFilePath: null,
-        downloadingProgress: 0,
-      })
-    })
-    updater.on('update-not-available', () => {
-      this.setStatus({
-        isCheckingForUpdates: false,
-        updateInfo: null,
-        updateDownloaded: false,
-        downloadedFilePath: null,
-        downloadingProgress: 0,
-      })
-    })
-    updater.on('download-progress', (progress) => {
-      this.setStatus({
-        isDownloadingUpdate: true,
-        downloadingProgress: readProgressPercent(progress),
-      })
-    })
-    updater.on('update-downloaded', (info) => {
-      this.setStatus({
-        isDownloadingUpdate: false,
-        downloadingProgress: 100,
-        updateDownloaded: this.statusSnapshot.downloadedFilePath !== null,
-        downloadedFilePath: this.statusSnapshot.downloadedFilePath,
-        updateInfo: projectUpdateInfo(info),
-      })
-    })
-    updater.on('error', (error) => {
-      this.setStatus({
-        isCheckingForUpdates: false,
-        isDownloadingUpdate: false,
-        errorMessage: readErrorMessage(error),
-      })
-    })
-  }
-
-  private getUnsupportedReason(updateFeedUrl: string | null): string | null {
-    if (!updateFeedUrl) {
-      return 'CRADLE_DESKTOP_UPDATE_URL is not configured'
-    }
-    if (!app.isPackaged && process.env.CRADLE_DESKTOP_ALLOW_DEV_UPDATES !== 'true') {
-      return 'Desktop updates are only available in packaged builds'
-    }
-    return 'electron-updater is unavailable in the current runtime'
-  }
-
-  private async copyInstallerToDesktop(downloadedPaths: string[]): Promise<string> {
-    const sourcePath = this.pickInstallerPath(downloadedPaths)
-    const desktopDir = app.getPath('desktop')
-    await mkdir(desktopDir, { recursive: true })
-
-    const fileName = basename(sourcePath)
-    const desktopPath = await this.resolveAvailableDesktopPath(desktopDir, fileName)
-    await copyFile(sourcePath, desktopPath)
-    return desktopPath
-  }
-
-  private pickInstallerPath(downloadedPaths: string[]): string {
-    const installerPath = downloadedPaths.find((filePath) => {
-      const extension = extname(filePath).toLowerCase()
-      return ['.dmg', '.pkg', '.zip', '.exe', '.msi', '.appimage'].includes(extension)
-    }) ?? downloadedPaths[0]
-
-    if (!installerPath) {
-      throw new Error('Update download did not produce an installer file')
-    }
-    return installerPath
-  }
-
-  private async resolveAvailableDesktopPath(desktopDir: string, fileName: string): Promise<string> {
-    const extension = extname(fileName)
-    const stem = extension ? fileName.slice(0, -extension.length) : fileName
-
-    for (let index = 0; index < 100; index++) {
-      const candidateName = index === 0 ? fileName : `${stem} ${index + 1}${extension}`
-      const candidatePath = join(desktopDir, candidateName)
-      try {
-        await access(candidatePath)
-      }
-      catch {
-        return candidatePath
-      }
-    }
-
-    return join(desktopDir, `${stem} ${Date.now()}${extension}`)
-  }
-
-  private async openDownloadedInstaller(filePath: string): Promise<void> {
-    const openError = await shell.openPath(filePath)
-    if (openError) {
-      throw new Error(openError)
-    }
   }
 
   private setStatus(patch: Partial<DesktopUpdateStatus>): void {
@@ -438,4 +305,17 @@ export class DesktopUpdateManager {
     }
     this.events.emit('statusChanged', this.statusSnapshot)
   }
+}
+
+function readUnsupportedReason(updateFeedUrl: string | null): string | null {
+  if (process.platform !== 'darwin') {
+    return 'Desktop self-updates are only available on macOS'
+  }
+  if (!updateFeedUrl) {
+    return 'CRADLE_DESKTOP_UPDATE_URL is not configured'
+  }
+  if (!app.isPackaged && process.env.CRADLE_DESKTOP_ALLOW_DEV_UPDATES !== 'true') {
+    return 'Desktop updates are only available in packaged builds'
+  }
+  return null
 }
