@@ -1,6 +1,6 @@
 import { createHash } from 'node:crypto'
 import { createWriteStream } from 'node:fs'
-import { mkdir, rename } from 'node:fs/promises'
+import { mkdir, rename, rm } from 'node:fs/promises'
 import { basename, join } from 'node:path'
 import { once } from 'node:events'
 
@@ -81,6 +81,11 @@ export class DesktopUpdateDownloader {
         })
       }
     }
+    catch (error) {
+      writer.destroy()
+      await rm(temporaryPath, { force: true })
+      throw error
+    }
     finally {
       reader.releaseLock()
     }
@@ -90,6 +95,7 @@ export class DesktopUpdateDownloader {
 
     const actualSha256 = digest.digest('hex')
     if (candidate.artifact.sha256 && actualSha256.toLowerCase() !== candidate.artifact.sha256.toLowerCase()) {
+      await rm(temporaryPath, { force: true })
       throw new Error('Update archive SHA-256 verification failed')
     }
 

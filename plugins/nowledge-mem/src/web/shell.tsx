@@ -87,16 +87,14 @@ export function NowledgeShell({ isActive, ctx }: NowledgeShellProps) {
                 const isActiveTab = activeTab === id
                 return (
                   <Tooltip key={id}>
-                    <TooltipTrigger asChild>
-                      <m.button
+                    <TooltipTrigger
+                      render={(
+                        <button
                         type="button"
-                        layout
                         onClick={() => activateTab(id)}
                         aria-label={label}
                         data-testid={`nowledge-tab-${id}`}
                         data-active={isActiveTab ? 'true' : 'false'}
-                        initial={false}
-                        transition={tabTransition}
                         className={cn(
                           'relative z-10 grid h-7 place-items-center overflow-hidden rounded-md px-2 text-xs select-none',
                           'transition-[color] duration-150 ease-out',
@@ -140,8 +138,9 @@ export function NowledgeShell({ isActive, ctx }: NowledgeShellProps) {
                             </m.span>
                           </m.span>
                         </span>
-                      </m.button>
-                    </TooltipTrigger>
+                        </button>
+                      )}
+                    />
                     {!isActiveTab && (
                       <TooltipContent side="bottom" sideOffset={6}>{label}</TooltipContent>
                     )}
