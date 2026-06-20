@@ -6,6 +6,11 @@ const providerTargetKind = t.Union([t.Literal('manual'), t.Literal('external')])
 const providerKind = providerKindSchema
 const nullableString = t.Union([t.String(), t.Null()])
 const nullableNumber = t.Union([t.Number(), t.Null()])
+const codexAccountType = t.Union([
+  t.Literal('apiKey'),
+  t.Literal('chatgpt'),
+  t.Literal('amazonBedrock'),
+])
 
 const claudeAgentConfigPatch = t.Union([
   t.Object({
@@ -181,7 +186,10 @@ export const ProviderTargetsModel = {
     account: t.Union([
       t.Object({
         authMode: t.Literal('chatgptAuthTokens'),
+        accountType: t.Union([codexAccountType, t.Null()]),
+        email: nullableString,
         planType: nullableString,
+        requiresOpenaiAuth: t.Union([t.Boolean(), t.Null()]),
       }, { additionalProperties: false }),
       t.Null(),
     ]),

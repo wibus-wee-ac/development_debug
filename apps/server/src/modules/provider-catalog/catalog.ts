@@ -176,63 +176,31 @@ class UniversalMetadataProvider implements ProviderMetadataProvider {
     deps: ProviderCatalogDeps,
   ): Promise<ModelDescriptor[]> {
     const config = UniversalProviderConfigJsonSchema.parse(input.configJson)
-    if (!config.openaiBaseUrl && !config.anthropicBaseUrl) {
-      throw invalidProviderRequest('OpenAI or Anthropic Base URL is required')
+    const openaiBaseUrl = config.openaiBaseUrl || config.baseUrl
+    if (!openaiBaseUrl) {
+      throw invalidProviderRequest('OpenAI Base URL is required')
     }
 
     const apiKey = input.secretRef ? deps.readSecret(input.secretRef) : null
-    const models: ModelDescriptor[] = []
 
-    if (config.openaiBaseUrl) {
-      try {
-        const baseUrl = normalizeBaseUrl(config.openaiBaseUrl)
-        const payload = OpenAICompatibleModelsResponseSchema.parse(
-          await fetchModelsPayload(
-            'openai-compatible',
-            modelRequestOptions(baseUrl, apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined),
-          ),
-        )
-        models.push(...payload.data.map(item => ({
-          id: item.id,
-          label: item.id,
-          providerKind: 'universal' as const,
-          capabilities: {},
-        })))
-      }
-      catch (error) {
-        if (!config.anthropicBaseUrl) {
-          throw wrapProviderModelsError(this.providerKind, error)
-        }
-      }
+    try {
+      const baseUrl = normalizeBaseUrl(openaiBaseUrl)
+      const payload = OpenAICompatibleModelsResponseSchema.parse(
+        await fetchModelsPayload(
+          this.providerKind,
+          modelRequestOptions(baseUrl, apiKey ? { Authorization: `Bearer ${apiKey}` } : undefined),
+        ),
+      )
+      return payload.data.map(item => ({
+        id: item.id,
+        label: item.id,
+        providerKind: 'universal' as const,
+        capabilities: {},
+      }))
     }
-
-    if (config.anthropicBaseUrl) {
-      try {
-        const anthropicBaseUrl = normalizeBaseUrl(config.anthropicBaseUrl).replace(TRAILING_SLASH_RE, '')
-        const payload = AnthropicModelsResponseSchema.parse(
-          await fetchModelsPayload(
-            'anthropic',
-            modelRequestOptions(anthropicBaseUrl, {
-              'anthropic-version': ANTHROPIC_VERSION,
-              ...(apiKey ? { 'x-api-key': apiKey } : {}),
-            }),
-          ),
-        )
-        models.push(...payload.data.map(item => ({
-          id: item.id,
-          label: item.display_name ?? item.id,
-          providerKind: 'universal' as const,
-          capabilities: readProviderDefaultModelCapabilities('anthropic'),
-        })))
-      }
-      catch (error) {
-        if (models.length === 0) {
-          throw wrapProviderModelsError(this.providerKind, error)
-        }
-      }
+    catch (error) {
+      throw wrapProviderModelsError(this.providerKind, error)
     }
-
-    return models
   }
 }
 

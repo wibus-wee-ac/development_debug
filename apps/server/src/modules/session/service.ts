@@ -20,9 +20,11 @@ import {
   mergeRuntimeSettings,
   normalizeRuntimeSettingsPatch,
   readSessionRuntimeSettings,
-  writeSessionRuntimeSettingsConfigJson,
+  writeSessionRuntimeConfigJson,
+  type SessionClaudeAgentConfigPatchInput,
 } from '../chat-runtime/runtime-settings'
 import type { ChatRuntimeSettingsPatch, ChatThinkingEffort } from '../chat-runtime/runtime-provider-types'
+import { normalizeClaudeAgentConfigPatch } from '../provider-contracts/claude-agent-config'
 import type { RuntimeKind } from '../provider-contracts/types'
 import { invalidateDurableProviderRuntimeBindingForChatSession } from '../provider-runtime/service'
 import { assertProviderTargetCompatibleWithRuntime, resolveProviderTarget } from '../provider-targets/service'
@@ -35,6 +37,10 @@ export type SessionView = Session & {
   latestUserMessageAt: number | null
   latestAssistantMessageAt: number | null
   unread: boolean
+}
+
+type SessionRuntimeSettingsCreatePatch = ChatRuntimeSettingsPatch & {
+  claudeAgent?: SessionClaudeAgentConfigPatchInput | null
 }
 
 const SessionCreateInputSchema = z.object({
@@ -94,6 +100,10 @@ function listRequestedModelsBySessionIds(sessionIds: string[]): Map<string, stri
 
 function parseTrustedConfigJson(configJson: string | null | undefined): Record<string, unknown> {
   return parseJsonObjectOrEmpty(configJson)
+}
+
+function hasOwn(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key)
 }
 
 export function readSessionModelPreference(configJson: string | null | undefined): string | null {
@@ -508,7 +518,7 @@ export function create(input: {
   modelId?: string | null
   thinkingEffort?: ChatThinkingEffort | null
   runtimeKind?: RuntimeKind
-  runtimeSettings?: ChatRuntimeSettingsPatch
+  runtimeSettings?: SessionRuntimeSettingsCreatePatch
   agentId?: string | null
   linkedIssueId?: string | null
   configJson?: string
@@ -525,7 +535,18 @@ export function create(input: {
     readSessionRuntimeSettings(rowInput.configJson),
     normalizeRuntimeSettingsPatch(parsed.runtimeSettings),
   )
-  const runtimeConfigJson = writeSessionRuntimeSettingsConfigJson(rowInput.configJson, runtimeSettings)
+  const rawRuntimeSettings = parsed.runtimeSettings && typeof parsed.runtimeSettings === 'object'
+    ? parsed.runtimeSettings as Record<string, unknown>
+    : {}
+  const updateClaudeAgent = hasOwn(rawRuntimeSettings, 'claudeAgent')
+  const runtimeConfigJson = writeSessionRuntimeConfigJson({
+    configJson: rowInput.configJson,
+    runtimeSettings,
+    claudeAgent: updateClaudeAgent
+      ? normalizeClaudeAgentConfigPatch(rawRuntimeSettings.claudeAgent)
+      : undefined,
+    updateClaudeAgent,
+  })
   const modelConfigJson = parsed.modelId !== undefined
     ? writeSessionModelPreferenceConfigJson(runtimeConfigJson, parsed.modelId)
     : runtimeConfigJson
