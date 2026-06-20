@@ -1,4 +1,4 @@
-import type { PluginCapabilityRecord, PluginDescriptor, PluginLayer, PluginLayerState, PluginLayerStatus, PluginManifest, PluginSourceDescriptor, PluginSourceKind } from '@cradle/plugin-sdk'
+import type { PluginActivationState, PluginCapabilityRecord, PluginDescriptor, PluginLayer, PluginLayerState, PluginLayerStatus, PluginManifest, PluginSourceDescriptor, PluginSourceKind } from '@cradle/plugin-sdk'
 import {
   derivePluginCapabilityId,
   derivePluginRouteSegment,
@@ -91,6 +91,7 @@ export function createPluginDescriptor(
     icon: manifest.cradle.icon,
     deployments: manifest.cradle.deployments,
     source,
+    activation: { enabled: true, source: 'default' },
     layers,
     capabilities: [],
     declaredCapabilities: contributions.declaredCapabilities,
@@ -125,6 +126,7 @@ export function createInvalidPluginDescriptor(
     version,
     displayName: identity,
     source,
+    activation: { enabled: true, source: 'default' },
     layers,
     capabilities: [],
     declaredCapabilities: [],
@@ -160,6 +162,12 @@ export function registerPluginDescriptor(descriptor: PluginDescriptor): void {
   if (!routeOwner) {
     routeOwners.set(descriptor.routeSegment, descriptor.identity)
   }
+}
+
+export function setPluginActivationState(owner: string, activation: PluginActivationState): void {
+  const descriptor = descriptors.get(owner)
+  if (!descriptor) { return }
+  descriptor.activation = activation
 }
 
 export function setPluginLayerState(

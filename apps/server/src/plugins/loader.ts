@@ -3,31 +3,57 @@ import { readFile } from 'node:fs/promises'
 import { basename, delimiter, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import type { Disposable, PluginManifest, PluginSourceDescriptor, PluginSourceKind } from '@cradle/plugin-sdk'
+import type { Disposable, PluginDescriptor, PluginLayer, PluginManifest, PluginSourceDescriptor, PluginSourceKind } from '@cradle/plugin-sdk'
 import { evaluatePluginPermissionPolicy } from '@cradle/plugin-sdk/permissions'
+import type { ServerPluginRouteContext } from '@cradle/plugin-sdk/server'
 import { Elysia } from 'elysia'
 
 import { createChildLogger } from '../logging/logger'
+import { readPluginActivationPolicy, setPluginActivationPolicy } from './activation-policy'
 import { createServerPluginContext } from './context'
 import type { DiscoveredPluginPackage } from './discovery'
 import { discoverPluginPackages } from './discovery'
 import { resetExternalIssueSourceRegistry } from './external-issue-source-registry'
 import { resetExternalProviderSourceRegistry } from './external-provider-source-registry'
+import { clearPluginRoutes, dispatchPluginRoute, resetPluginRouteRegistry } from './route-registry'
 import {
   classifyPluginSource,
   createInvalidPluginDescriptor,
   createPluginDescriptor,
+  getPluginDescriptor,
   listPluginDescriptors,
   registerPluginDescriptor,
   resetPluginRuntimeRegistry,
+  setPluginActivationState,
   setPluginLayerState,
 } from './runtime-registry'
 import { createPluginStaticServer } from './static-server'
 import { validatePluginModule } from './validation'
 
-// Store deactivation functions for shutdown
-const activePlugins = new Map<string, { deactivate?: () => void | Promise<void>, subscriptions: Disposable[] }>()
+interface ActivePlugin {
+  deactivate?: () => void | Promise<void>
+  subscriptions: Disposable[]
+}
+
+const layerNames: PluginLayer[] = ['server', 'web', 'desktop']
+const activePlugins = new Map<string, ActivePlugin>()
+const discoveredPluginManifests = new Map<string, PluginManifest>()
 const logger = createChildLogger({ module: 'plugins' })
+
+interface PluginRouteDispatcherContext {
+  params: {
+    'routeSegment': string
+    '*'?: string
+  }
+  request: Request
+  body: unknown
+  query: Record<string, unknown>
+  headers: Record<string, string | undefined>
+  set: {
+    status?: number | string
+    headers: Record<string, string | number>
+  }
+}
 
 interface PluginDiscoverySource {
   pluginsDir: string
@@ -108,7 +134,126 @@ function disposeSubscriptions(name: string, subscriptions: Disposable[]): void {
   subscriptions.length = 0
 }
 
+function toDisabledReason(reason: string | null | undefined): string {
+  return reason?.trim() || 'Disabled by user.'
+}
+
+function refreshPluginActivationState(pluginName: string): boolean {
+  const policy = readPluginActivationPolicy(pluginName)
+  setPluginActivationState(pluginName, policy
+    ? {
+        enabled: policy.enabled,
+        source: 'user',
+        reason: policy.reason ?? undefined,
+        updatedAt: policy.updatedAt,
+      }
+    : { enabled: true, source: 'default' })
+  return policy?.enabled ?? true
+}
+
+function markPluginLayersDisabled(manifest: PluginManifest, reason: string): void {
+  for (const layer of layerNames) {
+    if (manifest.cradle[layer] && getPluginDescriptor(manifest.name)?.layers[layer].status !== 'invalid') {
+      setPluginLayerState(manifest.name, layer, 'disabled', reason)
+    }
+  }
+}
+
+function resetDiscoveredPluginLayers(manifest: PluginManifest): void {
+  for (const layer of layerNames) {
+    if (manifest.cradle[layer] && getPluginDescriptor(manifest.name)?.layers[layer].status !== 'invalid') {
+      setPluginLayerState(manifest.name, layer, 'discovered')
+    }
+  }
+}
+
+function preparePluginWebLayer(manifest: PluginManifest): void {
+  if (!manifest.cradle.web) { return }
+  const descriptor = getPluginDescriptor(manifest.name)
+  if (!descriptor || descriptor.layers.web.status === 'invalid') { return }
+  setPluginLayerState(manifest.name, 'web', 'discovered')
+  const entryPath = resolve(manifest.packageDir, manifest.cradle.web)
+  if (!existsSync(entryPath)) {
+    setPluginLayerState(manifest.name, 'web', 'failed', `Web entry is missing: ${manifest.cradle.web}`)
+    logger.error('plugin web entry missing', { plugin: manifest.name, entryPath })
+    return
+  }
+  const permissionDecision = evaluatePluginPermissionPolicy(descriptor, 'web', process.env)
+  if (!permissionDecision.allowed) {
+    setPluginLayerState(manifest.name, 'web', 'disabled', permissionDecision.reason)
+    logger.warn('plugin web layer disabled by permission policy', {
+      plugin: manifest.name,
+      missingRequiredPermissions: permissionDecision.missingRequiredPermissions,
+    })
+  }
+}
+
+async function deactivatePluginServerLayer(pluginName: string): Promise<void> {
+  const plugin = activePlugins.get(pluginName)
+  activePlugins.delete(pluginName)
+  if (plugin) {
+    try {
+      await plugin.deactivate?.()
+    }
+ catch (err) {
+      logger.error('plugin deactivation failed', { plugin: pluginName, err })
+    }
+ finally {
+      disposeSubscriptions(pluginName, plugin.subscriptions)
+    }
+  }
+  clearPluginRoutes(pluginName)
+}
+
+async function activatePluginServerLayer(manifest: PluginManifest): Promise<void> {
+  if (!manifest.cradle.server) { return }
+  const descriptor = getPluginDescriptor(manifest.name)
+  if (!descriptor || descriptor.layers.server.status === 'invalid') { return }
+  if (activePlugins.has(manifest.name)) { return }
+
+  const permissionDecision = evaluatePluginPermissionPolicy(descriptor, 'server', process.env)
+  if (!permissionDecision.allowed) {
+    setPluginLayerState(manifest.name, 'server', 'disabled', permissionDecision.reason)
+    logger.warn('plugin server layer disabled by permission policy', {
+      plugin: manifest.name,
+      missingRequiredPermissions: permissionDecision.missingRequiredPermissions,
+    })
+    return
+  }
+
+  const entryPath = resolve(manifest.packageDir, manifest.cradle.server)
+  let subscriptions: Disposable[] = []
+  try {
+    setPluginLayerState(manifest.name, 'server', 'activating')
+    const mod = await import(entryPath)
+    validatePluginModule(mod, manifest.name, 'server')
+
+    const ctx = createServerPluginContext(manifest, { routeSegment: descriptor.routeSegment })
+    subscriptions = ctx.subscriptions
+    await mod.activate(ctx)
+
+    activePlugins.set(manifest.name, {
+      deactivate: mod.deactivate as (() => void | Promise<void>) | undefined,
+      subscriptions: ctx.subscriptions,
+    })
+    setPluginLayerState(manifest.name, 'server', 'active')
+    logger.info('plugin activated', { plugin: manifest.name })
+  }
+ catch (err) {
+    const message = err instanceof Error ? err.message : String(err)
+    setPluginLayerState(manifest.name, 'server', 'failed', message)
+    disposeSubscriptions(manifest.name, subscriptions)
+    clearPluginRoutes(manifest.name)
+    logger.error('plugin activation failed', { plugin: manifest.name, err })
+  }
+}
+
 export async function activateServerPlugins(app: Elysia): Promise<void> {
+  for (const pluginName of [...activePlugins.keys()]) {
+    await deactivatePluginServerLayer(pluginName)
+  }
+  discoveredPluginManifests.clear()
+
   // Discover from plugins/ relative to workspace root
   // In dev: CRADLE_PLUGINS_DIR env or traverse up from this file. In prod: process.resourcesPath or cwd
   const thisDir = dirname(fileURLToPath(import.meta.url))
@@ -116,6 +261,7 @@ export async function activateServerPlugins(app: Elysia): Promise<void> {
     ?? resolve(thisDir, '../../../../plugins')
   const packages = await discoverPackagesFromSources(getPluginDiscoverySources(pluginsDir))
   resetPluginRuntimeRegistry()
+  resetPluginRouteRegistry()
   resetExternalProviderSourceRegistry()
   resetExternalIssueSourceRegistry()
 
@@ -126,6 +272,7 @@ export async function activateServerPlugins(app: Elysia): Promise<void> {
       continue
     }
     registerPluginDescriptor(createPluginDescriptor(pkg.manifest, source))
+    discoveredPluginManifests.set(pkg.manifest.name, pkg.manifest)
   }
 
   const descriptors = listPluginDescriptors()
@@ -133,66 +280,20 @@ export async function activateServerPlugins(app: Elysia): Promise<void> {
 
   if (descriptors.length === 0) { return }
 
-  for (const manifest of manifests.filter(m => m.cradle.web)) {
-    const descriptor = descriptors.find(d => d.identity === manifest.name)
-    if (!descriptor || descriptor.layers.web.status === 'invalid') { continue }
-    const entryPath = resolve(manifest.packageDir, manifest.cradle.web!)
-    if (!existsSync(entryPath)) {
-      setPluginLayerState(manifest.name, 'web', 'failed', `Web entry is missing: ${manifest.cradle.web}`)
-      logger.error('plugin web entry missing', { plugin: manifest.name, entryPath })
+  for (const manifest of manifests) {
+    const descriptor = getPluginDescriptor(manifest.name)
+    if (!descriptor) { continue }
+    const enabled = refreshPluginActivationState(manifest.name)
+    if (!enabled) {
+      markPluginLayersDisabled(manifest, toDisabledReason(descriptor.activation.reason))
       continue
     }
-    const permissionDecision = evaluatePluginPermissionPolicy(descriptor, 'web', process.env)
-    if (!permissionDecision.allowed) {
-      setPluginLayerState(manifest.name, 'web', 'disabled', permissionDecision.reason)
-      logger.warn('plugin web layer disabled by permission policy', {
-        plugin: manifest.name,
-        missingRequiredPermissions: permissionDecision.missingRequiredPermissions,
-      })
-    }
+    preparePluginWebLayer(manifest)
   }
 
-  // Activate server plugins
-  const serverPlugins = manifests.filter(m => m.cradle.server)
-  for (const manifest of serverPlugins) {
-    const descriptor = descriptors.find(d => d.identity === manifest.name)
-    if (!descriptor || descriptor.layers.server.status === 'invalid') { continue }
-    const permissionDecision = evaluatePluginPermissionPolicy(descriptor, 'server', process.env)
-    if (!permissionDecision.allowed) {
-      setPluginLayerState(manifest.name, 'server', 'disabled', permissionDecision.reason)
-      logger.warn('plugin server layer disabled by permission policy', {
-        plugin: manifest.name,
-        missingRequiredPermissions: permissionDecision.missingRequiredPermissions,
-      })
-      continue
-    }
-    const entryPath = resolve(manifest.packageDir, manifest.cradle.server!)
-    let subscriptions: Disposable[] = []
-    try {
-      setPluginLayerState(manifest.name, 'server', 'activating')
-      const mod = await import(entryPath)
-      validatePluginModule(mod, manifest.name, 'server')
-
-      const pluginApp = new Elysia({ prefix: `/api/plugins/${descriptor.routeSegment}` })
-
-      const ctx = createServerPluginContext(manifest, pluginApp)
-      subscriptions = ctx.subscriptions
-      await mod.activate(ctx)
-      app.use(pluginApp)
-
-      activePlugins.set(manifest.name, {
-        deactivate: mod.deactivate as (() => void | Promise<void>) | undefined,
-        subscriptions: ctx.subscriptions,
-      })
-      setPluginLayerState(manifest.name, 'server', 'active')
-      logger.info('plugin activated', { plugin: manifest.name })
-    }
- catch (err) {
-      const message = err instanceof Error ? err.message : String(err)
-      setPluginLayerState(manifest.name, 'server', 'failed', message)
-      disposeSubscriptions(manifest.name, subscriptions)
-      logger.error('plugin activation failed', { plugin: manifest.name, err })
-    }
+  for (const manifest of manifests) {
+    if (!getPluginDescriptor(manifest.name)?.activation.enabled) { continue }
+    await activatePluginServerLayer(manifest)
   }
 
   // Plugin static server — serves web entries + plugin list API
@@ -211,21 +312,101 @@ export async function activateServerPlugins(app: Elysia): Promise<void> {
         headers: { 'content-type': 'application/javascript; charset=utf-8' },
       })
     })
+    .all('/:routeSegment', context => dispatchPluginRouteFromElysia(context, '/'))
+    .all('/:routeSegment/*', context => dispatchPluginRouteFromElysia(
+      context,
+      `/${context.params['*'] ?? ''}`,
+    ))
 
   app.use(pluginRoutes)
 }
 
+async function dispatchPluginRouteFromElysia(
+  context: PluginRouteDispatcherContext,
+  path: string,
+): Promise<unknown> {
+  const pluginSet: ServerPluginRouteContext['set'] = {}
+  const result = await dispatchPluginRoute({
+    routeSegment: context.params.routeSegment,
+    method: context.request.method,
+    path,
+    body: context.body,
+    query: context.query,
+    headers: context.headers,
+    set: pluginSet,
+  })
+  if (pluginSet.status !== undefined) {
+    context.set.status = pluginSet.status
+  }
+  if (pluginSet.headers) {
+    Object.assign(context.set.headers, pluginSet.headers)
+  }
+  if (!result.found) {
+    context.set.status = 404
+    return { error: 'Plugin route not found.' }
+  }
+  return result.body
+}
+
+function requirePluginDescriptor(pluginName: string): PluginDescriptor {
+  const descriptor = getPluginDescriptor(pluginName)
+  if (!descriptor) {
+    throw new Error(`Plugin not found: ${pluginName}`)
+  }
+  return descriptor
+}
+
+function requirePluginManifest(pluginName: string): PluginManifest {
+  const manifest = discoveredPluginManifests.get(pluginName)
+  if (!manifest) {
+    throw new Error(`Plugin manifest not found: ${pluginName}`)
+  }
+  return manifest
+}
+
+export async function disablePlugin(pluginName: string, reason?: string): Promise<PluginDescriptor> {
+  const descriptor = requirePluginDescriptor(pluginName)
+  const manifest = requirePluginManifest(descriptor.identity)
+  const policy = setPluginActivationPolicy(descriptor.identity, {
+    enabled: false,
+    reason: toDisabledReason(reason),
+  })
+  setPluginActivationState(descriptor.identity, {
+    enabled: false,
+    source: 'user',
+    reason: policy.reason ?? undefined,
+    updatedAt: policy.updatedAt,
+  })
+
+  await deactivatePluginServerLayer(descriptor.identity)
+  markPluginLayersDisabled(manifest, toDisabledReason(policy.reason))
+  return requirePluginDescriptor(descriptor.identity)
+}
+
+export async function enablePlugin(pluginName: string): Promise<PluginDescriptor> {
+  const descriptor = requirePluginDescriptor(pluginName)
+  const manifest = requirePluginManifest(descriptor.identity)
+  const policy = setPluginActivationPolicy(descriptor.identity, {
+    enabled: true,
+    reason: null,
+  })
+  setPluginActivationState(descriptor.identity, {
+    enabled: true,
+    source: 'user',
+    updatedAt: policy.updatedAt,
+  })
+
+  await deactivatePluginServerLayer(descriptor.identity)
+  resetDiscoveredPluginLayers(manifest)
+  preparePluginWebLayer(manifest)
+  await activatePluginServerLayer(manifest)
+  return requirePluginDescriptor(descriptor.identity)
+}
+
 export async function deactivateAllPlugins(): Promise<void> {
-  for (const [name, plugin] of activePlugins) {
-    try {
-      await plugin.deactivate?.()
-    }
- catch (err) {
-      logger.error('plugin deactivation failed', { plugin: name, err })
-    }
- finally {
-      disposeSubscriptions(name, plugin.subscriptions)
-    }
+  for (const name of [...activePlugins.keys()]) {
+    await deactivatePluginServerLayer(name)
   }
   activePlugins.clear()
+  resetPluginRouteRegistry()
 }

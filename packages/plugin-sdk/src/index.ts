@@ -116,6 +116,13 @@ export interface PluginLayerState {
   activatedAt?: string
 }
 
+export interface PluginActivationState {
+  enabled: boolean
+  source: 'default' | 'user'
+  reason?: string
+  updatedAt?: number
+}
+
 export type PluginCapabilityStatus = 'registered' | 'failed' | 'unsupported'
 
 export interface PluginCapabilityRecord {
@@ -159,6 +166,7 @@ export interface PluginDescriptor {
   icon?: string
   deployments?: Array<'desktop' | 'web'>
   source: PluginSourceDescriptor
+  activation: PluginActivationState
   layers: Record<PluginLayer, PluginLayerState>
   capabilities: PluginCapabilityRecord[]
   declaredCapabilities: PluginDeclaredCapabilityRecord[]

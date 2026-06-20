@@ -139,6 +139,9 @@ import { register as registerObservabilityEvents } from './observability/events'
 import { register as registerObservabilityExport } from './observability/export'
 import { register as registerObservabilityIncidents } from './observability/incidents'
 import { register as registerObservabilityRuntimeSnapshot } from './observability/runtime-snapshot'
+import { register as registerPluginGet } from './plugin/get'
+import { register as registerPluginList } from './plugin/list'
+import { register as registerPluginSetEnabled } from './plugin/set-enabled'
 import { register as registerPreferencesAppGet } from './preferences/app/get'
 import { register as registerPreferencesAppSet } from './preferences/app/set'
 import { register as registerPreferencesChatGet } from './preferences/chat/get'
@@ -386,6 +389,9 @@ export function registerGeneratedCommands(program: Command): void {
   registerObservabilityExport(program)
   registerObservabilityIncidents(program)
   registerObservabilityRuntimeSnapshot(program)
+  registerPluginGet(program)
+  registerPluginList(program)
+  registerPluginSetEnabled(program)
   registerPreferencesAppGet(program)
   registerPreferencesAppSet(program)
   registerPreferencesChatGet(program)

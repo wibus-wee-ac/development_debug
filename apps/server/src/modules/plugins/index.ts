@@ -7,6 +7,15 @@ export const plugins = new Elysia({
   prefix: '/plugins',
   detail: { tags: ['plugins'] },
 })
+  .get('/', () => Plugins.listPlugins(), {
+    detail: {
+      'summary': 'List plugins',
+      'x-cradle-cli': {
+        command: ['plugin', 'list'],
+      },
+    },
+    response: { 200: t.Array(PluginsModel.pluginDescriptor) },
+  })
   .get('/mentions', () => Plugins.listMentionCandidates(), {
     detail: {
       summary: 'List plugin mention candidates',
@@ -33,4 +42,29 @@ export const plugins = new Elysia({
     params: t.Object({
       routeSegment: t.String({ minLength: 1 }),
     }),
+  })
+  .get('/:routeSegment', ({ params }) => Plugins.getPlugin(params.routeSegment), {
+    detail: {
+      'summary': 'Get plugin descriptor',
+      'x-cradle-cli': {
+        command: ['plugin', 'get'],
+      },
+    },
+    params: t.Object({
+      routeSegment: t.String({ minLength: 1 }),
+    }),
+    response: { 200: PluginsModel.pluginDescriptor },
+  })
+  .patch('/:routeSegment/enabled', ({ params, body }) => Plugins.setPluginEnabled(params.routeSegment, body), {
+    detail: {
+      'summary': 'Set plugin activation',
+      'x-cradle-cli': {
+        command: ['plugin', 'set-enabled'],
+      },
+    },
+    params: t.Object({
+      routeSegment: t.String({ minLength: 1 }),
+    }),
+    body: PluginsModel.updatePluginActivationBody,
+    response: { 200: PluginsModel.pluginDescriptor },
   })

@@ -227,6 +227,7 @@ It intentionally lists modules, not routes or leaf actions. Use `cradle man <mod
 | `issue` | 30 | Manage Kanban issues, comments, relations, delegation, and context refs. | `cradle man issue` |
 | `issue-agent-session` | 3 | Inspect and control issue agent sessions. | `cradle man issue-agent-session` |
 | `observability` | 5 | Inspect local observability events, incidents, and exports. | `cradle man observability` |
+| `plugin` | 3 | Generated Cradle CLI module. | `cradle man plugin` |
 | `preferences` | 10 | Read and update server preferences. | `cradle man preferences` |
 | `profile` | 5 | Manage agent profiles. | `cradle man profile` |
 | `provider` | 1 | Inspect provider model availability. | `cradle man provider` |

@@ -35,9 +35,10 @@ A single plugin can implement **any combination** of these layers. For example:
 │                                                                 │
 │  activateServerPlugins(app)                                     │
 │    └── discoverPlugins(pluginsDir)                              │
+│    └── Apply Cradle host activation policy                      │
 │    └── For each manifest with cradle.server:                    │
 │          import(entryPath) → validate → activate(ctx)           │
-│          Mount plugin-owned routes below /api/plugins/{name}/   │
+│          Register plugin-owned routes in host dispatcher        │
 │    └── Create static routes:                                    │
 │          GET /api/plugins         → plugin list JSON            │
 │          GET /api/plugins/:name/web.mjs → serve web bundle     │
@@ -185,6 +186,14 @@ Marketplace install consent records the manifest-derived required permission ids
 
 If a required permission is missing, the host marks that layer `disabled`. Server and desktop entries do not call `activate()`. Web entries are not served from `/api/plugins/{routeSegment}/web.mjs` and the renderer does not import them.
 
+### Host Activation vs Plugin Settings
+
+Cradle owns plugin package activation. Host activation answers whether the package is active at all: whether Cradle imports the server entry, serves the web bundle, dispatches plugin routes, and keeps runtime registrations such as MCP servers, skills, hooks, provider sources, and issue sources.
+
+Plugin-owned settings answer what an active plugin should do. They belong in plugin storage or plugin-specific APIs. For example, Nowledge Mem may expose its own `enabled` setting, but that setting is not the same as Cradle's activation policy. A disabled package cannot serve its web bundle or private server routes, so management UI for activation must live in Cradle's app-owned plugin management surface, not inside the plugin panel.
+
+The public descriptor includes `activation: { enabled, source, reason?, updatedAt? }`. `source: 'default'` means no user policy exists and the plugin is enabled by default. `source: 'user'` means Cradle has persisted an explicit host activation policy.
+
 ### Plugin Identity And Route Segment
 
 `package.json#name` is the canonical plugin identity. The route segment is derived from that identity and is used only for URL routing:
@@ -220,7 +229,7 @@ export function deactivate(): void | Promise<void> {
 
 ### `ctx.routes.register(route)` — HTTP Route Registration
 
-Register plugin-owned routes below `/api/plugins/{routeSegment}`. The host owns mounting and lifecycle cleanup; plugin code owns only the route handler semantics.
+Register plugin-owned routes below `/api/plugins/{routeSegment}`. The host owns dispatch and lifecycle cleanup; plugin code owns only the route handler semantics.
 
 ```ts
 export function activate(ctx: ServerPluginContext): void {

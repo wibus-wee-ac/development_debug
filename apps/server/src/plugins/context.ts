@@ -1,4 +1,5 @@
 import type { Disposable, PluginManifest } from '@cradle/plugin-sdk'
+import { derivePluginRouteSegment } from '@cradle/plugin-sdk'
 import type { McpServerConfig, ServerPluginContext, ServerPluginRouteRegistration } from '@cradle/plugin-sdk/server'
 
 import { createChildLogger } from '../logging/logger'
@@ -10,34 +11,20 @@ import { registerExternalIssueSource } from './external-issue-source-registry'
 import { registerExternalProviderSource } from './external-provider-source-registry'
 import { registerOwnedAfterResponseHook, registerOwnedBeforeQueryHook } from './hooks'
 import { registerPluginMcpServer } from './mcp-registry'
+import { normalizePluginRoutePath, registerPluginRoute, unregisterPluginRoute } from './route-registry'
 import { registerPluginCapability, unregisterPluginCapability } from './runtime-registry'
 import { registerOwnedPluginSkill } from './skill-registry'
 import { createPluginStorage } from './storage'
 
-interface PluginRouteHostContext {
-  body: unknown
-  params: Record<string, string>
-  query: Record<string, unknown>
-  headers: Record<string, string | undefined>
-  set: {
-    status?: number | string
-    headers?: Record<string, string>
-  }
-}
-
-interface PluginRouteApp {
-  get: (path: string, handler: unknown) => unknown
-  post: (path: string, handler: unknown) => unknown
-  put: (path: string, handler: unknown) => unknown
-  patch: (path: string, handler: unknown) => unknown
-  delete: (path: string, handler: unknown) => unknown
+interface ServerPluginContextOptions {
+  routeSegment?: string
 }
 
 export function createServerPluginContext(
   manifest: PluginManifest,
-  pluginApp: unknown,
+  options: ServerPluginContextOptions = {},
 ): ServerPluginContext {
-  const routeApp = pluginApp as PluginRouteApp
+  const routeSegment = options.routeSegment ?? derivePluginRouteSegment(manifest.name)
   const pluginLogger = createChildLogger({ module: 'plugin', plugin: manifest.name })
   const logger = {
     info: (msg: string, ...args: unknown[]) => pluginLogger.info(msg, { args }),
@@ -88,7 +75,7 @@ export function createServerPluginContext(
 
   function registerRoute(route: ServerPluginRouteRegistration): Disposable {
     let disposed = false
-    const normalizedPath = route.path.startsWith('/') ? route.path : `/${route.path}`
+    const normalizedPath = normalizePluginRoutePath(route.path)
     const routePathId = normalizedPath.replace(/^\//, '').replaceAll('/', '.') || 'root'
     const capability = registerPluginCapability(
       manifest.name,
@@ -103,34 +90,16 @@ export function createServerPluginContext(
       },
       [`route.${routePathId}`],
     )
-    const handler = async (context: PluginRouteHostContext) => {
-      if (disposed) {
-        context.set.status = 410
-        return { error: 'Plugin route disposed.' }
-      }
-      return route.handler(context)
-    }
-
-    if (route.method === 'GET') {
-      routeApp.get(normalizedPath, handler)
-    }
- else if (route.method === 'POST') {
-      routeApp.post(normalizedPath, handler)
-    }
- else if (route.method === 'PUT') {
-      routeApp.put(normalizedPath, handler)
-    }
- else if (route.method === 'PATCH') {
-      routeApp.patch(normalizedPath, handler)
-    }
- else {
-      routeApp.delete(normalizedPath, handler)
-    }
+    const routeId = registerPluginRoute(manifest.name, routeSegment, {
+      ...route,
+      path: normalizedPath,
+    })
 
     return track({
       dispose() {
         if (disposed) { return }
         disposed = true
+        unregisterPluginRoute(routeId)
         unregisterPluginCapability(manifest.name, capability.id)
       },
     })

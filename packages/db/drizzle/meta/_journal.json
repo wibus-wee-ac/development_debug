@@ -50,6 +50,13 @@
       "when": 1781922587241,
       "tag": "0006_flat_greymalkin",
       "breakpoints": true
+    },
+    {
+      "idx": 7,
+      "version": "6",
+      "when": 1781954232318,
+      "tag": "0007_early_spacker_dave",
+      "breakpoints": true
     }
   ]
 }

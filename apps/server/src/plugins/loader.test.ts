@@ -7,7 +7,8 @@ import { join } from 'node:path'
 import { Elysia } from 'elysia'
 import { afterEach, describe, expect, it } from 'vitest'
 
-import { activateServerPlugins, deactivateAllPlugins } from './loader'
+import { setPluginActivationPolicy } from './activation-policy'
+import { activateServerPlugins, deactivateAllPlugins, disablePlugin, enablePlugin } from './loader'
 import { getRegisteredMcpServers } from './mcp-registry'
 import { listPluginDescriptors } from './runtime-registry'
 
@@ -22,6 +23,7 @@ interface PluginPackageOptions {
   web?: boolean
   writeWebEntry?: boolean
   mcpTransport?: 'stdio' | 'streamable-http'
+  serverSource?: string
 }
 
 async function writePluginPackage(options: PluginPackageOptions = {}): Promise<string> {
@@ -56,7 +58,7 @@ async function writePluginPackage(options: PluginPackageOptions = {}): Promise<s
   )
   await writeFile(
     join(pluginDir, 'server.mjs'),
-    options.mcpTransport === 'streamable-http'
+    options.serverSource ?? (options.mcpTransport === 'streamable-http'
       ? [
           'export function activate(ctx) {',
           '  ctx.mcp.registerServer({ transport: "streamable-http", name: "loader-cleanup", url: "https://nowledge.example.test/mcp", headers: { Authorization: "Bearer secret-token" } })',
@@ -66,7 +68,7 @@ async function writePluginPackage(options: PluginPackageOptions = {}): Promise<s
           'export function activate(ctx) {',
           '  ctx.mcp.registerServer({ transport: "stdio", name: "loader-cleanup", command: "node", args: ["server.mjs"] })',
           '}',
-        ].join('\n'),
+        ].join('\n')),
   )
   if (options.web === true && options.writeWebEntry !== false) {
     await writeFile(
@@ -128,6 +130,7 @@ async function writeUnsupportedManifestPackage(): Promise<string> {
 describe('server plugin loader lifecycle', () => {
   afterEach(async () => {
     await deactivateAllPlugins()
+    setPluginActivationPolicy('@cradle/loader-cleanup', { enabled: true, reason: null })
     delete process.env.CRADLE_PLUGINS_DIR
     delete process.env.CRADLE_PLUGINS_SOURCE_KIND
     delete process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
@@ -154,6 +157,36 @@ describe('server plugin loader lifecycle', () => {
 
     expect(getRegisteredMcpServers()).not.toHaveProperty('loader-cleanup')
     expect(listPluginDescriptors()[0]?.capabilities).toHaveLength(0)
+  })
+
+  it('discovers disabled plugins without activating their server or serving their web bundle', async () => {
+    tempPluginsDir = await writePluginPackage({
+      web: true,
+      serverSource: [
+        'export function activate() {',
+        '  throw new Error("disabled plugin should not activate")',
+        '}',
+      ].join('\n'),
+    })
+    setPluginActivationPolicy('@cradle/loader-cleanup', { enabled: false, reason: 'test disabled' })
+    process.env.CRADLE_PLUGINS_DIR = tempPluginsDir
+    process.env.CRADLE_PLUGINS_SOURCE_KIND = 'workspaceDev'
+
+    const app = new Elysia()
+    await activateServerPlugins(app)
+
+    const descriptor = listPluginDescriptors().find(plugin => plugin.identity === '@cradle/loader-cleanup')
+    expect(descriptor?.activation).toMatchObject({
+      enabled: false,
+      source: 'user',
+      reason: 'test disabled',
+    })
+    expect(descriptor?.layers.server.status).toBe('disabled')
+    expect(descriptor?.layers.web.status).toBe('disabled')
+    expect(getRegisteredMcpServers()).not.toHaveProperty('loader-cleanup')
+
+    const response = await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/web.mjs'))
+    expect(response.status).toBe(404)
   })
 
   it('rejects legacy manifest declaration arrays during discovery', async () => {
@@ -401,6 +434,71 @@ describe('server plugin loader lifecycle', () => {
     const response = await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/web.mjs'))
     expect(response.status).toBe(200)
     expect(await response.text()).toBe('export function activate() {}')
+  })
+
+  it('dispatches plugin HTTP routes and removes them on deactivation', async () => {
+    tempPluginsDir = await writePluginPackage({
+      serverSource: [
+        'export function activate(ctx) {',
+        '  ctx.routes.register({',
+        '    method: "GET",',
+        '    path: "/status/:id",',
+        '    handler: ({ params, query, headers }) => ({ id: params.id, mode: query.mode, header: headers["x-test"] })',
+        '  })',
+        '}',
+      ].join('\n'),
+    })
+    process.env.CRADLE_PLUGINS_DIR = tempPluginsDir
+    process.env.CRADLE_PLUGINS_SOURCE_KIND = 'workspaceDev'
+
+    const app = new Elysia()
+    await activateServerPlugins(app)
+
+    const activeResponse = await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/status/abc?mode=fast', {
+      headers: { 'x-test': 'present' },
+    }))
+    expect(activeResponse.status).toBe(200)
+    expect(await activeResponse.json()).toEqual({ id: 'abc', mode: 'fast', header: 'present' })
+
+    await deactivateAllPlugins()
+
+    const inactiveResponse = await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/status/abc?mode=fast'))
+    expect(inactiveResponse.status).toBe(404)
+    expect(await inactiveResponse.json()).toEqual({ error: 'Plugin route not found.' })
+  })
+
+  it('hot disables and re-enables active plugin runtime registrations', async () => {
+    tempPluginsDir = await writePluginPackage({
+      serverSource: [
+        'export function activate(ctx) {',
+        '  ctx.mcp.registerServer({ transport: "stdio", name: "loader-cleanup", command: "node", args: ["server.mjs"] })',
+        '  ctx.routes.register({ method: "GET", path: "/status", handler: () => ({ ok: true }) })',
+        '  ctx.skills.register({ name: "loader-cleanup-skill", description: "A skill", skillFile: "/tmp/SKILL.md" })',
+        '}',
+      ].join('\n'),
+    })
+    process.env.CRADLE_PLUGINS_DIR = tempPluginsDir
+    process.env.CRADLE_PLUGINS_SOURCE_KIND = 'workspaceDev'
+
+    const app = new Elysia()
+    await activateServerPlugins(app)
+
+    expect(getRegisteredMcpServers()).toHaveProperty('loader-cleanup')
+    expect((await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/status'))).status).toBe(200)
+
+    const disabled = await disablePlugin('@cradle/loader-cleanup', 'hot test')
+    expect(disabled.activation).toMatchObject({ enabled: false, source: 'user', reason: 'hot test' })
+    expect(disabled.layers.server.status).toBe('disabled')
+    expect(disabled.capabilities).toHaveLength(0)
+    expect(getRegisteredMcpServers()).not.toHaveProperty('loader-cleanup')
+    expect((await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/status'))).status).toBe(404)
+
+    const enabled = await enablePlugin('@cradle/loader-cleanup')
+    expect(enabled.activation).toMatchObject({ enabled: true, source: 'user' })
+    expect(enabled.layers.server.status).toBe('active')
+    expect(enabled.capabilities.map(capability => capability.type).sort()).toEqual(['mcp-server', 'server-route', 'skill'])
+    expect(getRegisteredMcpServers()).toHaveProperty('loader-cleanup')
+    expect((await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/status'))).status).toBe(200)
   })
 
   it('marks plugins with missing web bundles as failed before listing descriptors', async () => {

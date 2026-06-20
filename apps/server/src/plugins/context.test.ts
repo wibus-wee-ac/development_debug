@@ -3,13 +3,13 @@
 import type { Disposable, PluginManifest } from '@cradle/plugin-sdk'
 import { CradlePluginPackageJsonSchema } from '@cradle/plugin-sdk/manifest'
 import type { UIMessageChunk } from 'ai'
-import { Elysia } from 'elysia'
 import { afterEach, describe, expect, it } from 'vitest'
 
 import { listRuntimeCatalog } from '../modules/chat-runtime/chat-runtime-provider-registry'
 import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata } from '../modules/chat-runtime/runtime-provider-types'
 import { createServerPluginContext } from './context'
 import { getRegisteredMcpServers } from './mcp-registry'
+import { dispatchPluginRoute, resetPluginRouteRegistry } from './route-registry'
 import {
   classifyPluginSource,
   createPluginDescriptor,
@@ -52,12 +52,13 @@ function registerDescriptor(pluginManifest: PluginManifest): void {
 describe('server plugin context lifecycle', () => {
   afterEach(() => {
     resetPluginRuntimeRegistry()
+    resetPluginRouteRegistry()
   })
 
   it('skips MCP registration when an async predicate returns false', async () => {
     const pluginManifest = manifest('@cradle/context-async-skip')
     registerDescriptor(pluginManifest)
-    const ctx = createServerPluginContext(pluginManifest, new Elysia())
+    const ctx = createServerPluginContext(pluginManifest)
 
     const disposable = await ctx.mcp.registerServer({
       transport: 'stdio',
@@ -76,7 +77,7 @@ describe('server plugin context lifecycle', () => {
   it('does not register an async MCP server after the pending subscription is disposed', async () => {
     const pluginManifest = manifest('@cradle/context-async-dispose')
     registerDescriptor(pluginManifest)
-    const ctx = createServerPluginContext(pluginManifest, new Elysia())
+    const ctx = createServerPluginContext(pluginManifest)
 
     let resolvePredicate: (value: boolean) => void = () => {}
     const registration = ctx.mcp.registerServer({
@@ -101,7 +102,7 @@ describe('server plugin context lifecycle', () => {
   it('tracks MCP registrations and removes registry plus capability records on dispose', () => {
     const pluginManifest = manifest('@cradle/context-dispose')
     registerDescriptor(pluginManifest)
-    const ctx = createServerPluginContext(pluginManifest, new Elysia())
+    const ctx = createServerPluginContext(pluginManifest)
 
     const disposable = ctx.mcp.registerServer({
       transport: 'stdio',
@@ -139,7 +140,7 @@ describe('server plugin context lifecycle', () => {
   it('tracks streamable HTTP MCP registrations without exposing headers in capability metadata', () => {
     const pluginManifest = manifest('@cradle/context-http-mcp')
     registerDescriptor(pluginManifest)
-    const ctx = createServerPluginContext(pluginManifest, new Elysia())
+    const ctx = createServerPluginContext(pluginManifest)
 
     const disposable = ctx.mcp.registerServer({
       transport: 'streamable-http',
@@ -182,7 +183,7 @@ describe('server plugin context lifecycle', () => {
   it('skips streamable HTTP MCP registration when an async predicate returns false', async () => {
     const pluginManifest = manifest('@cradle/context-http-async-skip')
     registerDescriptor(pluginManifest)
-    const ctx = createServerPluginContext(pluginManifest, new Elysia())
+    const ctx = createServerPluginContext(pluginManifest)
 
     const disposable = await ctx.mcp.registerServer({
       transport: 'streamable-http',
@@ -200,7 +201,7 @@ describe('server plugin context lifecycle', () => {
   it('tracks skill registrations and removes capability records on dispose', () => {
     const pluginManifest = manifest('@cradle/context-skill')
     registerDescriptor(pluginManifest)
-    const ctx = createServerPluginContext(pluginManifest, new Elysia())
+    const ctx = createServerPluginContext(pluginManifest)
 
     const disposable = ctx.skills.register({
       name: 'context-skill',
@@ -219,7 +220,7 @@ describe('server plugin context lifecycle', () => {
   it('supports namespace registration APIs without changing capability ownership', () => {
     const pluginManifest = manifest('@cradle/context-namespaces')
     registerDescriptor(pluginManifest)
-    const ctx = createServerPluginContext(pluginManifest, new Elysia())
+    const ctx = createServerPluginContext(pluginManifest)
 
     const mcp = ctx.mcp.registerServer({
       transport: 'stdio',
@@ -249,11 +250,10 @@ describe('server plugin context lifecycle', () => {
     expect(listPluginDescriptors()[0]?.capabilities).toHaveLength(0)
   })
 
-  it('tracks route registrations and disables handlers on dispose', async () => {
+  it('tracks route registrations and removes handlers on dispose', async () => {
     const pluginManifest = manifest('@cradle/context-route')
     registerDescriptor(pluginManifest)
-    const app = new Elysia()
-    const ctx = createServerPluginContext(pluginManifest, app)
+    const ctx = createServerPluginContext(pluginManifest)
 
     const disposable = ctx.routes.register({
       method: 'GET',
@@ -264,23 +264,37 @@ describe('server plugin context lifecycle', () => {
     expect(ctx.subscriptions).toEqual([disposable])
     expect(listPluginDescriptors()[0]?.capabilities.map(capability => capability.type)).toEqual(['server-route'])
 
-    const activeResponse = await app.handle(new Request('http://localhost/status'))
-    expect(activeResponse.status).toBe(200)
-    expect(await activeResponse.json()).toEqual({ ok: true })
+    const activeResponse = await dispatchPluginRoute({
+      routeSegment: 'context-route',
+      method: 'GET',
+      path: '/status',
+      body: undefined,
+      query: {},
+      headers: {},
+      set: {},
+    })
+    expect(activeResponse).toEqual({ found: true, body: { ok: true } })
 
     disposable.dispose()
 
     expect(listPluginDescriptors()[0]?.capabilities).toHaveLength(0)
 
-    const disposedResponse = await app.handle(new Request('http://localhost/status'))
-    expect(disposedResponse.status).toBe(410)
-    expect(await disposedResponse.json()).toEqual({ error: 'Plugin route disposed.' })
+    const disposedResponse = await dispatchPluginRoute({
+      routeSegment: 'context-route',
+      method: 'GET',
+      path: '/status',
+      body: undefined,
+      query: {},
+      headers: {},
+      set: {},
+    })
+    expect(disposedResponse).toEqual({ found: false })
   })
 
   it('tracks plugin chat runtime registrations and removes them on dispose', () => {
     const pluginManifest = manifest('@cradle/context-runtime')
     registerDescriptor(pluginManifest)
-    const ctx = createServerPluginContext(pluginManifest, new Elysia())
+    const ctx = createServerPluginContext(pluginManifest)
     const runtime = {
       runtimeKind: 'plugin-runtime',
       metadata: {

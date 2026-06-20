@@ -171,7 +171,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     { reconcileExternalIssueSourceRegistrations },
     { providerRuntimeHostManager },
     { clearSideConversations },
-    { activateServerPlugins },
+    { activateServerPlugins, deactivateAllPlugins },
     { destroyWorkspaceFileIndexes },
   ] = await Promise.all([
     import('./infra'),
@@ -199,6 +199,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   app.onStop([
     () => flushAllActiveRunSnapshots(),
     () => clearSideConversations(),
+    () => deactivateAllPlugins(),
     () => providerRuntimeHostManager.shutdown(),
     () => chronicleService.stopActivityPipelineScheduler(),
     () => chronicleService.stopSlackBackgroundSync(),

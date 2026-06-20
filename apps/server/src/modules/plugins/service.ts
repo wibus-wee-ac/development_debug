@@ -1,9 +1,18 @@
 import { readFile, stat } from 'node:fs/promises'
 import { extname, resolve } from 'node:path'
 
-import type { PluginCapabilityRecord, PluginDeclaredCapabilityRecord, PluginDescriptor, PluginLayer } from '@cradle/plugin-sdk'
+import type {
+  PluginActivationState,
+  PluginCapabilityRecord,
+  PluginDeclaredCapabilityRecord,
+  PluginDeclaredPermissionRecord,
+  PluginDescriptor,
+  PluginLayer,
+  PluginLayerState,
+} from '@cradle/plugin-sdk'
 
 import { AppError } from '../../errors/app-error'
+import { disablePlugin, enablePlugin } from '../../plugins/loader'
 import { getPluginDescriptorByRouteSegment, listPluginDescriptors } from '../../plugins/runtime-registry'
 
 export interface PluginMentionCapability {
@@ -27,6 +36,83 @@ export interface PluginMentionCandidate {
 export interface PluginIconAsset {
   bytes: Uint8Array
   mimeType: string
+}
+
+export interface PluginActivationView {
+  enabled: boolean
+  source: 'default' | 'user'
+  reason: string | null
+  updatedAt: number | null
+}
+
+export interface PluginLayerView {
+  layer: PluginLayer
+  status: PluginLayerState['status']
+  entry: string | null
+  error: string | null
+  activatedAt: string | null
+}
+
+export interface PluginSourceView {
+  kind: PluginDescriptor['source']['kind']
+  packageDir: string
+  trusted: boolean
+  reason: string | null
+}
+
+export interface PluginCapabilityView {
+  id: string
+  owner: string
+  type: string
+  layer: PluginLayer
+  status: PluginCapabilityRecord['status']
+  label: string | null
+  metadata: Record<string, unknown>
+}
+
+export interface PluginDeclaredCapabilityView {
+  id: string
+  owner: string
+  localId: string
+  type: string
+  layer: PluginLayer | null
+  label: string | null
+  description: string | null
+  permissions: string[]
+  metadata: Record<string, unknown>
+}
+
+export interface PluginDeclaredPermissionView {
+  id: string
+  owner: string
+  localId: string
+  label: string | null
+  description: string | null
+  required: boolean
+}
+
+export interface PluginDescriptorView {
+  identity: string
+  routeSegment: string
+  name: string
+  version: string
+  displayName: string
+  description: string | null
+  iconUrl: string | null
+  source: PluginSourceView
+  activation: PluginActivationView
+  layers: Record<PluginLayer, PluginLayerView>
+  declaredCapabilities: PluginDeclaredCapabilityView[]
+  declaredPermissions: PluginDeclaredPermissionView[]
+  capabilities: PluginCapabilityView[]
+  warnings: string[]
+  active: boolean
+  hasWeb: boolean
+  hasServer: boolean
+  hasDesktop: boolean
+  serverEntry: string | null
+  webEntry: string | null
+  desktopEntry: string | null
 }
 
 const iconMimeTypesByExtension: Record<string, string> = {
@@ -72,8 +158,9 @@ function readMcpServerName(capability: PluginCapabilityRecord | PluginDeclaredCa
 }
 
 function isPluginActive(descriptor: PluginDescriptor): boolean {
-  return descriptor.capabilities.length > 0
+  return descriptor.activation.enabled && (descriptor.capabilities.length > 0
     || Object.values(descriptor.layers).some(layer => layer.status === 'active')
+  )
 }
 
 function pluginIconUrl(descriptor: PluginDescriptor): string | null {
@@ -117,9 +204,140 @@ function toMentionCandidate(descriptor: PluginDescriptor): PluginMentionCandidat
 
 export function listMentionCandidates(): PluginMentionCandidate[] {
   return listPluginDescriptors()
+    .filter(descriptor => descriptor.activation.enabled)
     .map(toMentionCandidate)
     .filter(candidate => candidate.active || candidate.capabilities.length > 0)
     .sort((left, right) => left.displayName.localeCompare(right.displayName))
+}
+
+function toActivationView(activation: PluginActivationState): PluginActivationView {
+  return {
+    enabled: activation.enabled,
+    source: activation.source,
+    reason: activation.reason ?? null,
+    updatedAt: activation.updatedAt ?? null,
+  }
+}
+
+function toLayerView(layer: PluginLayerState): PluginLayerView {
+  return {
+    layer: layer.layer,
+    status: layer.status,
+    entry: layer.entry ?? null,
+    error: layer.error ?? null,
+    activatedAt: layer.activatedAt ?? null,
+  }
+}
+
+function toCapabilityView(capability: PluginCapabilityRecord): PluginCapabilityView {
+  return {
+    id: capability.id,
+    owner: capability.owner,
+    type: capability.type,
+    layer: capability.layer,
+    status: capability.status,
+    label: capability.label ?? null,
+    metadata: capability.metadata ?? {},
+  }
+}
+
+function toDeclaredCapabilityView(capability: PluginDeclaredCapabilityRecord): PluginDeclaredCapabilityView {
+  return {
+    id: capability.id,
+    owner: capability.owner,
+    localId: capability.localId,
+    type: capability.type,
+    layer: capability.layer ?? null,
+    label: capability.label ?? null,
+    description: capability.description ?? null,
+    permissions: capability.permissions,
+    metadata: capability.metadata ?? {},
+  }
+}
+
+function toDeclaredPermissionView(permission: PluginDeclaredPermissionRecord): PluginDeclaredPermissionView {
+  return {
+    id: permission.id,
+    owner: permission.owner,
+    localId: permission.localId,
+    label: permission.label ?? null,
+    description: permission.description ?? null,
+    required: permission.required ?? false,
+  }
+}
+
+export function toPluginDescriptorView(descriptor: PluginDescriptor): PluginDescriptorView {
+  return {
+    identity: descriptor.identity,
+    routeSegment: descriptor.routeSegment,
+    name: descriptor.name,
+    version: descriptor.version,
+    displayName: descriptor.displayName,
+    description: descriptor.description ?? null,
+    iconUrl: pluginIconUrl(descriptor),
+    source: {
+      kind: descriptor.source.kind,
+      packageDir: descriptor.source.packageDir,
+      trusted: descriptor.source.trusted,
+      reason: descriptor.source.reason ?? null,
+    },
+    activation: toActivationView(descriptor.activation),
+    layers: {
+      server: toLayerView(descriptor.layers.server),
+      web: toLayerView(descriptor.layers.web),
+      desktop: toLayerView(descriptor.layers.desktop),
+    },
+    declaredCapabilities: descriptor.declaredCapabilities.map(toDeclaredCapabilityView),
+    declaredPermissions: descriptor.declaredPermissions.map(toDeclaredPermissionView),
+    capabilities: descriptor.capabilities.map(toCapabilityView),
+    warnings: descriptor.warnings,
+    active: isPluginActive(descriptor),
+    hasWeb: descriptor.hasWeb,
+    hasServer: descriptor.hasServer,
+    hasDesktop: descriptor.hasDesktop,
+    serverEntry: descriptor.serverEntry ?? null,
+    webEntry: descriptor.webEntry ?? null,
+    desktopEntry: descriptor.desktopEntry ?? null,
+  }
+}
+
+export function listPlugins(): PluginDescriptorView[] {
+  return listPluginDescriptors()
+    .map(toPluginDescriptorView)
+    .sort((left, right) => left.displayName.localeCompare(right.displayName))
+}
+
+export function getPlugin(routeSegment: string): PluginDescriptorView {
+  const descriptor = getPluginDescriptorByRouteSegment(routeSegment)
+  if (!descriptor) {
+    throw new AppError({
+      code: 'plugin_not_found',
+      status: 404,
+      message: 'Plugin not found.',
+      details: { routeSegment },
+    })
+  }
+  return toPluginDescriptorView(descriptor)
+}
+
+export async function setPluginEnabled(
+  routeSegment: string,
+  input: { enabled: boolean, reason?: string | null },
+): Promise<PluginDescriptorView> {
+  const descriptor = getPluginDescriptorByRouteSegment(routeSegment)
+  if (!descriptor) {
+    throw new AppError({
+      code: 'plugin_not_found',
+      status: 404,
+      message: 'Plugin not found.',
+      details: { routeSegment },
+    })
+  }
+
+  const updated = input.enabled
+    ? await enablePlugin(descriptor.identity)
+    : await disablePlugin(descriptor.identity, input.reason ?? undefined)
+  return toPluginDescriptorView(updated)
 }
 
 export async function readPluginIcon(routeSegment: string): Promise<PluginIconAsset> {
