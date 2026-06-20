@@ -359,12 +359,32 @@ describe('session capability', () => {
         requestedModelId: 'gpt-secondary',
       }))
 
+      const thinkingPatchRes = await app.handle(
+        new Request(`http://localhost/sessions/${sessionId}`, {
+          method: 'PATCH',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            thinkingEffort: 'xhigh',
+          }),
+        }),
+      )
+      expect(thinkingPatchRes.status).toBe(200)
+      expect(await thinkingPatchRes.json()).toEqual(expect.objectContaining({
+        thinkingEffort: 'xhigh',
+      }))
+      const thinkingPatchedSessionRow = d.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+      expect(JSON.parse(thinkingPatchedSessionRow?.configJson ?? '{}')).toEqual(expect.objectContaining({
+        requestedModelId: 'gpt-secondary',
+        requestedThinkingEffort: 'xhigh',
+      }))
+
       const getWithPatchedProviderRes = await app.handle(
         new Request(`http://localhost/sessions/${sessionId}`),
       )
       expect(await getWithPatchedProviderRes.json()).toEqual(expect.objectContaining({
         providerTargetId: secondaryProviderTargetId,
         modelId: 'gpt-secondary',
+        thinkingEffort: 'xhigh',
       }))
 
       const streamingRunId = randomUUID()

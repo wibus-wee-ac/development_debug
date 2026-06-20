@@ -51,6 +51,7 @@ export const session = new Elysia({
       && body.pinned === undefined
       && body.providerTargetId === undefined
       && body.modelId === undefined
+      && body.thinkingEffort === undefined
     ) {
       throw new AppError({
         code: 'invalid_session_input',

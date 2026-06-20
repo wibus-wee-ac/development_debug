@@ -33,6 +33,7 @@ import * as Workspace from '../workspace/service'
 export type SessionStatus = 'idle' | 'streaming' | 'error'
 export type SessionView = Session & {
   modelId: string | null
+  thinkingEffort: ChatThinkingEffort | null
   status: SessionStatus
   latestUserMessageAt: number | null
   latestAssistantMessageAt: number | null
@@ -281,6 +282,7 @@ function toSessionView(
   return {
     ...session,
     modelId,
+    thinkingEffort: readSessionThinkingEffortPreference(session.configJson),
     status,
     latestUserMessageAt,
     latestAssistantMessageAt,
@@ -713,6 +715,7 @@ export function update(input: {
   pinned?: boolean
   providerTargetId?: string | null
   modelId?: string | null
+  thinkingEffort?: ChatThinkingEffort | null
 }): SessionView | null {
   const record = db().select().from(sessions).where(eq(sessions.id, input.id)).get()
   if (!record) {
@@ -753,11 +756,18 @@ export function update(input: {
       patch.agentId = null
     }
   }
+  let configJson = record.configJson
   if (input.modelId !== undefined) {
-    patch.configJson = writeSessionModelPreferenceConfigJson(record.configJson, input.modelId)
+    configJson = writeSessionModelPreferenceConfigJson(configJson, input.modelId)
   }
   else if (input.providerTargetId !== undefined && input.providerTargetId !== record.providerTargetId) {
-    patch.configJson = writeSessionModelPreferenceConfigJson(record.configJson, null)
+    configJson = writeSessionModelPreferenceConfigJson(configJson, null)
+  }
+  if (input.thinkingEffort !== undefined) {
+    configJson = writeSessionThinkingEffortPreferenceConfigJson(configJson, input.thinkingEffort)
+  }
+  if (configJson !== record.configJson) {
+    patch.configJson = configJson
   }
 
   db().update(sessions).set(patch).where(eq(sessions.id, input.id)).run()

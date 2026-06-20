@@ -6,6 +6,12 @@ const runtimeKindSchema = t.String({ minLength: 1 })
 
 const nullableString = t.Nullable(t.String())
 const nullableRequiredString = t.Nullable(t.String({ minLength: 1 }))
+const thinkingEffortSchema = t.Union([
+  t.Literal('low'),
+  t.Literal('medium'),
+  t.Literal('high'),
+  t.Literal('xhigh'),
+])
 const sessionStatusSchema = t.Union([
   t.Literal('idle'),
   t.Literal('streaming'),
@@ -27,6 +33,7 @@ export const SessionModel = {
     providerTargetId: nullableString,
     agentId: nullableString,
     modelId: nullableString,
+    thinkingEffort: t.Nullable(thinkingEffortSchema),
     linkedIssueId: nullableString,
     runtimeKind: runtimeKindSchema,
     status: sessionStatusSchema,
@@ -79,6 +86,7 @@ export const SessionModel = {
     agentId: t.Optional(t.String({ minLength: 1 })),
     runtimeKind: t.Optional(runtimeKindSchema),
     runtimeSettings: t.Optional(sessionRuntimeSettingsPatchSchema),
+    thinkingEffort: t.Optional(thinkingEffortSchema),
     id: t.Optional(t.String()),
   }),
 
@@ -87,6 +95,7 @@ export const SessionModel = {
     pinned: t.Optional(t.Boolean()),
     providerTargetId: t.Optional(nullableRequiredString),
     modelId: t.Optional(nullableRequiredString),
+    thinkingEffort: t.Optional(t.Nullable(thinkingEffortSchema)),
   }),
 
   archiveBody: t.Object({
