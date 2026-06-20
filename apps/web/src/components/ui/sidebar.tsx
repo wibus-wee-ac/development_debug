@@ -20,7 +20,7 @@ import {
   TooltipContent,
   TooltipTrigger,
 } from "~/components/ui/tooltip"
-import { LayoutLeftLine as PanelLeftIcon } from "@mingcute/react"
+import { LayoutLeftLine as PanelLeftIcon } from "~/components/ui/mingcute-icons"
 const SIDEBAR_COOKIE_NAME = "sidebar_state"
 const SIDEBAR_COOKIE_MAX_AGE = 60 * 60 * 24 * 7
 const SIDEBAR_WIDTH = "16rem"

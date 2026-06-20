@@ -5,7 +5,7 @@ import { Dialog as DialogPrimitive } from "radix-ui"
 
 import { cn } from "~/lib/cn"
 import { Button } from "~/components/ui/button"
-import { CloseLine as XIcon } from "@mingcute/react"
+import { CloseLine as XIcon } from "~/components/ui/mingcute-icons"
 function Dialog({
   ...props
 }: React.ComponentProps<typeof DialogPrimitive.Root>) {

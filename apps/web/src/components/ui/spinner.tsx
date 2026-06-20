@@ -1,5 +1,5 @@
 import { cn } from "~/lib/cn"
-import { LoadingLine as Loader2Icon } from "@mingcute/react"
+import { LoadingLine as Loader2Icon } from "~/components/ui/mingcute-icons"
 import * as React from "react"
 
 const DEFAULT_DELAY_MS = 180

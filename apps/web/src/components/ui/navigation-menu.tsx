@@ -3,7 +3,7 @@ import { cva } from "class-variance-authority"
 import { NavigationMenu as NavigationMenuPrimitive } from "radix-ui"
 
 import { cn } from "~/lib/cn"
-import { DownSmallLine as ChevronDownIcon } from "@mingcute/react"
+import { DownSmallLine as ChevronDownIcon } from "~/components/ui/mingcute-icons"
 function NavigationMenu({
   className,
   children,

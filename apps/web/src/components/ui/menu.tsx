@@ -1,7 +1,7 @@
 "use client";
 
 import { Menu as MenuPrimitive } from "@base-ui/react/menu";
-import { RightSmallLine as ChevronRightIcon } from "@mingcute/react";
+import { RightSmallLine as ChevronRightIcon } from "~/components/ui/mingcute-icons";
 import type * as React from "react";
 import { cn } from "~/lib/cn";
 

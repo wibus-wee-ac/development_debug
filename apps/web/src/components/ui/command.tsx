@@ -1,5 +1,5 @@
 import { Command as CommandPrimitive } from 'cmdk'
-import { CheckLine as CheckIcon, SearchLine as SearchIcon } from '@mingcute/react'
+import { CheckLine as CheckIcon, SearchLine as SearchIcon } from '~/components/ui/mingcute-icons'
 import * as React from 'react'
 
 import {

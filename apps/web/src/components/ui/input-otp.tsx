@@ -1,6 +1,6 @@
 import { cn } from '~/lib/cn'
 import { OTPInput, OTPInputContext } from 'input-otp'
-import { SubtractLine as MinusIcon } from '@mingcute/react'
+import { SubtractLine as MinusIcon } from '~/components/ui/mingcute-icons'
 import * as React from 'react'
 
 function InputOTP({

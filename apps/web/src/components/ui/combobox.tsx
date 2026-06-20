@@ -15,7 +15,7 @@ import {
   DownSmallLine as ChevronDownIcon,
   CloseLine as XIcon,
   CheckLine as CheckIcon
-} from "@mingcute/react"
+} from "~/components/ui/mingcute-icons"
 const Combobox = ComboboxPrimitive.Root
 
 function ComboboxValue({ ...props }: ComboboxPrimitive.Value.Props) {

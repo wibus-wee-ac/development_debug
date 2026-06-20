@@ -2,7 +2,7 @@ import * as React from "react"
 import { Accordion as AccordionPrimitive } from "radix-ui"
 
 import { cn } from "~/lib/cn"
-import { DownSmallLine as ChevronDownIcon, UpSmallLine as ChevronUpIcon } from "@mingcute/react"
+import { DownSmallLine as ChevronDownIcon, UpSmallLine as ChevronUpIcon } from "~/components/ui/mingcute-icons"
 function Accordion({
   className,
   ...props

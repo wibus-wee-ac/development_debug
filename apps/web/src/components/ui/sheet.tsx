@@ -3,7 +3,7 @@ import { Dialog as SheetPrimitive } from "radix-ui"
 
 import { cn } from "~/lib/cn"
 import { Button } from "~/components/ui/button"
-import { CloseLine as XIcon } from "@mingcute/react"
+import { CloseLine as XIcon } from "~/components/ui/mingcute-icons"
 function Sheet({ ...props }: React.ComponentProps<typeof SheetPrimitive.Root>) {
   return <SheetPrimitive.Root data-slot="sheet" {...props} />
 }

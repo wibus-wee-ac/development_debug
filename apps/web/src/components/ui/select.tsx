@@ -8,7 +8,7 @@ import {
   DownSmallLine as ChevronDownIcon,
   CheckLine as CheckIcon,
   UpSmallLine as ChevronUpIcon
-} from "@mingcute/react"
+} from "~/components/ui/mingcute-icons"
 const EMPTY_ITEM_VALUE = "__select_empty__"
 
 function Select({

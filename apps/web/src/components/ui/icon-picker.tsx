@@ -1,4 +1,4 @@
-import { SearchLine as SearchIcon, CloseLine as XIcon } from '@mingcute/react'
+import { SearchLine as SearchIcon, CloseLine as XIcon } from '~/components/ui/mingcute-icons'
 import { useEffect, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
