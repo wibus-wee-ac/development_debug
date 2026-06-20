@@ -904,6 +904,12 @@ export const zPostSessionsBody = z.object({
             }).optional()
         }).nullish()
     }).optional(),
+    thinkingEffort: z.enum([
+        'low',
+        'medium',
+        'high',
+        'xhigh'
+    ]).optional(),
     id: z.string().optional()
 });
 
@@ -919,7 +925,8 @@ export const zPatchSessionsByIdBody = z.object({
     title: z.string().min(1).optional(),
     pinned: z.boolean().optional(),
     providerTargetId: z.string().min(1).nullish(),
-    modelId: z.string().min(1).nullish()
+    modelId: z.string().min(1).nullish(),
+    thinkingEffort: z.string().nullish()
 });
 
 export const zPatchSessionsByIdPath = z.object({

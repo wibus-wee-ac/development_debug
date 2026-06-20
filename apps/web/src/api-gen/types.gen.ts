@@ -4152,6 +4152,7 @@ export type GetSessionsResponses = {
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
+        thinkingEffort: string | null;
         linkedIssueId: string | null;
         runtimeKind: string;
         status: 'idle' | 'streaming' | 'error';
@@ -4188,6 +4189,7 @@ export type PostSessionsData = {
                 };
             } | null;
         };
+        thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         id?: string;
     };
     path?: never;
@@ -4209,6 +4211,7 @@ export type PostSessionsResponses = {
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
+        thinkingEffort: string | null;
         linkedIssueId: string | null;
         runtimeKind: string;
         status: 'idle' | 'streaming' | 'error';
@@ -4268,6 +4271,7 @@ export type GetSessionsByIdResponses = {
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
+        thinkingEffort: string | null;
         linkedIssueId: string | null;
         runtimeKind: string;
         status: 'idle' | 'streaming' | 'error';
@@ -4290,6 +4294,7 @@ export type PatchSessionsByIdData = {
         pinned?: boolean;
         providerTargetId?: string | null;
         modelId?: string | null;
+        thinkingEffort?: string | null;
     };
     path: {
         id: string;
@@ -4312,6 +4317,7 @@ export type PatchSessionsByIdResponses = {
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
+        thinkingEffort: string | null;
         linkedIssueId: string | null;
         runtimeKind: string;
         status: 'idle' | 'streaming' | 'error';
@@ -4353,6 +4359,7 @@ export type PostSessionsByIdArchiveResponses = {
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
+        thinkingEffort: string | null;
         linkedIssueId: string | null;
         runtimeKind: string;
         status: 'idle' | 'streaming' | 'error';
@@ -4392,6 +4399,7 @@ export type PostSessionsByIdReadResponses = {
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
+        thinkingEffort: string | null;
         linkedIssueId: string | null;
         runtimeKind: string;
         status: 'idle' | 'streaming' | 'error';
@@ -4431,6 +4439,7 @@ export type PostSessionsByIdUnreadResponses = {
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
+        thinkingEffort: string | null;
         linkedIssueId: string | null;
         runtimeKind: string;
         status: 'idle' | 'streaming' | 'error';
@@ -5513,6 +5522,7 @@ export type GetIssuesByIdSessionsResponses = {
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
+        thinkingEffort: string | null;
         linkedIssueId: string | null;
         runtimeKind: string;
         status: 'idle' | 'streaming' | 'error';
@@ -12279,6 +12289,7 @@ export type PostChatSessionsBySessionIdTitleRegenerateResponses = {
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
+        thinkingEffort: string | null;
         linkedIssueId: string | null;
         runtimeKind: string;
         status: 'idle' | 'streaming' | 'error';
