@@ -24,7 +24,7 @@ import {
   CODEX_CHATGPT_AUTH_SECRET_KIND,
   CODEX_PERSONAL_ACCESS_TOKEN_SECRET_KIND,
 } from '../chat-runtime-providers/codex/app-server/chatgpt-auth'
-import { CodexAuthModeSchema } from '../provider-contracts/provider-base'
+import { CodexAuthModeSchema, readTrustedUniversalConfig } from '../provider-contracts/provider-base'
 import {
   applyClaudeAgentConfigPatch,
   normalizeClaudeAgentConfigPatch,
@@ -290,6 +290,54 @@ export function resolveProviderTarget(input: ProviderTarget | string): ResolvedP
   return toResolvedProviderTarget(row)
 }
 
+function projectUniversalProviderKindForRuntime(runtimeKind: RuntimeKind): ProviderKind | null {
+  switch (runtimeKind) {
+    case 'standard':
+    case 'codex':
+      return 'openai-compatible'
+    case 'claude-agent':
+      return 'anthropic'
+    default:
+      return null
+  }
+}
+
+function projectUniversalProviderTargetForRuntime(
+  target: ResolvedProviderTarget,
+  runtimeKind: RuntimeKind,
+): ResolvedProviderTarget {
+  const providerKind = projectUniversalProviderKindForRuntime(runtimeKind)
+  if (!providerKind) {
+    return target
+  }
+
+  const config = JsonObjectTextSchema.parse(target.configJson)
+  const universalConfig = readTrustedUniversalConfig(target.configJson)
+  const baseUrl = providerKind === 'anthropic'
+    ? universalConfig.anthropicBaseUrl
+    : universalConfig.openaiBaseUrl
+
+  return {
+    ...target,
+    providerKind,
+    configJson: JSON.stringify({
+      ...config,
+      ...(baseUrl ? { baseUrl } : {}),
+    }),
+  }
+}
+
+export function resolveProviderTargetForRuntime(
+  input: ProviderTarget | string,
+  runtimeKind: RuntimeKind,
+): ResolvedProviderTarget {
+  const target = resolveProviderTarget(input)
+  if (target.providerKind !== 'universal') {
+    return target
+  }
+  return projectUniversalProviderTargetForRuntime(target, runtimeKind)
+}
+
 export function upsertManualProviderTarget(
   input: UpsertManualProviderTargetInput,
 ): ProviderTargetRow {
@@ -434,7 +482,7 @@ export function assertProviderTargetCompatibleWithRuntime(
   target: ProviderTarget | string,
   runtimeKind: RuntimeKind,
 ): void {
-  const resolved = resolveProviderTarget(target)
+  const resolved = resolveProviderTargetForRuntime(target, runtimeKind)
   if (!runtimeSupportsProviderKind(runtimeKind, resolved.providerKind)) {
     throw new AppError({
       code: 'invalid_provider_target',
