@@ -1,5 +1,7 @@
 import { z } from 'zod'
 
+import { ClaudeAgentConfigSchema } from './claude-agent-config'
+
 export const ProfileConfigSchema = z.object({
   baseUrl: z.string().default(''),
   openaiBaseUrl: z.string().default(''),
@@ -17,6 +19,7 @@ export const ProfileConfigSchema = z.object({
   bedrock: z.object({
     region: z.string().default(''),
   }).optional(),
+  claudeAgent: ClaudeAgentConfigSchema.optional(),
   enabledModels: z.array(z.string().min(1)).default([]),
 }).passthrough()
 

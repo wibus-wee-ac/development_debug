@@ -1,14 +1,10 @@
 import { z } from 'zod'
 
-const DEFAULT_CLAUDE_AGENT_ALIASES = {
-  haiku: '',
-  sonnet: '',
-  opus: '',
-}
-
-const DEFAULT_CLAUDE_AGENT_CONFIG = {
-  modelAliases: DEFAULT_CLAUDE_AGENT_ALIASES,
-}
+import {
+  ClaudeAgentConfigSchema,
+  ClaudeAgentModelAliasesSchema,
+  DEFAULT_CLAUDE_AGENT_CONFIG,
+} from './claude-agent-config'
 
 export const CliTuiLaunchConfigSchema = z.object({
   preset: z.string().optional(),
@@ -17,15 +13,7 @@ export const CliTuiLaunchConfigSchema = z.object({
   env: z.record(z.string(), z.string()).optional(),
 })
 
-export const ClaudeAgentModelAliasesSchema = z.object({
-  haiku: z.string().default(DEFAULT_CLAUDE_AGENT_ALIASES.haiku),
-  sonnet: z.string().default(DEFAULT_CLAUDE_AGENT_ALIASES.sonnet),
-  opus: z.string().default(DEFAULT_CLAUDE_AGENT_ALIASES.opus),
-})
-
-export const ClaudeAgentConfigSchema = z.object({
-  modelAliases: ClaudeAgentModelAliasesSchema.default(DEFAULT_CLAUDE_AGENT_ALIASES),
-}).passthrough()
+export { ClaudeAgentConfigSchema, ClaudeAgentModelAliasesSchema }
 
 export const AgentRuntimeConfigSchema = z.object({
   systemPrompt: z.string().default(''),
