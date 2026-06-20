@@ -1,6 +1,6 @@
 # Desktop Main Process
 
-这个目录拥有 Electron main process 的启动、窗口生命周期、server 子进程、native IPC service、electron-updater runtime，以及 desktop plugin runtime。
+这个目录拥有 Electron main process 的启动、窗口生命周期、server 子进程、native IPC service、desktop updater runtime，以及 desktop plugin runtime。
 
 ## 文件清单
 
@@ -30,7 +30,10 @@
 - `native-appshot-codex-assets.test.ts`：覆盖 Codex temp asset reader 的 root 边界、image 类型过滤、baseline inventory 过滤，以及 observer 对新产物的识别。
 - `native-appshot-target.ts`：拥有 desktop-owned Appshot research target synthesis，在没有 renderer composer frame 时生成 composer-like destination，避免 parity probe 退回到 source-equals-destination geometry。
 - `native-services.test.ts`：覆盖 Appshot parity target synthesis，确保 research probe 的默认 destination 不等于 frontmost window fallback。
-- `update-manager.ts`：拥有 Electron Builder generic update feed URL 解析、`electron-updater` 后台检查、下载进度、应用更新，以及 renderer 状态事件。
+- `update-manager.ts`：拥有 renderer-visible Desktop Updates workflow；编排 manifest 检查、下载、staging、安装触发和状态事件。
+- `update-source.ts`：拥有 desktop update manifest 读取、schema 校验、版本比较和 artifact 选择。
+- `update-downloader.ts`：拥有 update artifact 流式下载、进度投影和 SHA-256 校验。
+- `update-installer.ts`：拥有 macOS `.app` bundle staging、bundle version 校验、detached installer script 生成、替换和 relaunch 触发。
 - `mac-bridge-manager.ts`：拥有 desktop-owned `cradle-mac-bridge` 子进程生命周期、NDJSON request/response 协议、hotkey event 投影、显式 parity-test synthetic hotkey helper、dev/packaged binary 路径解析，以及缺少 binary 时的非阻塞状态。
 - `mac-bridge-protocol.ts`：定义 Electron main 与 Swift Mac Bridge 共享的协议 schema，包括 `bridge.status`、权限状态、双 Command hotkey 配置、显式 synthetic both-Command parity helper、frontmost window capture、显式 `targetWindow` capture、Appshot capture/frontmost context、display/window recording 和 hotkey event。
 - `mac-screenshot-sinks.ts`：拥有 Mac Bridge screenshot 的 post-capture sink，包括保留文件、写剪贴板和可选 CleanShot URL scheme handoff。CleanShot 不是 hard dependency。
@@ -56,9 +59,9 @@
 
 ## Desktop update ownership
 
-`update-manager.ts` owns the renderer-visible Desktop Updates workflow. The explicit user flow is Check, Download, then Restart. Check only reads the Electron Builder generic feed and updates status; it does not implicitly download in the manual flow. When desktop preferences enable automatic checks, the main process checks every 5 minutes in the background; when automatic download is also enabled, an available update starts downloading and broadcasts progress through `desktop-update:status-changed`.
+`update-manager.ts` owns the renderer-visible Desktop Updates workflow. The explicit user flow is Check, Download, then Restart. Check reads the Cradle desktop update manifest and updates status; it does not implicitly download in the manual flow. When desktop preferences enable automatic checks, the main process checks every 5 minutes in the background; when automatic download is also enabled, an available update starts downloading, prepares the staged `.app`, and broadcasts progress through `desktop-update:status-changed`.
 
-Updates are available only in packaged builds with `CRADLE_DESKTOP_UPDATE_URL` configured. Restart shuts down the desktop-owned server runtime first, then delegates installation and relaunch to `electron-updater`.
+Updates are available only in packaged macOS builds with `CRADLE_DESKTOP_UPDATE_URL` configured. The feed URL can point directly at a manifest JSON file or at a feed root that contains `macos/manifest.json`. Restart spawns the detached installer script first, shuts down the desktop-owned server runtime, replaces the current `.app` bundle, and relaunches Cradle with `open -n`. If the target app directory is not writable, the installer uses macOS administrator privileges for the replacement step.
 
 ## Mac Bridge ownership
 

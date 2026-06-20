@@ -6,6 +6,7 @@
   "cradle": {
     "apiVersion": "1",
     "displayName": "Nowledge Mem",
+    "icon": "assets/nowledge-mem-logo.webp",
     "description": "Official Nowledge Mem adapter for guided memory, Working Memory, thread, and context operations.",
     "server": "dist/server.mjs",
     "web": "dist/web.mjs",
@@ -29,8 +30,8 @@
           "id": "panel.config",
           "type": "web-panel",
           "layer": "web",
-          "label": "Nowledge config",
-          "description": "Plugin-owned settings surface for apiUrl, mcpUrl, spaceId, and enabled. API keys stay out of the UI.",
+          "label": "Nowledge Mem",
+          "description": "Knowledge workspace surface: Today briefing, memory search, thread browsing, and connection config.",
           "permissions": []
         },
         {
@@ -155,6 +156,7 @@
     "@types/node": "^22.19.1",
     "@types/react": "^19.2.1",
     "@vitejs/plugin-react": "^5.1.1",
+    "motion": "^12.38.0",
     "react": "^19.2.1",
     "react-dom": "^19.2.1",
     "typescript": "^5.9.3",
