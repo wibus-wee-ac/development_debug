@@ -1,9 +1,9 @@
-import { useQueryClient } from '@tanstack/react-query'
 import {
   AlertLine as AlertCircleIcon,
   ExternalLinkLine as ExternalLinkIcon,
-  LoadingLine as LoaderCircleIcon
+  LoadingLine as LoaderCircleIcon,
 } from '@mingcute/react'
+import { useQueryClient } from '@tanstack/react-query'
 import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -164,6 +164,7 @@ function ChatTranscriptContent({
   keepMountedIndices,
   onVirtualScroll,
   onToolApprovalResponse,
+  composerStack,
   messageTextTransform,
 }: {
   sessionId: string | null
@@ -177,6 +178,7 @@ function ChatTranscriptContent({
   keepMountedIndices: ChatScrollRuntime['keepMountedIndices']
   onVirtualScroll: ChatScrollRuntime['handleVirtualScroll']
   onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
+  composerStack: React.ReactNode
   messageTextTransform?: MessageTextTransform
 }) {
   const { t } = useTranslation('chat')
@@ -238,6 +240,10 @@ function ChatTranscriptContent({
             </m.div>
           )}
         </div>
+
+        <div className="pointer-events-none sticky bottom-0 z-10 pt-4 pb-3">
+          {composerStack}
+        </div>
       </div>
     </div>
   )
@@ -260,6 +266,7 @@ function ChatMessageListPane({
   onScrollToMessageIndex,
   onScrollToOffset,
   onToolApprovalResponse,
+  composerStack,
   messageTextTransform,
 }: {
   sessionId: string | null
@@ -278,6 +285,7 @@ function ChatMessageListPane({
   onScrollToMessageIndex: ChatScrollRuntime['scrollToMessageIndex']
   onScrollToOffset: ChatScrollRuntime['scrollToOffset']
   onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
+  composerStack: React.ReactNode
   messageTextTransform?: MessageTextTransform
 }) {
   return (
@@ -294,6 +302,7 @@ function ChatMessageListPane({
         keepMountedIndices={keepMountedIndices}
         onVirtualScroll={onVirtualScroll}
         onToolApprovalResponse={onToolApprovalResponse}
+        composerStack={composerStack}
         messageTextTransform={messageTextTransform}
       />
 
@@ -1106,41 +1115,40 @@ export function ChatView({
         onScrollToOffset={scrollRuntime.scrollToOffset}
         onToolApprovalResponse={respondToToolApproval}
         messageTextTransform={messageTextTransform}
+        composerStack={(
+          <ChatComposerSection
+            sessionId={sessionId}
+            awaitSummary={awaitSummary}
+            queueItems={queueItems}
+            onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
+            onReorderQueueItems={queueItemIds => void reorderQueueItems(queueItemIds)}
+            onSlashCommandAction={handleSlashCommandAction}
+            composerRuntime={preparedComposerRuntime}
+            appshotRuntime={appshotRuntime}
+            placeholder={placeholder}
+            availableFiles={availableFiles}
+            searchFiles={searchFiles}
+            searchPlugins={searchPlugins}
+            searchSkills={searchSkills}
+            toolbar={runtimeSettingsToolbar}
+            runtimeSettings={{
+              settings: runtimeSettings.settings,
+              disabled: !isReady || !runtimeSettings.loaded || runtimeSettings.loading,
+              onChange: updateRuntimeSettings,
+            }}
+            contextBar={composerContextBar}
+            droppedPath={droppedPath}
+            goalActions={goalActions}
+            quickQuestionSlot={quickQuestionSlot}
+            reviewSlot={reviewSlot}
+            usageSlot={usageSlot}
+            onQuickQuestion={
+              sessionId && hasQuickQuestionSlot ? quickQuestion.openQuickQuestion : undefined
+            }
+            onComposerFocusChange={scrollRuntime.handleComposerFocusChange}
+          />
+        )}
       />
-
-      <div className="pointer-events-none relative z-10 shrink-0 px-4 pr-12 pb-3 pt-2">
-        <ChatComposerSection
-          sessionId={sessionId}
-          awaitSummary={awaitSummary}
-          queueItems={queueItems}
-          onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
-          onReorderQueueItems={queueItemIds => void reorderQueueItems(queueItemIds)}
-          onSlashCommandAction={handleSlashCommandAction}
-          composerRuntime={preparedComposerRuntime}
-          appshotRuntime={appshotRuntime}
-          placeholder={placeholder}
-          availableFiles={availableFiles}
-          searchFiles={searchFiles}
-          searchPlugins={searchPlugins}
-          searchSkills={searchSkills}
-          toolbar={runtimeSettingsToolbar}
-          runtimeSettings={{
-            settings: runtimeSettings.settings,
-            disabled: !isReady || !runtimeSettings.loaded || runtimeSettings.loading,
-            onChange: updateRuntimeSettings,
-          }}
-          contextBar={composerContextBar}
-          droppedPath={droppedPath}
-          goalActions={goalActions}
-          quickQuestionSlot={quickQuestionSlot}
-          reviewSlot={reviewSlot}
-          usageSlot={usageSlot}
-          onQuickQuestion={
-            sessionId && hasQuickQuestionSlot ? quickQuestion.openQuickQuestion : undefined
-          }
-          onComposerFocusChange={scrollRuntime.handleComposerFocusChange}
-        />
-      </div>
 
       <Dialog open={editingGoal !== null} onOpenChange={open => !open && closeGoalEditor()}>
         <DialogContent className="sm:max-w-md">

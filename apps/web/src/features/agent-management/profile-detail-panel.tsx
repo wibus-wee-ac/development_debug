@@ -1,12 +1,12 @@
-import { useQueryClient } from '@tanstack/react-query'
 import {
-  CheckLine as CheckIcon,
   AlertLine as CircleAlertIcon,
+  CheckLine as CheckIcon,
+  CloseLine as XIcon,
   CopyLine as CopyIcon,
-  EnterDoorLine as LogInIcon,
   DeleteLine as Trash2Icon,
-  CloseLine as XIcon
+  EnterDoorLine as LogInIcon,
 } from '@mingcute/react'
+import { useQueryClient } from '@tanstack/react-query'
 import { AnimatePresence, m } from 'motion/react'
 import type { MutableRefObject, ReactNode } from 'react'
 import { useCallback, useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'
@@ -366,6 +366,7 @@ export function ProfileDetailPanel({
   const saveRequestRef = useRef(0)
   const savedSignatureRef = useRef(createProfileSignature(getProfileFormValues(profile)))
   const latestProfileRef = useRef(profile)
+  const selectedProfileIdRef = useRef(profile.id)
   const [chatgptLoginId, setChatgptLoginId] = useState<string | null>(null)
   const [activeChatgptLogin, setActiveChatgptLogin] = useState<ChatgptCredentialLoginStart | null>(null)
   const { startLogin, cancelLogin } = useChatgptCredentialLoginActions()
@@ -522,9 +523,13 @@ export function ProfileDetailPanel({
         })
     }, [queryClient])
 
-  // Reset state when switching profile
-  const profileId = profile.id
+  // Reset state when switching profile. Same-profile refetches happen after auto-save
+  // and must not clear the already loaded model list.
   useEffect(() => {
+    if (selectedProfileIdRef.current === profile.id) {
+      return
+    }
+    selectedProfileIdRef.current = profile.id
     clearAutoSaveTimer()
     clearSavedClearTimer()
     modelsRequestRef.current += 1
@@ -533,7 +538,7 @@ export function ProfileDetailPanel({
     savedSignatureRef.current = createProfileSignature(initialValues)
     form.reset(initialValues)
     dispatch({ type: 'reset' })
-  }, [form, profile, profileId])
+  }, [form, profile])
 
   useEffect(() => {
     if (profile.providerKind !== 'openai-compatible') {
@@ -963,22 +968,30 @@ function ProfileGeneralSettings({
           {isUniversal
             ? (
                 <SettingsRow label="Endpoints" description="Separate base URLs for each API family" vertical>
-                  <div className="flex w-full max-w-[28rem] flex-col gap-2">
+                  <div className="flex w-full max-w-[28rem] flex-col gap-1.5">
+                    <label htmlFor="provider-edit-openai-baseurl" className="text-[11px] font-medium text-muted-foreground">
+                      OpenAI
+                    </label>
                     <Input
+                      id="provider-edit-openai-baseurl"
                       data-testid="provider-edit-openai-baseurl"
                       value={values.openaiBaseUrl}
                       onChange={e => onTextFieldChange('openaiBaseUrl', e.target.value)}
                       disabled={readOnly}
                       className="h-9 text-[12.5px] font-mono"
-                      placeholder="OpenAI: https://api.example.com/v1"
+                      placeholder="https://api.example.com/v1"
                     />
+                    <label htmlFor="provider-edit-anthropic-baseurl" className="mt-1 text-[11px] font-medium text-muted-foreground">
+                      Anthropic
+                    </label>
                     <Input
+                      id="provider-edit-anthropic-baseurl"
                       data-testid="provider-edit-anthropic-baseurl"
                       value={values.anthropicBaseUrl}
                       onChange={e => onTextFieldChange('anthropicBaseUrl', e.target.value)}
                       disabled={readOnly}
                       className="h-9 text-[12.5px] font-mono"
-                      placeholder="Anthropic: https://api.example.com"
+                      placeholder="https://api.example.com"
                     />
                   </div>
                 </SettingsRow>

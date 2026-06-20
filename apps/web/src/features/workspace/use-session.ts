@@ -290,6 +290,10 @@ function selectUnreadSessionIds(sessions: GetSessionsResponse): string[] {
   return sessions.filter(session => session.unread === true).map(session => session.id)
 }
 
+function selectRunningSessionIds(sessions: GetSessionsResponse): string[] {
+  return sessions.filter(session => session.status === 'streaming').map(session => session.id)
+}
+
 export function useUnreadSessionIds(): Set<string> {
   const queryOptions = sessionListOptions()
   const { data: unreadSessionIds = [] } = useQuery({
@@ -303,6 +307,17 @@ export function useUnreadSessionIds(): Set<string> {
   }, [unreadSessionIds])
 
   return useMemo(() => new Set(unreadSessionIds), [unreadSessionIds])
+}
+
+export function useRunningSessionIds(): Set<string> {
+  const queryOptions = sessionListOptions()
+  const { data: runningSessionIds = [] } = useQuery({
+    ...getSessionsOptions(queryOptions),
+    ...queryRefreshPolicy('active', { refetchInterval: SESSION_LIST_REFRESH_INTERVAL_MS }),
+    select: selectRunningSessionIds,
+  })
+
+  return useMemo(() => new Set(runningSessionIds), [runningSessionIds])
 }
 
 export function useAllSessions(archived?: boolean) {

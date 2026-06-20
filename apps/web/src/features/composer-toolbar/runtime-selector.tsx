@@ -1,7 +1,7 @@
-import { DownSmallLine as ChevronDownIcon } from '@mingcute/react'
+import { DownSmallLine as ChevronDownIcon, RobotLine as BotIcon } from '@mingcute/react'
 import { useTranslation } from 'react-i18next'
 
-import { getRuntimeIconKey, PROVIDER_ICONS } from '~/components/common/provider-icons'
+import { getRuntimeIconKey, ProviderIcon } from '~/components/common/provider-icons'
 import { Button } from '~/components/ui/button'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import { BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS } from '~/features/browser/native-surface-occlusion'
@@ -70,6 +70,27 @@ function getRuntimeDescription(option: RuntimeKindOption, t: (key: CommonKey) =>
   return option.value
 }
 
+function RuntimeOptionIcon({
+  className,
+  option,
+  value,
+}: {
+  className?: string
+  option?: RuntimeKindOption
+  value: RuntimeKind
+}) {
+  if (option?.iconKey === 'agents') {
+    return <BotIcon className={className} />
+  }
+  return (
+    <ProviderIcon
+      iconSlug={option?.iconKey ?? getRuntimeIconKey(value)}
+      presetId={null}
+      className={className}
+    />
+  )
+}
+
 interface RuntimeSelectorProps {
   value: RuntimeKind
   onChange: (kind: RuntimeKind) => void
@@ -89,7 +110,6 @@ export function RuntimeSelector({
 }: RuntimeSelectorProps) {
   const { t } = useTranslation('common')
   const current = options.find(o => o.value === value) ?? RUNTIME_KIND_OPTIONS.find(o => o.value === value)
-  const Icon = PROVIDER_ICONS[current?.iconKey ?? getRuntimeIconKey(value)] ?? PROVIDER_ICONS.custom!
   const currentLabel = getRuntimeLabel(current, value, t)
 
   if (readOnly) {
@@ -102,7 +122,7 @@ export function RuntimeSelector({
         aria-label={currentLabel}
         className="disabled:pointer-events-auto disabled:opacity-70"
       >
-        <Icon className="size-3.5 shrink-0" />
+        <RuntimeOptionIcon option={current} value={value} className="size-3.5 shrink-0" />
         <span className="hidden min-[480px]:inline">{currentLabel}</span>
       </Button>
     )
@@ -115,7 +135,7 @@ export function RuntimeSelector({
           <Button variant="ghost" size="xs" data-testid="runtime-selector" disabled={disabled} />
         )}
       >
-        <Icon className="size-3.5 shrink-0" />
+        <RuntimeOptionIcon option={current} value={value} className="size-3.5 shrink-0" />
         <span className="hidden min-[480px]:inline">
           {currentLabel}
         </span>
@@ -127,24 +147,21 @@ export function RuntimeSelector({
         sideOffset={4}
         {...(occludeNativeBrowserSurface ? BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS : {})}
       >
-        {options.map((opt) => {
-          const OptIcon = PROVIDER_ICONS[opt.iconKey ?? getRuntimeIconKey(opt.value)] ?? PROVIDER_ICONS.custom!
-          return (
-            <MenuItem
-              key={opt.value}
-              onClick={() => onChange(opt.value)}
-              className={cn(value === opt.value && 'font-medium')}
-            >
-              <OptIcon className="size-3.5" />
-              <div className="flex flex-col">
-                <span>{getRuntimeLabel(opt, opt.value, t)}</span>
-                <span className="text-[11px] text-muted-foreground">
-                  {getRuntimeDescription(opt, t)}
-                </span>
-              </div>
-            </MenuItem>
-          )
-        })}
+        {options.map(opt => (
+          <MenuItem
+            key={opt.value}
+            onClick={() => onChange(opt.value)}
+            className={cn(value === opt.value && 'font-medium')}
+          >
+            <RuntimeOptionIcon option={opt} value={opt.value} className="size-3.5" />
+            <div className="flex flex-col">
+              <span>{getRuntimeLabel(opt, opt.value, t)}</span>
+              <span className="text-[11px] text-muted-foreground">
+                {getRuntimeDescription(opt, t)}
+              </span>
+            </div>
+          </MenuItem>
+        ))}
       </MenuPopup>
     </Menu>
   )

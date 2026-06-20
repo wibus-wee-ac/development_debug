@@ -1,6 +1,6 @@
 import { cleanup, render, screen, waitFor } from '@testing-library/react'
 import type { ReactNode } from 'react'
-import { afterEach, describe, expect, it } from 'vitest'
+import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { useLayoutSlotsStore } from './layout-slots-context'
 import { useLayoutSlotsCtx, useRegisterLayoutSlots, useSyncLayoutSlotScope } from './use-layout-slots'
@@ -86,6 +86,25 @@ describe('layout slots store', () => {
 
     await waitFor(() => {
       expect(screen.getByText('Terminal B')).not.toBeNull()
+    })
+  })
+
+  it('keeps the layout slot store instance across module reloads in dev', async () => {
+    useLayoutSlotsStore.getState().registerSlot('session-a', {
+      hasBrowserPanel: true,
+      hasPanel: true,
+      panel: <span>Terminal A</span>,
+    })
+    useLayoutSlotsStore.getState().setSlotScope('session-a', ['session-a'])
+    const firstStore = useLayoutSlotsStore
+
+    vi.resetModules()
+    const { useLayoutSlotsStore: reloadedStore, readActiveLayoutSlots } = await import('./layout-slots-context')
+
+    expect(reloadedStore).toBe(firstStore)
+    expect(readActiveLayoutSlots()).toMatchObject({
+      hasBrowserPanel: true,
+      hasPanel: true,
     })
   })
 })

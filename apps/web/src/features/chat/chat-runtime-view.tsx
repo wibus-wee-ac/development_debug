@@ -15,7 +15,7 @@ import type { ChatViewProps } from './chat-view'
 import { searchSessionPluginMentions } from './mentions/plugin-mentions'
 import type { SkillMentionItem } from './mentions/skill-mention-panel'
 import type { SendMessageOptions } from './session/use-chat-session'
-import { ClaudeSessionModelMatrixControl } from './runtime/claude-session-model-matrix-control'
+import { useProviderTargetClaudeMatrix, useSessionClaudeMatrix } from './runtime/claude-session-model-matrix-control'
 
 const ChatView = lazy(() => import('./chat-view').then(module => ({ default: module.ChatView })))
 
@@ -255,23 +255,28 @@ export function ChatRuntimeView({
   const selectedApiProviderKind = selectedProviderKind && selectedProviderKind !== 'cli-tool'
     ? selectedProviderKind
     : null
-  const claudeMatrixControl = (
-    <ClaudeSessionModelMatrixControl
-      active={active}
-      sessionId={sessionId}
-      runtimeKind={runtimeKind}
-      providerTargetId={sessionComposerState.selection.profileId}
-      providerKind={selectedApiProviderKind}
-      modelId={sessionComposerState.selection.modelId}
-      models={sessionComposerState.models}
-    />
-  )
+
+  const providerTargetMatrix = useProviderTargetClaudeMatrix({
+    providerTargetId: sessionComposerState.selection.profileId,
+    providerKind: selectedApiProviderKind,
+    enabled: sessionComposerState.selection.targetMode === 'provider' && runtimeKind === 'claude-agent',
+  })
+  const claudeMatrixSlot = useSessionClaudeMatrix({
+    active,
+    sessionId,
+    runtimeKind,
+    providerTargetId: sessionComposerState.selection.profileId,
+    providerKind: selectedApiProviderKind,
+  })
+  const claudeMatrix = claudeMatrixSlot
+    ? { slot: claudeMatrixSlot, providerSettingsLoading: providerTargetMatrix.isLoading }
+    : null
+
   const composerToolbar = (
-    <ComposerToolbar context="chat" state={sessionComposerState} />
+    <ComposerToolbar context="chat" state={sessionComposerState} claudeMatrix={claudeMatrix} />
   )
   const composerToolbarAddons = (
     <>
-      {claudeMatrixControl}
       {composerToolbarAddon}
     </>
   )

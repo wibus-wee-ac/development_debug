@@ -8,8 +8,11 @@ import { useTranslation } from 'react-i18next'
 import { getSkills } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import { toastManager } from '~/components/ui/toast'
-import type { RuntimeKind } from '~/features/agent-runtime/types'
+import type { ClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
+import { hasClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
+import type { ApiProviderKind, RuntimeKind } from '~/features/agent-runtime/types'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
+import type { ComposerStateResult } from '~/features/composer-toolbar/use-composer-state'
 import type { SkillInventoryEntry } from '~/features/skills/types'
 import { searchWorkspaceFiles } from '~/features/workspace/use-workspace-files'
 import { cn } from '~/lib/cn'
@@ -24,6 +27,7 @@ import type { ChatContextPart } from '../context/chat-context-parts'
 import type { MentionItem } from '../mentions/mention-panel'
 import { searchPluginMentions } from '../mentions/plugin-mentions'
 import type { SkillMentionItem } from '../mentions/skill-mention-panel'
+import { useDraftClaudeMatrix, useProviderTargetClaudeMatrix } from '../runtime/claude-session-model-matrix-control'
 import { RuntimeSettingsControl } from '../runtime/runtime-settings-control'
 import type { ChatComposerSlashCommand } from '../slash-commands/chat-slash-commands'
 import { CODEX_REVIEW_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_COMMAND, withSlashCommandAvailability } from '../slash-commands/chat-slash-commands'
@@ -35,6 +39,14 @@ import { ComposerSlotStates } from './composer-slot-states'
 import { useComposerAppshotCapture } from './use-composer-appshot-capture'
 
 type ChatThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh'
+
+interface DraftClaudeAgentConfig {
+  modelAliases: ClaudeAgentModelAliases
+}
+
+export type DraftChatRuntimeSettings = ChatRuntimeSettings & {
+  claudeAgent?: DraftClaudeAgentConfig | null
+}
 
 const PLACEHOLDER_HINT_KEYS = [
   'placeholder.task',
@@ -52,7 +64,7 @@ export interface DraftChatComposerSubmitOptions {
   providerTargetName?: string
   modelId?: string
   thinkingEffort?: ChatThinkingEffort
-  runtimeSettings: ChatRuntimeSettings
+  runtimeSettings: DraftChatRuntimeSettings
 }
 
 export type DraftChatComposerSendHandler = (
@@ -74,6 +86,10 @@ interface DraftChatComposerProps {
   testIdPrefix?: string
 }
 
+interface DraftChatComposerContentProps extends DraftChatComposerProps {
+  composerState: ComposerStateResult
+}
+
 function useRotatingPlaceholder(hints: string[], active: boolean, interval = 4000): string {
   const [index, setIndex] = useState(0)
 
@@ -90,7 +106,16 @@ function useRotatingPlaceholder(hints: string[], active: boolean, interval = 400
   return hints[index]
 }
 
-export function DraftChatComposer({
+export function DraftChatComposer(props: DraftChatComposerProps) {
+  const composerState = useComposerState({ context: 'new-chat', enableAgents: true })
+  return <DraftChatComposerContent {...props} composerState={composerState} />
+}
+
+export function DraftChatComposerWithState(props: DraftChatComposerContentProps) {
+  return <DraftChatComposerContent {...props} />
+}
+
+function DraftChatComposerContent({
   workspaceId,
   active = true,
   contextBar,
@@ -100,12 +125,14 @@ export function DraftChatComposer({
   onSend,
   onSendInNewWindow,
   testIdPrefix = 'draft-chat',
-}: DraftChatComposerProps) {
+  composerState,
+}: DraftChatComposerContentProps) {
   const { t } = useTranslation('new-chat')
-  const composerState = useComposerState({ context: 'new-chat' })
   const { selection, effectiveAgent, effectiveProfile, effectiveModel } = composerState
   const runtimeSettings = useNewChatStore(s => s.lastRuntimeSettings ?? DEFAULT_CHAT_RUNTIME_SETTINGS)
   const setRuntimeSettings = useNewChatStore(s => s.setLastRuntimeSettings)
+  const claudeAgentByProfile = useNewChatStore(s => s.lastClaudeAgentByProfile)
+  const setClaudeAgentForProfile = useNewChatStore(s => s.setLastClaudeAgentForProfile)
   const [sending, setSending] = useState(false)
   const [reviewModeOpen, setReviewModeOpen] = useState(false)
   const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
@@ -137,7 +164,7 @@ export function DraftChatComposer({
     return [appshotCommand]
   })()
   const slashCommands = useRuntimeComposerSlashCommands(selection.runtimeKind, cradleSlashCommands)
-  const sendDisabled = selection.runtimeKind === 'cli-tui'
+  const sendDisabled = selection.targetMode === 'agent'
     ? !effectiveAgent || sending
     : !effectiveProfile || sending
 
@@ -149,7 +176,7 @@ export function DraftChatComposer({
     ) {
       return null
     }
-    if (selection.runtimeKind === 'cli-tui' && !effectiveAgent) {
+    if (selection.targetMode === 'agent' && composerState.agents.length === 0) {
       return {
         key: 'agents',
         icon: SettingsIcon,
@@ -158,7 +185,7 @@ export function DraftChatComposer({
         disabled: false,
       }
     }
-    if (selection.runtimeKind !== 'cli-tui' && !effectiveProfile) {
+    if (selection.targetMode === 'provider' && !effectiveProfile) {
       return {
         key: 'providers',
         icon: SettingsIcon,
@@ -213,6 +240,38 @@ export function DraftChatComposer({
     })
   }
 
+  const updateClaudeAgentAliases = (next: ClaudeAgentModelAliases) => {
+    if (!selection.profileId) {
+      return
+    }
+    setClaudeAgentForProfile(selection.profileId, hasClaudeAgentModelAliases(next) ? { modelAliases: next } : null)
+  }
+
+  const selectedProviderKind = effectiveProfile?.providerKind
+  const selectedApiProviderKind: ApiProviderKind | null = selectedProviderKind && selectedProviderKind !== 'cli-tool'
+    ? selectedProviderKind
+    : null
+  const claudeAgent = selection.profileId ? claudeAgentByProfile[selection.profileId] ?? null : null
+  const inputCollapsed = selection.targetMode === 'agent' && selection.runtimeKind === 'cli-tui'
+
+  const providerTargetMatrix = useProviderTargetClaudeMatrix({
+    providerTargetId: selection.profileId,
+    providerKind: selectedApiProviderKind,
+    enabled: selection.targetMode === 'provider' && selection.runtimeKind === 'claude-agent',
+  })
+  const claudeMatrixSlot = useDraftClaudeMatrix({
+    active,
+    runtimeKind: selection.runtimeKind,
+    providerTargetId: selection.profileId,
+    providerKind: selectedApiProviderKind,
+    aliases: claudeAgent?.modelAliases ?? providerTargetMatrix.aliases,
+    loading: providerTargetMatrix.isLoading,
+    onChange: updateClaudeAgentAliases,
+  })
+  const claudeMatrix = claudeMatrixSlot
+    ? { slot: claudeMatrixSlot, providerSettingsLoading: providerTargetMatrix.isLoading }
+    : null
+
   const toolbar = (
     <div className="flex min-w-0 items-center gap-1">
       <RuntimeSettingsControl
@@ -221,7 +280,7 @@ export function DraftChatComposer({
         disabled={sending}
         onChange={updateRuntimeSettings}
       />
-      <ComposerToolbar context="new-chat" state={composerState} />
+      <ComposerToolbar context="new-chat" state={composerState} claudeMatrix={claudeMatrix} />
     </div>
   )
 
@@ -233,8 +292,8 @@ export function DraftChatComposer({
   ) => {
     const trimmedText = text.trim()
     const hasDraft = trimmedText.length > 0 || files.length > 0 || contextParts.length > 0
-    const canSubmit = selection.runtimeKind === 'cli-tui'
-      ? !!effectiveAgent && !sending
+    const canSubmit = selection.targetMode === 'agent'
+      ? !!effectiveAgent && (selection.runtimeKind === 'cli-tui' || hasDraft) && !sending
       : !!effectiveProfile && hasDraft && !sending
 
     if (!canSubmit) {
@@ -242,27 +301,32 @@ export function DraftChatComposer({
     }
 
     setSending(true)
-    try {
-      await sendTarget(trimmedText, files, contextParts, {
-        runtimeKind: selection.runtimeKind,
-        ...(selection.runtimeKind === 'cli-tui'
-          ? {
-              agentId: effectiveAgent?.id,
-              agentName: effectiveAgent?.name,
-            }
-          : {
-              providerTargetId: effectiveProfile?.id,
-              providerTargetName: effectiveProfile?.name,
-              modelId: selection.modelId ?? effectiveModel?.id,
-              thinkingEffort: selection.thinkingEffort ?? undefined,
-            }),
-        runtimeSettings,
+    const submitRuntimeSettings: DraftChatRuntimeSettings = {
+      ...runtimeSettings,
+      ...(selection.targetMode === 'provider' && selection.runtimeKind === 'claude-agent' && claudeAgent ? { claudeAgent } : {}),
+    }
+    const submitOptions: DraftChatComposerSubmitOptions = {
+      runtimeKind: selection.runtimeKind,
+      ...(effectiveAgent
+        ? {
+            agentId: effectiveAgent.id,
+            agentName: effectiveAgent.name,
+          }
+        : {
+            providerTargetId: effectiveProfile?.id,
+            providerTargetName: effectiveProfile?.name,
+            modelId: selection.modelId ?? effectiveModel?.id,
+            thinkingEffort: selection.thinkingEffort ?? undefined,
+          }),
+      runtimeSettings: submitRuntimeSettings,
+    }
+
+    return Promise.resolve()
+      .then(() => sendTarget(trimmedText, files, contextParts, submitOptions))
+      .then(() => true)
+      .finally(() => {
+        setSending(false)
       })
-      return true
-    }
-    finally {
-      setSending(false)
-    }
   }
 
   const handleSend = (text: string, files: FileUIPart[], contextParts: ChatContextPart[]) => {
@@ -394,6 +458,7 @@ export function DraftChatComposer({
           searchPlugins: searchPluginMentions,
           searchSkills,
           onDraftChange,
+          inputCollapsed,
           className: 'relative',
           cardClassName: cn(
             'overflow-hidden rounded-2xl',
@@ -405,7 +470,10 @@ export function DraftChatComposer({
           textareaRows: 5,
           textareaClassName: 'px-5 pt-5 pb-3 text-[15px] leading-[1.75] placeholder:text-muted-foreground/30 min-h-30 max-h-80 rounded-t-2xl disabled:opacity-30',
           attachmentListClassName: 'border-border/60 px-3 py-2',
-          actionBarClassName: 'border-t border-border/60 px-2.5 py-2',
+          actionBarClassName: cn(
+            'px-2.5 py-2',
+            inputCollapsed ? 'border-t-0' : 'border-t border-border/60',
+          ),
           attachButtonClassName: 'text-muted-foreground/30',
           attachIconClassName: 'size-3',
           sendButtonClassName: 'ml-0.5',

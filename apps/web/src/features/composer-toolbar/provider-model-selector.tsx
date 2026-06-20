@@ -4,6 +4,7 @@ import { useTranslation } from 'react-i18next'
 import type { ModelDescriptor } from '~/features/agent-runtime/types'
 
 import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from './constants'
+import type { ClaudeMatrixMenuSlot } from './provider-model-menu'
 import type { ThinkingOption } from './provider-model-menu'
 import { ProviderModelPicker } from './provider-model-picker'
 import type { ModelsByProfileId, ProviderModelOption, ThinkingEffort } from './types'
@@ -38,6 +39,7 @@ interface ProviderModelSelectorProps {
   onSelectProfile: (id: string) => void
   onSelectModel: (id: string, profileId: string) => void
   onSelectThinkingEffort: (effort: ThinkingEffort) => void
+  claudeMatrix?: ClaudeMatrixMenuSlot | null
 }
 
 export function ProviderModelSelector({
@@ -53,6 +55,7 @@ export function ProviderModelSelector({
   onSelectProfile,
   onSelectModel,
   onSelectThinkingEffort,
+  claudeMatrix,
 }: ProviderModelSelectorProps) {
   const { t } = useTranslation('common')
   const selectedModel = models.find(model => model.id === selectedModelId) ?? null
@@ -109,6 +112,7 @@ export function ProviderModelSelector({
       emptyProviderTargetsLabel={t('model.noProviderTargets')}
       showProviderLabel
       occludeNativeBrowserSurface
+      claudeMatrix={claudeMatrix}
       getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, thinkingOptions)}
       onRequestProviderTargetModels={requestProfileModels}
       onSelectProviderTarget={(id) => {

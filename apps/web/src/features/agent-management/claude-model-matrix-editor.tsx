@@ -187,7 +187,7 @@ export function ClaudeModelMatrixEditor({
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg ring-1 ring-foreground/8">
+      <div className="overflow-hidden rounded-lg ring-1 ring-foreground/6 dark:ring-foreground/8">
         {TIERS.map((tier, index) => {
           const Glyph = tier.glyph
           const currentValue = aliases[tier.key] || CURRENT_MODEL_VALUE
@@ -197,7 +197,7 @@ export function ClaudeModelMatrixEditor({
           return (
             <div key={tier.key}>
               {index > 0 && <SettingsDivider />}
-              <div className="relative flex gap-3 px-3 py-2.5">
+              <div className="relative flex gap-3 px-2.5 py-2">
                 <div className={cn('absolute inset-y-0 left-0 w-0.5', tier.accent.bar)} aria-hidden="true" />
 
                 <div className="flex w-[5.5rem] shrink-0 flex-col gap-1">
@@ -233,7 +233,7 @@ export function ClaudeModelMatrixEditor({
 
                   <div
                     className={cn(
-                      'flex items-center gap-1 overflow-x-auto rounded-md px-1.5 py-1',
+                      'flex items-center gap-1 overflow-x-auto rounded-md px-1 py-0.5',
                       tier.accent.rail,
                     )}
                   >

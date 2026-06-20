@@ -1,10 +1,3 @@
-import { useQuery } from '@tanstack/react-query'
-import { AnimatePresence, LayoutGroup, m } from 'motion/react'
-import { useEffect, useRef, useState } from 'react'
-import { useTranslation } from 'react-i18next'
-
-import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
-import { getWorkspacesById } from '~/api-gen/sdk.gen'
 import {
   CircleDashLine as CircleDashedIcon,
   DotCircleLine as CircleDotIcon,
@@ -15,6 +8,13 @@ import {
   SelectorHorizontalLine as SlidersHorizontalIcon,
   TreeLine as FolderTreeIcon,
 } from '@mingcute/react'
+import { useQuery } from '@tanstack/react-query'
+import { AnimatePresence, LayoutGroup, m } from 'motion/react'
+import { useEffect, useRef, useState } from 'react'
+import { useTranslation } from 'react-i18next'
+
+import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
+import { getWorkspacesById } from '~/api-gen/sdk.gen'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { BrowserAnnotationAdjustmentPanel } from '~/features/browser/browser-annotation-adjustment-panel'
@@ -138,6 +138,7 @@ const TAB_ICON_TRANSITION = {
 
 interface RightAsideProps {
   active?: boolean
+  ownerId?: string | null
   visible?: boolean
   sessionId?: string | null
   workspaceId?: string | null
@@ -312,6 +313,7 @@ function TabIcon({
 
 export function RightAside({
   active = true,
+  ownerId = null,
   visible = active,
   ...props
 }: RightAsideProps) {
@@ -325,10 +327,11 @@ export function RightAside({
     )
   }
 
-  return <ActiveRightAside visible={visible} {...props} />
+  return <ActiveRightAside ownerId={ownerId} visible={visible} {...props} />
 }
 
 function ActiveRightAside({
+  ownerId,
   visible = true,
   sessionId = null,
   workspaceId: explicitWorkspaceId = null,
@@ -376,10 +379,11 @@ function ActiveRightAside({
   // Badge: active adjustment session
   const adjustmentSession = useBrowserPanelStore(state => state.annotationAdjustmentSession)
   const hasActiveAdjustment = adjustmentSession !== null
-  const activeBrowserPanelOwnerId = useLayoutStore(state => state.activeBrowserPanelOwnerId)
-  const browserPanelOpen = useLayoutStore(state => state.browserPanelOpen)
+  const browserPanelOpen = useLayoutStore(state => ownerId
+    ? (state.browserPanelOpenByOwnerId[ownerId] ?? false)
+    : state.browserPanelOpen)
   const hasActiveBrowserTab = useBrowserPanelStore((state) => {
-    const ownerState = state.owners[activeBrowserPanelOwnerId]
+    const ownerState = ownerId ? state.owners[ownerId] : state.owners[state.activeOwnerId]
     const activePanelTab = ownerState?.tabs.find(tab => tab.id === ownerState.activeTabId)
       ?? ownerState?.tabs[0]
     return activePanelTab?.kind === 'browser'
@@ -399,6 +403,12 @@ function ActiveRightAside({
   const tabLabelTransition = animatePanelTransition
     ? TAB_LABEL_TRANSITION
     : TAB_INSTANT_LABEL_TRANSITION
+
+  useEffect(() => {
+    if (visible && resolvedActiveTab !== activeTab) {
+      setActiveTab(resolvedActiveTab)
+    }
+  }, [activeTab, resolvedActiveTab, setActiveTab, visible])
 
   useEffect(() => {
     userInitiatedPanelTabRef.current = null

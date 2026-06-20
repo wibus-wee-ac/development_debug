@@ -1,21 +1,21 @@
 import { RobotLine as BotIcon } from '@mingcute/react'
 import { ProviderIcon } from '~/components/common/provider-icons'
-import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar'
+import { Avatar, AvatarFallback } from '~/components/ui/avatar'
 import { cn } from '~/lib/cn'
 
 import { buildAvatarUrl } from './avatar-url'
 
 export interface AgentAvatarProps {
   name?: string | null
-  avatarUrl?: unknown
+  avatarUrl?: string | null
   avatarStyle?: string | null
   avatarSeed?: string | null
   size?: number
   className?: string
 }
 
-function avatarImageUrl(avatarUrl: unknown, avatarStyle?: string | null, avatarSeed?: string | null): string | null {
-  if (typeof avatarUrl === 'string' && avatarUrl.length > 0) {
+function avatarImageUrl(avatarUrl?: string | null, avatarStyle?: string | null, avatarSeed?: string | null): string | null {
+  if (avatarUrl) {
     return avatarUrl
   }
   if (avatarStyle && avatarSeed) {
@@ -33,6 +33,7 @@ export function AgentAvatar({
   className,
 }: AgentAvatarProps) {
   const imageUrl = avatarImageUrl(avatarUrl, avatarStyle, avatarSeed)
+  const lobeIconSlug = avatarStyle === 'lobehub-icon' ? avatarSeed : null
   const initial = name?.trim().charAt(0)?.toUpperCase()
 
   return (
@@ -44,23 +45,25 @@ export function AgentAvatar({
       )}
       style={{ width: size, height: size }}
     >
-      {avatarStyle === 'lobehub-icon' && avatarSeed
+      {lobeIconSlug
         ? (
             <div className="flex size-full items-center justify-center p-1">
-              <ProviderIcon iconSlug={avatarSeed} presetId={null} className="size-full" />
+              <ProviderIcon iconSlug={lobeIconSlug} presetId={null} className="size-full" />
             </div>
           )
         : imageUrl && (
-        <AvatarImage
-          src={imageUrl}
-          alt={name ?? ''}
-          className="rounded-full"
-          crossOrigin="anonymous"
-        />
+            <img
+              src={imageUrl}
+              alt={name ?? ''}
+              className="size-full rounded-full object-cover"
+              crossOrigin="anonymous"
+            />
           )}
-      <AvatarFallback className="text-[10px] font-medium">
-        {initial ?? <BotIcon className="size-3" aria-hidden="true" />}
-      </AvatarFallback>
+      {!lobeIconSlug && !imageUrl && (
+        <AvatarFallback className="text-[10px] font-medium">
+          {initial ?? <BotIcon className="size-3" aria-hidden="true" />}
+        </AvatarFallback>
+      )}
     </Avatar>
   )
 }

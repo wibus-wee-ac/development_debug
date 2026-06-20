@@ -528,6 +528,7 @@ function RetainedRightAsides({
           >
             <Suspense fallback={null}>
               <MemoizedRightAside
+                ownerId={descriptor.ownerId}
                 visible={asideVisible}
                 sessionId={descriptor.sessionId}
                 workspaceId={descriptor.workspaceId}

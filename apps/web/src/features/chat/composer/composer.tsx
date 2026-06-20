@@ -124,6 +124,8 @@ export interface ComposerViewOptions {
   cardClassName?: string
   textareaClassName?: string
   textareaRows?: number
+  /** Hides the prompt editor for runtimes that do not accept text input. */
+  inputCollapsed?: boolean
   attachmentListClassName?: string
   actionBarClassName?: string
   toolbarClassName?: string
@@ -614,7 +616,7 @@ function ComposerActions({
   sendButtonClassName?: string
   sendButtonTestId: string
   stopButtonTestId: string
-  attachmentController: ComposerAttachmentController
+  attachmentController: ComposerAttachmentController | null
   sessionId?: string | null
   sessionTokens?: number
   sessionContextWindow?: number | null
@@ -645,14 +647,16 @@ function ComposerActions({
   return (
     <div className={cn('flex items-center gap-1', actionsClassName)}>
       {contextBar}
-      <ComposerAttachmentButton
-        disabled={disabled}
-        className={attachButtonClassName}
-        iconClassName={attachIconClassName}
-        onPickFiles={attachmentController.pickFiles}
-        supportsAttachments={attachmentController.supportsAttachments}
-        testId={attachButtonTestId}
-      />
+      {attachmentController && (
+        <ComposerAttachmentButton
+          disabled={disabled}
+          className={attachButtonClassName}
+          iconClassName={attachIconClassName}
+          onPickFiles={attachmentController.pickFiles}
+          supportsAttachments={attachmentController.supportsAttachments}
+          testId={attachButtonTestId}
+        />
+      )}
       {sessionTokens != null && sessionTokens > 0 && sessionContextWindow != null && sessionContextWindow > 0 && (
         <TokenProgress
           tokens={sessionTokens}
@@ -752,6 +756,7 @@ export function Composer({
     cardClassName,
     textareaClassName,
     textareaRows,
+    inputCollapsed = false,
     attachmentListClassName,
     actionBarClassName,
     toolbarClassName,
@@ -827,11 +832,16 @@ export function Composer({
   const attachButtonTestId = testIds?.attachButton ?? 'chat-attach-btn'
   const sendButtonTestId = testIds?.sendButton ?? 'chat-send-btn'
   const stopButtonTestId = testIds?.stopButton ?? 'chat-stop-btn'
-  const hasDraft = Boolean(state.inputValue.trim()) || attachmentController.hasAttachments || state.contextParts.length > 0 || Boolean(allowEmptySend)
-  const bangCommandPreview = !attachmentController.hasAttachments && state.contextParts.length === 0
+  const hasVisibleInputPayload = !inputCollapsed && (
+    Boolean(state.inputValue.trim())
+    || attachmentController.hasAttachments
+    || state.contextParts.length > 0
+  )
+  const hasDraft = hasVisibleInputPayload || Boolean(allowEmptySend)
+  const bangCommandPreview = !inputCollapsed && !attachmentController.hasAttachments && state.contextParts.length === 0
     ? readBangCommandDraft(state.inputValue)
     : null
-  const bangCommand = !attachmentController.hasAttachments && state.contextParts.length === 0
+  const bangCommand = !inputCollapsed && !attachmentController.hasAttachments && state.contextParts.length === 0
     ? readBangCommand(state.inputValue)
     : null
   const isBangMode = bangCommandPreview !== null
@@ -985,13 +995,30 @@ export function Composer({
     submitHandler: ComposerSendHandler = submit,
   ) => {
     const currentState = stateRef.current
-    const editorText = promptEditorRef.current?.getText() ?? currentState.inputValue
-    const contextParts = promptEditorRef.current?.getContextParts() ?? currentState.contextParts
+    const editorText = inputCollapsed ? '' : promptEditorRef.current?.getText() ?? currentState.inputValue
+    const contextParts = inputCollapsed ? [] : promptEditorRef.current?.getContextParts() ?? currentState.contextParts
     const text = editorText.trim()
+    const files = inputCollapsed ? [] : composerAttachments
     if (disabled || isSending || sendDisabled || sendBlocked) {
       return
     }
-    if (!allowEmptySend && !text && composerAttachments.length === 0 && contextParts.length === 0) {
+    if (!allowEmptySend && !text && files.length === 0 && contextParts.length === 0) {
+      return
+    }
+    if (inputCollapsed) {
+      let result: ComposerSendResult | Promise<ComposerSendResult>
+      try {
+        result = options
+          ? submitHandler('', [], [], options)
+          : submitHandler('', [], [])
+      }
+      catch (error) {
+        reportComposerSubmitError(error)
+        return
+      }
+      if (isComposerSendPromise(result)) {
+        void result.catch(reportComposerSubmitError)
+      }
       return
     }
 
@@ -1011,7 +1038,7 @@ export function Composer({
       clearAttachments: clearComposerAttachments,
       contextParts,
       dispatch,
-      files: composerAttachments,
+      files,
       options,
       promptEditor: promptEditorRef.current,
       submit: submitHandler,
@@ -1023,6 +1050,7 @@ export function Composer({
     clearComposerAttachments,
     composerAttachments,
     disabled,
+    inputCollapsed,
     isSending,
     onQuickQuestion,
     sendBlocked,
@@ -1169,7 +1197,7 @@ export function Composer({
         onSelect={handleMentionSelect}
         onTabComplete={handleMentionTabComplete}
         onClose={handleMentionClose}
-        visible={state.mentionActive}
+        visible={!inputCollapsed && state.mentionActive}
       />
       <SkillMentionPanel
         items={availableSkills}
@@ -1177,7 +1205,7 @@ export function Composer({
         searchItems={searchSkills}
         onSelect={handleSkillSelect}
         onClose={handleSkillClose}
-        visible={state.skillActive}
+        visible={!inputCollapsed && state.skillActive}
       />
       <SlashCommandPanel
         commands={visibleSlashCommands}
@@ -1186,7 +1214,7 @@ export function Composer({
         query={state.slashQuery}
         onSelect={handleSlashCommandSelect}
         onClose={handleSlashClose}
-        visible={state.slashActive}
+        visible={!inputCollapsed && state.slashActive}
       />
 
       {/* Input card — modern clean style, no border-t separator */}
@@ -1205,14 +1233,16 @@ export function Composer({
         data-testid={actionTargetTestId}
         data-composer-action-target
       >
-        <ComposerAttachmentInput
-          fileInputRef={attachmentController.fileInputRef}
-          onFilesSelected={attachmentController.handleFilesSelected}
-          supportsAttachments={attachmentController.supportsAttachments}
-          testId={fileInputTestId}
-        />
+        {!inputCollapsed && (
+          <ComposerAttachmentInput
+            fileInputRef={attachmentController.fileInputRef}
+            onFilesSelected={attachmentController.handleFilesSelected}
+            supportsAttachments={attachmentController.supportsAttachments}
+            testId={fileInputTestId}
+          />
+        )}
         {/* Prompt editor */}
-        <div className="relative">
+        <div className={cn('relative', inputCollapsed && 'hidden')}>
           {slashArgumentHint && (
             <div
               aria-hidden="true"
@@ -1246,12 +1276,14 @@ export function Composer({
           />
         </div>
 
-        <ComposerAttachmentList
-          attachments={attachmentController.attachments}
-          onRemove={attachmentController.removeAttachment}
-          pendingAppshots={pendingAppshots}
-          className={attachmentListClassName}
-        />
+        {!inputCollapsed && (
+          <ComposerAttachmentList
+            attachments={attachmentController.attachments}
+            onRemove={attachmentController.removeAttachment}
+            pendingAppshots={pendingAppshots}
+            className={attachmentListClassName}
+          />
+        )}
 
         {/* Action bar — subtle, blends with the card */}
         <div
@@ -1306,7 +1338,7 @@ export function Composer({
             isPlanMode={isPlanMode}
             isSending={isSending}
             isStreaming={isStreaming}
-            attachmentController={attachmentController}
+            attachmentController={inputCollapsed ? null : attachmentController}
             onSend={handleSend}
             onStop={send.stop}
             sendDisabled={sendDisabled}

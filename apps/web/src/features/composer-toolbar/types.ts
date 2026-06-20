@@ -1,6 +1,7 @@
 import type { ModelDescriptor, ProviderKind, ProviderTargetKind, RuntimeKind } from '~/features/agent-runtime/types'
 
 export type ComposerContext = 'new-chat' | 'chat'
+export type ComposerTargetMode = 'provider' | 'agent'
 
 export type ThinkingEffort = 'low' | 'medium' | 'high' | 'xhigh' | null
 
@@ -10,6 +11,7 @@ export interface ComposerSelection {
   modelId: string | null
   thinkingEffort: ThinkingEffort
   runtimeKind: RuntimeKind
+  targetMode: ComposerTargetMode
 }
 
 export interface ProviderModelOption {
