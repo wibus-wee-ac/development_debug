@@ -12,7 +12,7 @@ import {
   ShieldLine as Shield,
   SquareLine as Square,
   FlashLine as Zap
-} from '@mingcute/react'
+} from '../lib/mingcute-icons'
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useState } from 'react'
 

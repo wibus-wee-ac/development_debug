@@ -7,9 +7,8 @@ import gsap from 'gsap'
 import {
   EyeLine as Eye,
   LayersLine as Layers,
-  Message1Line as MessageSquare,
-  TerminalLine as Terminal
-} from '@mingcute/react'
+  Message1Line as MessageSquare
+} from '../lib/mingcute-icons'
 import { useCallback, useRef, useState } from 'react'
 
 gsap.registerPlugin(useGSAP)

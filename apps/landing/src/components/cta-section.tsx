@@ -4,7 +4,7 @@
 
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
-import { DownloadLine as Download } from '@mingcute/react'
+import { DownloadLine as Download } from '../lib/mingcute-icons'
 import { useRef } from 'react'
 
 export function CTASection() {

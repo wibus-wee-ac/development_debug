@@ -8,7 +8,7 @@ import {
   CheckCircleLine as CheckCircle2,
   SubtractLine as Minus,
   CloseLine as X
-} from '@mingcute/react'
+} from '../lib/mingcute-icons'
 import { useRef } from 'react'
 
 const TOOLS = ['Cursor', 'Claude Code', 'Devin', 'Cradle']
