@@ -1,5 +1,5 @@
 import { useRouterState } from '@tanstack/react-router'
-import { MonitorLine as MonitorIcon, Refresh1Line as RefreshCwIcon } from '@mingcute/react'
+import { MonitorLine as MonitorIcon, Refresh1Line as RefreshCwIcon } from '~/components/ui/mingcute-icons'
 import { useSyncExternalStore } from 'react'
 import { useTranslation } from 'react-i18next'
 

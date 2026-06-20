@@ -17,7 +17,7 @@ import {
   GitCompareLine as FileDiffIcon,
   LoadingLine as Loader2Icon,
   Rows3Line as Rows3Icon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useDeferredValue, useEffect, useRef, useState, useTransition } from 'react'
 
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'

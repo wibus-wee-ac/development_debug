@@ -9,7 +9,7 @@ import {
   SubtractLine as MinusIcon,
   QuoteLeftLine as QuoteIcon,
   TextLine as TextIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'

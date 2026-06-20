@@ -5,7 +5,7 @@ import {
   CornerUpLeftLine as CornerUpLeftIcon,
   More2Line as MoreHorizontalIcon,
   DeleteLine as TrashIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import type { KanbanIssue, KanbanStatus } from '~/features/kanban/types'
 

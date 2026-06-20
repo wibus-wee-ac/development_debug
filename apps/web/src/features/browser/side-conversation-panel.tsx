@@ -3,7 +3,7 @@ import {
   RobotLine as BotIcon,
   SendLine as SendIcon,
   CloseCircleLine as XCircleIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useState } from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { Dashboard2Line as GaugeIcon } from '@mingcute/react'
+import { Dashboard2Line as GaugeIcon } from '~/components/ui/mingcute-icons'
 import { m } from 'motion/react'
 
 import { cn } from '~/lib/cn'

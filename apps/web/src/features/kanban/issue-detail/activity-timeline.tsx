@@ -7,7 +7,7 @@ import {
   DeleteLine as Trash2Icon,
   UserFollowLine as UserRoundCheckIcon,
   UserRemoveLine as UserRoundMinusIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import type { ElementType, ReactNode } from 'react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'

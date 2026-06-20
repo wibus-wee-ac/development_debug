@@ -6,7 +6,7 @@ import {
   CheckLine as CheckIcon,
   Message1Line as MessageSquareIcon,
   SearchLine as SearchIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

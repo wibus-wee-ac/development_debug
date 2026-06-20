@@ -1,4 +1,4 @@
-import { DownSmallLine as ChevronDownIcon } from '@mingcute/react'
+import { DownSmallLine as ChevronDownIcon } from '~/components/ui/mingcute-icons'
 import { useTranslation } from 'react-i18next'
 
 import { getRuntimeIconKey, PROVIDER_ICONS } from '~/components/common/provider-icons'

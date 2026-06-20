@@ -1,4 +1,4 @@
-import { PencilLine as PencilIcon } from '@mingcute/react'
+import { PencilLine as PencilIcon } from '~/components/ui/mingcute-icons'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { MarkdownEditor } from '~/components/editor/markdown-editor'

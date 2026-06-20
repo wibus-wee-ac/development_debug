@@ -1,12 +1,12 @@
 import type { CodeViewItem } from '@pierre/diffs'
-import { GitCompareLine as FileDiffIcon, LoadingLine as Loader2Icon } from '@mingcute/react'
+import { GitCompareLine as FileDiffIcon, LoadingLine as Loader2Icon } from '~/components/ui/mingcute-icons'
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ResizeHandle } from '~/components/layout/resize-handle'
 
 import type { CodeViewLineSelection, DiffData, ThreadAnnotation } from '../shared/diff-items'
 import { buildItemsFromPatch, EMPTY_DIFF_DATA } from '../shared/diff-items'
-import { navigateToGuideView } from '../shared/navigation'
+import { navigateToCommitView, navigateToGuideView } from '../shared/navigation'
 import type { DiffStyle, ReviewFile, ReviewThread } from '../shared/types'
 import { useReview } from '../shared/use-review'
 import type { DiffStageHandle } from './diff-stage'
@@ -183,7 +183,7 @@ export function ReviewDetailPage({
   const hiddenGeneratedFileCount = collapseGeneratedFiles ? files.filter(file => file.isGenerated).length : 0
 
   const openThreadCount = review.threads.filter(thread => thread.state !== 'resolved').length
-  const showThreadsRail = !threadsRailCollapsed && openThreadCount > 0
+  const showThreadsRail = !threadsRailCollapsed
 
   return (
     <div className="flex h-full w-full min-h-0 flex-col overflow-hidden" data-testid="review-detail-page">
@@ -203,6 +203,8 @@ export function ReviewDetailPage({
         isFetching={isFetching}
         onOpenGuide={() => navigateToGuideView(workspaceId, review.id, repositoryPath)}
         hasGuide={review.guide.steps.length > 0}
+        onOpenCommit={() => navigateToCommitView(workspaceId, review.id, repositoryPath)}
+        hasCommitPlan={review.commitPlans.length > 0}
         threadsRailCollapsed={threadsRailCollapsed}
         onToggleThreadsRail={() => setThreadsRailCollapsed(value => !value)}
         openThreadCount={openThreadCount}

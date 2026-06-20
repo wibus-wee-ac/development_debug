@@ -4,7 +4,7 @@ import {
   CheckCircleLine as CheckCircle2Icon,
   LoadingLine as LoaderCircleIcon,
   CloseCircleLine as XCircleIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'

@@ -5,7 +5,7 @@ import {
   Flag2Line as FlagIcon,
   GitPullRequestLine as GitPullRequestIcon,
   Message1Line as MessageSquareIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useEffect, useImperativeHandle, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'

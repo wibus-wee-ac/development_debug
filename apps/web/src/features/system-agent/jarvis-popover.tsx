@@ -10,7 +10,7 @@ import {
   LayoutLine as PanelsTopLeftIcon,
   AttachmentLine as PaperclipIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { m } from 'motion/react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'

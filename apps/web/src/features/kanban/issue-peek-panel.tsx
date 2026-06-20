@@ -1,6 +1,6 @@
 import { StaticRender } from '@cradle/streamdown'
 import type { TFunction } from 'i18next'
-import { CloseLine as XIcon } from '@mingcute/react'
+import { CloseLine as XIcon } from '~/components/ui/mingcute-icons'
 import { AnimatePresence, m } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 

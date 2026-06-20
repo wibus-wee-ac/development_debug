@@ -6,7 +6,7 @@ import {
   ArrowLeftLine as ArrowLeftIcon,
   RefreshAnticlockwise1Line as RefreshCcwIcon,
   ClockwiseLine as RotateCwIcon
-} from '@mingcute/react';
+} from '~/components/ui/mingcute-icons';
 import type { ErrorInfo, ReactNode } from 'react'
 import { Component } from 'react'
 import { Translation } from 'react-i18next'

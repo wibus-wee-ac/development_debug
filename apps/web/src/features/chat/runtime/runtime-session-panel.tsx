@@ -10,7 +10,7 @@ import {
   LoadingLine as LoaderCircleIcon,
   StopwatchLine as TimerIcon,
   ToolLine as WrenchIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useSyncExternalStore } from 'react'
 
 import type { RuntimeKind } from '~/features/agent-runtime/types'

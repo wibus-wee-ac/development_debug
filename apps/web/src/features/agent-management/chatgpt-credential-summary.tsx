@@ -1,4 +1,4 @@
-import { CheckCircleLine as CheckCircle2Icon } from '@mingcute/react'
+import { CheckCircleLine as CheckCircle2Icon } from '~/components/ui/mingcute-icons'
 import { Badge } from '~/components/ui/badge'
 import { cn } from '~/lib/cn'
 

@@ -3,7 +3,7 @@ import {
   RightSmallLine as ChevronRightIcon,
   StopCircleLine as CircleStopIcon,
   TerminalLine as TerminalIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useState } from 'react'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'

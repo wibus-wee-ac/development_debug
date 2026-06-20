@@ -11,7 +11,7 @@ import {
   LoadingLine as LoaderCircleIcon,
   Refresh1Line as RefreshCwIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 

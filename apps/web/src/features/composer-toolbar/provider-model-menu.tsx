@@ -3,7 +3,7 @@ import {
   CheckLine as CheckIcon,
   HammerLine as HammerIcon,
   Scan2Line as ScanEyeIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'

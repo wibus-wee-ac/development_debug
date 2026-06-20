@@ -21,7 +21,7 @@ import {
   TerminalLine as TerminalIcon,
   ToolLine as WrenchIcon,
   FlashLine as ZapIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import type { ComponentType, SVGProps } from 'react'
 
 import { Progress } from '~/components/ui/progress'

@@ -4,7 +4,7 @@ import {
   DownloadLine as DownloadIcon,
   GlobeLine as GlobeIcon,
   Key2Line as KeyIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 

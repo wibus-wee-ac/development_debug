@@ -5,7 +5,7 @@
  * model-registry detail panel to show merged search results from
  * models.dev and the Cradle Model Registry.
  */
-import { FileNewLine as FilePlus2Icon, Link2Line as Link2Icon } from '@mingcute/react'
+import { FileNewLine as FilePlus2Icon, Link2Line as Link2Icon } from '~/components/ui/mingcute-icons'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
 import { cn } from '~/lib/cn'

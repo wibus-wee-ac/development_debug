@@ -5,7 +5,7 @@ import {
   PlusLine as PlusIcon,
   DeleteLine as TrashIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { AnimatePresence, m } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'

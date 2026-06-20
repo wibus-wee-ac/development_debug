@@ -5,7 +5,7 @@ import {
   LoadingLine as Loader2Icon,
   PencilLine as PencilIcon,
   ScrollableListLine as ScrollTextIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { m } from 'motion/react'
 import type { CSSProperties } from 'react'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'

@@ -1,4 +1,4 @@
-import { RobotLine as BotIcon } from '@mingcute/react'
+import { RobotLine as BotIcon } from '~/components/ui/mingcute-icons'
 import { ProviderIcon } from '~/components/common/provider-icons'
 import { Avatar, AvatarFallback, AvatarImage } from '~/components/ui/avatar'
 import { cn } from '~/lib/cn'

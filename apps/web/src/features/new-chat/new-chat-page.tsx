@@ -6,7 +6,7 @@ import {
   FolderLine as FolderIcon,
   NewFolderLine as FolderPlusIcon,
   Message1Line as MessageSquareIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'

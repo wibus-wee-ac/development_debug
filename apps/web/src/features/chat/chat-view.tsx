@@ -3,7 +3,7 @@ import {
   AlertLine as AlertCircleIcon,
   ExternalLinkLine as ExternalLinkIcon,
   LoadingLine as LoaderCircleIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'

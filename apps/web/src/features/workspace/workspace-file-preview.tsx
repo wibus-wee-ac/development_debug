@@ -3,7 +3,7 @@ import {
   FileUnknownLine as FileQuestionIcon,
   PicLine as ImageIcon,
   LoadingLine as Loader2Icon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useEffect, useRef, useState } from 'react'
 import type { BundledLanguage } from 'shiki'
 

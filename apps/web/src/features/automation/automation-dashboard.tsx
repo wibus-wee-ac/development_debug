@@ -14,7 +14,7 @@ import {
   SparklesLine as SparklesIcon,
   WarningLine as TriangleAlertIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { m } from 'motion/react'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'

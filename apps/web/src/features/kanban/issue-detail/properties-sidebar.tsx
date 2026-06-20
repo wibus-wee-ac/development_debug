@@ -11,7 +11,7 @@ import {
   DeleteLine as Trash2Icon,
   UserXLine as UserRoundXIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

@@ -29,7 +29,7 @@ import {
   SearchLine as SearchIcon,
   Settings2Line as SettingsIcon,
   DeleteLine as Trash2Icon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import {
   Fragment,
   memo,

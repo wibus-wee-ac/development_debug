@@ -3,7 +3,7 @@ import {
   CheckLine as CheckIcon,
   LoadingLine as Loader2Icon,
   SaveLine as SaveIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'

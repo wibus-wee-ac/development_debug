@@ -8,11 +8,12 @@ import {
   Rows3Line as Rows3Icon,
   SendLine as SendIcon,
   SelectorHorizontalLine as SlidersHorizontalIcon
-} from '@mingcute/react'
-import { useTransition } from 'react'
+} from '~/components/ui/mingcute-icons'
+import { useState, useTransition } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
+import { Textarea } from '~/components/ui/textarea'
 import { cn } from '~/lib/cn'
 
 import { formatChangeStats, sourceLabel } from '../shared/diff-items'
@@ -147,9 +148,7 @@ export function ReviewTopBar({
       <ReviewPopover
         pending={submitPending}
         state={review.reviewState}
-        onComment={() => onSubmit('comment', '')}
-        onRequestChanges={() => onSubmit('request-changes', '')}
-        onApprove={() => onSubmit('approve', '')}
+        onSubmit={onSubmit}
       />
 
       <Button
@@ -230,18 +229,30 @@ function DisplayPopover({
 function ReviewPopover({
   pending,
   state,
-  onComment,
-  onRequestChanges,
-  onApprove,
+  onSubmit,
 }: {
   pending: boolean
   state: CradleDiffReview['reviewState']
-  onComment: () => void
-  onRequestChanges: () => void
-  onApprove: () => void
+  onSubmit: (decision: ReviewDecision, bodyMarkdown: string) => void
 }) {
+  const [open, setOpen] = useState(false)
+  const [body, setBody] = useState('')
+
+  const handleDecision = (decision: ReviewDecision) => {
+    onSubmit(decision, body.trim())
+    setBody('')
+    setOpen(false)
+  }
+
+  const headline
+    = state === 'approved'
+      ? 'You approved this review'
+      : state === 'changes-requested'
+        ? 'You requested changes'
+        : 'Finish your review'
+
   return (
-    <Popover>
+    <Popover open={open} onOpenChange={setOpen}>
       <PopoverTrigger
         render={(
           <Button size="sm" className="h-7 text-[12px]" disabled={pending}>
@@ -249,40 +260,69 @@ function ReviewPopover({
           </Button>
         )}
       />
-      <PopoverContent align="end" className="w-52 gap-0 p-1">
-        <p className="px-2 py-1 text-[11px] text-muted-foreground/70">
-          {state === 'approved'
-            ? 'You approved this review'
-            : state === 'changes-requested'
-              ? 'You requested changes'
-              : 'Submit your review'}
+      <PopoverContent align="end" className="w-[360px] gap-0 p-3">
+        <div className="mb-2 flex items-baseline justify-between gap-2">
+          <p className="text-[12px] font-medium text-foreground/90">{headline}</p>
+          <p className="text-[11px] text-muted-foreground/60">Markdown supported</p>
+        </div>
+        <Textarea
+          value={body}
+          onChange={event => setBody(event.target.value)}
+          placeholder="Leave a summary (optional). Single-line comments stay attached to lines."
+          className="min-h-[88px] resize-none text-[12px] leading-relaxed"
+          autoFocus
+          onKeyDown={(event) => {
+            if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
+              event.preventDefault()
+              handleDecision('comment')
+            }
+          }}
+        />
+        <div className="mt-2 grid grid-cols-3 gap-1.5">
+          <DecisionButton
+            onClick={() => handleDecision('comment')}
+            icon={<MessageSquareIcon className="size-3.5" />}
+            disabled={pending}
+            tone="ghost"
+          >
+            Comment
+          </DecisionButton>
+          <DecisionButton
+            onClick={() => handleDecision('request-changes')}
+            icon={<SendIcon className="size-3.5" />}
+            disabled={pending}
+            tone="warn"
+          >
+            Request changes
+          </DecisionButton>
+          <DecisionButton
+            onClick={() => handleDecision('approve')}
+            icon={<CheckIcon className="size-3.5" />}
+            disabled={pending}
+            tone="primary"
+          >
+            Approve
+          </DecisionButton>
+        </div>
+        <p className="mt-2 text-[11px] text-muted-foreground/60">
+          ⌘↵ to submit a plain comment.
         </p>
-        <div className="my-1 h-px bg-border/60" />
-        <MenuRow onClick={onComment} icon={<MessageSquareIcon className="size-3.5" />} disabled={pending}>
-          Comment
-        </MenuRow>
-        <MenuRow onClick={onRequestChanges} icon={<SendIcon className="size-3.5" />} disabled={pending}>
-          Request changes
-        </MenuRow>
-        <MenuRow onClick={onApprove} icon={<CheckIcon className="size-3.5" />} disabled={pending} emphasis>
-          Approve
-        </MenuRow>
       </PopoverContent>
     </Popover>
   )
 }
 
-function MenuRow({
+function DecisionButton({
   onClick,
   icon,
   disabled,
-  emphasis,
+  tone,
   children,
 }: {
   onClick: () => void
   icon: React.ReactNode
   disabled?: boolean
-  emphasis?: boolean
+  tone: 'ghost' | 'warn' | 'primary'
   children: React.ReactNode
 }) {
   return (
@@ -290,12 +330,15 @@ function MenuRow({
       type="button"
       onClick={onClick}
       disabled={disabled}
-      className="flex w-full items-center gap-2 rounded px-2 py-1 text-left text-[12px] transition-colors hover:bg-muted disabled:opacity-50"
+      className={cn(
+        'flex h-7 items-center justify-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors disabled:opacity-50',
+        tone === 'primary' && 'bg-primary text-primary-foreground hover:bg-primary/90',
+        tone === 'warn' && 'border border-orange-500/40 bg-orange-500/10 text-orange-600 hover:bg-orange-500/15 dark:text-orange-300',
+        tone === 'ghost' && 'border border-border/60 bg-transparent text-foreground/80 hover:bg-muted',
+      )}
     >
       {icon}
-      <span className={cn('flex-1', emphasis ? 'font-medium text-foreground' : 'text-foreground/80')}>
-        {children}
-      </span>
+      <span className="truncate">{children}</span>
     </button>
   )
 }

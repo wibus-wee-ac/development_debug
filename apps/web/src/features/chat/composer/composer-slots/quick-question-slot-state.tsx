@@ -12,7 +12,7 @@ import {
   LoadingLine as LoaderCircleIcon,
   QuestionLine as MessageCircleQuestionIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import type { AnchorHTMLAttributes } from 'react'
 import { useEffect, useRef, useState } from 'react'
 

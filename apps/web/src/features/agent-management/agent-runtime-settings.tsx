@@ -12,7 +12,7 @@ import {
   SquareLine as SquareIcon,
   DeleteLine as Trash2Icon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

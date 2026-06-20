@@ -17,7 +17,7 @@ import {
   SearchLine as SearchIcon,
   WarningLine as TriangleAlertIcon,
   User2Line as UserRoundIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'

@@ -5,7 +5,7 @@ import {
   PicLine as ImageDownIcon,
   LoadingLine as LoaderCircleIcon,
   Chat1Line as MessageCircleIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { domToPng } from 'modern-screenshot'
 import { useRef, useState } from 'react'
 

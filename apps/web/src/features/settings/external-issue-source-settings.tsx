@@ -7,7 +7,7 @@ import {
   PowerLine as PowerIcon,
   Refresh1Line as RefreshCwIcon,
   DeleteLine as Trash2Icon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

@@ -5,7 +5,7 @@ import {
   Refresh1Line as RefreshCwIcon,
   TerminalLine as TerminalIcon,
   UnlinkLine as UnlinkIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

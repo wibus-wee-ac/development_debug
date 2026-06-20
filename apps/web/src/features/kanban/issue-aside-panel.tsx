@@ -6,7 +6,7 @@ import {
   Message3Line as MessageSquareTextIcon,
   SearchLine as SearchIcon,
   UnlinkLine as UnlinkIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { AnimatePresence, m } from 'motion/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'

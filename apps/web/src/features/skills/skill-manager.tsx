@@ -8,7 +8,7 @@ import {
   SearchLine as SearchIcon,
   DeleteLine as Trash2Icon,
   UploadLine as UploadIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useEffect, useReducer } from 'react'
 
 import { Button } from '~/components/ui/button'

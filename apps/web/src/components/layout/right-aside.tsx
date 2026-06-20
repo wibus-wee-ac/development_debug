@@ -7,7 +7,7 @@ import {
   GitBranchLine as GitBranchIcon,
   RssLine as RssIcon,
   SelectorHorizontalLine as SlidersHorizontalIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { AnimatePresence, LayoutGroup, m } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'

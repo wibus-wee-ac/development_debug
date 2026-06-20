@@ -10,7 +10,7 @@ import {
   PicLine as ImageIcon,
   TargetLine as TargetIcon,
   StopwatchLine as TimerIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { m } from 'motion/react'
 import type { AnchorHTMLAttributes } from 'react'
 import { useEffect, useRef, useState } from 'react'

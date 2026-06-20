@@ -6,6 +6,7 @@ import {
   ChartBarLine as BarChart2Icon,
   CalendarTimeAddLine as CalendarClockIcon,
   DotCircleLine as CircleDotIcon,
+  GitCompareLine as FileDiffIcon,
   FolderOpenLine as FolderOpenIcon,
   Home2Line as HomeIcon,
   DashboardLine as KanbanSquareIcon,
@@ -17,7 +18,7 @@ import {
   Settings2Line as SettingsIcon,
   SparklesLine as SparklesIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { shallow } from 'zustand/shallow'
 
@@ -76,6 +77,8 @@ function SurfaceIcon({ surface }: { surface: AppSurface }) {
       return <MessageCircleIcon className={className} />
     case 'workspace':
       return <FolderOpenIcon className={className} />
+    case 'workspace-diffs':
+      return <FileDiffIcon className={className} />
     case 'kanban':
       return <KanbanSquareIcon className={className} />
     case 'plugin':

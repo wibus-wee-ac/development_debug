@@ -1,4 +1,4 @@
-import { CloseLine as XIcon } from '@mingcute/react'
+import { CloseLine as XIcon } from '~/components/ui/mingcute-icons'
 import type { CSSProperties, ReactNode } from 'react'
 import { useEffect, useRef } from 'react'
 import { createPortal } from 'react-dom'

@@ -3,7 +3,7 @@ import {
   FileLine as FileIcon,
   AttachmentLine as PaperclipIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { m } from 'motion/react'
 import type { ChangeEvent, RefObject } from 'react'
 

@@ -16,7 +16,7 @@ import {
   PaletteLine as PaletteIcon,
   PluginLine as PlugIcon,
   ServerLine as ServerIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'

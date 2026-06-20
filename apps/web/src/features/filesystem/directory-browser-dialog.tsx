@@ -10,7 +10,7 @@ import {
   Home2Line as HomeIcon,
   LoadingLine as Loader2Icon,
   MonitorLine as MonitorIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'

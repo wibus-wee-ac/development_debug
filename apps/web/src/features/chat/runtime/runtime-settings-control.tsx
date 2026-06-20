@@ -4,7 +4,7 @@ import {
   LockLine as LockIcon,
   RouteLine as RouteIcon,
   SafeShieldLine as ShieldCheckIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'

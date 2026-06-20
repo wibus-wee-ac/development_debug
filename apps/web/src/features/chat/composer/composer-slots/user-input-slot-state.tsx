@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { QuestionLine as CircleHelpIcon } from '@mingcute/react'
+import { QuestionLine as CircleHelpIcon } from '~/components/ui/mingcute-icons'
 import { cn } from '~/lib/cn'
 
 import type { ChatRuntimeUserInputUiSlotState } from '../../capabilities/chat-capabilities'

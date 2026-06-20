@@ -9,7 +9,7 @@ import {
   PlusLine as PlusIcon,
   Magic2Line as WandSparklesIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { AnimatePresence, m } from 'motion/react'
 import type { FormEvent } from 'react'
 import { useEffect, useId, useRef, useState } from 'react'

@@ -5,7 +5,7 @@ import {
   Key2Line as KeyRoundIcon,
   SafeAlertLine as ShieldAlertIcon,
   TerminalLine as TerminalIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

@@ -1,4 +1,4 @@
-import { PackageLine as PackageIcon } from '@mingcute/react'
+import { PackageLine as PackageIcon } from '~/components/ui/mingcute-icons'
 import { useCallback, useMemo } from 'react'
 
 import type { SkillScope } from '~/features/skills/types'

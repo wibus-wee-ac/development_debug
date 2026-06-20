@@ -3,7 +3,7 @@ import { closestCenter, DndContext, PointerSensor, useSensor, useSensors } from 
 import { restrictToVerticalAxis } from '@dnd-kit/modifiers'
 import { arrayMove, SortableContext, useSortable, verticalListSortingStrategy } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
-import { DotsVerticalLine as GripVerticalIcon, DeleteLine as TrashIcon } from '@mingcute/react'
+import { DotsVerticalLine as GripVerticalIcon, DeleteLine as TrashIcon } from '~/components/ui/mingcute-icons'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

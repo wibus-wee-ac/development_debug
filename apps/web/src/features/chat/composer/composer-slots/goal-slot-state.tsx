@@ -12,7 +12,7 @@ import {
   PencilLine as PencilIcon,
   TargetLine as TargetIcon,
   DeleteLine as Trash2Icon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useEffect, useState } from 'react'
 
 import { Progress } from '~/components/ui/progress'

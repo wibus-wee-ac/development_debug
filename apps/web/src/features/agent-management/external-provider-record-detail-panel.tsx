@@ -4,7 +4,7 @@ import {
   CheckCircleLine as CircleCheckIcon,
   CircleDashLine as CircleDashedIcon,
   WarningLine as TriangleAlertIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 

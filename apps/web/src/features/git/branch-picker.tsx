@@ -5,7 +5,7 @@ import {
   PlusLine as PlusIcon,
   Refresh1Line as RefreshCwIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useDeferredValue, useEffect, useReducer, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 

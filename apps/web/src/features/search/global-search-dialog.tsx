@@ -9,7 +9,7 @@ import {
   PuzzledLine as PuzzleIcon,
   Settings2Line as SettingsIcon,
   TerminalLine as TerminalIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import type { ComponentType } from 'react'
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'

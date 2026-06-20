@@ -6,7 +6,7 @@ import {
   EnterDoorLine as LogInIcon,
   DeleteLine as Trash2Icon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { AnimatePresence, m } from 'motion/react'
 import type { MutableRefObject, ReactNode } from 'react'
 import { useCallback, useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'

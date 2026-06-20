@@ -11,7 +11,7 @@ import {
   PencilLine as PencilIcon,
   TargetLine as TargetIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '~/components/ui/button'

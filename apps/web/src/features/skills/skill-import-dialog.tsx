@@ -3,7 +3,7 @@ import {
   RightSmallLine as ChevronRightIcon,
   LinkLine as LinkIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { AnimatePresence, m } from 'motion/react'
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'

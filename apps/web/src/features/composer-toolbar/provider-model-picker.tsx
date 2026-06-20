@@ -1,4 +1,4 @@
-import { ChipLine as CpuIcon } from '@mingcute/react'
+import { ChipLine as CpuIcon } from '~/components/ui/mingcute-icons'
 import { useTranslation } from 'react-i18next'
 
 import { ProviderIcon } from '~/components/common/provider-icons'

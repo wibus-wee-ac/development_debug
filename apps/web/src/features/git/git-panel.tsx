@@ -5,7 +5,7 @@ import {
   GitBranchLine as GitBranchIcon,
   GitBranch2Line as GitGraphIcon,
   Refresh1Line as RefreshCwIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { VListHandle } from 'virtua'

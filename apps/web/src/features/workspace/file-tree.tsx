@@ -6,7 +6,7 @@ import {
   NewFolderLine as FolderPlusIcon,
   SearchLine as SearchIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'

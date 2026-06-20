@@ -12,7 +12,7 @@ import {
   Flag2Line as FlagIcon,
   GitPullRequestLine as GitPullRequestIcon,
   Message1Line as MessageSquareIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useState } from 'react'
 import type { MarkdownNodeSpec } from 'tiptap-markdown'
 

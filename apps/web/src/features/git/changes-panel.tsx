@@ -7,7 +7,7 @@ import {
   GitBranchLine as GitBranchIcon,
   LoadingLine as Loader2Icon,
   Scan2Line as ScanEyeIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -63,6 +63,8 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
   const changedFileCount = gitRepositories.reduce((total, repository) => total + repository.files.length, 0)
   // Diffs review is a very early implementation — only reachable in dev until it's further along.
   const canOpenReview = import.meta.env.DEV
+  const openWorkspaceDiffTab = useBrowserPanelStore(state => state.openWorkspaceDiffTab)
+  const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
 
   const handleReviewRepository = (repository: GitRepository) => {
     if (!workspaceId) {
@@ -71,11 +73,12 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
     openWorkspaceDiffs({ workspaceId, repositoryPath: repository.path })
   }
 
-  const handleReviewFile = (repository: GitRepository, path: string) => {
+  const handlePreviewFile = (repository: GitRepository, path: string) => {
     if (!workspaceId) {
       return
     }
-    openWorkspaceDiffs({ workspaceId, repositoryPath: repository.path, path })
+    openWorkspaceDiffTab({ workspaceId, repositoryPath: repository.path, paths: [path] })
+    setBrowserPanelOpen(true)
   }
 
   let changesContent: ReactNode = null
@@ -108,13 +111,13 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
           repositoryPath={repository.path}
           workspaceId={workspaceId}
           workspacePath={workspacePath ?? undefined}
-          onFileClick={path => handleReviewFile(repository, path)}
+          onFileClick={path => handlePreviewFile(repository, path)}
         />
         )
       : (
         <ChangesTypeView
           sections={groupGitFileStatuses(repository.files)}
-          onFileClick={path => handleReviewFile(repository, path)}
+          onFileClick={path => handlePreviewFile(repository, path)}
         />
         )
   }
@@ -126,7 +129,7 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
         workspaceId={workspaceId}
         workspacePath={workspacePath ?? undefined}
         canOpenReview={canOpenReview}
-        onFileClick={handleReviewFile}
+        onFileClick={handlePreviewFile}
         onReviewRepository={handleReviewRepository}
       />
     )

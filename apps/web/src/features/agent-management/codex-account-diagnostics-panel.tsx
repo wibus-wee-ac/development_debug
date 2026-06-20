@@ -5,7 +5,7 @@ import {
   Dashboard2Line as GaugeIcon,
   Refresh1Line as RefreshCwIcon,
   Stopwatch2Line as TimerResetIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 

@@ -3,7 +3,7 @@ import {
   PlusLine as PlusIcon,
   SearchLine as SearchIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useState } from 'react'
 
 import {

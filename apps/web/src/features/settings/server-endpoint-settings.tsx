@@ -3,7 +3,7 @@ import {
   SaveLine as SaveIcon,
   ServerLine as ServerIcon,
   WifiLine as WifiIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

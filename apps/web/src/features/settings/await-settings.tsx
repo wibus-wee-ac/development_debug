@@ -6,7 +6,7 @@ import {
   PlusLine as PlusIcon,
   SafeShieldLine as ShieldCheckIcon,
   DeleteLine as TrashIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

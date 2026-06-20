@@ -1,5 +1,5 @@
 import { useDroppable } from '@dnd-kit/core'
-import { PlusLine as PlusIcon } from '@mingcute/react'
+import { PlusLine as PlusIcon } from '~/components/ui/mingcute-icons'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

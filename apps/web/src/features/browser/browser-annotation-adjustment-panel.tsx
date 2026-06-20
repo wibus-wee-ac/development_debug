@@ -20,7 +20,7 @@ import {
   AnticlockwiseLine as RotateCcwIcon,
   Rows2Line as Rows2Icon,
   SelectorHorizontalLine as SlidersHorizontalIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 

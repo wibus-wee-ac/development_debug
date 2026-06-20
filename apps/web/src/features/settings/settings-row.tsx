@@ -1,4 +1,4 @@
-import { InformationLine as InfoIcon } from '@mingcute/react'
+import { InformationLine as InfoIcon } from '~/components/ui/mingcute-icons'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 import { SettingsDivider } from './settings-divider'

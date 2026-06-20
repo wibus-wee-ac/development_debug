@@ -17,7 +17,7 @@ import {
   AnticlockwiseLine as RotateCcwIcon,
   SparklesLine as SparklesIcon,
   CloseCircleLine as XCircleIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import type { CSSProperties } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -497,6 +497,7 @@ function GuideReading({
   review: NonNullable<ReturnType<typeof useReview>['review']>
 }) {
   const steps = review.guide.steps
+  const guideTitle = review.guide.title
   const files = review.files
   const fileById = useMemo(() => new Map(files.map(file => [file.id, file])), [files])
   const pathToFile = useMemo(() => new Map(files.map(file => [file.path, file])), [files])
@@ -514,8 +515,13 @@ function GuideReading({
             Guided review
           </p>
           <h2 className="mt-2 text-2xl font-semibold leading-tight tracking-tight text-foreground">
-            {review.title}
+            {guideTitle ?? review.title}
           </h2>
+          {!guideTitle && (
+            <p className="mt-1 text-[11px] text-muted-foreground/50">
+              {review.title}
+            </p>
+          )}
           <p className="mt-2 text-[12px] tabular-nums text-muted-foreground">
             {steps.length}
             {' '}

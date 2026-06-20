@@ -6,7 +6,7 @@ import {
   Refresh1Line as RefreshCwIcon,
   ServerLine as ServerIcon,
   WarningLine as TriangleAlertIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { VList } from 'virtua'

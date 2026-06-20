@@ -1,4 +1,4 @@
-import { CornerDownRightLine as CornerDownRightIcon, PlusLine as PlusIcon } from '@mingcute/react'
+import { CornerDownRightLine as CornerDownRightIcon, PlusLine as PlusIcon } from '~/components/ui/mingcute-icons'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

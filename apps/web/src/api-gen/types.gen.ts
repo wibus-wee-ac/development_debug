@@ -6950,6 +6950,7 @@ export type GetWorkspacesByIdDiffReviewsResponses = {
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -7194,6 +7195,7 @@ export type PostWorkspacesByIdDiffReviewsLocalWorkingTreeResponses = {
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -7413,6 +7415,7 @@ export type PostWorkspacesByIdDiffReviewsLocalBranchCompareResponses = {
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -7631,6 +7634,7 @@ export type PostWorkspacesByIdDiffReviewsLocalCommitResponses = {
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -7847,6 +7851,7 @@ export type GetWorkspacesByIdDiffReviewsByReviewIdResponses = {
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -8063,6 +8068,7 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdRefreshResponses = {
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -8282,6 +8288,7 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewedResponses 
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -8509,6 +8516,7 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsResponses = {
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -8728,6 +8736,7 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdCommentsResp
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -8947,6 +8956,7 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdReactionsRes
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -9164,6 +9174,7 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdResolveRespo
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -9383,6 +9394,7 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdSubmitResponses = {
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -9645,6 +9657,7 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateResponses = {
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -9861,6 +9874,7 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdGuideCancelResponses = {
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -10090,6 +10104,7 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesResponses = {
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -10311,6 +10326,7 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStartRe
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -10561,6 +10577,7 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCancelR
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -10782,6 +10799,7 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerunRe
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -11000,6 +11018,7 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdCommitPlanResponses = {
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -11229,6 +11248,7 @@ export type PutWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdRespo
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;
@@ -11448,6 +11468,7 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdAppl
             errorMessage: string | null;
             createdAt: number | null;
             updatedAt: number | null;
+            title: string | null;
             steps: Array<{
                 id: string;
                 title: string;

@@ -2,7 +2,7 @@ import {
   RightSmallLine as ChevronRightIcon,
   Message4Line as MessagesSquareIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { cn } from '~/lib/cn'
 
 import type { CradleDiffReview, ReviewFile, ReviewThread } from '../shared/types'
@@ -31,7 +31,7 @@ export function OpenThreadsRail({
 
   return (
     <aside
-      className="hidden min-h-0 shrink-0 flex-col border-l border-border/60 bg-background xl:flex"
+      className="flex min-h-0 shrink-0 flex-col border-l border-border/60 bg-background"
       style={{ width }}
       data-testid="open-threads-rail"
     >

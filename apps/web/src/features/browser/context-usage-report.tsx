@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { DownSmallLine as ChevronDownIcon, RightSmallLine as ChevronRightIcon } from '@mingcute/react'
+import { DownSmallLine as ChevronDownIcon, RightSmallLine as ChevronRightIcon } from '~/components/ui/mingcute-icons'
 import { m } from 'motion/react'
 import { useState } from 'react'
 

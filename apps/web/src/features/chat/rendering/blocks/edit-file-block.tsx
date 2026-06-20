@@ -5,7 +5,7 @@ import {
   Columns2Line as Columns2Icon,
   FileLine as FilePenLineIcon,
   Rows3Line as Rows3Icon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { m } from 'motion/react'
 import { useState } from 'react'
 

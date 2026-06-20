@@ -1,4 +1,4 @@
-import { PluginLine as PlugIcon } from '@mingcute/react'
+import { PluginLine as PlugIcon } from '~/components/ui/mingcute-icons'
 import { cn } from '~/lib/cn'
 
 export function PluginMentionIcon({

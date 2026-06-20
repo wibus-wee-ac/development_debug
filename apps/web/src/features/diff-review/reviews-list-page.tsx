@@ -5,7 +5,7 @@ import {
   GitPullRequestLine as GitPullRequestArrowIcon,
   LoadingLine as Loader2Icon,
   PlusLine as PlusIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useState } from 'react'
 
 import {

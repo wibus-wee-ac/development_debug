@@ -1,4 +1,4 @@
-import { KeyboardLine as KeyboardIcon } from '@mingcute/react'
+import { KeyboardLine as KeyboardIcon } from '~/components/ui/mingcute-icons'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'
 

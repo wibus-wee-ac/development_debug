@@ -9,7 +9,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   SearchLine as SearchIcon,
   SelectorHorizontalLine as SlidersHorizontalIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'

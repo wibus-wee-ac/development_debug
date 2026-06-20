@@ -2,7 +2,7 @@ import {
   PlusLine as PlusIcon,
   SparklesLine as SparklesIcon,
   DeleteLine as Trash2Icon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { useEffect, useReducer, useRef } from 'react'
 import { z } from 'zod'
 

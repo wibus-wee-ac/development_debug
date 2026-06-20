@@ -1,4 +1,4 @@
-import { DashboardLine as LayoutDashboardIcon } from '@mingcute/react'
+import { DashboardLine as LayoutDashboardIcon } from '~/components/ui/mingcute-icons'
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 

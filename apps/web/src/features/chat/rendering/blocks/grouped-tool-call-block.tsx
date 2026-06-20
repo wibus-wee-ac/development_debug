@@ -17,7 +17,7 @@ import {
   LayoutTopLine as PanelTopIcon,
   ServerLine as ServerIcon,
   TerminalBoxLine as SquareTerminalIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { m } from 'motion/react'
 import type { ComponentType } from 'react'
 import { useState } from 'react'

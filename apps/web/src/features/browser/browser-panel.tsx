@@ -25,7 +25,7 @@ import {
   TerminalBoxLine as SquareTerminalIcon,
   DeleteLine as Trash2Icon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   lazy,

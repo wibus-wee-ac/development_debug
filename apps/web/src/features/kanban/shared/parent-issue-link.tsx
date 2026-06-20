@@ -1,4 +1,4 @@
-import { CornerDownRightLine as CornerDownRightIcon } from '@mingcute/react'
+import { CornerDownRightLine as CornerDownRightIcon } from '~/components/ui/mingcute-icons'
 import type { MouseEvent, PointerEvent } from 'react'
 
 import { cn } from '~/lib/cn'

@@ -9,7 +9,7 @@ import {
   Refresh1Line as RefreshCwIcon,
   ServerLine as ServerIcon,
   TerminalBoxLine as SquareTerminalIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'

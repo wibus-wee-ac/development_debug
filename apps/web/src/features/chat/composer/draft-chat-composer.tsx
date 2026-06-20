@@ -1,5 +1,5 @@
 import type { FileUIPart } from 'ai'
-import { Settings2Line as SettingsIcon } from '@mingcute/react'
+import { Settings2Line as SettingsIcon } from '~/components/ui/mingcute-icons'
 import { m } from 'motion/react'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'

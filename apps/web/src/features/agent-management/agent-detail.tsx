@@ -3,7 +3,7 @@ import {
   CheckLine as CheckIcon,
   RandomLine as DicesIcon,
   CloseLine as XIcon
-} from '@mingcute/react'
+} from '~/components/ui/mingcute-icons'
 import { m } from 'motion/react'
 import { Select as RadixSelect } from 'radix-ui'
 import { useCallback, useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'

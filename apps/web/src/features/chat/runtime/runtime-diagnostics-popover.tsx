@@ -1,4 +1,4 @@
-import { Settings2Line as Settings2Icon } from '@mingcute/react'
+import { Settings2Line as Settings2Icon } from '~/components/ui/mingcute-icons'
 import { Button } from '~/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 
