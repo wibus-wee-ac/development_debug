@@ -193,9 +193,12 @@ export function writeCodexGoalSnapshot(runtimeSession: RuntimeSession, goal: Cod
   })
 }
 
-export function clearCodexGoalSnapshot(runtimeSession: RuntimeSession): void {
+export function clearCodexGoalSnapshot(
+  runtimeSession: RuntimeSession,
+  options: { preserveCompletedGoal?: boolean } = {},
+): void {
   const snapshot = readCodexProviderSnapshot(runtimeSession.providerStateSnapshot)
-  if (snapshot.codex?.goal?.status === 'complete') {
+  if (options.preserveCompletedGoal === true && snapshot.codex?.goal?.status === 'complete') {
     return
   }
   runtimeSession.providerStateSnapshot = JSON.stringify({
@@ -240,7 +243,7 @@ function projectCodexGoalSnapshot(
   }
 
   if (notification.method === 'thread/goal/cleared') {
-    clearCodexGoalSnapshot(runtimeSession)
+    clearCodexGoalSnapshot(runtimeSession, { preserveCompletedGoal: true })
   }
 }
 

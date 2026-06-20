@@ -894,6 +894,46 @@ describe('codexProvider app-server integration', () => {
     })
   })
 
+  it('clears a completed goal snapshot from provider-native app-server clear invokes', async () => {
+    const client = new FakeCodexAppServerClient({})
+    const provider = createProvider(client)
+    const runtimeSession = createRuntimeSession('codex-thread-1')
+
+    await provider.invokeProviderNativeAppServer?.({
+      runtimeSession,
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+      method: 'thread/goal/set',
+      params: {
+        threadId: 'codex-thread-1',
+        objective: 'Dismiss completed goals from the UI',
+        status: 'complete',
+      },
+    })
+
+    expect(JSON.parse(runtimeSession.providerStateSnapshot ?? '{}')).toMatchObject({
+      codex: {
+        goal: {
+          threadId: 'codex-thread-1',
+          objective: 'Dismiss completed goals from the UI',
+          status: 'complete',
+        },
+      },
+    })
+
+    await provider.invokeProviderNativeAppServer?.({
+      runtimeSession,
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+      method: 'thread/goal/clear',
+      params: { threadId: 'codex-thread-1' },
+    })
+
+    expect(JSON.parse(runtimeSession.providerStateSnapshot ?? '{}')).toMatchObject({
+      codex: { goal: null },
+    })
+  })
+
   it('forks side sessions as ephemeral Codex threads and injects the Cradle boundary', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
