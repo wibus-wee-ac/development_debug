@@ -7,7 +7,7 @@ import {
   GitBranchLine as GitBranchIcon,
   LoadingLine as Loader2Icon,
   Scan2Line as ScanEyeIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -63,9 +63,6 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
   const changedFileCount = gitRepositories.reduce((total, repository) => total + repository.files.length, 0)
   // Diffs review is a very early implementation — only reachable in dev until it's further along.
   const canOpenReview = import.meta.env.DEV
-  const openWorkspaceDiffTab = useBrowserPanelStore(state => state.openWorkspaceDiffTab)
-  const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
-
   const handleReviewRepository = (repository: GitRepository) => {
     if (!workspaceId) {
       return
@@ -77,8 +74,7 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
     if (!workspaceId) {
       return
     }
-    openWorkspaceDiffTab({ workspaceId, repositoryPath: repository.path, paths: [path] })
-    setBrowserPanelOpen(true)
+    openWorkspaceDiffs({ workspaceId, repositoryPath: repository.path, path })
   }
 
   let changesContent: ReactNode = null
@@ -149,7 +145,7 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
   if (isLoading) {
     return (
       <div className="flex flex-1 items-center justify-center" data-testid="changes-panel-loading">
-        <Loader2Icon className="size-4 animate-spin text-muted-foreground/40" aria-hidden />
+        <Loader2Icon className="size-4 animate-spin !text-muted-foreground/40" aria-hidden />
       </div>
     )
   }
@@ -161,7 +157,7 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
         data-testid="changes-panel-error"
       >
         <div className="flex flex-col items-center gap-2">
-          <FileDiffIcon className="size-5 text-muted-foreground/30" aria-hidden />
+          <FileDiffIcon className="size-5 !text-muted-foreground/30" aria-hidden />
           <p className="text-xs text-muted-foreground">Git changes unavailable</p>
         </div>
       </div>
@@ -175,7 +171,7 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
       data-right-aside-changes-ready={isSuccess ? 'true' : 'false'}
     >
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-border px-2.5">
-        <FileDiffIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
+        <FileDiffIcon className="size-3.5 shrink-0 !text-muted-foreground/60" aria-hidden />
         <span className="min-w-0 flex-1 truncate text-xs font-medium text-foreground/80">
           Changes
         </span>
@@ -260,7 +256,7 @@ function ChangesRepositoryList({
           data-testid="changes-repository-section"
         >
           <div className="mb-1 flex h-7 min-w-0 items-center gap-2 px-1">
-            <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground/50" aria-hidden />
+            <GitBranchIcon className="size-3.5 shrink-0 !text-muted-foreground/50" aria-hidden />
             <div className="min-w-0 flex-1">
               <div className="flex min-w-0 items-center gap-1.5">
                 <span className="min-w-0 truncate text-xs font-medium text-foreground/85">

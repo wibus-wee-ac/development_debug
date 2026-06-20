@@ -292,7 +292,8 @@ meta.localDriverMessageId,
           const next = new Set(state.passiveStreamingMessageIds)
           for (const id of sessionMsgIds) { next.delete(id) }
           for (const id of messageIds) {
-            if (sessionMsgIds.has(id) && !state.generatingMessageIds.has(id)) { next.add(id) }
+            const displayMessageId = resolveStreamingDisplayMessageId(state, id)
+            if (sessionMsgIds.has(displayMessageId) && !state.generatingMessageIds.has(displayMessageId)) { next.add(displayMessageId) }
           }
           const currentMeta = state.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
           const nextPassiveStatus = readPassiveStatusFromRefs(
@@ -315,11 +316,12 @@ meta.localDriverMessageId,
         set((state) => {
           const sessionMsgIds = new Set((state.messagesMap.get(sessionId) ?? []).map(m => m.id))
           const next = new Set(state.passiveStreamingMessageIds)
-          if (streaming && sessionMsgIds.has(messageId) && !state.generatingMessageIds.has(messageId)) {
-            next.add(messageId)
+          for (const id of getRunMessageIds(state, messageId)) {
+            next.delete(id)
           }
-          else {
-            next.delete(messageId)
+          const displayMessageId = resolveStreamingDisplayMessageId(state, messageId)
+          if (streaming && sessionMsgIds.has(displayMessageId) && !state.generatingMessageIds.has(displayMessageId)) {
+            next.add(displayMessageId)
           }
           const currentMeta = state.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
           const nextPassiveStatus = readPassiveStatusFromRefs(
@@ -340,20 +342,34 @@ meta.localDriverMessageId,
 
       beginRunDisplayMeta: (messageId, requestStartedAtMs) => {
         set((state) => {
-          const c = state.runDisplayMetaMap.get(messageId)
-          if (c?.requestStartedAtMs === requestStartedAtMs) { return state }
+          const displayMessageId = resolveStreamingDisplayMessageId(state, messageId)
+          const displayMeta = state.runDisplayMetaMap.get(displayMessageId)
+          const sourceMeta = state.runDisplayMetaMap.get(messageId)
+          const c = displayMeta ?? sourceMeta
+          const needsMigration = displayMessageId !== messageId && state.runDisplayMetaMap.has(messageId)
+          if (c?.requestStartedAtMs === requestStartedAtMs && c.completedAtMs === null && !needsMigration) { return state }
           const next = new Map(state.runDisplayMetaMap)
-          next.set(messageId, { runId: c?.runId ?? null, requestStartedAtMs, firstEventAtMs: c?.firstEventAtMs ?? null, firstContentAtMs: c?.firstContentAtMs ?? null, completedAtMs: c?.completedAtMs ?? null })
+          if (displayMessageId !== messageId) {
+            next.delete(messageId)
+          }
+          next.set(displayMessageId, { runId: c?.runId ?? null, requestStartedAtMs, firstEventAtMs: c?.firstEventAtMs ?? null, firstContentAtMs: c?.firstContentAtMs ?? null, completedAtMs: null })
           return { runDisplayMetaMap: next }
         })
       },
 
       setRunDisplayId: (messageId, runId) => {
         set((state) => {
-          const c = state.runDisplayMetaMap.get(messageId)
-          if (c?.runId === runId) { return state }
+          const displayMessageId = resolveStreamingDisplayMessageId(state, messageId)
+          const displayMeta = state.runDisplayMetaMap.get(displayMessageId)
+          const sourceMeta = state.runDisplayMetaMap.get(messageId)
+          const c = displayMeta ?? sourceMeta
+          const needsMigration = displayMessageId !== messageId && state.runDisplayMetaMap.has(messageId)
+          if (c?.runId === runId && c.completedAtMs === null && !needsMigration) { return state }
           const next = new Map(state.runDisplayMetaMap)
-          next.set(messageId, { runId, requestStartedAtMs: c?.requestStartedAtMs ?? performance.now(), firstEventAtMs: c?.firstEventAtMs ?? null, firstContentAtMs: c?.firstContentAtMs ?? null, completedAtMs: c?.completedAtMs ?? null })
+          if (displayMessageId !== messageId) {
+            next.delete(messageId)
+          }
+          next.set(displayMessageId, { runId, requestStartedAtMs: c?.requestStartedAtMs ?? performance.now(), firstEventAtMs: c?.firstEventAtMs ?? null, firstContentAtMs: c?.firstContentAtMs ?? null, completedAtMs: null })
           return { runDisplayMetaMap: next }
         })
       },
@@ -372,20 +388,34 @@ meta.localDriverMessageId,
 
       markRunFirstEvent: (messageId, ts) => {
         set((state) => {
-          const c = state.runDisplayMetaMap.get(messageId)
-          if (!c || c.firstEventAtMs !== null) { return state }
+          const displayMessageId = resolveStreamingDisplayMessageId(state, messageId)
+          const displayMeta = state.runDisplayMetaMap.get(displayMessageId)
+          const sourceMeta = state.runDisplayMetaMap.get(messageId)
+          const c = displayMeta ?? sourceMeta
+          const needsMigration = displayMessageId !== messageId && state.runDisplayMetaMap.has(messageId)
+          if (!c || (c.firstEventAtMs !== null && !needsMigration)) { return state }
           const next = new Map(state.runDisplayMetaMap)
-          next.set(messageId, { ...c, firstEventAtMs: ts })
+          if (displayMessageId !== messageId) {
+            next.delete(messageId)
+          }
+          next.set(displayMessageId, { ...c, firstEventAtMs: c.firstEventAtMs ?? ts })
           return { runDisplayMetaMap: next }
         })
       },
 
       markRunFirstContent: (messageId, ts) => {
         set((state) => {
-          const c = state.runDisplayMetaMap.get(messageId)
-          if (!c || c.firstContentAtMs !== null) { return state }
+          const displayMessageId = resolveStreamingDisplayMessageId(state, messageId)
+          const displayMeta = state.runDisplayMetaMap.get(displayMessageId)
+          const sourceMeta = state.runDisplayMetaMap.get(messageId)
+          const c = displayMeta ?? sourceMeta
+          const needsMigration = displayMessageId !== messageId && state.runDisplayMetaMap.has(messageId)
+          if (!c || (c.firstContentAtMs !== null && !needsMigration)) { return state }
           const next = new Map(state.runDisplayMetaMap)
-          next.set(messageId, { ...c, firstContentAtMs: ts })
+          if (displayMessageId !== messageId) {
+            next.delete(messageId)
+          }
+          next.set(displayMessageId, { ...c, firstContentAtMs: c.firstContentAtMs ?? ts })
           return { runDisplayMetaMap: next }
         })
       },
@@ -526,6 +556,11 @@ function cachedIds(messages: UIMessage[]): string[] {
   return ids
 }
 
+function hasActiveRunDisplayMeta(state: ChatState, messageId: string): boolean {
+  const meta = state.runDisplayMetaMap.get(messageId)
+  return Boolean(meta?.runId && meta.completedAtMs === null)
+}
+
 export const chatSelectors = {
   messages: (sessionId: string) => (s: ChatState) =>
     s.messagesMap.get(sessionId) ?? EMPTY_MESSAGES,
@@ -551,11 +586,14 @@ export const chatSelectors = {
     s.generatingMessageIds.has(messageId),
 
   isStreamingMessage: (messageId: string) => (s: ChatState) =>
-    s.generatingMessageIds.has(messageId) || s.passiveStreamingMessageIds.has(messageId),
+    s.generatingMessageIds.has(messageId) || s.passiveStreamingMessageIds.has(messageId) || hasActiveRunDisplayMeta(s, messageId),
 
   isVisibleStreamingMessage: (sessionId: string, messageId: string) => (s: ChatState) => {
     const meta = s.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
-    return s.generatingMessageIds.has(messageId) || s.passiveStreamingMessageIds.has(messageId) || meta.localDriverMessageId === messageId
+    return s.generatingMessageIds.has(messageId)
+      || s.passiveStreamingMessageIds.has(messageId)
+      || meta.localDriverMessageId === messageId
+      || hasActiveRunDisplayMeta(s, messageId)
   },
 
   isAnyGenerating: (s: ChatState) => s.generatingMessageIds.size > 0,
@@ -563,12 +601,16 @@ export const chatSelectors = {
   isSessionGenerating: (sessionId: string) => (s: ChatState) => {
     const meta = s.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
     if (meta.locallyDriving) { return true }
-    return (s.messagesMap.get(sessionId) ?? EMPTY_MESSAGES).some(m => s.generatingMessageIds.has(m.id))
+    return (s.messagesMap.get(sessionId) ?? EMPTY_MESSAGES).some(m =>
+      s.generatingMessageIds.has(m.id) || hasActiveRunDisplayMeta(s, m.id),
+    )
   },
 
   isSessionStreaming: (sessionId: string) => (s: ChatState) => {
     const meta = s.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
-    return meta.locallyDriving || meta.passiveStatus === 'streaming'
+    return meta.locallyDriving
+      || meta.passiveStatus === 'streaming'
+      || (s.messagesMap.get(sessionId) ?? EMPTY_MESSAGES).some(m => hasActiveRunDisplayMeta(s, m.id))
   },
 
   error: (messageId: string) => (s: ChatState) => s.errorMap.get(messageId),
@@ -593,7 +635,13 @@ export const chatSelectors = {
 
   visibleStatus: (sessionId: string) => (s: ChatState): PublicStatus => {
     const meta = s.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
-    if (meta.locallyDriving || meta.passiveStatus === 'streaming') { return 'streaming' }
+    if (
+      meta.locallyDriving
+      || meta.passiveStatus === 'streaming'
+      || (s.messagesMap.get(sessionId) ?? EMPTY_MESSAGES).some(m => hasActiveRunDisplayMeta(s, m.id))
+    ) {
+      return 'streaming'
+    }
     if (meta.cancelling) { return 'idle' }
     if (meta.passiveStatus === 'error') { return 'error' }
     const msgs = s.errorMap.size > 0 ? s.messagesMap.get(sessionId) : undefined
@@ -614,8 +662,19 @@ export function getChatStoreTelemetrySnapshot() {
 // ── Private Helpers ──────────────────────────────────────────
 
 function getRunMessageIds(state: ChatState, messageId: string): string[] {
-  const split = state.assistantDisplaySplitMap.get(messageId)
-  return split ? [messageId, split.tailMessageId] : [messageId]
+  const ids: string[] = []
+  const seen = new Set<string>()
+  let current: string | null = messageId
+  while (current && !seen.has(current)) {
+    ids.push(current)
+    seen.add(current)
+    current = state.assistantDisplaySplitMap.get(current)?.tailMessageId ?? null
+  }
+  return ids
+}
+
+function resolveStreamingDisplayMessageId(state: ChatState, messageId: string): string {
+  return getRunMessageIds(state, messageId).at(-1) ?? messageId
 }
 
 function setsEqual<T>(a: Set<T>, b: Set<T>): boolean {
@@ -662,7 +721,9 @@ function moveStreamingRefs(
   if (wasGen) { draft.generatingMessageIds.add(to) }
   if (wasPassive) { draft.passiveStreamingMessageIds.add(to) }
   if (ctrl) { draft.activeAbortControllers.set(to, ctrl) }
-  if (run && !state.runDisplayMetaMap.has(to)) { draft.runDisplayMetaMap.set(to, { ...run } as Draft<ChatRunDisplayMeta>) }
+  if (run && (run.completedAtMs === null || !state.runDisplayMetaMap.has(to))) {
+    draft.runDisplayMetaMap.set(to, { ...run } as Draft<ChatRunDisplayMeta>)
+  }
 
   const meta = draft.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
   if (meta.localDriverMessageId === from) {
@@ -687,7 +748,7 @@ function moveStreamingRefs_immutable(state: ChatState, sessionId: string, from: 
   const nextRun = new Map(state.runDisplayMetaMap)
   const run = nextRun.get(from)
   nextRun.delete(from)
-  if (run && !nextRun.has(to)) { nextRun.set(to, { ...run }) }
+  if (run && (run.completedAtMs === null || !nextRun.has(to))) { nextRun.set(to, { ...run }) }
 
   const meta = state.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META
   const nextMeta = new Map(state.sessionMetaMap)

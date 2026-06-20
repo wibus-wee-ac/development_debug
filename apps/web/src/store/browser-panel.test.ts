@@ -99,6 +99,48 @@ describe('browser panel shortcuts', () => {
     expect(event.stopImmediatePropagation).toHaveBeenCalled()
   })
 
+  it('activates the previous adjacent browser panel tab when closing the active tab', () => {
+    const firstTabId = useBrowserPanelStore.getState().createTab('https://one.test')
+    const secondTabId = useBrowserPanelStore.getState().createTab('https://two.test')
+    const thirdTabId = useBrowserPanelStore.getState().createTab('https://three.test')
+
+    useBrowserPanelStore.getState().setActiveTab(secondTabId)
+    useBrowserPanelStore.getState().closeTab(secondTabId)
+
+    const state = useBrowserPanelStore.getState()
+    expect(state.tabs.map(tab => tab.id)).toEqual([firstTabId, thirdTabId])
+    expect(state.activeTabId).toBe(firstTabId)
+  })
+
+  it('does not leave a stale active browser panel tab id after closing an inactive stale target', () => {
+    const firstTabId = useBrowserPanelStore.getState().createTab('https://one.test')
+    const secondTabId = useBrowserPanelStore.getState().createTab('https://two.test')
+    const thirdTabId = useBrowserPanelStore.getState().createTab('https://three.test')
+
+    useBrowserPanelStore.setState(state => ({
+      ...state,
+      owners: {
+        ...state.owners,
+        [DEFAULT_BROWSER_PANEL_OWNER_ID]: {
+          ...state.owners[DEFAULT_BROWSER_PANEL_OWNER_ID]!,
+          activeTabId: 'missing-tab',
+        },
+      },
+      activeTabId: 'missing-tab',
+    }))
+    useBrowserPanelStore.getState().closeTab(secondTabId)
+
+    const state = useBrowserPanelStore.getState()
+    expect(state.tabs.map(tab => tab.id)).toEqual([firstTabId, thirdTabId])
+    expect(state.activeTabId).toBe(thirdTabId)
+  })
+
+  it('normalizes stale native active browser tab ids to an existing tab', () => {
+    useBrowserPanelStore.getState().upsertOwnerState(threadState(1, 'missing-tab', ['tab-1', 'tab-2']))
+
+    expect(useBrowserPanelStore.getState().activeTabId).toBe('tab-2')
+  })
+
   it('switches browser panel tabs on command number', () => {
     const firstTabId = useBrowserPanelStore.getState().createTab('https://example.com')
     useBrowserPanelStore.getState().createTab('https://openai.com')

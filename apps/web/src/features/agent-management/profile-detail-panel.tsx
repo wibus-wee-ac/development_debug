@@ -6,7 +6,7 @@ import {
   EnterDoorLine as LogInIcon,
   DeleteLine as Trash2Icon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import type { MutableRefObject, ReactNode } from 'react'
 import { useCallback, useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'
@@ -51,6 +51,12 @@ import { Spinner } from '~/components/ui/spinner'
 import { Switch } from '~/components/ui/switch'
 import { toastManager } from '~/components/ui/toast'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
+import type { ClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
+import {
+  DEFAULT_CLAUDE_AGENT_ALIASES,
+  readClaudeAgentModelAliases,
+  writeClaudeAgentModelAliases,
+} from '~/features/agent-runtime/claude-agent-config'
 import { ProfileConfigJsonSchema } from '~/features/agent-runtime/profile-config-schema'
 import type { AgentProfile, ApiProviderKind, ModelDescriptor, ProviderTarget } from '~/features/agent-runtime/types'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
@@ -59,6 +65,7 @@ import { nativeIpc } from '~/lib/electron'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { ChatgptCredentialSummary } from './chatgpt-credential-summary'
+import { ClaudeModelMatrixEditor } from './claude-model-matrix-editor'
 import { CodexAccountDiagnosticsPanel } from './codex-account-diagnostics-panel'
 import {
   CODEX_AUTH_MODE_API_KEY,
@@ -105,6 +112,7 @@ interface ProfileDetailFormValues {
   api: string
   authMode: string
   bedrockRegion: string
+  claudeAgentAliases: ClaudeAgentModelAliases
   enabledModels: string[]
 }
 
@@ -211,8 +219,25 @@ function getProfileFormValues(profile: AgentProfile): ProfileDetailFormValues {
     api: config.api,
     authMode: normalizeCodexAuthMode(config.authMode),
     bedrockRegion: config.bedrock?.region ?? '',
+    claudeAgentAliases: readClaudeAgentModelAliases(config),
     enabledModels: getInitialEnabledModels(config.enabledModels),
   }
+}
+
+function supportsClaudeAgentModelMatrix(providerKind: ApiProviderKind): boolean {
+  return providerKind === 'anthropic' || providerKind === 'universal'
+}
+
+function applyClaudeAgentAliasesToProfileConfig(
+  config: Record<string, unknown>,
+  values: ProfileDetailFormValues,
+): Record<string, unknown> {
+  return writeClaudeAgentModelAliases(
+    config,
+    supportsClaudeAgentModelMatrix(values.providerKind)
+      ? values.claudeAgentAliases
+      : DEFAULT_CLAUDE_AGENT_ALIASES,
+  )
 }
 
 function buildProviderRequestBody(profile: AgentProfile) {
@@ -243,16 +268,16 @@ function buildProfileConfig(
     ...rest
   } = currentConfig
   if (values.providerKind === 'universal') {
-    return {
+    return applyClaudeAgentAliasesToProfileConfig({
       ...rest,
       openaiBaseUrl: values.openaiBaseUrl,
       anthropicBaseUrl: values.anthropicBaseUrl,
       model: values.model || undefined,
-    }
+    }, values)
   }
   if (values.providerKind === 'openai-compatible' && options.codexAuthMode) {
     const codexAuthMode = normalizeCodexAuthMode(options.codexAuthMode)
-    return {
+    return applyClaudeAgentAliasesToProfileConfig({
       ...rest,
       authMode: codexAuthMode,
       baseUrl: codexAuthMode === CODEX_AUTH_MODE_API_KEY ? values.baseUrl : '',
@@ -261,14 +286,14 @@ function buildProfileConfig(
       ...(codexAuthMode === CODEX_AUTH_MODE_BEDROCK_API_KEY
         ? { bedrock: { region: values.bedrockRegion.trim() } }
         : {}),
-    }
+    }, values)
   }
-  return {
+  return applyClaudeAgentAliasesToProfileConfig({
     ...rest,
     baseUrl: values.baseUrl,
     model: values.model || undefined,
     api: values.api || undefined,
-  }
+  }, values)
 }
 
 function createProfileSignature(values: ProfileDetailFormValues): string {
@@ -283,6 +308,7 @@ function createProfileSignature(values: ProfileDetailFormValues): string {
     api: values.api,
     authMode: values.authMode,
     bedrockRegion: values.bedrockRegion,
+    claudeAgentAliases: values.claudeAgentAliases,
     enabledModels: values.enabledModels,
   })
 }
@@ -326,6 +352,8 @@ export function ProfileDetailPanel({
   const api = useWatch({ control: form.control, name: 'api' }) ?? ''
   const authMode = useWatch({ control: form.control, name: 'authMode' }) ?? CODEX_AUTH_MODE_API_KEY
   const bedrockRegion = useWatch({ control: form.control, name: 'bedrockRegion' }) ?? ''
+  const claudeAgentAliases
+    = useWatch({ control: form.control, name: 'claudeAgentAliases' }) ?? DEFAULT_CLAUDE_AGENT_ALIASES
   const enabledModels
     = useWatch({ control: form.control, name: 'enabledModels' }) ?? EMPTY_ENABLED_MODELS
 
@@ -446,6 +474,10 @@ export function ProfileDetailPanel({
 
   const handleEnabledModelsChange = (next: string[]) => {
       form.setValue('enabledModels', next, { shouldDirty: true })
+    }
+
+  const handleClaudeAgentAliasesChange = (next: ClaudeAgentModelAliases) => {
+      form.setValue('claudeAgentAliases', next, { shouldDirty: true })
     }
 
   const handleModelRegistryMapped = (next: ModelDescriptor) => {
@@ -661,6 +693,7 @@ export function ProfileDetailPanel({
         api,
         authMode,
         bedrockRegion,
+        claudeAgentAliases,
         enabledModels,
       })
 
@@ -748,6 +781,19 @@ export function ProfileDetailPanel({
 
         {showCodexAccountDiagnostics && (
           <CodexAccountDiagnosticsPanel providerTargetId={profile.id} />
+        )}
+
+        {supportsModels && supportsClaudeAgentModelMatrix(providerKind) && (
+          <>
+            <SettingsDivider />
+            <ClaudeModelMatrixEditor
+              aliases={claudeAgentAliases}
+              models={availableModels}
+              mainModelId={model || null}
+              loading={modelsLoading}
+              onChange={handleClaudeAgentAliasesChange}
+            />
+          </>
         )}
 
         {supportsModels && (

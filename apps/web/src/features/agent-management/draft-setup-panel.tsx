@@ -1,14 +1,4 @@
 import { useQueryClient } from '@tanstack/react-query'
-import {
-  ArrowLeftLine as ArrowLeftIcon,
-  CheckLine as CheckIcon,
-  RightSmallLine as ChevronRightIcon,
-  AlertLine as CircleAlertIcon,
-  CheckCircleLine as CircleCheckIcon,
-  CopyLine as CopyIcon,
-  EnterDoorLine as LogInIcon,
-  CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
 import { AnimatePresence, m } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { useForm, useWatch } from 'react-hook-form'
@@ -19,12 +9,15 @@ import { PROVIDER_ICONS } from '~/components/common/provider-icons'
 import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from '~/components/ui/select'
+  AlertLine as CircleAlertIcon,
+  ArrowLeftLine as ArrowLeftIcon,
+  CheckCircleLine as CircleCheckIcon,
+  CheckLine as CheckIcon,
+  CloseLine as XIcon,
+  CopyLine as CopyIcon,
+  EnterDoorLine as LogInIcon,
+  RightSmallLine as ChevronRightIcon,
+} from '@mingcute/react'
 import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
@@ -34,11 +27,11 @@ import { nativeIpc } from '~/lib/electron'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { ChatgptCredentialSummary } from './chatgpt-credential-summary'
+import { CodexAuthModeToggle } from './codex-auth-mode-controls'
 import {
   CODEX_AUTH_MODE_API_KEY,
   CODEX_AUTH_MODE_BEDROCK_API_KEY,
   CODEX_AUTH_MODE_CHATGPT,
-  CODEX_AUTH_MODE_OPTIONS,
   codexCredentialPlaceholder,
   codexSecretKindForAuthMode,
   normalizeCodexAuthMode,
@@ -122,7 +115,7 @@ export function DraftSetupPanel({
                     <div className="truncate text-[13px] font-medium text-foreground">{p.name}</div>
                     <div className="truncate text-[11px] text-muted-foreground">{p.tagline}</div>
                   </div>
-                  <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/30 transition-[transform,color] duration-150 group-hover/preset:translate-x-0.5 group-hover/preset:text-muted-foreground" />
+                  <ChevronRightIcon className="size-3.5 shrink-0 !text-muted-foreground/30 transition-[transform,color] duration-150 group-hover/preset:translate-x-0.5 group-hover/preset:!text-muted-foreground" />
                 </div>
                 <p className="text-pretty text-[11.5px] leading-relaxed text-muted-foreground/80">
                   {p.tagline}
@@ -136,7 +129,12 @@ export function DraftSetupPanel({
   }
 
   return (
-    <PresetSetupForm preset={preset} onComplete={onComplete} onBack={() => onSelectPreset('')} />
+    <PresetSetupForm
+      key={preset.id}
+      preset={preset}
+      onComplete={onComplete}
+      onBack={() => onSelectPreset('')}
+    />
   )
 }
 
@@ -178,19 +176,6 @@ function PresetSetupForm({
     : CODEX_AUTH_MODE_API_KEY
   const profileId = buildProfileId(name, preset.id)
   const canSubmit = name.trim().length > 0
-
-  useEffect(() => {
-    form.reset({
-      name: preset.name,
-      values: preset.providerKind === 'openai-compatible'
-        ? { codexAuthMode: CODEX_AUTH_MODE_API_KEY }
-        : {},
-    })
-    setStatus(null)
-    setChatgptLoginId(null)
-    setActiveChatgptLogin(null)
-    setChatgptCredentialRef(null)
-  }, [form, preset])
 
   useEffect(() => {
     const login = chatgptLoginStatus.data

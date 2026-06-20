@@ -4,7 +4,7 @@ import {
   CheckCircleLine as CircleCheckIcon,
   CircleDashLine as CircleDashedIcon,
   WarningLine as TriangleAlertIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 
@@ -21,11 +21,14 @@ import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
 import { Switch } from '~/components/ui/switch'
 import { toastManager } from '~/components/ui/toast'
+import type { ClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
+import { DEFAULT_CLAUDE_AGENT_ALIASES } from '~/features/agent-runtime/claude-agent-config'
 import type { ApiProviderKind, ModelDescriptor, ProviderKind } from '~/features/agent-runtime/types'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
 import { AGENTS_QUERY_KEY } from '~/features/agent-runtime/use-agents'
 
 import { SettingsRow } from '../settings/settings-row'
+import { ClaudeModelMatrixEditor } from './claude-model-matrix-editor'
 import { CustomModelsEditor } from './custom-models-editor'
 import { ModelsPanel } from './models-panel'
 import type {
@@ -36,9 +39,11 @@ import type {
 import { isApiProviderKind, presetForProviderKind, providerTargetDisplayIconSlug, PROVIDER_KIND_LABELS } from './provider-settings-utils'
 import type { EditableCustomModel } from './provider-target-model-settings'
 import {
+  claudeAgentAliasesFromConfig,
   CustomModelsJsonSchema,
   enabledModelsFromConfig,
   loadProviderTargetModelSettings,
+  updateProviderTargetClaudeAgentAliases,
   updateProviderTargetCustomModels,
   updateProviderTargetModelVisibility,
 } from './provider-target-model-settings'
@@ -64,15 +69,15 @@ function sourceStatusTone(status: ExternalProviderSourceView['lastSyncStatus']) 
 
 function sourceStatusIcon(status: ExternalProviderSourceView['lastSyncStatus']) {
   if (status === 'error') {
-    return <CircleAlertIcon className="size-3.5 shrink-0 text-destructive" />
+    return <CircleAlertIcon className="size-3.5 shrink-0 !text-destructive" />
   }
   if (status === 'warning') {
-    return <TriangleAlertIcon className="size-3.5 shrink-0 text-warning" />
+    return <TriangleAlertIcon className="size-3.5 shrink-0 !text-warning" />
   }
   if (status === 'ok') {
-    return <CircleCheckIcon className="size-3.5 shrink-0 text-success" />
+    return <CircleCheckIcon className="size-3.5 shrink-0 !text-success" />
   }
-  return <CircleDashedIcon className="size-3.5 shrink-0 text-muted-foreground" />
+  return <CircleDashedIcon className="size-3.5 shrink-0 !text-muted-foreground" />
 }
 
 function nullableString(value: unknown): string | null {
@@ -111,6 +116,10 @@ function createProviderTargetRequestBody(
     providerTargetKind: 'external',
     providerTargetId: record.providerTargetId,
   }
+}
+
+function supportsClaudeAgentModelMatrix(providerKind: ApiProviderKind): boolean {
+  return providerKind === 'anthropic' || providerKind === 'universal'
 }
 
 function userFacingSourceStatus(
@@ -160,6 +169,7 @@ export function ExternalProviderRecordDetailPanel({
   const [models, setModels] = useState<ModelDescriptor[]>([])
   const [enabledModels, setEnabledModels] = useState<string[]>([])
   const [customModels, setCustomModels] = useState<EditableCustomModel[]>([])
+  const [claudeAgentAliases, setClaudeAgentAliases] = useState<ClaudeAgentModelAliases>(DEFAULT_CLAUDE_AGENT_ALIASES)
   const [loadingTarget, setLoadingTarget] = useState(true)
   const [loadingModels, setLoadingModels] = useState(false)
   const [updatingEnabled, setUpdatingEnabled] = useState(false)
@@ -171,6 +181,7 @@ export function ExternalProviderRecordDetailPanel({
     setModels([])
     setEnabledModels([])
     setCustomModels([])
+    setClaudeAgentAliases(DEFAULT_CLAUDE_AGENT_ALIASES)
     void Promise.all([
       queryClient
         .fetchQuery(
@@ -233,12 +244,14 @@ export function ExternalProviderRecordDetailPanel({
               if (active) {
                 setEnabledModels(enabledModelsFromConfig(next.configJson))
                 setCustomModels(CustomModelsJsonSchema.parse(next.customModelsJson))
+                setClaudeAgentAliases(claudeAgentAliasesFromConfig(next.connectionConfigJson))
               }
             })
             .catch(() => {
               if (active) {
                 setEnabledModels([])
                 setCustomModels([])
+                setClaudeAgentAliases(DEFAULT_CLAUDE_AGENT_ALIASES)
               }
             }),
         ])
@@ -295,6 +308,28 @@ export function ExternalProviderRecordDetailPanel({
         toastManager.add({
           type: 'error',
           title: 'Save model visibility failed',
+          description: error instanceof Error ? error.message : 'Unknown error',
+        })
+      }
+    }
+
+  const handleClaudeAgentAliasesChange = async (next: ClaudeAgentModelAliases) => {
+      const previous = claudeAgentAliases
+      if (!apiProviderTarget) {
+        return
+      }
+      setClaudeAgentAliases(next)
+      try {
+        const settings = await updateProviderTargetClaudeAgentAliases(apiProviderTarget, next)
+        setClaudeAgentAliases(claudeAgentAliasesFromConfig(settings.connectionConfigJson))
+        void queryClient.invalidateQueries({ queryKey: AGENT_MODELS_QUERY_KEY })
+        onUpdated?.()
+      }
+      catch (error) {
+        setClaudeAgentAliases(previous)
+        toastManager.add({
+          type: 'error',
+          title: 'Save Claude matrix failed',
           description: error instanceof Error ? error.message : 'Unknown error',
         })
       }
@@ -539,6 +574,22 @@ export function ExternalProviderRecordDetailPanel({
 
             <Separator className="bg-foreground/6" />
           </>
+        )}
+
+        {apiProviderTarget && apiProviderKind && supportsClaudeAgentModelMatrix(apiProviderKind) && (
+          <section className="flex flex-col gap-4">
+            <ClaudeModelMatrixEditor
+              aliases={claudeAgentAliases}
+              models={models}
+              mainModelId={metadata.model ?? null}
+              loading={loadingModels || loadingTarget}
+              onChange={next => void handleClaudeAgentAliasesChange(next)}
+            />
+          </section>
+        )}
+
+        {apiProviderTarget && apiProviderKind && supportsClaudeAgentModelMatrix(apiProviderKind) && (
+          <Separator className="bg-foreground/6" />
         )}
 
         {apiProviderTarget && (

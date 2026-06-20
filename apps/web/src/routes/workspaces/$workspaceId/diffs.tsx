@@ -8,7 +8,7 @@ import { GuideView } from '~/features/diff-review/review-detail/guide-view'
 import { ReviewDetailPage } from '~/features/diff-review/review-detail/review-detail-page'
 import { ReviewsListPage } from '~/features/diff-review/reviews-list-page'
 import { WORKER_HIGHLIGHTER_OPTIONS, WORKER_POOL_OPTIONS } from '~/features/diff-review/shared/diff-items'
-import { navigateToReview } from '~/features/diff-review/shared/navigation'
+import { navigateToReview, WORKING_TREE_REVIEW_ID } from '~/features/diff-review/shared/navigation'
 
 interface WorkspaceDiffsSearch {
   repo?: string
@@ -83,7 +83,27 @@ function WorkspaceDiffsContent({
   }
 
   if (review) {
-    return <ReviewDetailPage workspaceId={workspaceId} repositoryPath={repo} reviewId={review} initialPath={path} />
+    return (
+      <ReviewDetailPage
+        key={`${review}:${path ?? ''}`}
+        workspaceId={workspaceId}
+        repositoryPath={repo}
+        reviewId={review}
+        initialPath={path}
+      />
+    )
+  }
+
+  if (path) {
+    return (
+      <ReviewDetailPage
+        key={`${WORKING_TREE_REVIEW_ID}:${path}`}
+        workspaceId={workspaceId}
+        repositoryPath={repo}
+        reviewId={WORKING_TREE_REVIEW_ID}
+        initialPath={path}
+      />
+    )
   }
 
   return <ReviewsListPage workspaceId={workspaceId} repositoryPath={repo} />

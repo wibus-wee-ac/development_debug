@@ -414,6 +414,7 @@ const IssueLinkedSessionSchema = z
     sideContextSource: z.enum(['provider-native', 'cradle-context']).nullable(),
     workspaceId: z.string().nullable(),
     title: z.string().nullable(),
+    origin: z.string().default('manual'),
     providerTargetId: z.string().nullable(),
     agentId: z.string().nullable(),
     modelId: z.string().nullable(),

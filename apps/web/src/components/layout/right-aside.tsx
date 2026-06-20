@@ -1,19 +1,20 @@
 import { useQuery } from '@tanstack/react-query'
-import {
-  HeartbeatLine as ActivityIcon,
-  DotCircleLine as CircleDotIcon,
-  GitCompareLine as FileDiffIcon,
-  TreeLine as FolderTreeIcon,
-  GitBranchLine as GitBranchIcon,
-  RssLine as RssIcon,
-  SelectorHorizontalLine as SlidersHorizontalIcon
-} from '~/components/ui/mingcute-icons'
 import { AnimatePresence, LayoutGroup, m } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { getWorkspacesById } from '~/api-gen/sdk.gen'
+import {
+  CircleDashLine as CircleDashedIcon,
+  DotCircleLine as CircleDotIcon,
+  GitBranchLine as GitBranchIcon,
+  GitCompareLine as FileDiffIcon,
+  HeartbeatLine as ActivityIcon,
+  RssLine as RssIcon,
+  SelectorHorizontalLine as SlidersHorizontalIcon,
+  TreeLine as FolderTreeIcon,
+} from '@mingcute/react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { BrowserAnnotationAdjustmentPanel } from '~/features/browser/browser-annotation-adjustment-panel'
@@ -21,6 +22,7 @@ import { RuntimeSessionPanel } from '~/features/chat/runtime/runtime-session-pan
 import { useSessionAwaitSummary } from '~/features/chat/session/use-session-await'
 import { ChangesPanel, GitPanel } from '~/features/git'
 import { IssueAsidePanel } from '~/features/kanban/issue-aside-panel'
+import { useLinkedIssue } from '~/features/kanban/use-kanban'
 import { AwaitPanel } from '~/features/session-await/await-panel'
 import { FileTree } from '~/features/workspace/file-tree'
 import type { Workspace } from '~/features/workspace/types'
@@ -126,6 +128,12 @@ const TAB_INSTANT_LABEL_TRANSITION = {
   opacity: PANEL_INSTANT_TRANSITION,
   x: PANEL_INSTANT_TRANSITION,
   filter: PANEL_INSTANT_TRANSITION,
+} as const
+
+const TAB_ICON_TRANSITION = {
+  type: 'spring',
+  duration: 0.3,
+  bounce: 0,
 } as const
 
 interface RightAsideProps {
@@ -259,6 +267,49 @@ function RightAsidePanelContent({
   return null
 }
 
+function TabIcon({
+  icon: Icon,
+  linkedIcon: LinkedIcon,
+  linked,
+}: {
+  icon: typeof FolderTreeIcon
+  linkedIcon?: typeof FolderTreeIcon
+  linked: boolean
+}) {
+  if (!LinkedIcon) {
+    return <Icon className="relative size-3.5 shrink-0" aria-hidden="true" />
+  }
+
+  return (
+    <span className="relative grid size-3.5 shrink-0 place-items-center" aria-hidden="true">
+      <m.span
+        initial={false}
+        animate={{
+          opacity: linked ? 0 : 1,
+          scale: linked ? 0.25 : 1,
+          filter: linked ? 'blur(4px)' : 'blur(0px)',
+        }}
+        transition={TAB_ICON_TRANSITION}
+        className="absolute inset-0 grid place-items-center"
+      >
+        <Icon className="size-3.5" />
+      </m.span>
+      <m.span
+        initial={false}
+        animate={{
+          opacity: linked ? 1 : 0,
+          scale: linked ? 1 : 0.25,
+          filter: linked ? 'blur(0px)' : 'blur(4px)',
+        }}
+        transition={TAB_ICON_TRANSITION}
+        className="absolute inset-0 grid place-items-center"
+      >
+        <LinkedIcon className="size-3.5" />
+      </m.span>
+    </span>
+  )
+}
+
 export function RightAside({
   active = true,
   visible = active,
@@ -319,6 +370,8 @@ function ActiveRightAside({
   // Badge: pending awaits for Feed tab
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId)
   const hasPendingAwaits = awaitSummary?.awaiting ?? false
+  const { data: linkedIssue } = useLinkedIssue(sessionId)
+  const hasLinkedIssue = !!linkedIssue?.issueId
 
   // Badge: active adjustment session
   const adjustmentSession = useBrowserPanelStore(state => state.annotationAdjustmentSession)
@@ -411,7 +464,11 @@ function ActiveRightAside({
                     />
                   )}
                   <span className="relative flex min-w-0 items-center justify-center">
-                    <Icon className="relative size-3.5 shrink-0" aria-hidden="true" />
+                    <TabIcon
+                      icon={Icon}
+                      linkedIcon={id === 'issue' ? CircleDashedIcon : undefined}
+                      linked={id === 'issue' && hasLinkedIssue}
+                    />
                     <m.span
                       aria-hidden={!isActive}
                       initial={false}

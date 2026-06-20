@@ -14,7 +14,7 @@ import {
   Chat3Line as MessageCircleMoreIcon,
   Chat1Line as MessageSquarePlusIcon,
   PlusLine as PlusIcon,
-  PuzzledLine as PuzzleIcon,
+  Plugin2Line,
   Settings2Line as SettingsIcon,
   SparklesLine as SparklesIcon,
   CloseLine as XIcon
@@ -82,7 +82,7 @@ function SurfaceIcon({ surface }: { surface: AppSurface }) {
     case 'kanban':
       return <KanbanSquareIcon className={className} />
     case 'plugin':
-      return <PuzzleIcon className={className} />
+      return <Plugin2Line className={className} />
     case 'awaits':
       return <CircleDotIcon className={className} />
     case 'automation':

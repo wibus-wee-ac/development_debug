@@ -585,13 +585,16 @@ function projectThreadState(
   const shouldKeepWorkspaceActiveTab = previousActiveWorkspaceTab !== null
     && projectedTabs.some(tab => tab.id === previousActiveWorkspaceTab.id)
   const nextBrowserTabIds = new Set(state.tabs.map(tab => tab.id))
+  const projectedActiveTabId = projectedTabs.some(tab => tab.id === state.activeTabId)
+    ? state.activeTabId
+    : null
 
   return {
     threadState: state,
     tabs: projectedTabs,
     activeTabId: shouldKeepWorkspaceActiveTab
       ? previousActiveWorkspaceTab.id
-      : (state.activeTabId ?? projectedTabs.at(-1)?.id ?? null),
+      : (projectedActiveTabId ?? projectedTabs.at(-1)?.id ?? null),
     requestedTab: null,
     scrollToFilePath: null,
     annotations: (previousOwnerState?.annotations ?? []).filter(annotation =>
@@ -848,17 +851,22 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
         let result: BrowserPanelCloseTabResult = { closed: false, closedLastTab: false }
         set((state) => {
           const ownerState = getOwnerState(state, ownerId)
-          if (!ownerState.tabs.some(tab => tab.id === id)) {
+          const closedIndex = ownerState.tabs.findIndex(tab => tab.id === id)
+          if (closedIndex === -1) {
             return state
           }
           const tabs = ownerState.tabs.filter(tab => tab.id !== id)
           result = { closed: true, closedLastTab: tabs.length === 0 }
+          const nextActiveTabId = ownerState.activeTabId === id
+            ? (tabs[Math.max(0, closedIndex - 1)]?.id ?? null)
+            : ownerState.activeTabId
           return applyOwnerState(state, ownerId, {
             ...ownerState,
             tabs,
             annotations: ownerState.annotations.filter(annotation => annotation.tabId !== id),
-            activeTabId:
-              ownerState.activeTabId === id ? (tabs.at(-1)?.id ?? null) : ownerState.activeTabId,
+            activeTabId: nextActiveTabId && tabs.some(tab => tab.id === nextActiveTabId)
+              ? nextActiveTabId
+              : (tabs.at(-1)?.id ?? null),
           })
         })
         return result
@@ -868,6 +876,9 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
         const ownerId = normalizeBrowserPanelOwnerId(ownerIdInput ?? get().activeOwnerId)
         set((state) => {
           const ownerState = getOwnerState(state, ownerId)
+          if (!ownerState.tabs.some(tab => tab.id === id)) {
+            return state
+          }
           return applyOwnerState(state, ownerId, { ...ownerState, activeTabId: id })
         })
       },

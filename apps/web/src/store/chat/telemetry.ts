@@ -1,9 +1,7 @@
 import type { UIMessage } from 'ai'
-import isEqual from 'fast-deep-equal'
 
 import type { ChatState } from './types'
-import { EMPTY_MESSAGES, DEFAULT_SESSION_META } from './types'
-import type { ChatActiveGoal } from './types'
+import { DEFAULT_SESSION_META } from './types'
 
 // ── Telemetry (diagnostic snapshot) ──────────────────────────
 
@@ -38,9 +36,26 @@ interface ActiveStreamingMessage {
   generating: boolean
   passiveStreaming: boolean
   localDriver: boolean
+  runActive: boolean
+  runId: string | null
+  runCompletedAtMs: number | null | undefined
   role: string
   partCount: number
   estimatedPartStringChars: number
+}
+
+interface RunDisplayMetaMessage {
+  sessionId: string | null
+  messageId: string
+  runId: string | null
+  completedAtMs: number | null
+  generating: boolean
+  passiveStreaming: boolean
+  localDriver: boolean
+  role: string | null
+  partCount: number
+  splitSourceMessageId: string | null
+  splitTailMessageId: string | null
 }
 
 export interface ChatStoreTelemetrySnapshot {
@@ -67,6 +82,7 @@ export interface ChatStoreTelemetrySnapshot {
   sessions: SessionTelemetry[]
   limits: { sessionLimit: number, truncatedSessions: number }
   activeStreamingMessages: ActiveStreamingMessage[]
+  runDisplayMetaMessages: RunDisplayMetaMessage[]
 }
 
 export function getChatStoreTelemetrySnapshot(state: ChatState): ChatStoreTelemetrySnapshot {
@@ -114,9 +130,11 @@ export function getChatStoreTelemetrySnapshot(state: ChatState): ChatStoreTeleme
       if (state.errorMap.has(message.id)) session.errorCount++
       const gen = state.generatingMessageIds.has(message.id)
       const passive = state.passiveStreamingMessageIds.has(message.id)
+      const runMeta = state.runDisplayMetaMap.get(message.id)
+      const runActive = Boolean(runMeta?.runId && runMeta.completedAtMs === null)
       if (gen) session.generatingMessageCount++
       if (passive) session.passiveStreamingMessageCount++
-      if (gen || passive || meta.localDriverMessageId === message.id) session.streamingMessageCount++
+      if (gen || passive || meta.localDriverMessageId === message.id || runActive) session.streamingMessageCount++
 
       for (const part of message.parts) {
         session.partCount++
@@ -148,6 +166,7 @@ export function getChatStoreTelemetrySnapshot(state: ChatState): ChatStoreTeleme
     sessions: sessions.slice(0, TELEMETRY_SESSION_LIMIT),
     limits: { sessionLimit: TELEMETRY_SESSION_LIMIT, truncatedSessions: Math.max(0, sessions.length - TELEMETRY_SESSION_LIMIT) },
     activeStreamingMessages: getActiveStreaming(state),
+    runDisplayMetaMessages: getRunDisplayMetaMessages(state),
   }
 }
 
@@ -159,15 +178,85 @@ function getActiveStreaming(state: ChatState): ActiveStreamingMessage[] {
       const gen = state.generatingMessageIds.has(msg.id)
       const passive = state.passiveStreamingMessageIds.has(msg.id)
       const local = meta.localDriverMessageId === msg.id
-      if (gen || passive || local) {
-        result.push({ sessionId, messageId: msg.id, generating: gen, passiveStreaming: passive, localDriver: local, role: msg.role, partCount: msg.parts.length, estimatedPartStringChars: msg.parts.reduce((t, p) => t + estimateChars(p), 0) })
+      const runMeta = state.runDisplayMetaMap.get(msg.id)
+      const runActive = Boolean(runMeta?.runId && runMeta.completedAtMs === null)
+      if (gen || passive || local || runActive) {
+        result.push({
+          sessionId,
+          messageId: msg.id,
+          generating: gen,
+          passiveStreaming: passive,
+          localDriver: local,
+          runActive,
+          runId: runMeta?.runId ?? null,
+          runCompletedAtMs: runMeta?.completedAtMs,
+          role: msg.role,
+          partCount: msg.parts.length,
+          estimatedPartStringChars: msg.parts.reduce((t, p) => t + estimateChars(p), 0),
+        })
       }
     }
     if (meta.localDriverMessageId && !messages.some(m => m.id === meta.localDriverMessageId)) {
-      result.push({ sessionId, messageId: meta.localDriverMessageId, generating: state.generatingMessageIds.has(meta.localDriverMessageId), passiveStreaming: state.passiveStreamingMessageIds.has(meta.localDriverMessageId), localDriver: true, role: 'unknown', partCount: 0, estimatedPartStringChars: 0 })
+      const runMeta = state.runDisplayMetaMap.get(meta.localDriverMessageId)
+      result.push({
+        sessionId,
+        messageId: meta.localDriverMessageId,
+        generating: state.generatingMessageIds.has(meta.localDriverMessageId),
+        passiveStreaming: state.passiveStreamingMessageIds.has(meta.localDriverMessageId),
+        localDriver: true,
+        runActive: Boolean(runMeta?.runId && runMeta.completedAtMs === null),
+        runId: runMeta?.runId ?? null,
+        runCompletedAtMs: runMeta?.completedAtMs,
+        role: 'unknown',
+        partCount: 0,
+        estimatedPartStringChars: 0,
+      })
     }
   }
   return result
+}
+
+function getRunDisplayMetaMessages(state: ChatState): RunDisplayMetaMessage[] {
+  const messageIndex = new Map<string, { sessionId: string, message: UIMessage }>()
+  for (const [sessionId, messages] of state.messagesMap) {
+    for (const message of messages) {
+      messageIndex.set(message.id, { sessionId, message })
+    }
+  }
+
+  const splitIndex = new Map<string, { sourceMessageId: string, tailMessageId: string }>()
+  for (const split of state.assistantDisplaySplitMap.values()) {
+    splitIndex.set(split.sourceMessageId, {
+      sourceMessageId: split.sourceMessageId,
+      tailMessageId: split.tailMessageId,
+    })
+    splitIndex.set(split.tailMessageId, {
+      sourceMessageId: split.sourceMessageId,
+      tailMessageId: split.tailMessageId,
+    })
+  }
+
+  return [...state.runDisplayMetaMap.entries()]
+    .slice(0, TELEMETRY_ENTRY_LIMIT)
+    .map(([messageId, runMeta]) => {
+      const indexed = messageIndex.get(messageId)
+      const sessionId = indexed?.sessionId ?? null
+      const sessionMeta = sessionId ? state.sessionMetaMap.get(sessionId) ?? DEFAULT_SESSION_META : DEFAULT_SESSION_META
+      const split = splitIndex.get(messageId)
+      return {
+        sessionId,
+        messageId,
+        runId: runMeta.runId,
+        completedAtMs: runMeta.completedAtMs,
+        generating: state.generatingMessageIds.has(messageId),
+        passiveStreaming: state.passiveStreamingMessageIds.has(messageId),
+        localDriver: sessionMeta.localDriverMessageId === messageId,
+        role: indexed?.message.role ?? null,
+        partCount: indexed?.message.parts.length ?? 0,
+        splitSourceMessageId: split?.sourceMessageId ?? null,
+        splitTailMessageId: split?.tailMessageId ?? null,
+      }
+    })
 }
 
 function countSplitsBySession(state: ChatState): Map<string, number> {
