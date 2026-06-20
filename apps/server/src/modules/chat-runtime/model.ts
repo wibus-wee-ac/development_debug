@@ -1,7 +1,12 @@
 import { t } from 'elysia'
 
 import { SessionModel } from '../session/model'
-import { runtimeSettingsPatchSchema, runtimeSettingsSchema } from './runtime-settings-model'
+import {
+  runtimeSettingsPatchSchema,
+  runtimeSettingsSchema,
+  sessionRuntimeSettingsPatchSchema,
+  sessionClaudeAgentConfigSchema,
+} from './runtime-settings-model'
 
 const runtimeKindSchema = t.String({ minLength: 1 })
 
@@ -831,7 +836,7 @@ const runSnapshotSchema = t.Object({
   workspaceId: t.Optional(t.String()),
   status: runSnapshotStatusSchema,
   startedAt: t.Number(),
-  completedAt: t.Optional(t.Number()),
+  completedAt: t.Union([t.Number(), t.Null()]),
   completionReason: t.Optional(t.String()),
   errorText: t.Optional(t.String()),
   summary: t.Record(t.String(), t.Unknown()),
@@ -1079,11 +1084,12 @@ export const ChatRuntimeModel = {
     message: uiMessageSchema
   }),
 
-  runtimeSettingsBody: runtimeSettingsPatchSchema,
+  runtimeSettingsBody: sessionRuntimeSettingsPatchSchema,
 
   runtimeSettingsResponse: t.Object({
     sessionId: t.String(),
     runtimeSettings: runtimeSettingsSchema,
+    claudeAgent: t.Union([sessionClaudeAgentConfigSchema, t.Null()]),
     applied: t.Boolean()
   }),
 

@@ -37,7 +37,7 @@ export interface ChatRunSnapshot {
   workspaceId?: string
   status: RunSnapshotStatus
   startedAt: number
-  completedAt?: number
+  completedAt: number | null
   completionReason?: string
   errorText?: string
   summary: Record<string, unknown>
@@ -314,7 +314,7 @@ function toChatRunSnapshot(row: BackendRunSnapshot, events: BackendRunSnapshotEv
     workspaceId: row.workspaceId ?? undefined,
     status: row.status as RunSnapshotStatus,
     startedAt: row.startedAt,
-    completedAt: row.completedAt ?? undefined,
+    completedAt: row.completedAt ?? null,
     completionReason: row.completionReason ?? undefined,
     errorText: row.errorText ?? undefined,
     summary: SnapshotRecordSchema.parse(row.summaryJson),

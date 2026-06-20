@@ -2483,6 +2483,7 @@ describe('chat runtime capability', () => {
       expect(await initialSettingsRes.json()).toEqual({
         sessionId: 'session-runtime-settings-failure',
         runtimeSettings: { accessMode: 'full-access', interactionMode: 'default' },
+        claudeAgent: null,
         applied: true,
       })
 
@@ -2495,6 +2496,7 @@ describe('chat runtime capability', () => {
       expect(await idlePatchRes.json()).toEqual({
         sessionId: 'session-runtime-settings-failure',
         runtimeSettings: { accessMode: 'full-access', interactionMode: 'default' },
+        claudeAgent: null,
         applied: true,
       })
 
@@ -2516,6 +2518,7 @@ describe('chat runtime capability', () => {
       expect(await patchRes.json()).toEqual({
         sessionId: 'session-runtime-settings-failure',
         runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+        claudeAgent: null,
         applied: false,
       })
       expect(runtime.updateInputs).toHaveLength(1)
@@ -2525,6 +2528,7 @@ describe('chat runtime capability', () => {
       expect(await unappliedSettingsRes.json()).toEqual({
         sessionId: 'session-runtime-settings-failure',
         runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+        claudeAgent: null,
         applied: false,
       })
 
@@ -2560,6 +2564,7 @@ describe('chat runtime capability', () => {
       expect(await completedSettingsRes.json()).toEqual({
         sessionId: 'session-runtime-settings-failure',
         runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+        claudeAgent: null,
         applied: true,
       })
     }
@@ -2571,6 +2576,126 @@ describe('chat runtime capability', () => {
       if (originalCodexRuntime) {
         registerRuntime(originalCodexRuntime)
       }
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
+    }
+  })
+
+  it('persists Claude Agent model matrix overrides in chat session runtime settings', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-claude-matrix-settings',
+        name: 'Workspace Claude Matrix Settings',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, 'workspace-claude-matrix-settings', {
+        providerTargetId: 'provider-target-claude-matrix-settings',
+        sessionId: 'session-claude-matrix-settings',
+        providerKind: 'anthropic',
+        runtimeKind: 'claude-agent',
+      })
+
+      const initialSettingsRes = await app.handle(new Request('http://localhost/chat/sessions/session-claude-matrix-settings/runtime-settings'))
+      expect(initialSettingsRes.status).toBe(200)
+      expect(await initialSettingsRes.json()).toEqual({
+        sessionId: 'session-claude-matrix-settings',
+        runtimeSettings: { accessMode: 'full-access', interactionMode: 'default' },
+        claudeAgent: null,
+        applied: true,
+      })
+
+      const patchRes = await app.handle(new Request('http://localhost/chat/sessions/session-claude-matrix-settings/runtime-settings', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          claudeAgent: {
+            modelAliases: {
+              haiku: ' claude-haiku-session ',
+              sonnet: 'claude-sonnet-session',
+              opus: 'claude-opus-session',
+            },
+          },
+        }),
+      }))
+      expect(patchRes.status).toBe(200)
+      expect(await patchRes.json()).toEqual({
+        sessionId: 'session-claude-matrix-settings',
+        runtimeSettings: { accessMode: 'full-access', interactionMode: 'default' },
+        claudeAgent: {
+          modelAliases: {
+            haiku: 'claude-haiku-session',
+            sonnet: 'claude-sonnet-session',
+            opus: 'claude-opus-session',
+          },
+        },
+        applied: true,
+      })
+
+      const persistedSettings = JSON.parse(
+        db()
+          .select({ configJson: sessions.configJson })
+          .from(sessions)
+          .where(eq(sessions.id, 'session-claude-matrix-settings'))
+          .get()!
+          .configJson ?? '{}',
+      ) as { claudeAgent?: unknown, runtimeSettings?: unknown }
+      expect(persistedSettings.claudeAgent).toEqual({
+        modelAliases: {
+          haiku: 'claude-haiku-session',
+          sonnet: 'claude-sonnet-session',
+          opus: 'claude-opus-session',
+        },
+      })
+      expect(persistedSettings.runtimeSettings).toEqual({
+        accessMode: 'full-access',
+        interactionMode: 'default',
+      })
+
+      const clearRes = await app.handle(new Request('http://localhost/chat/sessions/session-claude-matrix-settings/runtime-settings', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          claudeAgent: {
+            modelAliases: {
+              haiku: '',
+              sonnet: '   ',
+              opus: '',
+            },
+          },
+        }),
+      }))
+      expect(clearRes.status).toBe(200)
+      expect(await clearRes.json()).toEqual({
+        sessionId: 'session-claude-matrix-settings',
+        runtimeSettings: { accessMode: 'full-access', interactionMode: 'default' },
+        claudeAgent: null,
+        applied: true,
+      })
+      const clearedSettings = JSON.parse(
+        db()
+          .select({ configJson: sessions.configJson })
+          .from(sessions)
+          .where(eq(sessions.id, 'session-claude-matrix-settings'))
+          .get()!
+          .configJson ?? '{}',
+      ) as { claudeAgent?: unknown }
+      expect(clearedSettings.claudeAgent).toBeUndefined()
+    }
+    finally {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       rmSync(workspaceRoot, { recursive: true, force: true })
@@ -2623,6 +2748,7 @@ describe('chat runtime capability', () => {
       expect(await patchRes.json()).toEqual({
         sessionId: 'session-pending-runtime-settings',
         runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+        claudeAgent: null,
         applied: false,
       })
 
@@ -2631,6 +2757,7 @@ describe('chat runtime capability', () => {
       expect(await settingsRes.json()).toEqual({
         sessionId: 'session-pending-runtime-settings',
         runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+        claudeAgent: null,
         applied: false,
       })
 
@@ -2651,6 +2778,7 @@ describe('chat runtime capability', () => {
       expect(await completedSettingsRes.json()).toEqual({
         sessionId: 'session-pending-runtime-settings',
         runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+        claudeAgent: null,
         applied: true,
       })
     }
