@@ -1,11 +1,11 @@
-import { useMutation, useQueryClient } from '@tanstack/react-query'
 import {
   GitCommitLine as GitCommitVerticalIcon,
   GitCompareLine as GitCompareIcon,
   GitPullRequestLine as GitPullRequestArrowIcon,
   LoadingLine as Loader2Icon,
-  PlusLine as PlusIcon
+  PlusLine as PlusIcon,
 } from '@mingcute/react'
+import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 
 import {
@@ -13,10 +13,10 @@ import {
   postWorkspacesByIdDiffReviewsLocalCommit,
 } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
-import { Input } from '~/components/ui/input'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
 import { cn } from '~/lib/cn'
 
+import { GitRefPicker } from './git-ref-picker'
 import {
   formatChangeStats,
   reviewListQueryKey,
@@ -91,8 +91,18 @@ export function ReviewsListPage({
         <h1 className="text-[13px] font-semibold text-foreground">Reviews</h1>
         <span className="text-[12px] tabular-nums text-muted-foreground">{reviews.length}</span>
         <div className="flex-1" />
-        <CommitDialog onOpen={input => commitMutation.mutate(input)} pending={commitMutation.isPending} />
-        <CompareDialog onCompare={input => compareMutation.mutate(input)} pending={compareMutation.isPending} />
+        <CommitDialog
+          workspaceId={workspaceId}
+          repositoryPath={repositoryPath}
+          onOpen={input => commitMutation.mutate(input)}
+          pending={commitMutation.isPending}
+        />
+        <CompareDialog
+          workspaceId={workspaceId}
+          repositoryPath={repositoryPath}
+          onCompare={input => compareMutation.mutate(input)}
+          pending={compareMutation.isPending}
+        />
       </header>
 
       <div className="flex shrink-0 items-center gap-1 px-4 pb-2">
@@ -274,17 +284,34 @@ open
 }
 
 function CommitDialog({
+  workspaceId,
+  repositoryPath,
   onOpen,
   pending,
 }: {
+  workspaceId: string
+  repositoryPath?: string | null
   onOpen: (input: { commitRef: string }) => void
   pending: boolean
 }) {
   const [open, setOpen] = useState(false)
   const [commitRef, setCommitRef] = useState('')
 
+  const reset = () => {
+    setCommitRef('')
+  }
+
+  const submit = () => {
+    if (!commitRef.trim() || pending) {
+      return
+    }
+    onOpen({ commitRef: commitRef.trim() })
+    setOpen(false)
+    reset()
+  }
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(next) => { setOpen(next); if (!next) { reset() } }}>
       <PopoverTrigger
         render={(
           <Button variant="outline" size="sm" className="h-7 gap-1.5 text-[12px]">
@@ -293,39 +320,26 @@ function CommitDialog({
           </Button>
         )}
       />
-      <PopoverContent align="end" className="w-72 gap-2 p-3">
-        <div className="space-y-1.5">
-          <label htmlFor="commit-ref" className="text-[12px] font-medium text-foreground/80">Commit ref</label>
-          <Input
-            id="commit-ref"
-            autoFocus
-            value={commitRef}
-            onChange={event => setCommitRef(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && commitRef.trim() && !pending) {
-                onOpen({ commitRef: commitRef.trim() })
-                setOpen(false)
-                setCommitRef('')
-              }
-            }}
-            placeholder="HEAD, sha, or ref"
-            className="h-8 text-[12px]"
-          />
-        </div>
+      <PopoverContent align="end" className="w-80 gap-2 p-3">
+        <GitRefPicker
+          workspaceId={workspaceId}
+          repositoryPath={repositoryPath}
+          value={commitRef}
+          onValueChange={setCommitRef}
+          autoFocus
+          quickRefs={['HEAD', 'HEAD~1']}
+          placeholder="Search branches, commits, or type a ref…"
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              submit()
+            }
+          }}
+        />
         <div className="flex items-center justify-end gap-1.5 pt-1">
           <Button variant="ghost" size="sm" className="h-7 text-[12px]" onClick={() => setOpen(false)}>
             Cancel
           </Button>
-          <Button
-            size="sm"
-            className="h-7 text-[12px]"
-            disabled={!commitRef.trim() || pending}
-            onClick={() => {
-              onOpen({ commitRef: commitRef.trim() })
-              setOpen(false)
-              setCommitRef('')
-            }}
-          >
+          <Button size="sm" className="h-7 text-[12px]" disabled={!commitRef.trim() || pending} onClick={submit}>
             {pending && <Loader2Icon className="size-3.5 animate-spin" />}
             Open
           </Button>
@@ -336,9 +350,13 @@ function CommitDialog({
 }
 
 function CompareDialog({
+  workspaceId,
+  repositoryPath,
   onCompare,
   pending,
 }: {
+  workspaceId: string
+  repositoryPath?: string | null
   onCompare: (input: { baseRef: string, headRef: string }) => void
   pending: boolean
 }) {
@@ -346,8 +364,22 @@ function CompareDialog({
   const [baseRef, setBaseRef] = useState('main')
   const [headRef, setHeadRef] = useState('')
 
+  const reset = () => {
+    setBaseRef('main')
+    setHeadRef('')
+  }
+
+  const submit = () => {
+    if (!baseRef.trim() || !headRef.trim() || pending) {
+      return
+    }
+    onCompare({ baseRef: baseRef.trim(), headRef: headRef.trim() })
+    setOpen(false)
+    reset()
+  }
+
   return (
-    <Popover open={open} onOpenChange={setOpen}>
+    <Popover open={open} onOpenChange={(next) => { setOpen(next); if (!next) { reset() } }}>
       <PopoverTrigger
         render={(
           <Button variant="outline" size="sm" className="h-7 gap-1.5 text-[12px]">
@@ -357,33 +389,33 @@ function CompareDialog({
         )}
       />
       <PopoverContent align="end" className="w-80 gap-2 p-3">
-        <div className="space-y-1.5">
-          <label htmlFor="base-ref" className="text-[12px] font-medium text-foreground/80">Base ref</label>
-          <Input
-            id="base-ref"
-            autoFocus
-            value={baseRef}
-            onChange={event => setBaseRef(event.target.value)}
-            placeholder="main"
-            className="h-8 text-[12px]"
-          />
-        </div>
-        <div className="space-y-1.5">
-          <label htmlFor="head-ref" className="text-[12px] font-medium text-foreground/80">Head ref</label>
-          <Input
-            id="head-ref"
-            value={headRef}
-            onChange={event => setHeadRef(event.target.value)}
-            onKeyDown={(event) => {
-              if (event.key === 'Enter' && baseRef.trim() && headRef.trim() && !pending) {
-                onCompare({ baseRef: baseRef.trim(), headRef: headRef.trim() })
-                setOpen(false)
-              }
-            }}
-            placeholder="feature-branch"
-            className="h-8 text-[12px]"
-          />
-        </div>
+        <GitRefPicker
+          workspaceId={workspaceId}
+          repositoryPath={repositoryPath}
+          value={baseRef}
+          onValueChange={setBaseRef}
+          autoFocus
+          quickRefs={['main', 'master', 'HEAD']}
+          placeholder="Base ref — search or type…"
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              submit()
+            }
+          }}
+        />
+        <GitRefPicker
+          workspaceId={workspaceId}
+          repositoryPath={repositoryPath}
+          value={headRef}
+          onValueChange={setHeadRef}
+          quickRefs={['HEAD']}
+          placeholder="Head ref — search or type…"
+          onKeyDown={(event) => {
+            if (event.key === 'Enter') {
+              submit()
+            }
+          }}
+        />
         <div className="flex items-center justify-end gap-1.5 pt-1">
           <Button variant="ghost" size="sm" className="h-7 text-[12px]" onClick={() => setOpen(false)}>
             Cancel
@@ -392,10 +424,7 @@ function CompareDialog({
             size="sm"
             className="h-7 text-[12px]"
             disabled={!baseRef.trim() || !headRef.trim() || pending}
-            onClick={() => {
-              onCompare({ baseRef: baseRef.trim(), headRef: headRef.trim() })
-              setOpen(false)
-            }}
+            onClick={submit}
           >
             {pending && <Loader2Icon className="size-3.5 animate-spin" />}
             Open

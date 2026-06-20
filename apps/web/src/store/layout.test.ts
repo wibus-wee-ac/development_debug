@@ -6,6 +6,8 @@ describe('layout store updates', () => {
   beforeEach(() => {
     useLayoutStore.setState({
       activeBrowserPanelOwnerId: DEFAULT_LAYOUT_BROWSER_PANEL_OWNER_ID,
+      asideOpen: false,
+      asideActiveTab: 'files',
       browserPanelOpen: true,
       browserPanelOpenByOwnerId: { [DEFAULT_LAYOUT_BROWSER_PANEL_OWNER_ID]: true },
       browserPanelRatio: 0.4,
@@ -31,5 +33,28 @@ describe('layout store updates', () => {
 
     unsubscribe()
     expect(listener).not.toHaveBeenCalled()
+  })
+
+  it('keeps the layout store instance across module reloads in dev', async () => {
+    useLayoutStore.setState({
+      asideOpen: true,
+      asideActiveTab: 'adjustment',
+      activeBrowserPanelOwnerId: 'workspace:one',
+      browserPanelOpen: true,
+      browserPanelOpenByOwnerId: { 'workspace:one': true },
+    })
+    const firstStore = useLayoutStore
+
+    vi.resetModules()
+    const { useLayoutStore: reloadedStore } = await import('./layout')
+
+    expect(reloadedStore).toBe(firstStore)
+    expect(reloadedStore.getState()).toMatchObject({
+      asideOpen: true,
+      asideActiveTab: 'adjustment',
+      activeBrowserPanelOwnerId: 'workspace:one',
+      browserPanelOpen: true,
+      browserPanelOpenByOwnerId: { 'workspace:one': true },
+    })
   })
 })

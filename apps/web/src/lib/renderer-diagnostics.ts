@@ -1,4 +1,6 @@
+import { useBrowserPanelStore } from '~/store/browser-panel'
 import { getChatStoreTelemetrySnapshot } from '~/store/chat'
+import { useLayoutStore } from '~/store/layout'
 
 import { getLongTaskSnapshots, getPaintSnapshots, getPerfSnapshots, getUserTimingStats, getWebVitals } from './perf-monitor'
 
@@ -42,6 +44,65 @@ function readDocumentMetrics(): Record<string, number> {
   }
 }
 
+function readBrowserPanelDiagnostics(): Record<string, unknown> {
+  const layoutState = useLayoutStore.getState()
+  const browserPanelState = useBrowserPanelStore.getState()
+  const activeOwnerId = layoutState.activeBrowserPanelOwnerId
+  const ownerState = browserPanelState.owners[activeOwnerId] ?? null
+
+  const browserPanelTabs = Array.from(
+    document.querySelectorAll<HTMLElement>('[data-testid="browser-panel"] [aria-current], [data-testid="browser-panel"] button'),
+  ).map(element => ({
+    text: element.textContent?.trim() ?? '',
+    ariaCurrent: element.getAttribute('aria-current'),
+    className: element.getAttribute('class'),
+  }))
+
+  const rightAside = document.querySelector<HTMLElement>('[data-testid="right-aside"]')
+  const rightAsideTabs = Array.from(
+    document.querySelectorAll<HTMLElement>('[data-testid^="right-aside-tab-"]'),
+  ).map(element => ({
+    testId: element.getAttribute('data-testid'),
+    active: element.getAttribute('data-active'),
+    label: element.getAttribute('aria-label'),
+    className: element.getAttribute('class'),
+  }))
+
+  return {
+    layout: {
+      asideOpen: layoutState.asideOpen,
+      asideActiveTab: layoutState.asideActiveTab,
+      activeBrowserPanelOwnerId: layoutState.activeBrowserPanelOwnerId,
+      browserPanelOpen: layoutState.browserPanelOpen,
+      browserPanelOpenByOwnerId: layoutState.browserPanelOpenByOwnerId,
+    },
+    browserPanelStore: {
+      activeOwnerId: browserPanelState.activeOwnerId,
+      topLevelActiveTabId: browserPanelState.activeTabId,
+      topLevelTabs: browserPanelState.tabs.map(tab => ({ id: tab.id, kind: tab.kind })),
+      owner: ownerState
+        ? {
+            activeTabId: ownerState.activeTabId,
+            tabs: ownerState.tabs.map(tab => ({ id: tab.id, kind: tab.kind, title: tab.title })),
+            requestedTab: ownerState.requestedTab,
+            annotationCount: ownerState.annotations.length,
+          }
+        : null,
+    },
+    dom: {
+      browserPanelCount: document.querySelectorAll('[data-testid="browser-panel"]').length,
+      browserPanelTabs,
+      rightAside: rightAside
+        ? {
+            visible: rightAside.getAttribute('data-visible'),
+            activeTab: rightAside.getAttribute('data-active-tab'),
+          }
+        : null,
+      rightAsideTabs,
+    },
+  }
+}
+
 export function readRendererDiagnostics(): Record<string, unknown> {
   return {
     sampledAt: Date.now(),
@@ -65,6 +126,7 @@ export function readRendererDiagnostics(): Record<string, unknown> {
       userTiming: getUserTimingStats(),
     },
     document: readDocumentMetrics(),
+    browserPanel: readBrowserPanelDiagnostics(),
     chatStore: getChatStoreTelemetrySnapshot(),
   }
 }

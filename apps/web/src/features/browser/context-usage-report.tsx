@@ -1,11 +1,13 @@
-import { useQuery } from '@tanstack/react-query'
 import { DownSmallLine as ChevronDownIcon, RightSmallLine as ChevronRightIcon } from '@mingcute/react'
+import { useQuery } from '@tanstack/react-query'
 import { m } from 'motion/react'
 import { useState } from 'react'
 
+import { getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
 import { cn } from '~/lib/cn'
 import { clampPercent, formatTokenCount } from '~/lib/number-format'
+import { useSessionLayoutStore } from '~/store/session-layout'
 
 import type { ChatRuntimeContextUsage, ChatRuntimeContextUsageItem, ChatRuntimeContextUsageSection } from '../chat/capabilities/chat-capabilities'
 import {
@@ -107,6 +109,13 @@ export function ContextUsageReport({
   sessionTitle,
 }: ContextUsageReportProps) {
   const [expandedSectionKinds, setExpandedSectionKinds] = useState<Set<string>>(() => new Set())
+  const layoutSessionTitle = useSessionLayoutStore(
+    state => state.sessions[sessionId]?.sessionTitle ?? null,
+  )
+  const { data: session } = useQuery({
+    ...getSessionsByIdOptions({ path: { id: sessionId } }),
+    staleTime: 30_000,
+  })
   const { data, isError, isLoading } = useQuery({
     queryKey: ['chat', 'context-window-usage', sessionId],
     queryFn: ({ signal }) => getChatRuntimeContextUsage(sessionId, signal),
@@ -115,6 +124,7 @@ export function ContextUsageReport({
     retry: false,
   })
 
+  const resolvedSessionTitle = session?.title || layoutSessionTitle || sessionTitle
   const usage = data?.usage ?? null
   const aggregate = readContextAggregate(usage)
   const sections = readContextSections(usage)
@@ -181,7 +191,7 @@ export function ContextUsageReport({
 
             <div className="mt-1 flex min-w-0 flex-wrap items-baseline justify-between gap-x-4 gap-y-1">
               <h1 className="min-w-0 text-balance text-[17px] font-semibold leading-6 text-foreground">
-                {sessionTitle || 'Untitled Session'}
+                {resolvedSessionTitle || 'Untitled Session'}
               </h1>
               <span className="shrink-0 text-[12px] tabular-nums text-text-secondary">
                 {formatContextLimit(aggregate)}
@@ -327,26 +337,24 @@ function CompactUsageRing({
   const sectionShareTotal = readSectionShareTotal(sections)
   const usagePercent = aggregate.percentage === null ? null : clampPercent(aggregate.percentage)
   const usedCircumference = circumference * (readUsageProgressPercent(aggregate) / 100)
-  const arcs = sections
-    .map((section, sectionIndex) => {
-      const startArc = sections
-        .slice(0, sectionIndex)
-        .reduce((total, previousSection) => {
-          if (sectionShareTotal <= 0) {
-            return total
-          }
-          return total + (previousSection.tokenCount / sectionShareTotal) * usedCircumference
-        }, 0)
-      const arcLength = sectionShareTotal > 0
-        ? (section.tokenCount / sectionShareTotal) * usedCircumference
-        : 0
-      return {
-        kind: section.kind,
-        arcLength,
-        startArc,
+  const arcs: Array<{ kind: string, arcLength: number, startArc: number }> = []
+  let nextArcStart = 0
+
+  if (sectionShareTotal > 0) {
+    for (const section of sections) {
+      const startArc = nextArcStart
+      const arcLength = (section.tokenCount / sectionShareTotal) * usedCircumference
+      nextArcStart += arcLength
+
+      if (arcLength > 0.8) {
+        arcs.push({
+          kind: section.kind,
+          arcLength,
+          startArc,
+        })
       }
-    })
-    .filter(arc => arc.arcLength > 0.8)
+    }
+  }
 
   return (
     <div className="relative mx-auto size-[82px] shrink-0 md:mx-0">

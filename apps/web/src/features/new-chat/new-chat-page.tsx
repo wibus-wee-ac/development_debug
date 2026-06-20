@@ -12,14 +12,16 @@ import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { postSessions } from '~/api-gen/sdk.gen'
+import type { PostSessionsData } from '~/api-gen/types.gen'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import { Button } from '~/components/ui/button'
 import { DitheredGradientDecoration } from '~/components/ui/canvas-art'
 import { Menu, MenuGroup, MenuGroupLabel, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
 import type { DraftChatComposerSubmitOptions } from '~/features/chat/composer/draft-chat-composer'
-import { DraftChatComposer } from '~/features/chat/composer/draft-chat-composer'
+import { DraftChatComposerWithState } from '~/features/chat/composer/draft-chat-composer'
 import type { ChatContextPart } from '~/features/chat/context/chat-context-parts'
 import { startOptimisticChatResponse } from '~/features/chat/session/optimistic-chat-turn'
+import { useComposerState } from '~/features/composer-toolbar'
 import { sessionsQueryKey, updateSessionInSessionLists, useWorkspaceSessions } from '~/features/workspace/use-session'
 import { useAddWorkspace, useWorkspaces, WORKSPACES_QUERY_KEY } from '~/features/workspace/use-workspace'
 import { useNow } from '~/hooks/use-now'
@@ -41,6 +43,9 @@ const QUICK_ACTIONS = [
 ] as const
 
 type NewChatTranslation = TFunction<'new-chat'>
+type CreateSessionBody = PostSessionsData['body'] & {
+  runtimeSettings?: DraftChatComposerSubmitOptions['runtimeSettings']
+}
 
 /* ─── Helpers ─────────────────────────────────────────────────────────── */
 
@@ -71,6 +76,7 @@ function useNewChatPageOwner(active: boolean, replaceCurrentSurfaceOnSubmit: boo
   const { workspaces, loading: workspacesLoading } = useWorkspaces()
   const { addFromPicker, adding: addingWorkspace } = useAddWorkspace()
   const queryClient = useQueryClient()
+  const composerState = useComposerState({ context: 'new-chat', enableAgents: true })
 
   const [draft, setDraft] = useState('')
   const [quickActionText, setQuickActionText] = useState<string | undefined>(undefined)
@@ -109,6 +115,8 @@ function useNewChatPageOwner(active: boolean, replaceCurrentSurfaceOnSubmit: boo
   const sessionsReady = selectedProjectWorkspaceId === null || !sessionsLoading
   const isReady = !workspacesLoading
     && sessionsReady
+  const promptInputCollapsed = composerState.selection.targetMode === 'agent'
+    && composerState.selection.runtimeKind === 'cli-tui'
 
   const recentSessions = useMemo(() => {
     return sessions.slice(0, 6)
@@ -137,13 +145,14 @@ function useNewChatPageOwner(active: boolean, replaceCurrentSurfaceOnSubmit: boo
         if (!options.agentId) {
           return false
         }
+        const body: CreateSessionBody = {
+          ...(selectedProjectWorkspaceId ? { workspaceId: selectedProjectWorkspaceId } : {}),
+          title: trimmedText.slice(0, 80) || options.agentName || options.agentId,
+          agentId: options.agentId,
+          runtimeSettings: options.runtimeSettings,
+        }
         const { data: sessionData } = await postSessions({
-          body: {
-            ...(selectedProjectWorkspaceId ? { workspaceId: selectedProjectWorkspaceId } : {}),
-            title: trimmedText.slice(0, 80) || options.agentName || options.agentId,
-            agentId: options.agentId,
-            runtimeSettings: options.runtimeSettings,
-          },
+          body,
         })
         const session = sessionData as { id: string, workspaceId: string | null } | null
         if (!session?.id) {
@@ -172,18 +181,32 @@ function useNewChatPageOwner(active: boolean, replaceCurrentSurfaceOnSubmit: boo
         return true
       }
 
-      if (!options.providerTargetId) {
+      if (!options.providerTargetId && !options.agentId) {
         return false
       }
+      const sessionTitle = trimmedText.slice(0, 80)
+        || options.agentName
+        || options.providerTargetName
+        || options.agentId
+        || options.providerTargetId
+        || 'Untitled'
+      const body: CreateSessionBody = options.agentId
+        ? {
+            ...(selectedProjectWorkspaceId ? { workspaceId: selectedProjectWorkspaceId } : {}),
+            title: sessionTitle,
+            agentId: options.agentId,
+            runtimeSettings: options.runtimeSettings,
+          }
+        : {
+            ...(selectedProjectWorkspaceId ? { workspaceId: selectedProjectWorkspaceId } : {}),
+            title: sessionTitle,
+            providerTargetId: options.providerTargetId,
+            modelId: options.modelId ?? null,
+            runtimeKind: options.runtimeKind,
+            runtimeSettings: options.runtimeSettings,
+          }
       const { data: sessionData } = await postSessions({
-        body: {
-          ...(selectedProjectWorkspaceId ? { workspaceId: selectedProjectWorkspaceId } : {}),
-          title: trimmedText.slice(0, 80) || options.providerTargetName || options.providerTargetId,
-          providerTargetId: options.providerTargetId,
-          modelId: options.modelId ?? null,
-          runtimeKind: options.runtimeKind,
-          runtimeSettings: options.runtimeSettings,
-        },
+        body,
       })
       const session = sessionData as { id: string, workspaceId: string | null } | null
       if (!session?.id) {
@@ -191,15 +214,16 @@ function useNewChatPageOwner(active: boolean, replaceCurrentSurfaceOnSubmit: boo
       }
       useSessionLayoutStore.getState().upsertSession({
         sessionId: session.id,
-        sessionTitle: trimmedText.slice(0, 80) || options.providerTargetName || options.providerTargetId,
+        sessionTitle,
         workspaceId: session.workspaceId ?? selectedProjectWorkspaceId ?? null,
         workspacePath: selectedWorkspace?.id === selectedProjectWorkspaceId ? selectedWorkspace.path : null,
         runtimeKind: options.runtimeKind,
       })
       updateSessionInSessionLists(queryClient, {
         id: session.id,
-        title: trimmedText.slice(0, 80) || options.providerTargetName || options.providerTargetId,
+        title: sessionTitle,
         workspaceId: session.workspaceId ?? selectedProjectWorkspaceId ?? null,
+        agentId: options.agentId ?? null,
         providerTargetId: options.providerTargetId,
         modelId: options.modelId ?? null,
         runtimeKind: options.runtimeKind,
@@ -259,6 +283,7 @@ function useNewChatPageOwner(active: boolean, replaceCurrentSurfaceOnSubmit: boo
 
   return {
     draft,
+    composerState,
     handleQuickAction,
     handleResumeSession,
     handleSend,
@@ -268,6 +293,7 @@ function useNewChatPageOwner(active: boolean, replaceCurrentSurfaceOnSubmit: boo
     recentSessions,
     selectedWorkspace,
     setDraft,
+    promptInputCollapsed,
     addFromPicker,
     addingWorkspace,
     setSelectedWorkspaceId,
@@ -345,7 +371,8 @@ function NewChatComposerCard({
   )
 
   return (
-    <DraftChatComposer
+    <DraftChatComposerWithState
+      composerState={owner.composerState}
       workspaceId={selectedWorkspace?.id ?? null}
       active={active}
       contextBar={workspaceSelector}
@@ -364,7 +391,7 @@ function NewChatComposerCard({
 function NewChatQuickActions({ owner }: { owner: ReturnType<typeof useNewChatPageOwner> }) {
   const { t } = useTranslation('new-chat')
 
-  if (owner.draft.length > 0) {
+  if (owner.promptInputCollapsed || owner.draft.length > 0) {
     return null
   }
 

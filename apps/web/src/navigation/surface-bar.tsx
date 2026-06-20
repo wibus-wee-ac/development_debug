@@ -3,26 +3,26 @@ import { closestCenter, DndContext, DragOverlay, MouseSensor, useSensor, useSens
 import { horizontalListSortingStrategy, SortableContext, useSortable } from '@dnd-kit/sortable'
 import { CSS } from '@dnd-kit/utilities'
 import {
-  ChartBarLine as BarChart2Icon,
   CalendarTimeAddLine as CalendarClockIcon,
-  DotCircleLine as CircleDotIcon,
-  GitCompareLine as FileDiffIcon,
-  FolderOpenLine as FolderOpenIcon,
-  Home2Line as HomeIcon,
-  DashboardLine as KanbanSquareIcon,
+  ChartBarLine as BarChart2Icon,
   Chat1Line as MessageCircleIcon,
-  Chat3Line as MessageCircleMoreIcon,
   Chat1Line as MessageSquarePlusIcon,
-  PlusLine as PlusIcon,
+  Chat3Line as MessageCircleMoreIcon,
+  CloseLine as XIcon,
+  DashboardLine as KanbanSquareIcon,
+  DotCircleLine as CircleDotIcon,
+  FolderOpenLine as FolderOpenIcon,
+  GitCompareLine as FileDiffIcon,
+  Home2Line as HomeIcon,
   Plugin2Line,
+  PlusLine as PlusIcon,
   Settings2Line as SettingsIcon,
   SparklesLine as SparklesIcon,
-  CloseLine as XIcon
 } from '@mingcute/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { shallow } from 'zustand/shallow'
 
-import { useUnreadSessionIds } from '~/features/workspace/use-session'
+import { useRunningSessionIds, useUnreadSessionIds } from '~/features/workspace/use-session'
 import { cn } from '~/lib/cn'
 import { chatSelectors, useChatStore } from '~/store/chat'
 
@@ -37,7 +37,6 @@ import { openTearoffSessionWindow } from './tearoff-sessions'
 
 const META_TAB_HINT_DELAY_MS = 200
 const TEAR_OFF_RELEASE_DISTANCE_PX = 48
-const EMPTY_SESSION_ID_SET: ReadonlySet<string> = new Set()
 
 function readNumberShortcutIndex(event: KeyboardEvent): number | null {
   if (/^[1-9]$/.test(event.key)) {
@@ -275,7 +274,8 @@ export const SurfaceBar = memo(({
     }
     return ids
   }, [surfaces])
-  const serverRunningSessionIds = externalRunningSessionIds ?? EMPTY_SESSION_ID_SET
+  const sessionListRunningSessionIds = useRunningSessionIds()
+  const serverRunningSessionIds = externalRunningSessionIds ?? sessionListRunningSessionIds
   const unreadSessionIds = externalUnreadSessionIds ?? sessionListUnreadSessionIds
   const locallyRunningSessionIds = useChatStore(
     useCallback(

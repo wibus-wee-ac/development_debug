@@ -3,29 +3,29 @@
 // Layer: Browser feature UI
 // Depends on: BrowserPanel Zustand metadata cache, Electron browser preload bridge
 
-import type { FileUIPart } from 'ai'
 import {
   ArrowLeftLine as ArrowLeftIcon,
   ArrowRightLine as ArrowRightIcon,
-  RobotLine as BotIcon,
   CameraLine as CameraIcon,
-  ExternalLinkLine as ExternalLinkIcon,
-  GitCompareLine as FileDiffIcon,
-  FileLine as FileTextIcon,
-  Dashboard2Line as GaugeIcon,
-  GlobeLine as GlobeIcon,
-  LoadingLine as LoaderCircleIcon,
   Chat1Line as MessageSquarePlusIcon,
+  CloseLine as XIcon,
+  Dashboard2Line as GaugeIcon,
+  DeleteLine as Trash2Icon,
+  ExternalLinkLine as ExternalLinkIcon,
+  FileLine as FileTextIcon,
+  GitCompareLine as FileDiffIcon,
+  GlobeLine as GlobeIcon,
   LayoutTopLine as PanelTopIcon,
+  LoadingLine as LoaderCircleIcon,
   PencilLine as PencilIcon,
   PlusLine as PlusIcon,
   Refresh1Line as RefreshCwIcon,
+  RobotLine as BotIcon,
   SendLine as SendIcon,
   ServerLine as ServerIcon,
   TerminalBoxLine as SquareTerminalIcon,
-  DeleteLine as Trash2Icon,
-  CloseLine as XIcon
 } from '@mingcute/react'
+import type { FileUIPart } from 'ai'
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   lazy,
@@ -1301,6 +1301,7 @@ export function BrowserPanel({
   )
   const browserTabs = tabs.filter(isBrowserPanelTab)
   const activePanelTab = tabs.find(tab => tab.id === activePanelTabId) ?? tabs[0] ?? null
+  const resolvedActivePanelTabId = activePanelTab?.id ?? null
   const activeBrowserTab = activePanelTab?.kind === 'browser' ? activePanelTab : null
   const activeBrowserTabId = activeBrowserTab?.id ?? null
   const activeBrowserTabUrl = activeBrowserTab?.lastCommittedUrl ?? activeBrowserTab?.url ?? null
@@ -1385,6 +1386,12 @@ export function BrowserPanel({
     }
     refreshLocalServers()
   }, [activeBrowserTabId, activeBrowserTabIsBlank, refreshLocalServers])
+
+  useEffect(() => {
+    if (resolvedActivePanelTabId && resolvedActivePanelTabId !== activePanelTabId) {
+      setActiveTab(resolvedActivePanelTabId, resolvedOwnerId)
+    }
+  }, [activePanelTabId, resolvedActivePanelTabId, resolvedOwnerId, setActiveTab])
 
   useEffect(() => {
     if (!nativeSurfaceVisible) {
@@ -2634,7 +2641,7 @@ export function BrowserPanel({
               key={tab.id}
               className={cn(
                 'group flex h-7 max-w-44 shrink-0 items-center rounded-md text-[11px] transition-colors',
-                tab.id === activePanelTabId
+                tab.id === resolvedActivePanelTabId
                   ? 'bg-background text-foreground shadow-sm'
                   : 'text-muted-foreground/70 hover:bg-foreground/5 hover:text-foreground',
               )}
@@ -2643,7 +2650,7 @@ export function BrowserPanel({
                 type="button"
                 className="flex min-w-0 flex-1 items-center gap-1.5 rounded-l-md py-1 pl-2 pr-1 text-left"
                 onClick={() => handleSelectTab(tab.id)}
-                aria-current={tab.id === activePanelTabId ? 'page' : undefined}
+                aria-current={tab.id === resolvedActivePanelTabId ? 'page' : undefined}
               >
                 {tab.kind === 'browser' && tab.isLoading && (
                   <LoaderCircleIcon
@@ -3056,7 +3063,7 @@ export function BrowserPanel({
               <BrowserTuiShellView
                 ptyId={activePanelTab.ptyId}
                 cwd={activePanelTab.cwd}
-                visible={activePanelTab.id === activePanelTabId}
+                visible={activePanelTab.id === resolvedActivePanelTabId}
                 stopOnUnmount={false}
                 onMetadata={metadata => handleTuiMetadata(activePanelTab.id, metadata)}
                 onExited={() => handleTuiExited(activePanelTab.id)}

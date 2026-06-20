@@ -232,6 +232,26 @@ describe('browserPanel rendering', () => {
     expect(screen.queryByLabelText(/From /)).toBeNull()
   })
 
+  it('marks the rendered fallback tab active when active tab state is missing', () => {
+    const tabId = useBrowserPanelStore.getState().createTab('https://example.com')
+    useBrowserPanelStore.setState(state => ({
+      ...state,
+      owners: {
+        ...state.owners,
+        [DEFAULT_BROWSER_PANEL_OWNER_ID]: {
+          ...state.owners[DEFAULT_BROWSER_PANEL_OWNER_ID]!,
+          activeTabId: null,
+        },
+      },
+      activeTabId: null,
+    }))
+
+    render(<BrowserPanel />)
+
+    expect(screen.getByRole('button', { name: 'https://example.com' }).getAttribute('aria-current')).toBe('page')
+    expect(useBrowserPanelStore.getState().activeTabId).toBe(tabId)
+  })
+
   it('opens requested native browser tabs once after unrelated tab state updates', async () => {
     useBrowserPanelStore.getState().requestTab('https://example.com')
 
@@ -271,5 +291,4 @@ describe('browserPanel rendering', () => {
 
     expect(webview.loadURL).not.toHaveBeenCalled()
   })
-
 })

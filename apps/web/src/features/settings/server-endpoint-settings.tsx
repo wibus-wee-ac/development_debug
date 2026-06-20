@@ -1,8 +1,9 @@
 import {
   AnticlockwiseLine as RotateCcwIcon,
+  SafeAlertLine as ShieldAlertIcon,
   SaveLine as SaveIcon,
   ServerLine as ServerIcon,
-  WifiLine as WifiIcon
+  WifiLine as WifiIcon,
 } from '@mingcute/react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -25,6 +26,14 @@ type TestStatus = { kind: 'idle' }
   | { kind: 'checking' }
   | { kind: 'success', message: string }
   | { kind: 'error', message: string }
+
+const externalGuideSteps = [
+  'serverEndpoint.externalGuide.step.startServer',
+  'serverEndpoint.externalGuide.step.connectTailscale',
+  'serverEndpoint.externalGuide.step.openWeb',
+  'serverEndpoint.externalGuide.step.setUrl',
+  'serverEndpoint.externalGuide.step.reload',
+] as const
 
 export function ServerEndpointSettings() {
   const { t } = useTranslation('settings')
@@ -174,6 +183,51 @@ export function ServerEndpointSettings() {
             )}
           </div>
         </SettingsRow>
+      </SettingsGroup>
+
+      <SettingsGroup
+        label={t('serverEndpoint.externalGuide.label')}
+        description={t('serverEndpoint.externalGuide.description')}
+        bare
+        className="overflow-hidden"
+      >
+        <div className="flex flex-col gap-4 p-4">
+          <div className="flex gap-3">
+            <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300">
+              <ShieldAlertIcon className="size-4" aria-hidden="true" />
+            </div>
+            <div className="min-w-0">
+              <h3 className="text-[13px] font-medium text-foreground">
+                {t('serverEndpoint.externalGuide.title')}
+              </h3>
+              <p className="mt-1 text-[12px] leading-5 text-muted-foreground text-pretty">
+                {t('serverEndpoint.externalGuide.body')}
+              </p>
+            </div>
+          </div>
+
+          <ol className="grid gap-2">
+            {externalGuideSteps.map((stepKey, index) => (
+              <li key={stepKey} className="grid grid-cols-[auto_1fr] gap-2 text-[12px] leading-5 text-muted-foreground">
+                <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-foreground tabular-nums">
+                  {index + 1}
+                </span>
+                <span className="text-pretty">{t(stepKey)}</span>
+              </li>
+            ))}
+          </ol>
+        </div>
+
+        <div className="border-t border-border/60 bg-muted/30 px-4 py-3">
+          <div className="grid grid-cols-[auto_1fr] gap-2">
+            <ShieldAlertIcon className="mt-0.5 size-3.5 shrink-0 !text-amber-700 dark:!text-amber-300" aria-hidden="true" />
+            <p className="text-[12px] leading-5 text-muted-foreground text-pretty">
+              <span className="font-medium text-foreground">{t('serverEndpoint.externalGuide.security.title')}</span>
+              {' '}
+              {t('serverEndpoint.externalGuide.security.description')}
+            </p>
+          </div>
+        </div>
       </SettingsGroup>
 
       <SettingsGroup label={t('serverEndpoint.fallback.label')} description={t('serverEndpoint.fallback.description')}>

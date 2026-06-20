@@ -13,6 +13,7 @@ import { ExternalWorkImportSettings } from './external-work-import-settings'
 import { FeatureSettings } from './feature-settings'
 import { JarvisSettings } from './jarvis-settings'
 import { ModelRegistrySettings } from './model-registry-settings'
+import { PluginsSettings } from './plugins-settings'
 import { ServerEndpointSettings } from './server-endpoint-settings'
 import { ShortcutSettings } from './shortcut-settings'
 import { SupportSettings } from './support-settings'
@@ -25,6 +26,7 @@ const SECTION_MAP: Record<string, React.ComponentType> = {
   chat: ChatSettings,
   await: AwaitSettings,
   jarvis: JarvisSettings,
+  plugins: PluginsSettings,
   chronicle: ChronicleSettings,
   shortcut: ShortcutSettings,
   serverEndpoint: ServerEndpointSettings,

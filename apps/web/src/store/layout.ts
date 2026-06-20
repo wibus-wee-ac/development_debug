@@ -1,3 +1,4 @@
+import type { StoreApi, UseBoundStore } from 'zustand'
 import { create } from 'zustand'
 import { persist } from 'zustand/middleware'
 
@@ -44,6 +45,12 @@ interface PersistedLayoutState {
   browserPanelRatio?: number
 }
 
+type LayoutStore = UseBoundStore<StoreApi<LayoutState>>
+
+interface LayoutStoreGlobal {
+  __CRADLE_LAYOUT_STORE__?: LayoutStore
+}
+
 export const DEFAULT_LAYOUT_BROWSER_PANEL_OWNER_ID = 'global'
 
 function normalizeBrowserPanelOwnerId(ownerId: string | null | undefined): string {
@@ -54,8 +61,9 @@ const layoutPersistKey = isTearoffWindow
   ? `cradle:layout:tearoff:${tearoffSessionId ?? 'unknown'}:v1`
   : 'cradle:layout:v1'
 
-export const useLayoutStore = create<LayoutState>()(
-  persist(
+function createLayoutStore(): LayoutStore {
+  return create<LayoutState>()(
+    persist(
     set => ({
       sidebarWidth: 260,
       sidebarCollapsed: false,
@@ -166,5 +174,17 @@ export const useLayoutStore = create<LayoutState>()(
           : {}),
       }),
     },
-  ),
-)
+    ),
+  )
+}
+
+function getLayoutStore(): LayoutStore {
+  if (!import.meta.env.DEV) {
+    return createLayoutStore()
+  }
+  const globalStore = globalThis as typeof globalThis & LayoutStoreGlobal
+  globalStore.__CRADLE_LAYOUT_STORE__ ??= createLayoutStore()
+  return globalStore.__CRADLE_LAYOUT_STORE__
+}
+
+export const useLayoutStore = getLayoutStore()

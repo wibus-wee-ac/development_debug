@@ -15,6 +15,7 @@ import {
   Cursor2Line as MousePointer2Icon,
   PaletteLine as PaletteIcon,
   PluginLine as PlugIcon,
+  PuzzledLine as PuzzleIcon,
   ServerLine as ServerIcon
 } from '@mingcute/react'
 import { useTranslation } from 'react-i18next'
@@ -56,6 +57,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
       { id: 'chat', labelKey: 'nav.chat', icon: MessageSquareIcon },
       { id: 'await', labelKey: 'nav.await', icon: HourglassIcon },
       { id: 'jarvis', labelKey: 'nav.jarvis', icon: MousePointer2Icon },
+      { id: 'plugins', labelKey: 'nav.plugins', icon: PuzzleIcon },
       ...(import.meta.env.DEV
         ? [{ id: 'chronicle', labelKey: 'nav.chronicle', icon: ActivityIcon } satisfies SettingsNavItem]
         : []),

@@ -733,8 +733,9 @@ function arePathListsEqual(a: string[] | undefined, b: string[] | undefined): bo
   return a.every((path, index) => path === b[index])
 }
 
-export const useBrowserPanelStore = create<BrowserPanelState>()(
-  persist(
+function createBrowserPanelStore() {
+  return create<BrowserPanelState>()(
+    persist(
     (set, get) => ({
       activeOwnerId: DEFAULT_BROWSER_PANEL_OWNER_ID,
       owners: {},
@@ -1369,8 +1370,26 @@ export const useBrowserPanelStore = create<BrowserPanelState>()(
           ?.annotationTrayCollapsedByOwnerId ?? {},
       }),
     },
-  ),
-)
+    ),
+  )
+}
+
+type BrowserPanelStore = ReturnType<typeof createBrowserPanelStore>
+
+interface BrowserPanelStoreGlobal {
+  __CRADLE_BROWSER_PANEL_STORE__?: BrowserPanelStore
+}
+
+function getBrowserPanelStore(): BrowserPanelStore {
+  if (!import.meta.env.DEV) {
+    return createBrowserPanelStore()
+  }
+  const globalStore = globalThis as typeof globalThis & BrowserPanelStoreGlobal
+  globalStore.__CRADLE_BROWSER_PANEL_STORE__ ??= createBrowserPanelStore()
+  return globalStore.__CRADLE_BROWSER_PANEL_STORE__
+}
+
+export const useBrowserPanelStore = getBrowserPanelStore()
 
 function isBrowserPanelTabShortcutPayload(
   payload: unknown,

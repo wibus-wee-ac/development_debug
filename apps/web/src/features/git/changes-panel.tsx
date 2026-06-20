@@ -1,13 +1,13 @@
 // Renders workspace Git changes in the right-aside Changes tab.
+import {
+  GitBranchLine as GitBranchIcon,
+  GitCompareLine as FileDiffIcon,
+  LoadingLine as Loader2Icon,
+  Scan2Line as ScanEyeIcon,
+} from '@mingcute/react'
 import { prepareFileTreeInput } from '@pierre/trees'
 import { FileTree as PierreFileTree, useFileTree } from '@pierre/trees/react'
 import { useQueryClient } from '@tanstack/react-query'
-import {
-  GitCompareLine as FileDiffIcon,
-  GitBranchLine as GitBranchIcon,
-  LoadingLine as Loader2Icon,
-  Scan2Line as ScanEyeIcon
-} from '@mingcute/react'
 import type { MouseEvent as ReactMouseEvent, ReactNode } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -19,6 +19,7 @@ import {
 import { WorkspaceFileIcon, WorkspaceFileIconSpriteSheet } from '~/components/common/workspace-file-icon'
 import { toastManager } from '~/components/ui/toast'
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
+import type { GitFileStatus, GitRepository } from '~/features/git/types'
 import {
   CreateWorkspaceFileDialog,
   createWorkspaceFileEntry,
@@ -38,7 +39,6 @@ import { isElectron, nativeIpc } from '~/lib/electron'
 import { openWorkspaceDiffs } from '~/navigation/navigation-commands'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
-import type { GitFileStatus, GitRepository } from '~/features/git/types'
 
 import type { ChangeSection } from './changes-grouping'
 import { groupGitFileStatuses } from './changes-grouping'
@@ -61,6 +61,9 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
   const { data: repositories, isLoading, isError, isSuccess } = useGitRepositories(workspaceId)
   const gitRepositories = repositories ?? []
   const changedFileCount = gitRepositories.reduce((total, repository) => total + repository.files.length, 0)
+  const openWorkspaceDiffTab = useBrowserPanelStore(state => state.openWorkspaceDiffTab)
+  const requestScrollToFilePath = useBrowserPanelStore(state => state.requestScrollToFilePath)
+  const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
   // Diffs review is a very early implementation — only reachable in dev until it's further along.
   const canOpenReview = import.meta.env.DEV
   const handleReviewRepository = (repository: GitRepository) => {
@@ -74,7 +77,13 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
     if (!workspaceId) {
       return
     }
-    openWorkspaceDiffs({ workspaceId, repositoryPath: repository.path, path })
+    const tabId = openWorkspaceDiffTab({
+      workspaceId,
+      repositoryPath: getWorkspaceDiffRepositoryPath(repository.path, gitRepositories.length),
+      title: 'All Changes',
+    })
+    setBrowserPanelOpen(true)
+    requestScrollToFilePath({ path, tabId })
   }
 
   let changesContent: ReactNode = null
@@ -721,6 +730,10 @@ function stripRepositoryPath(repositoryPath: string, workspaceRelativePath: stri
   return workspaceRelativePath.startsWith(prefix)
     ? workspaceRelativePath.slice(prefix.length)
     : workspaceRelativePath
+}
+
+function getWorkspaceDiffRepositoryPath(repositoryPath: string, repositoryCount: number): string | undefined {
+  return repositoryPath === '.' && repositoryCount === 1 ? undefined : repositoryPath
 }
 
 function getStatusLabel(status: GitFileStatus['status']): string {

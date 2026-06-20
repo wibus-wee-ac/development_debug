@@ -487,4 +487,16 @@ describe('browser panel shortcuts', () => {
       annotationTrayCollapsedByOwnerId: { 'app-tab-a': true },
     })
   })
+
+  it('keeps the browser panel store instance across module reloads in dev', async () => {
+    const tabId = useBrowserPanelStore.getState().createTab('https://example.com')
+    const firstStore = useBrowserPanelStore
+
+    vi.resetModules()
+    const { useBrowserPanelStore: reloadedStore } = await import('./browser-panel')
+
+    expect(reloadedStore).toBe(firstStore)
+    expect(reloadedStore.getState().activeTabId).toBe(tabId)
+    expect(reloadedStore.getState().tabs.map(tab => tab.id)).toEqual([tabId])
+  })
 })
