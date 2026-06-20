@@ -895,7 +895,14 @@ export const zPostSessionsBody = z.object({
     runtimeKind: z.string().min(1).optional(),
     runtimeSettings: z.object({
         accessMode: z.enum(['approval-required', 'full-access']).optional(),
-        interactionMode: z.enum(['default', 'plan']).optional()
+        interactionMode: z.enum(['default', 'plan']).optional(),
+        claudeAgent: z.object({
+            modelAliases: z.object({
+                haiku: z.string().optional(),
+                sonnet: z.string().optional(),
+                opus: z.string().optional()
+            }).optional()
+        }).nullish()
     }).optional(),
     id: z.string().optional()
 });
@@ -1310,6 +1317,19 @@ export const zGetSearchChronicleQuery = z.object({
 });
 
 export const zGetPluginsByRouteSegmentIconPath = z.object({
+    routeSegment: z.string().min(1)
+});
+
+export const zGetPluginsByRouteSegmentPath = z.object({
+    routeSegment: z.string().min(1)
+});
+
+export const zPatchPluginsByRouteSegmentEnabledBody = z.object({
+    enabled: z.boolean(),
+    reason: z.string().nullish()
+});
+
+export const zPatchPluginsByRouteSegmentEnabledPath = z.object({
     routeSegment: z.string().min(1)
 });
 
@@ -3086,10 +3106,66 @@ export const zDeleteIssueAgentSessionsByAgentSessionIdPath = z.object({
     agentSessionId: z.string()
 });
 
-export const zGetApiPluginsNowledgeMemThreadsByThreadIdPath = z.object({
-    threadId: z.string()
+export const zAllApiPluginsByRouteSegmentPath = z.object({
+    routeSegment: z.string()
 });
 
-export const zPostApiPluginsNowledgeMemThreadsByThreadIdAppendPath = z.object({
-    threadId: z.string()
+export const zAllApiPluginsByRouteSegment2Path = z.object({
+    routeSegment: z.string()
+});
+
+export const zAllApiPluginsByRouteSegment3Path = z.object({
+    routeSegment: z.string()
+});
+
+export const zAllApiPluginsByRouteSegment4Path = z.object({
+    routeSegment: z.string()
+});
+
+export const zAllApiPluginsByRouteSegment5Path = z.object({
+    routeSegment: z.string()
+});
+
+export const zAllApiPluginsByRouteSegment6Path = z.object({
+    routeSegment: z.string()
+});
+
+export const zAllApiPluginsByRouteSegment7Path = z.object({
+    routeSegment: z.string()
+});
+
+export const zAllApiPluginsByRouteSegment8Path = z.object({
+    routeSegment: z.string()
+});
+
+export const zAllApiPluginsByRouteSegment9Path = z.object({
+    routeSegment: z.string()
+});
+
+export const zAllApiPluginsByRouteSegment10Path = z.object({
+    routeSegment: z.string()
+});
+
+export const zAllApiPluginsByRouteSegment11Path = z.object({
+    routeSegment: z.string()
+});
+
+export const zAllApiPluginsByRouteSegment12Path = z.object({
+    routeSegment: z.string()
+});
+
+export const zAllApiPluginsByRouteSegment13Path = z.object({
+    routeSegment: z.string()
+});
+
+export const zAllApiPluginsByRouteSegment14Path = z.object({
+    routeSegment: z.string()
+});
+
+export const zAllApiPluginsByRouteSegment15Path = z.object({
+    routeSegment: z.string()
+});
+
+export const zAllApiPluginsByRouteSegment16Path = z.object({
+    routeSegment: z.string()
 });

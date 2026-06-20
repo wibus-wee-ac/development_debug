@@ -1603,7 +1603,10 @@ export type GetProviderTargetsByProviderTargetIdCodexAccountDiagnosticsResponses
         refreshedAt: number | null;
         account: {
             authMode: string;
+            accountType: string | null;
+            email: string | null;
             planType: string | null;
+            requiresOpenaiAuth: boolean | null;
         } | null;
         rateLimits: {
             limitId: string | null;
@@ -4177,6 +4180,13 @@ export type PostSessionsData = {
         runtimeSettings?: {
             accessMode?: 'approval-required' | 'full-access';
             interactionMode?: 'default' | 'plan';
+            claudeAgent?: {
+                modelAliases?: {
+                    haiku?: string;
+                    sonnet?: string;
+                    opus?: string;
+                };
+            } | null;
         };
         id?: string;
     };
@@ -6115,6 +6125,105 @@ export type GetSearchChronicleResponses = {
 
 export type GetSearchChronicleResponse = GetSearchChronicleResponses[keyof GetSearchChronicleResponses];
 
+export type GetPluginsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/plugins/';
+};
+
+export type GetPluginsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        identity: string;
+        routeSegment: string;
+        name: string;
+        version: string;
+        displayName: string;
+        description: string | null;
+        iconUrl: string | null;
+        source: {
+            kind: 'workspaceDev' | 'bundledResource' | 'externalLocal';
+            packageDir: string;
+            trusted: boolean;
+            reason: string | null;
+        };
+        activation: {
+            enabled: boolean;
+            source: 'default' | 'user';
+            reason: string | null;
+            updatedAt: number | null;
+        };
+        layers: {
+            server: {
+                layer: 'server' | 'web' | 'desktop';
+                status: 'discovered' | 'invalid' | 'skipped' | 'disabled' | 'activating' | 'active' | 'failed' | 'partial';
+                entry: string | null;
+                error: string | null;
+                activatedAt: string | null;
+            };
+            web: {
+                layer: 'server' | 'web' | 'desktop';
+                status: 'discovered' | 'invalid' | 'skipped' | 'disabled' | 'activating' | 'active' | 'failed' | 'partial';
+                entry: string | null;
+                error: string | null;
+                activatedAt: string | null;
+            };
+            desktop: {
+                layer: 'server' | 'web' | 'desktop';
+                status: 'discovered' | 'invalid' | 'skipped' | 'disabled' | 'activating' | 'active' | 'failed' | 'partial';
+                entry: string | null;
+                error: string | null;
+                activatedAt: string | null;
+            };
+        };
+        declaredCapabilities: Array<{
+            id: string;
+            owner: string;
+            localId: string;
+            type: string;
+            layer: string | null;
+            label: string | null;
+            description: string | null;
+            permissions: Array<string>;
+            metadata: {
+                [key: string]: unknown;
+            };
+        }>;
+        declaredPermissions: Array<{
+            id: string;
+            owner: string;
+            localId: string;
+            label: string | null;
+            description: string | null;
+            required: boolean;
+        }>;
+        capabilities: Array<{
+            id: string;
+            owner: string;
+            type: string;
+            layer: 'server' | 'web' | 'desktop';
+            status: 'registered' | 'failed' | 'unsupported';
+            label: string | null;
+            metadata: {
+                [key: string]: unknown;
+            };
+        }>;
+        warnings: Array<string>;
+        active: boolean;
+        hasWeb: boolean;
+        hasServer: boolean;
+        hasDesktop: boolean;
+        serverEntry: string | null;
+        webEntry: string | null;
+        desktopEntry: string | null;
+    }>;
+};
+
+export type GetPluginsResponse = GetPluginsResponses[keyof GetPluginsResponses];
+
 export type GetPluginsMentionsData = {
     body?: never;
     path?: never;
@@ -6153,6 +6262,211 @@ export type GetPluginsByRouteSegmentIconData = {
     query?: never;
     url: '/plugins/{routeSegment}/icon';
 };
+
+export type GetPluginsByRouteSegmentData = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/plugins/{routeSegment}';
+};
+
+export type GetPluginsByRouteSegmentResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        identity: string;
+        routeSegment: string;
+        name: string;
+        version: string;
+        displayName: string;
+        description: string | null;
+        iconUrl: string | null;
+        source: {
+            kind: 'workspaceDev' | 'bundledResource' | 'externalLocal';
+            packageDir: string;
+            trusted: boolean;
+            reason: string | null;
+        };
+        activation: {
+            enabled: boolean;
+            source: 'default' | 'user';
+            reason: string | null;
+            updatedAt: number | null;
+        };
+        layers: {
+            server: {
+                layer: 'server' | 'web' | 'desktop';
+                status: 'discovered' | 'invalid' | 'skipped' | 'disabled' | 'activating' | 'active' | 'failed' | 'partial';
+                entry: string | null;
+                error: string | null;
+                activatedAt: string | null;
+            };
+            web: {
+                layer: 'server' | 'web' | 'desktop';
+                status: 'discovered' | 'invalid' | 'skipped' | 'disabled' | 'activating' | 'active' | 'failed' | 'partial';
+                entry: string | null;
+                error: string | null;
+                activatedAt: string | null;
+            };
+            desktop: {
+                layer: 'server' | 'web' | 'desktop';
+                status: 'discovered' | 'invalid' | 'skipped' | 'disabled' | 'activating' | 'active' | 'failed' | 'partial';
+                entry: string | null;
+                error: string | null;
+                activatedAt: string | null;
+            };
+        };
+        declaredCapabilities: Array<{
+            id: string;
+            owner: string;
+            localId: string;
+            type: string;
+            layer: string | null;
+            label: string | null;
+            description: string | null;
+            permissions: Array<string>;
+            metadata: {
+                [key: string]: unknown;
+            };
+        }>;
+        declaredPermissions: Array<{
+            id: string;
+            owner: string;
+            localId: string;
+            label: string | null;
+            description: string | null;
+            required: boolean;
+        }>;
+        capabilities: Array<{
+            id: string;
+            owner: string;
+            type: string;
+            layer: 'server' | 'web' | 'desktop';
+            status: 'registered' | 'failed' | 'unsupported';
+            label: string | null;
+            metadata: {
+                [key: string]: unknown;
+            };
+        }>;
+        warnings: Array<string>;
+        active: boolean;
+        hasWeb: boolean;
+        hasServer: boolean;
+        hasDesktop: boolean;
+        serverEntry: string | null;
+        webEntry: string | null;
+        desktopEntry: string | null;
+    };
+};
+
+export type GetPluginsByRouteSegmentResponse = GetPluginsByRouteSegmentResponses[keyof GetPluginsByRouteSegmentResponses];
+
+export type PatchPluginsByRouteSegmentEnabledData = {
+    body: {
+        enabled: boolean;
+        reason?: string | null;
+    };
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/plugins/{routeSegment}/enabled';
+};
+
+export type PatchPluginsByRouteSegmentEnabledResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        identity: string;
+        routeSegment: string;
+        name: string;
+        version: string;
+        displayName: string;
+        description: string | null;
+        iconUrl: string | null;
+        source: {
+            kind: 'workspaceDev' | 'bundledResource' | 'externalLocal';
+            packageDir: string;
+            trusted: boolean;
+            reason: string | null;
+        };
+        activation: {
+            enabled: boolean;
+            source: 'default' | 'user';
+            reason: string | null;
+            updatedAt: number | null;
+        };
+        layers: {
+            server: {
+                layer: 'server' | 'web' | 'desktop';
+                status: 'discovered' | 'invalid' | 'skipped' | 'disabled' | 'activating' | 'active' | 'failed' | 'partial';
+                entry: string | null;
+                error: string | null;
+                activatedAt: string | null;
+            };
+            web: {
+                layer: 'server' | 'web' | 'desktop';
+                status: 'discovered' | 'invalid' | 'skipped' | 'disabled' | 'activating' | 'active' | 'failed' | 'partial';
+                entry: string | null;
+                error: string | null;
+                activatedAt: string | null;
+            };
+            desktop: {
+                layer: 'server' | 'web' | 'desktop';
+                status: 'discovered' | 'invalid' | 'skipped' | 'disabled' | 'activating' | 'active' | 'failed' | 'partial';
+                entry: string | null;
+                error: string | null;
+                activatedAt: string | null;
+            };
+        };
+        declaredCapabilities: Array<{
+            id: string;
+            owner: string;
+            localId: string;
+            type: string;
+            layer: string | null;
+            label: string | null;
+            description: string | null;
+            permissions: Array<string>;
+            metadata: {
+                [key: string]: unknown;
+            };
+        }>;
+        declaredPermissions: Array<{
+            id: string;
+            owner: string;
+            localId: string;
+            label: string | null;
+            description: string | null;
+            required: boolean;
+        }>;
+        capabilities: Array<{
+            id: string;
+            owner: string;
+            type: string;
+            layer: 'server' | 'web' | 'desktop';
+            status: 'registered' | 'failed' | 'unsupported';
+            label: string | null;
+            metadata: {
+                [key: string]: unknown;
+            };
+        }>;
+        warnings: Array<string>;
+        active: boolean;
+        hasWeb: boolean;
+        hasServer: boolean;
+        hasDesktop: boolean;
+        serverEntry: string | null;
+        webEntry: string | null;
+        desktopEntry: string | null;
+    };
+};
+
+export type PatchPluginsByRouteSegmentEnabledResponse = PatchPluginsByRouteSegmentEnabledResponses[keyof PatchPluginsByRouteSegmentEnabledResponses];
 
 export type GetSkillsData = {
     body?: never;
@@ -17306,97 +17620,153 @@ export type DeleteIssueAgentSessionsByAgentSessionIdResponses = {
 
 export type DeleteIssueAgentSessionsByAgentSessionIdResponse = DeleteIssueAgentSessionsByAgentSessionIdResponses[keyof DeleteIssueAgentSessionsByAgentSessionIdResponses];
 
-export type GetApiPluginsNowledgeMemStatusData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/plugins/nowledge-mem/status';
-};
-
-export type GetApiPluginsNowledgeMemConfigData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/plugins/nowledge-mem/config';
-};
-
-export type PutApiPluginsNowledgeMemConfigData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/plugins/nowledge-mem/config';
-};
-
-export type GetApiPluginsNowledgeMemWorkingMemoryData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/plugins/nowledge-mem/working-memory';
-};
-
-export type GetApiPluginsNowledgeMemContextBundleData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/plugins/nowledge-mem/context-bundle';
-};
-
-export type GetApiPluginsNowledgeMemMemoriesSearchData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/plugins/nowledge-mem/memories/search';
-};
-
-export type PostApiPluginsNowledgeMemMemoriesData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/plugins/nowledge-mem/memories';
-};
-
-export type GetApiPluginsNowledgeMemThreadsSearchData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/plugins/nowledge-mem/threads/search';
-};
-
-export type PostApiPluginsNowledgeMemThreadsData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/plugins/nowledge-mem/threads';
-};
-
-export type GetApiPluginsNowledgeMemThreadsByThreadIdData = {
-    body?: never;
-    path: {
-        threadId: string;
-    };
-    query?: never;
-    url: '/api/plugins/nowledge-mem/threads/{threadId}';
-};
-
-export type PostApiPluginsNowledgeMemThreadsByThreadIdAppendData = {
-    body?: never;
-    path: {
-        threadId: string;
-    };
-    query?: never;
-    url: '/api/plugins/nowledge-mem/threads/{threadId}/append';
-};
-
-export type GetApiPluginsSystemInfoInfoData = {
-    body?: never;
-    path?: never;
-    query?: never;
-    url: '/api/plugins/system-info/info';
-};
-
 export type GetApiPluginsData = {
     body?: never;
     path?: never;
     query?: never;
     url: '/api/plugins/';
+};
+
+export type AllApiPluginsByRouteSegmentData = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}';
+};
+
+export type AllApiPluginsByRouteSegment2Data = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}';
+};
+
+export type AllApiPluginsByRouteSegment3Data = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}';
+};
+
+export type AllApiPluginsByRouteSegment4Data = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}';
+};
+
+export type AllApiPluginsByRouteSegment5Data = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}';
+};
+
+export type AllApiPluginsByRouteSegment6Data = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}';
+};
+
+export type AllApiPluginsByRouteSegment7Data = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}';
+};
+
+export type AllApiPluginsByRouteSegment8Data = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}';
+};
+
+export type AllApiPluginsByRouteSegment9Data = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}/*';
+};
+
+export type AllApiPluginsByRouteSegment10Data = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}/*';
+};
+
+export type AllApiPluginsByRouteSegment11Data = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}/*';
+};
+
+export type AllApiPluginsByRouteSegment12Data = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}/*';
+};
+
+export type AllApiPluginsByRouteSegment13Data = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}/*';
+};
+
+export type AllApiPluginsByRouteSegment14Data = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}/*';
+};
+
+export type AllApiPluginsByRouteSegment15Data = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}/*';
+};
+
+export type AllApiPluginsByRouteSegment16Data = {
+    body?: never;
+    path: {
+        routeSegment: string;
+    };
+    query?: never;
+    url: '/api/plugins/{routeSegment}/*';
 };
