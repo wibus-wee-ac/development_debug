@@ -1,4 +1,13 @@
-# CC Switch Plugin
+<p align="center">
+  <img src="../../.github/Cradle.png" alt="Cradle Icon" width="128" />
+  <img src="https://github.com/farion1231/cc-switch/blob/main/src-tauri/icons/icon.png?raw=true" alt="Nowledge Icon" width="136" />
+  <h1 align="center"><b>CC-Switch for Cradle</b></h1>
+  <p align="center">
+    Official Cradle plugin for read model providers from CC-Switch.
+    <br />
+    <br />
+  </p>
+</p>
 
 This plugin registers a Cradle external provider source named `cc-switch`. It reads CC Switch provider data from the local CC Switch SQLite database and local settings JSON, then returns a fixed snapshot shape for the Cradle host to project into read-only provider profiles.
 
