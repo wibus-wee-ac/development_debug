@@ -1,6 +1,14 @@
-# Nowledge Mem for Cradle
+<p align="center">
+  <img src="../../.github/Cradle.png" alt="Cradle Icon" width="128" />
+  <img src="https://mem.nowledge.co/images/nowledge-mem-logo.webp" alt="Nowledge Icon" width="136" />
+  <h1 align="center"><b>Nowledge Mem for Cradle</b></h1>
+  <p align="center">
+    Official Cradle plugin for connecting agents to Nowledge Mem.
+    <br />
+    <br />
+  </p>
+</p>
 
-Official Cradle plugin for connecting agents to Nowledge Mem.
 
 Nowledge Mem gives agents access to persistent memories, saved threads, Working Memory, and context bundles. This plugin exposes those capabilities through Cradle's plugin system without moving memory ownership into Cradle.
 
