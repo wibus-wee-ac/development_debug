@@ -416,6 +416,122 @@ describe('sdk-backed providers in unified chat runtime', () => {
     }
   })
 
+  it('applies Claude Agent SDK model aliases from chat session runtime settings to chat runs', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'sdk-provider-secret'
+
+    sdkMocks.claudeQuery.mockImplementation(() => makeAsyncSequence([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-matrix-session',
+        message: {
+          content: [{ type: 'text', text: 'Session configured' }],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-session-matrix-session',
+        usage: { input_tokens: 4, output_tokens: 2 },
+      },
+    ]))
+
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
+      const url = new Request(input).url
+      if (url === 'https://api.anthropic.com/v1/models') {
+        return new Response(JSON.stringify({
+          data: [{ id: 'claude-sonnet-main', display_name: 'Claude Sonnet Main' }],
+        }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      if (url === 'https://models.dev/api.json') {
+        return new Response(JSON.stringify({ anthropic: { models: {} } }), { status: 200, headers: { 'content-type': 'application/json' } })
+      }
+      return new Response('{}', { status: 200, headers: { 'content-type': 'application/json' } })
+    })
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-session-matrix-settings',
+        name: 'Workspace Session Matrix Settings',
+        path: workspaceRoot,
+      }).run()
+
+      await createProfileAndSession(app, {
+        workspaceId: 'workspace-session-matrix-settings',
+        providerKind: 'claude-agent',
+        profileId: 'profile-session-matrix-settings',
+        sessionId: 'session-session-matrix-settings',
+        config: {
+          model: 'claude-sonnet-main',
+          claudeAgent: {
+            modelAliases: {
+              haiku: 'claude-haiku-provider',
+              sonnet: 'claude-sonnet-provider',
+              opus: 'claude-opus-provider',
+            },
+          },
+        },
+        secret: 'sk-ant-session-matrix-settings',
+      })
+
+      const patchRes = await app.handle(new Request('http://localhost/chat/sessions/session-session-matrix-settings/runtime-settings', {
+        method: 'PATCH',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          claudeAgent: {
+            modelAliases: {
+              haiku: 'claude-haiku-session',
+              sonnet: 'claude-sonnet-session',
+              opus: 'claude-opus-session',
+            },
+          },
+        }),
+      }))
+      expect(patchRes.status).toBe(200)
+
+      const runRes = await app.handle(new Request('http://localhost/chat/sessions/session-session-matrix-settings/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Use session settings' }),
+      }))
+      expect(runRes.status).toBe(200)
+
+      await waitForMessageStatus(app, 'session-session-matrix-settings', 'complete')
+
+      const call = sdkMocks.claudeQuery.mock.calls[0]?.[0] as {
+        options?: { env?: Record<string, string> }
+      } | undefined
+      expect(call?.options?.env).toEqual(expect.objectContaining({
+        ANTHROPIC_DEFAULT_HAIKU_MODEL: 'claude-haiku-session',
+        ANTHROPIC_DEFAULT_SONNET_MODEL: 'claude-sonnet-session',
+        ANTHROPIC_DEFAULT_OPUS_MODEL: 'claude-opus-session',
+      }))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
   it('emits tool_call.started and tool_call.completed for claude-agent tool use lifecycle', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')

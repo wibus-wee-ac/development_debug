@@ -76,6 +76,7 @@ function summarizeRendererDrilldowns(
   const renderers = readNestedArray(diagnostics ?? {}, 'renderers')
   const topChatSessions: Array<Record<string, unknown>> = []
   const activeStreamingMessages: Array<Record<string, unknown>> = []
+  const runDisplayMetaMessages: Array<Record<string, unknown>> = []
   const rendererWindows: Array<Record<string, unknown>> = []
 
   for (const item of renderers) {
@@ -149,9 +150,33 @@ function summarizeRendererDrilldowns(
         generating: readRecordBoolean(messageRecord, 'generating'),
         passiveStreaming: readRecordBoolean(messageRecord, 'passiveStreaming'),
         localDriver: readRecordBoolean(messageRecord, 'localDriver'),
+        runActive: readRecordBoolean(messageRecord, 'runActive'),
+        runId: readRecordString(messageRecord, 'runId'),
+        runCompletedAtMs: readRecordNumber(messageRecord, 'runCompletedAtMs'),
         role: readRecordString(messageRecord, 'role'),
         partCount: readRecordNumber(messageRecord, 'partCount'),
         estimatedPartStringChars: readRecordNumber(messageRecord, 'estimatedPartStringChars'),
+      })
+    }
+
+    for (const message of readNestedArray(chatStore ?? {}, 'runDisplayMetaMessages')) {
+      if (!message || typeof message !== 'object' || Array.isArray(message)) {
+        continue
+      }
+      const messageRecord = message as Record<string, unknown>
+      runDisplayMetaMessages.push({
+        ...windowIdentity,
+        sessionId: readRecordString(messageRecord, 'sessionId'),
+        messageId: readRecordString(messageRecord, 'messageId'),
+        runId: readRecordString(messageRecord, 'runId'),
+        completedAtMs: readRecordNumber(messageRecord, 'completedAtMs'),
+        generating: readRecordBoolean(messageRecord, 'generating'),
+        passiveStreaming: readRecordBoolean(messageRecord, 'passiveStreaming'),
+        localDriver: readRecordBoolean(messageRecord, 'localDriver'),
+        role: readRecordString(messageRecord, 'role'),
+        partCount: readRecordNumber(messageRecord, 'partCount'),
+        splitSourceMessageId: readRecordString(messageRecord, 'splitSourceMessageId'),
+        splitTailMessageId: readRecordString(messageRecord, 'splitTailMessageId'),
       })
     }
   }
@@ -162,6 +187,9 @@ function summarizeRendererDrilldowns(
   activeStreamingMessages.sort((a, b) =>
     (readRecordNumber(b, 'estimatedPartStringChars') ?? 0) - (readRecordNumber(a, 'estimatedPartStringChars') ?? 0)
     || (readRecordNumber(b, 'partCount') ?? 0) - (readRecordNumber(a, 'partCount') ?? 0))
+  runDisplayMetaMessages.sort((a, b) =>
+    Number(readRecordNumber(a, 'completedAtMs') !== null) - Number(readRecordNumber(b, 'completedAtMs') !== null)
+    || (readRecordNumber(b, 'partCount') ?? 0) - (readRecordNumber(a, 'partCount') ?? 0))
   rendererWindows.sort((a, b) =>
     (readRecordNumber(b, 'usedJSHeapSize') ?? 0) - (readRecordNumber(a, 'usedJSHeapSize') ?? 0))
 
@@ -169,6 +197,7 @@ function summarizeRendererDrilldowns(
     rendererWindows: rendererWindows.slice(0, TOP_DRILLDOWN_LIMIT),
     topChatSessions: topChatSessions.slice(0, TOP_DRILLDOWN_LIMIT),
     activeStreamingMessages: activeStreamingMessages.slice(0, TOP_DRILLDOWN_LIMIT),
+    runDisplayMetaMessages: runDisplayMetaMessages.slice(0, TOP_DRILLDOWN_LIMIT),
   }
 }
 

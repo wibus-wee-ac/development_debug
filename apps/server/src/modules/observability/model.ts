@@ -304,6 +304,7 @@ export const ObservabilityModel = {
         rendererWindows: t.Array(t.Record(t.String(), t.Unknown())),
         topChatSessions: t.Array(t.Record(t.String(), t.Unknown())),
         activeStreamingMessages: t.Array(t.Record(t.String(), t.Unknown())),
+        runDisplayMetaMessages: t.Array(t.Record(t.String(), t.Unknown())),
       }),
       browserPanel: t.Object({
         panel: t.Nullable(t.Record(t.String(), t.Unknown())),
