@@ -79,12 +79,9 @@ export function ClaudeModelMatrixEditor({
   }
 
   return (
-    <div className="flex flex-col gap-0">
+    <div className="flex flex-col gap-0 -mt-2">
       <div className="mb-1.5 flex items-center justify-between gap-3">
         <div className="flex min-w-0 items-center gap-1.5">
-          <h5 className="text-[12px] font-medium text-foreground">
-            Tier routing
-          </h5>
           {loading && <Spinner className="size-3 text-muted-foreground" />}
         </div>
         <div className="flex shrink-0 items-center gap-1">

@@ -19,9 +19,11 @@ import { useProviderTargetClaudeMatrix, useSessionClaudeMatrix } from './runtime
 
 const ChatView = lazy(() => import('./chat-view').then(module => ({ default: module.ChatView })))
 
-type SessionProviderModelPatch
-  = | { providerTargetId: string, modelId: string }
-    | { modelId: string | null }
+type SessionProviderModelPatch = {
+  providerTargetId?: string
+  modelId?: string | null
+  thinkingEffort?: SendMessageOptions['thinkingEffort'] | null
+}
 
 interface SessionProviderModelSaveState {
   queue: Promise<void>
@@ -34,6 +36,7 @@ export function ChatRuntimeView({
   sessionId,
   sessionProviderTargetId,
   sessionModelId,
+  sessionThinkingEffort,
   runtimeKind,
   workspaceId,
   agentId,
@@ -47,6 +50,7 @@ export function ChatRuntimeView({
   sessionId: string
   sessionProviderTargetId: string | null
   sessionModelId: string | null
+  sessionThinkingEffort: SendMessageOptions['thinkingEffort'] | null
   runtimeKind: RuntimeKind | undefined
   workspaceId: string | null
   agentId: string | null
@@ -62,6 +66,7 @@ export function ChatRuntimeView({
     agentId ?? '',
     sessionProviderTargetId ?? '',
     sessionModelId ?? '',
+    sessionThinkingEffort ?? '',
     runtimeKind ?? '',
   ].join(':')
   const composerState = useComposerState({
@@ -69,6 +74,7 @@ export function ChatRuntimeView({
     boundAgentId: agentId,
     boundProviderTargetId: sessionProviderTargetId ?? undefined,
     boundModelId: sessionModelId,
+    boundThinkingEffort: sessionThinkingEffort,
     boundRuntimeKind: runtimeKind,
     resetKey: composerResetKey,
   })
@@ -145,6 +151,7 @@ export function ChatRuntimeView({
     const optimisticPatch = {
       ...('providerTargetId' in body ? { providerTargetId: body.providerTargetId } : {}),
       ...(body.modelId !== undefined ? { modelId: body.modelId } : {}),
+      ...(body.thinkingEffort !== undefined ? { thinkingEffort: body.thinkingEffort } : {}),
     }
 
     queryClient.setQueryData(previousSessionKey, current =>
@@ -248,6 +255,10 @@ export function ChatRuntimeView({
       void (resolvedProfileId
         ? persistSessionProviderModel({ providerTargetId: resolvedProfileId, modelId: id })
         : persistSessionProviderModel({ modelId: id }))
+    },
+    setThinkingEffort: (effort) => {
+      composerState.setThinkingEffort(effort)
+      void persistSessionProviderModel({ thinkingEffort: effort })
     },
   })
 

@@ -40,6 +40,18 @@ interface ProviderModelSelectorProps {
   onSelectThinkingEffort: (effort: ThinkingEffort) => void
 }
 
+export function useProviderThinkingOptions(): Array<ThinkingOption<ThinkingEffort>> {
+  const { t } = useTranslation('common')
+  return THINKING_EFFORTS.map((option) => {
+    const key = option.value
+    return {
+      value: key,
+      label: t(thinkingLabelKeys[key]),
+      description: t(thinkingDescriptionKeys[key]),
+    }
+  })
+}
+
 export function ProviderModelSelector({
   profiles,
   selectedProfileId,
@@ -56,14 +68,7 @@ export function ProviderModelSelector({
 }: ProviderModelSelectorProps) {
   const { t } = useTranslation('common')
   const selectedModel = models.find(model => model.id === selectedModelId) ?? null
-  const thinkingOptions: Array<ThinkingOption<ThinkingEffort>> = THINKING_EFFORTS.map((option) => {
-      const key = option.value
-      return {
-        value: key,
-        label: t(thinkingLabelKeys[key]),
-        description: t(thinkingDescriptionKeys[key]),
-      }
-    })
+  const thinkingOptions = useProviderThinkingOptions()
   const selectThinkingForModel = (model: ModelDescriptor | null): ThinkingEffort =>
       selectSupportedThinkingValue(model, thinkingOptions, thinkingEffort, 'high')
 

@@ -137,7 +137,7 @@ export function CodexAccountDiagnosticsPanel({ providerTargetId }: { providerTar
 
       <Dialog open={dialogOpen} onOpenChange={setDialogOpen}>
         <DialogContent
-          className="flex max-h-[calc(100vh-2rem)]  w-lg max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
+          className="flex max-h-[calc(100vh-2rem)]  w-180 max-w-none flex-col gap-0 overflow-hidden p-0 sm:max-w-none"
           showCloseButton
         >
           <DialogHeaderBar

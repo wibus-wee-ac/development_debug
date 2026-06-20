@@ -7,8 +7,9 @@ import { ClaudeAgentMatrixSelector } from '~/features/chat/runtime/claude-sessio
 
 import { AgentSelector } from './agent-selector'
 import { ChatAgentIdentity } from './chat-agent-identity'
-import { ProviderModelSelector } from './provider-model-selector'
+import { ProviderModelSelector, useProviderThinkingOptions } from './provider-model-selector'
 import { RuntimeSelector } from './runtime-selector'
+import { filterThinkingOptionsForModel } from './constants'
 import type { ComposerContext } from './types'
 import type { ComposerStateResult } from './use-composer-state'
 
@@ -68,13 +69,24 @@ export function ComposerToolbar({ context, state, claudeMatrix }: ComposerToolba
   const isClaudeAgent = selection.targetMode === 'provider'
     && selection.runtimeKind === 'claude-agent'
     && !!claudeMatrix
+  const selectedModel = models.find(model => model.id === selection.modelId) ?? null
+  const thinkingOptions = useProviderThinkingOptions()
+  const selectedThinkingOptions = useMemo(
+    () => filterThinkingOptionsForModel(selectedModel, thinkingOptions),
+    [selectedModel, thinkingOptions],
+  )
   const matrixProfiles: ClaudeAgentMatrixProviderOption[] = useMemo(
-    () => profiles.map(profile => ({
-      id: profile.id,
-      name: profile.name,
-      providerKind: profile.providerKind,
-      iconSlug: profile.iconSlug,
-    })),
+    () => profiles.flatMap((profile) => {
+      if (profile.providerKind === 'cli-tool') {
+        return []
+      }
+      return [{
+        id: profile.id,
+        name: profile.name,
+        providerKind: profile.providerKind,
+        iconSlug: profile.iconSlug,
+      }]
+    }),
     [profiles],
   )
 
@@ -106,7 +118,10 @@ export function ComposerToolbar({ context, state, claudeMatrix }: ComposerToolba
               selectedModelId={selection.modelId}
               matrix={claudeMatrix!.slot}
               loadingModels={isLoadingModels || claudeMatrix!.providerSettingsLoading}
+              thinkingEffort={selection.thinkingEffort}
+              thinkingOptions={selectedThinkingOptions}
               onSelectProfile={setProfileId}
+              onSelectThinkingEffort={setThinkingEffort}
               occludeNativeBrowserSurface
             />
           )
