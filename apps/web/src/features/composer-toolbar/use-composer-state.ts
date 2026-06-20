@@ -24,6 +24,8 @@ interface ComposerStateConfig {
   boundProviderTargetId?: string
   /** For 'chat' context — the session's bound requested model */
   boundModelId?: string | null
+  /** For 'chat' context — the session's bound requested thinking effort */
+  boundThinkingEffort?: ThinkingEffort
   /** For 'chat' context — the session's runtime kind */
   boundRuntimeKind?: RuntimeKind
   /** For 'chat' context — clears local manual overrides when the owning session changes */
@@ -112,7 +114,7 @@ export function selectChatThinkingEffort(input: {
 }
 
 export function useComposerState(config: ComposerStateConfig): ComposerStateResult {
-  const { context, enableAgents = false, boundAgentId, boundProviderTargetId, boundModelId, boundRuntimeKind, resetKey } = config
+  const { context, enableAgents = false, boundAgentId, boundProviderTargetId, boundModelId, boundThinkingEffort, boundRuntimeKind, resetKey } = config
 
   // Persisted state
   const lastRuntimeKind = useNewChatStore(s => s.lastRuntimeKind)
@@ -221,6 +223,13 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     ? candidateNewChatAgent ?? selectableAgents[0] ?? null
     : null
 
+  const boundAgent = useMemo(() => {
+    if (context !== 'chat' || !boundAgentId) {
+      return null
+    }
+    return agents.find(agent => agent.id === boundAgentId && agent.enabled) ?? null
+  }, [agents, boundAgentId, context])
+
   const runtimeKind = useMemo(() => {
     if (context === 'chat') {
       return boundRuntimeKind ?? 'codex'
@@ -239,16 +248,12 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
   const selectedAgentThinkingEffort = selectedNewChatAgent
     ? readChatThinkingEffort(selectedNewChatAgent.thinkingEffort)
     : null
+  const boundChatThinkingEffort = context === 'chat'
+    ? readChatThinkingEffort(boundThinkingEffort) ?? readChatThinkingEffort(boundAgent?.thinkingEffort)
+    : null
   const thinkingEffort = effectiveManualThinkingEffort === undefined
-    ? selectedAgentThinkingEffort ?? readChatThinkingEffort(lastThinkingEffort)
+    ? boundChatThinkingEffort ?? selectedAgentThinkingEffort ?? readChatThinkingEffort(lastThinkingEffort)
     : effectiveManualThinkingEffort
-
-  const boundAgent = useMemo(() => {
-    if (context !== 'chat' || !boundAgentId) {
-      return null
-    }
-    return agents.find(agent => agent.id === boundAgentId && agent.enabled) ?? null
-  }, [agents, boundAgentId, context])
 
   const agentId = useMemo(() => {
     if (context === 'chat' && boundAgent?.runtimeKind === runtimeKind) {
@@ -347,14 +352,11 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     [models, modelId],
   )
   const effectiveThinkingEffort = useMemo((): ThinkingEffort => {
-    const preferredThinkingEffort = context === 'chat' && boundAgent?.thinkingEffort
-      ? readChatThinkingEffort(boundAgent.thinkingEffort)
-      : thinkingEffort
     return selectChatThinkingEffort({
       effectiveModel,
-      preferredThinkingEffort,
+      preferredThinkingEffort: thinkingEffort,
     })
-  }, [boundAgent, context, effectiveModel, thinkingEffort])
+  }, [effectiveModel, thinkingEffort])
 
   const selection = useMemo((): ComposerSelection => ({
     agentId,

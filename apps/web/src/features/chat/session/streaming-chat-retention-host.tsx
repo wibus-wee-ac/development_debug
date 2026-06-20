@@ -8,6 +8,7 @@ import { useChatStore } from '~/store/chat'
 
 import type { ChatSessionFrameDescriptor } from './chat-session-frame-host'
 import { ChatSessionFrameHost } from './chat-session-frame-host'
+import { readSessionThinkingEffort } from './session-thinking-effort'
 import { readRetainableStreamingSessionIds } from './streaming-session-retention'
 
 function useStreamingSessionIds(): string[] {
@@ -29,6 +30,7 @@ function RetainedStreamingChatSession({ sessionId }: { sessionId: string }) {
     sessionId,
     sessionProviderTargetId: session?.providerTargetId ?? null,
     sessionModelId: session?.modelId ?? null,
+    sessionThinkingEffort: readSessionThinkingEffort(session?.thinkingEffort),
     runtimeKind: session?.runtimeKind,
     workspaceId: session?.workspaceId ?? null,
     agentId: session?.agentId ?? null,

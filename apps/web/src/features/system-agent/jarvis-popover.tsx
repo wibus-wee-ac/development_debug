@@ -22,6 +22,7 @@ import { CENTER_COLUMN_EXPANDED_SCALE, CENTER_COLUMN_EXPANDED_Y } from '~/compon
 import { Button } from '~/components/ui/button'
 import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { ChatRuntimeView } from '~/features/chat/chat-runtime-view'
+import { readSessionThinkingEffort } from '~/features/chat/session/session-thinking-effort'
 import type { ChatViewProps } from '~/features/chat/chat-view'
 import type { ComposerSendHandler } from '~/features/chat/composer/composer'
 import { Composer } from '~/features/chat/composer/composer'
@@ -322,6 +323,7 @@ function JarvisRuntimePanel({
   const sessionTitle = session?.title ?? 'Jarvis'
   const sessionProviderTargetId = session?.providerTargetId ?? prefsProviderTargetId ?? null
   const sessionModelId = session?.modelId ?? prefsModelId ?? null
+  const sessionThinkingEffort = readSessionThinkingEffort(session?.thinkingEffort)
   const agentId = session?.agentId ?? null
 
   React.useEffect(() => {
@@ -340,6 +342,7 @@ function JarvisRuntimePanel({
         sessionId={sessionId}
         sessionProviderTargetId={sessionProviderTargetId}
         sessionModelId={sessionModelId}
+        sessionThinkingEffort={sessionThinkingEffort}
         runtimeKind={runtimeKind}
         workspaceId={workspaceId}
         agentId={agentId}

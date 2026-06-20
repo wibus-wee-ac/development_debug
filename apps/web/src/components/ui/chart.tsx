@@ -36,11 +36,19 @@ const ChartPayloadConfigKeySchema = z.string().optional()
 const ChartPayloadConfigLookupSchema = z.object({
   payload: ChartPayloadProjectionSchema,
   key: z.string(),
-}).transform(({ payload, key }) =>
-  ChartPayloadConfigKeySchema.parse(payload[key])
-  ?? ChartPayloadConfigKeySchema.parse(payload.payload[key])
-  ?? key
-)
+}).transform(({ payload, key }) => {
+  const directKey = ChartPayloadConfigKeySchema.safeParse(payload[key])
+  if (directKey.success && directKey.data !== undefined) {
+    return directKey.data
+  }
+
+  const nestedKey = ChartPayloadConfigKeySchema.safeParse(payload.payload[key])
+  if (nestedKey.success && nestedKey.data !== undefined) {
+    return nestedKey.data
+  }
+
+  return key
+})
 
 const ChartContext = React.createContext<ChartContextProps | null>(null)
 

@@ -418,6 +418,7 @@ const IssueLinkedSessionSchema = z
     providerTargetId: z.string().nullable(),
     agentId: z.string().nullable(),
     modelId: z.string().nullable(),
+    thinkingEffort: z.string().nullable(),
     linkedIssueId: z.string().nullable(),
     runtimeKind: z.string(),
     status: z.enum(['idle', 'streaming', 'error']),

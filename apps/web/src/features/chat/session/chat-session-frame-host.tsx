@@ -3,6 +3,7 @@ import { Activity, useLayoutEffect, useState } from 'react'
 import { shallow } from 'zustand/shallow'
 
 import type { RuntimeKind } from '~/features/agent-runtime/types'
+import type { SendMessageOptions } from '~/features/chat/session/use-chat-session'
 import { cn } from '~/lib/utils'
 import { SurfaceActivityProvider } from '~/navigation/surface-activity-context'
 import { chatSelectors, useChatStore } from '~/store/chat'
@@ -18,6 +19,7 @@ export interface ChatSessionFrameDescriptor {
   sessionId: string
   sessionProviderTargetId: string | null
   sessionModelId: string | null
+  sessionThinkingEffort: SendMessageOptions['thinkingEffort'] | null
   runtimeKind: RuntimeKind | undefined
   workspaceId: string | null
   agentId: string | null
@@ -163,6 +165,7 @@ const ChatSessionFrame = ({
           sessionId={descriptor.sessionId}
           sessionProviderTargetId={descriptor.sessionProviderTargetId}
           sessionModelId={descriptor.sessionModelId}
+          sessionThinkingEffort={descriptor.sessionThinkingEffort}
           runtimeKind={descriptor.runtimeKind}
           workspaceId={descriptor.workspaceId}
           agentId={descriptor.agentId}
@@ -229,6 +232,7 @@ function areFrameListsEqual(
       && frame.sessionId === nextFrame.sessionId
       && frame.sessionProviderTargetId === nextFrame.sessionProviderTargetId
       && frame.sessionModelId === nextFrame.sessionModelId
+      && frame.sessionThinkingEffort === nextFrame.sessionThinkingEffort
       && frame.runtimeKind === nextFrame.runtimeKind
       && frame.workspaceId === nextFrame.workspaceId
       && frame.agentId === nextFrame.agentId

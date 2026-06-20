@@ -14,6 +14,7 @@ import { useSurfaceStore } from '~/navigation/surface-store'
 import { useSessionLayoutStore } from '~/store/session-layout'
 
 import { ChatSessionFrameHost } from './chat-session-frame-host'
+import { readSessionThinkingEffort } from './session-thinking-effort'
 
 function loadTerminalPanelView() {
   return import('~/features/tui/bottom-terminal-panel').then(module => ({ default: module.BottomTerminalPanel }))
@@ -86,6 +87,7 @@ export function ChatSessionRouteContent({ sessionId }: { sessionId: string }) {
   const sessionTitle = session?.title ?? null
   const sessionProviderTargetId = session?.providerTargetId ?? null
   const sessionModelId = session?.modelId ?? null
+  const sessionThinkingEffort = readSessionThinkingEffort(session?.thinkingEffort)
   const isCliTui = session?.runtimeKind === 'cli-tui'
 
   useEffect(() => {
@@ -113,10 +115,11 @@ export function ChatSessionRouteContent({ sessionId }: { sessionId: string }) {
     sessionId,
     sessionProviderTargetId,
     sessionModelId,
+    sessionThinkingEffort,
     runtimeKind: session?.runtimeKind,
     workspaceId,
     agentId,
-  }), [agentId, session?.runtimeKind, sessionId, sessionModelId, sessionProviderTargetId, workspaceId])
+  }), [agentId, session?.runtimeKind, sessionId, sessionModelId, sessionProviderTargetId, sessionThinkingEffort, workspaceId])
 
   const { data: workspace } = useQuery({
     ...getWorkspacesByIdOptions({ path: { id: workspaceId! } }),
