@@ -6,6 +6,7 @@ Agent session and activity records are owned by `../agent-interaction-runtime`. 
 
 Route metadata includes `x-cradle-cli` descriptors for generated CLI commands on the existing issue delegation and issue-agent-session command surface.
 The continuation bridge records Agent Interaction activity and session status for visibility, but queue state is owned by Chat Runtime in `chat_session_queue_items`. Issue Agent reads Chat Runtime queue/run state to keep delegated Agent Sessions active while queued continuations drain, and stop/undelegate cancels the linked Chat Session run plus pending queue items instead of writing Issue Agent-owned queue state.
+Delegated runs read Agent Identity-owned model and thinking-effort preferences, snapshot those preferences into the linked Chat Session, then let Chat Runtime resolve run defaults from the session. Provider execution and durable model binding remain Chat Runtime-owned.
 
 ## Files
 

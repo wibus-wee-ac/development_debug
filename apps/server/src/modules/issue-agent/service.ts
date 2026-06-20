@@ -341,11 +341,14 @@ async function runSession(agentSessionId: string): Promise<void> {
     }
 
     const issue = requireIssue(session.issueId)
+    const agent = requireDelegationAgent(session.agentId)
     const workflowRules = await WorkflowRules.get(issue.workspaceId, session.agentId)
     const chatSession = Session.create({
       workspaceId: issue.workspaceId,
       title: `Issue: ${issue.title}`,
       providerTargetId: session.providerTargetId,
+      modelId: agent.modelId,
+      thinkingEffort: agent.thinkingEffort,
       agentId: session.agentId,
       linkedIssueId: issue.id,
       configJson: JSON.stringify({ permissionMode: 'bypassPermissions' })

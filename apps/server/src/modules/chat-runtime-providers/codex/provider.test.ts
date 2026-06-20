@@ -4114,6 +4114,76 @@ describe('codexProvider app-server integration', () => {
     }
   })
 
+  it('does not send an empty Codex collaboration model when no model is resolved', async () => {
+    const clients: FakeCodexAppServerClient[] = []
+    const provider = new CodexProvider({
+      readSecret: () => 'sk-secret',
+      resolveSkillPaths: () => ['/tmp/cradle-skill'],
+      recordObservability: vi.fn(),
+      createAppServerClient: (options) => {
+        const client = new FakeCodexAppServerClient(options)
+        clients.push(client)
+        return client
+      },
+    })
+    const stream = provider.streamTurn({
+      runId: 'run-codex-runtime-settings-no-model',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile({ model: undefined }),
+      message: createUserMessage('Use runtime settings without a model'),
+      workspaceId: 'workspace-1',
+      providerOptions: {
+        runtimeSettings: {
+          accessMode: 'approval-required',
+          interactionMode: 'plan',
+        },
+      },
+    })
+
+    const firstChunkPromise = stream.next()
+
+    await vi.waitFor(() => {
+      expect(clients[0]?.requests.map(request => request.method)).toEqual(['thread/start', 'turn/start'])
+    })
+    const client = clients[0]
+    if (!client) {
+      throw new Error('Expected Codex app-server client to be created')
+    }
+    const turnStartRequest = client.requests[1]
+    if (!turnStartRequest) {
+      throw new Error('Expected Codex turn/start request')
+    }
+
+    expect(turnStartRequest).toEqual({
+      method: 'turn/start',
+      params: expect.objectContaining({
+        approvalPolicy: 'untrusted',
+        sandboxPolicy: expect.objectContaining({ type: 'readOnly' }),
+      }),
+    })
+    expect(turnStartRequest.params).not.toHaveProperty('collaborationMode')
+
+    client.pushNotification({
+      method: 'item/agentMessage/delta',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'assistant-message-1',
+        delta: 'Done',
+      },
+    })
+    await firstChunkPromise
+    client.pushNotification({
+      method: 'turn/completed',
+      params: {
+        threadId: 'codex-thread-1',
+        turn: { id: 'codex-turn-1', status: 'completed' },
+      },
+    })
+
+    await drainStream(stream)
+  })
+
   it('logs into Codex app-server with ChatGPT auth tokens without API key env', async () => {
     const accessToken = createFakeChatgptJwt({ accountId: 'workspace-1', planType: 'plus' })
     const chatgptSecret = JSON.stringify({

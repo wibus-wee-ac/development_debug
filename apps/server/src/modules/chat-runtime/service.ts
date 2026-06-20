@@ -202,6 +202,7 @@ import {
   getSessionRunContext,
   isProviderTargetAvailable,
   readSessionRequestedModelId,
+  readSessionRequestedThinkingEffort,
   resolveExistingRuntimeSessionForContext,
   resolveRuntimeSessionContext,
   resolveRuntimeSessionForContext
@@ -1544,6 +1545,12 @@ export async function createRun(input: {
         session: context.session,
         requestedProviderTargetId
       })
+    const requestedThinkingEffort =
+      input.thinkingEffort ??
+      readSessionRequestedThinkingEffort({
+        session: context.session,
+        requestedProviderTargetId
+      })
     const runtimeResolution = await resolveRuntimeSessionForContext({
       sessionId: input.sessionId,
       context,
@@ -1694,7 +1701,7 @@ export async function createRun(input: {
       message: draft.userMessage,
       profile: context.profile,
       modelId: requestedModelId ?? runtimeResolution.requestedModelId ?? undefined,
-      thinkingEffort: input.thinkingEffort,
+      thinkingEffort: requestedThinkingEffort,
       runtimeSettings,
       systemPrompt: turnContext.systemPrompt,
       transcript: turnContext.transcript,

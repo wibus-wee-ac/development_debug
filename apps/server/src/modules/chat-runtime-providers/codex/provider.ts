@@ -1241,6 +1241,7 @@ export class CodexProvider implements ChatRuntime {
       return { turnId, shouldStream: true }
     }
 
+    const collaborationModeModel = context.effectiveModel ?? context.config.model
     const turnResponse = await client.request('turn/start', {
       threadId,
       input: context.userInput,
@@ -1252,10 +1253,10 @@ export class CodexProvider implements ChatRuntime {
         context.runtimeContext.runtimeWorkspaceRoots,
         context.config.additionalDirectories,
       ),
-      ...(context.runtimeSettings
+      ...(context.runtimeSettings && collaborationModeModel
         ? {
             collaborationMode: buildCodexCollaborationMode(context.runtimeSettings, {
-              model: context.effectiveModel ?? context.config.model ?? null,
+              model: collaborationModeModel,
               effort: context.requestedReasoningEffort,
             }),
           }
@@ -1524,14 +1525,19 @@ export class CodexProvider implements ChatRuntime {
       writableRoots: runtimeContext.runtimeWorkspaceRoots,
       additionalDirectories: config.additionalDirectories,
     })
+    const collaborationModeModel = entry.modelId ?? snapshot.models.currentModelId ?? config.model
     await entry.client.request('thread/settings/update', {
       threadId: entry.threadId,
       approvalPolicy: access.approvalPolicy,
       sandboxPolicy: access.sandboxPolicy,
-      collaborationMode: buildCodexCollaborationMode(input.settings, {
-        model: entry.modelId ?? snapshot.models.currentModelId ?? config.model ?? null,
-        effort: entry.reasoningEffort ?? config.reasoningEffort,
-      }),
+      ...(collaborationModeModel
+        ? {
+            collaborationMode: buildCodexCollaborationMode(input.settings, {
+              model: collaborationModeModel,
+              effort: entry.reasoningEffort ?? config.reasoningEffort,
+            }),
+          }
+        : {}),
     })
   }
 

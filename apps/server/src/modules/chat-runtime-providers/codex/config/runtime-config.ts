@@ -215,12 +215,12 @@ export function projectCodexRuntimeAccessMode(
 
 export function buildCodexCollaborationMode(
   settings: ChatRuntimeSettings,
-  input: { model: string | null, effort: ReasoningEffort },
+  input: { model: string, effort: ReasoningEffort },
 ): CollaborationMode {
   return {
     mode: settings.interactionMode,
     settings: {
-      model: input.model ?? '',
+      model: input.model,
       reasoning_effort: input.effort,
       developer_instructions: null,
     },

@@ -22,7 +22,7 @@ import {
   readSessionRuntimeSettings,
   writeSessionRuntimeSettingsConfigJson,
 } from '../chat-runtime/runtime-settings'
-import type { ChatRuntimeSettingsPatch } from '../chat-runtime/runtime-provider-types'
+import type { ChatRuntimeSettingsPatch, ChatThinkingEffort } from '../chat-runtime/runtime-provider-types'
 import type { RuntimeKind } from '../provider-contracts/types'
 import { invalidateDurableProviderRuntimeBindingForChatSession } from '../provider-runtime/service'
 import { assertProviderTargetCompatibleWithRuntime, resolveProviderTarget } from '../provider-targets/service'
@@ -45,6 +45,7 @@ const SessionCreateInputSchema = z.object({
   sideContextSource: z.enum(['provider-native', 'cradle-context']).nullable().optional(),
   providerTargetId: z.string().nullable().optional(),
   modelId: z.string().nullable().optional(),
+  thinkingEffort: z.enum(['low', 'medium', 'high', 'xhigh']).nullable().optional(),
   runtimeKind: z.string().trim().min(1).optional(),
   runtimeSettings: z.unknown().optional(),
   agentId: z.string().nullable().optional(),
@@ -101,6 +102,21 @@ export function readSessionModelPreference(configJson: string | null | undefined
     : null
 }
 
+export function readSessionThinkingEffortPreference(
+  configJson: string | null | undefined,
+): ChatThinkingEffort | null {
+  const config = parseTrustedConfigJson(configJson)
+  switch (config.requestedThinkingEffort) {
+    case 'low':
+    case 'medium':
+    case 'high':
+    case 'xhigh':
+      return config.requestedThinkingEffort
+    default:
+      return null
+  }
+}
+
 function writeSessionModelPreferenceConfigJson(
   configJson: string | null | undefined,
   modelId: string | null,
@@ -113,6 +129,21 @@ function writeSessionModelPreferenceConfigJson(
   return JSON.stringify({
     ...config,
     requestedModelId: modelId,
+  })
+}
+
+function writeSessionThinkingEffortPreferenceConfigJson(
+  configJson: string | null | undefined,
+  thinkingEffort: ChatThinkingEffort | null,
+): string {
+  const config = parseTrustedConfigJson(configJson)
+  if (thinkingEffort === null) {
+    const { requestedThinkingEffort: _requestedThinkingEffort, ...rest } = config
+    return JSON.stringify(rest)
+  }
+  return JSON.stringify({
+    ...config,
+    requestedThinkingEffort: thinkingEffort,
   })
 }
 
@@ -472,6 +503,7 @@ export function create(input: {
   sideContextSource?: 'provider-native' | 'cradle-context' | null
   providerTargetId?: string | null
   modelId?: string | null
+  thinkingEffort?: ChatThinkingEffort | null
   runtimeKind?: RuntimeKind
   runtimeSettings?: ChatRuntimeSettingsPatch
   agentId?: string | null
@@ -491,9 +523,12 @@ export function create(input: {
     normalizeRuntimeSettingsPatch(parsed.runtimeSettings),
   )
   const runtimeConfigJson = writeSessionRuntimeSettingsConfigJson(rowInput.configJson, runtimeSettings)
-  const configJson = parsed.modelId !== undefined
+  const modelConfigJson = parsed.modelId !== undefined
     ? writeSessionModelPreferenceConfigJson(runtimeConfigJson, parsed.modelId)
     : runtimeConfigJson
+  const configJson = parsed.thinkingEffort !== undefined
+    ? writeSessionThinkingEffortPreferenceConfigJson(modelConfigJson, parsed.thinkingEffort)
+    : modelConfigJson
   const created = db()
     .insert(sessions)
     .values({

@@ -23,6 +23,7 @@ import { runRegistry } from './run-registry'
 import type { ActiveRun } from './service'
 import type {
   ChatRuntime,
+  ChatThinkingEffort,
   RuntimeProviderTargetProfile,
   RuntimeSession
 } from './runtime-provider-types'
@@ -261,6 +262,19 @@ export function readSessionRequestedModelId(input: {
     return undefined
   }
   return SessionService.readSessionModelPreference(input.session.configJson) ?? undefined
+}
+
+export function readSessionRequestedThinkingEffort(input: {
+  session: Session
+  requestedProviderTargetId?: string
+}): ChatThinkingEffort | undefined {
+  if (
+    input.requestedProviderTargetId &&
+    input.requestedProviderTargetId !== input.session.providerTargetId
+  ) {
+    return undefined
+  }
+  return SessionService.readSessionThinkingEffortPreference(input.session.configJson) ?? undefined
 }
 
 export function assertRunnableSession(sessionId: string): SessionRunContext {
