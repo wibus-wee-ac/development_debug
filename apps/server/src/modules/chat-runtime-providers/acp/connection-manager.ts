@@ -20,7 +20,7 @@ import {
 } from '@agentclientprotocol/sdk'
 import type { UIMessageChunk } from 'ai'
 
-import { getRegisteredMcpServers } from '../../../plugins/mcp-registry'
+import { getRegisteredStdioMcpServers } from '../../../plugins/mcp-registry'
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
 import type { AcpConnectionRecord } from './config'
 import type { AcpProcessManager } from './process-manager'
@@ -46,7 +46,7 @@ export interface AcpPermissionResponse {
 export type AcpPermissionHandler = (request: AcpPermissionRequest) => Promise<AcpPermissionResponse>
 
 export function listRegisteredAcpMcpServers(): McpServer[] {
-  return Object.entries(getRegisteredMcpServers()).map(([name, config]) => ({
+  return Object.entries(getRegisteredStdioMcpServers()).map(([name, config]) => ({
     name,
     command: config.command,
     args: config.args,
