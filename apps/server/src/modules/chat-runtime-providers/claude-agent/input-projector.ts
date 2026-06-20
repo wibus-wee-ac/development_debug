@@ -197,7 +197,7 @@ export function buildClaudeQueryOptions(input: {
   if (config.tools) {
     queryOptions.tools = config.tools
   }
-  const disallowedTools = [...(config.disallowedTools ?? []), 'AskUserQuestion', 'EnterPlanMode']
+  const disallowedTools = config.disallowedTools ?? []
   queryOptions.disallowedTools = [...new Set(disallowedTools)]
   if (input.attachPermissionHandler && permissionMode === 'plan') {
     queryOptions.canUseTool = async (toolName) => {

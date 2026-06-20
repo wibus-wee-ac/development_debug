@@ -397,7 +397,7 @@ describe('claudeAgentProvider MCP integration', () => {
     }))
   })
 
-  it('keeps ExitPlanMode available and captures it through the permission hook', async () => {
+  it('leaves Claude disallowed tools empty and captures ExitPlanMode through the permission hook', async () => {
     sdkMocks.query.mockReturnValue(createAsyncQuery([
       {
         type: 'result',
@@ -423,7 +423,9 @@ describe('claudeAgentProvider MCP integration', () => {
     }
 
     const options = readQueryOptions(0)
-    expect(options.disallowedTools).toEqual(expect.arrayContaining(['AskUserQuestion', 'EnterPlanMode']))
+    expect(options.disallowedTools).toEqual([])
+    expect(options.disallowedTools).not.toContain('AskUserQuestion')
+    expect(options.disallowedTools).not.toContain('EnterPlanMode')
     expect(options.disallowedTools).not.toContain('ExitPlanMode')
     await expect((options.canUseTool as CanUseTool)(
       'ExitPlanMode',

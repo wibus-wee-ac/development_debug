@@ -18,6 +18,11 @@ class FakeCodexAccountClient implements CodexAppServerClientLike {
     switch (method) {
       case 'account/login/start':
         return {}
+      case 'account/read':
+        return {
+          account: { type: 'chatgpt', email: 'user@example.com', planType: 'pro' },
+          requiresOpenaiAuth: false,
+        }
       case 'account/rateLimits/read':
         return {
           rateLimits: {
@@ -26,11 +31,22 @@ class FakeCodexAccountClient implements CodexAppServerClientLike {
             primary: { usedPercent: 40, windowDurationMins: 300, resetsAt: 1_800_000_000 },
             secondary: null,
             credits: { hasCredits: true, unlimited: false, balance: '20.00' },
-            individualLimit: null,
+            individualLimit: { limit: '100.00', used: '12.34', remainingPercent: 87.66, resetsAt: 1_800_100_000 },
             planType: 'plus',
             rateLimitReachedType: null,
           },
-          rateLimitsByLimitId: null,
+          rateLimitsByLimitId: {
+            codex: {
+              limitId: 'codex',
+              limitName: 'Codex',
+              primary: { usedPercent: 40, windowDurationMins: 300, resetsAt: 1_800_000_000 },
+              secondary: { usedPercent: 10, windowDurationMins: 10_080, resetsAt: 1_800_200_000 },
+              credits: { hasCredits: true, unlimited: false, balance: '20.00' },
+              individualLimit: { limit: '100.00', used: '12.34', remainingPercent: 87.66, resetsAt: 1_800_100_000 },
+              planType: 'plus',
+              rateLimitReachedType: null,
+            },
+          },
           rateLimitResetCredits: { availableCount: 2n },
         }
       case 'account/usage/read':
@@ -89,7 +105,21 @@ describe('codex account diagnostics', () => {
     }))
 
     expect(diagnostics.supported).toBe(true)
+    expect(diagnostics.account).toMatchObject({
+      authMode: 'chatgptAuthTokens',
+      accountType: 'chatgpt',
+      email: 'user@example.com',
+      planType: 'pro',
+      requiresOpenaiAuth: false,
+    })
     expect(diagnostics.rateLimits?.primary?.usedPercent).toBe(40)
+    expect(diagnostics.rateLimits?.individualLimit).toEqual({
+      limit: '100.00',
+      used: '12.34',
+      remainingPercent: 87.66,
+      resetsAt: 1_800_100_000,
+    })
+    expect(diagnostics.rateLimitsByLimitId?.codex?.secondary?.windowDurationMins).toBe(10_080)
     expect(diagnostics.rateLimitResetCredits?.availableCount).toBe('2')
     expect(diagnostics.tokenUsage?.summary.lifetimeTokens).toBe('1234567890123456789')
     expect(diagnostics.tokenUsage?.dailyUsageBuckets).toEqual([
@@ -97,6 +127,7 @@ describe('codex account diagnostics', () => {
     ])
     expect(client.requests.map(request => request.method)).toEqual([
       'account/login/start',
+      'account/read',
       'account/rateLimits/read',
       'account/usage/read',
     ])

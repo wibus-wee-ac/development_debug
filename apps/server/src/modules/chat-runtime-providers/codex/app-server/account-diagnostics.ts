@@ -1,5 +1,6 @@
 import type { ConsumeAccountRateLimitResetCreditParams } from '../app-server-protocol/v2/ConsumeAccountRateLimitResetCreditParams'
 import type { ConsumeAccountRateLimitResetCreditResponse } from '../app-server-protocol/v2/ConsumeAccountRateLimitResetCreditResponse'
+import type { GetAccountResponse } from '../app-server-protocol/v2/GetAccountResponse'
 import type { GetAccountRateLimitsResponse } from '../app-server-protocol/v2/GetAccountRateLimitsResponse'
 import type { GetAccountTokenUsageResponse } from '../app-server-protocol/v2/GetAccountTokenUsageResponse'
 import type { RateLimitSnapshot } from '../app-server-protocol/v2/RateLimitSnapshot'
@@ -59,7 +60,10 @@ export interface CodexAccountDiagnostics {
   refreshedAt: number | null
   account: {
     authMode: 'chatgptAuthTokens'
+    accountType: NonNullable<GetAccountResponse['account']>['type'] | null
+    email: string | null
     planType: string | null
+    requiresOpenaiAuth: boolean | null
   } | null
   rateLimits: CodexRateLimitSnapshotDiagnostics | null
   rateLimitsByLimitId: Record<string, CodexRateLimitSnapshotDiagnostics> | null
@@ -151,7 +155,8 @@ export async function readCodexAccountDiagnostics(
   const client = hostLease.resource.client
 
   try {
-    const [rateLimitsResponse, usageResponse] = await Promise.all([
+    const [accountResponse, rateLimitsResponse, usageResponse] = await Promise.all([
+      client.request('account/read', { refreshToken: false }) as Promise<GetAccountResponse>,
       client.request('account/rateLimits/read', {}) as Promise<GetAccountRateLimitsResponse>,
       client.request('account/usage/read', {}) as Promise<GetAccountTokenUsageResponse>,
     ])
@@ -161,10 +166,7 @@ export async function readCodexAccountDiagnostics(
       supported: true,
       unavailableReason: null,
       refreshedAt: Date.now(),
-      account: {
-        authMode: 'chatgptAuthTokens',
-        planType: chatgptAuth.chatgptPlanType ?? rateLimitsResponse.rateLimits.planType,
-      },
+      account: projectAccountDiagnostics(accountResponse, chatgptAuth, rateLimitsResponse.rateLimits),
       rateLimits: projectRateLimitSnapshot(rateLimitsResponse.rateLimits),
       rateLimitsByLimitId: projectRateLimitsByLimitId(rateLimitsResponse.rateLimitsByLimitId),
       rateLimitResetCredits: rateLimitsResponse.rateLimitResetCredits
@@ -283,6 +285,23 @@ async function acquireDiagnosticsHostLease(input: {
       updateSecretValue: input.deps.updateSecretValue,
     },
   })
+}
+
+function projectAccountDiagnostics(
+  response: GetAccountResponse,
+  chatgptAuth: NonNullable<ReturnType<typeof readCodexChatgptAuth>>,
+  rateLimits: RateLimitSnapshot,
+): NonNullable<CodexAccountDiagnostics['account']> {
+  const account = response.account
+  const chatgptAccount = account?.type === 'chatgpt' ? account : null
+
+  return {
+    authMode: 'chatgptAuthTokens',
+    accountType: account?.type ?? null,
+    email: chatgptAccount?.email ?? null,
+    planType: chatgptAccount?.planType ?? chatgptAuth.chatgptPlanType ?? rateLimits.planType,
+    requiresOpenaiAuth: response.requiresOpenaiAuth,
+  }
 }
 
 function projectRateLimitSnapshot(
