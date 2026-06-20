@@ -172,6 +172,7 @@ const guide = t.Object({
   errorMessage: t.Nullable(t.String()),
   createdAt: t.Nullable(t.Number()),
   updatedAt: t.Nullable(t.Number()),
+  title: t.Nullable(t.String()),
   steps: t.Array(t.Object({
     id: t.String(),
     title: t.String(),

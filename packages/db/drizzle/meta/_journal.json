@@ -36,6 +36,13 @@
       "when": 1781883499686,
       "tag": "0004_spicy_gertrude_yorkes",
       "breakpoints": true
+    },
+    {
+      "idx": 5,
+      "version": "6",
+      "when": 1781890260825,
+      "tag": "0005_right_gauntlet",
+      "breakpoints": true
     }
   ]
 }

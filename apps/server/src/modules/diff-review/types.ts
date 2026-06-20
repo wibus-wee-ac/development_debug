@@ -223,6 +223,7 @@ export interface ReviewGuideView {
   errorMessage: string | null
   createdAt: number | null
   updatedAt: number | null
+  title: string | null
   steps: ReviewGuideStepView[]
 }
 

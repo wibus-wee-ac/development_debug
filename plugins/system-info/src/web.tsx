@@ -12,7 +12,7 @@ import {
   Refresh1Line as RefreshCwIcon,
   ServerLine as ServerIcon,
   TerminalLine as TerminalIcon
-} from '@mingcute/react'
+} from './mingcute-icons'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'

@@ -259,6 +259,7 @@ function emptyGuideView(revisionId: string | null): ReviewGuideView {
     errorMessage: null,
     createdAt: null,
     updatedAt: null,
+    title: null,
     steps: [],
   }
 }
@@ -361,6 +362,7 @@ function toGuideView(row: DiffReviewGuide | null | undefined, revision: DiffRevi
     errorMessage: row.errorMessage,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
+    title: readString(row.title) ?? null,
     steps: row.status === 'ready' ? normalizeStoredGuideSteps(parsed) : [],
   }
 }
@@ -1501,9 +1503,10 @@ function buildGuideAgentInstruction(input: {
     '- Do not include risk scores, verdicts, approval guidance, or correctness judgments.',
     '',
     'Artifact shape:',
-    '{"steps":[{"title":"string","rationale":"string","threadIds":["thread-id"],"paths":["path"],"ranges":[{"path":"path","side":"head|base","startLine":1,"endLine":1}]}]}',
+    '{"title":"string","steps":[{"title":"string","rationale":"string","threadIds":["thread-id"],"paths":["path"],"ranges":[{"path":"path","side":"head|base","startLine":1,"endLine":1}]}]}',
     '',
     'Rules:',
+    '- The artifact "title" is the headline a reader sees before diving in. Keep it short (under 70 characters), specific to the change, and free of trailing punctuation. Do not echo the review title verbatim — write a fresh framing of what this change accomplishes.',
     '- Prefer 2 to 8 steps. Use fewer for small diffs.',
     '- Each step must reference at least one changed path or changed range.',
     '- Use only paths from the provided changed files list.',
@@ -1586,6 +1589,20 @@ function readGuideStepRecords(parsed: unknown): Record<string, unknown>[] {
     throw new Error('Guide output is missing steps[]')
   }
   return rawSteps.map(rawStep => rawStep && typeof rawStep === 'object' ? rawStep as Record<string, unknown> : {})
+}
+
+function readGuideTitle(parsed: unknown): string | null {
+  const record = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null
+  if (!record) {
+    return null
+  }
+  const raw = readString(record.title)
+  if (!raw) {
+    return null
+  }
+  // Trim and cap length so a runaway model can't blow up the surface bar.
+  const trimmed = raw.trim().replace(/\s+/g, ' ')
+  return trimmed.length > 120 ? trimmed.slice(0, 120) : trimmed
 }
 
 function buildFileLookup(files: DiffReviewFile[]): Map<string, DiffReviewFile> {
@@ -1728,11 +1745,13 @@ function upsertGuide(input: {
   runId?: string | null
   inputHash: string
   status: ReviewGuideStatus
+  title?: string | null
   steps?: ReviewGuideStepView[]
   errorMessage?: string | null
 }): void {
   const now = currentUnixSeconds()
   const steps = input.steps ?? []
+  const title = input.title ?? null
   db().insert(diffReviewGuides).values({
     id: randomUUID(),
     reviewId: input.reviewId,
@@ -1744,6 +1763,7 @@ function upsertGuide(input: {
     runId: input.runId ?? null,
     inputHash: input.inputHash,
     status: input.status,
+    title,
     stepsJson: jsonStringify(steps),
     errorMessage: input.errorMessage ?? null,
     createdAt: now,
@@ -1758,6 +1778,7 @@ function upsertGuide(input: {
       runId: input.runId ?? null,
       inputHash: input.inputHash,
       status: input.status,
+      title,
       stepsJson: jsonStringify(steps),
       errorMessage: input.errorMessage ?? null,
       updatedAt: now,
@@ -1841,12 +1862,14 @@ async function runGuideGenerationTask(input: {
       review: input.review,
       revision: input.revision,
     })
+    const parsedArtifact = parseGuideJson(rawOutput)
     const steps = normalizeGuideSteps({
-      parsed: parseGuideJson(rawOutput),
+      parsed: parsedArtifact,
       revision: input.revision,
       files: input.files,
       threads: input.threads,
     })
+    const title = readGuideTitle(parsedArtifact)
     if (!isCurrentGuideGeneration({
       reviewId: input.review.id,
       revisionId: input.revision.id,
@@ -1864,6 +1887,7 @@ async function runGuideGenerationTask(input: {
       runId: input.runId,
       inputHash: input.inputHash,
       status: 'ready',
+      title,
       steps,
       errorMessage: null,
     })
