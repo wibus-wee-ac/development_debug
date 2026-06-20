@@ -10,7 +10,7 @@ import {
   PicLine as ImageIcon,
   TargetLine as TargetIcon,
   StopwatchLine as TimerIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import type { AnchorHTMLAttributes } from 'react'
 import { useEffect, useRef, useState } from 'react'
@@ -207,10 +207,10 @@ function FileAttachmentBlock({ part, onClick }: { part: FileMessagePart, onClick
       <div className="flex min-w-0 items-center gap-2 px-2.5 py-2 text-xs">
         {isImage
 ? (
-          <ImageIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <ImageIcon className="size-3.5 shrink-0 !text-muted-foreground" aria-hidden="true" />
         )
 : (
-          <FileIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+          <FileIcon className="size-3.5 shrink-0 !text-muted-foreground" aria-hidden="true" />
         )}
         <div className="min-w-0 flex-1">
           <div className="truncate font-medium text-foreground">{label}</div>
@@ -265,7 +265,7 @@ function PluginContextBlock({ part }: { part: ChatPluginContextMessagePart }) {
 
 function RunDebugCaption({ messageId }: { messageId: string }) {
   const meta = useChatStore(chatSelectors.runDisplayMeta(messageId), (a, b) => a === b)
-  const snapshotQuery = useQuery({
+  const { data: runSnapshot } = useQuery({
     ...getChatRunsByRunIdSnapshotOptions({ path: { runId: meta?.runId ?? '' } }),
     enabled: Boolean(meta?.runId),
     refetchInterval: query => query.state.data?.status === 'running' ? 1000 : false,
@@ -275,7 +275,7 @@ function RunDebugCaption({ messageId }: { messageId: string }) {
   }
 
   const localTimings = readLocalRunTimings(meta)
-  const snapshotTimings = snapshotQuery.data ? readRunSnapshotTimings(snapshotQuery.data) : null
+  const snapshotTimings = runSnapshot ? readRunSnapshotTimings(runSnapshot) : null
   const ttfbMs = snapshotTimings ? snapshotTimings.ttfbMs : localTimings.ttfbMs
   const ttftMs = snapshotTimings ? snapshotTimings.ttftMs : localTimings.ttftMs
   const totalMs = snapshotTimings?.totalMs ?? localTimings.totalMs
@@ -354,7 +354,7 @@ function readRunSnapshotTimings(snapshot: GetChatRunsByRunIdSnapshotResponse): R
   return {
     ttfbMs: firstResponseEvent ? Math.max(0, firstResponseEvent.occurredAt - snapshot.startedAt) : null,
     ttftMs: firstTextDeltaEvent ? Math.max(0, firstTextDeltaEvent.occurredAt - snapshot.startedAt) : null,
-    totalMs: snapshot.completedAt === undefined ? null : Math.max(0, snapshot.completedAt - snapshot.startedAt),
+    totalMs: snapshot.completedAt == null ? null : Math.max(0, snapshot.completedAt - snapshot.startedAt),
   }
 }
 
@@ -1386,7 +1386,7 @@ const MessageCopyActionById = ({
       >
         {copied
 ? (
-          <CheckIcon className="size-3.5 text-emerald-500" aria-hidden="true" />
+          <CheckIcon className="size-3.5 !text-emerald-500" aria-hidden="true" />
         )
 : (
           <CopyIcon className="size-3.5" aria-hidden="true" />
@@ -1999,7 +1999,7 @@ function MessageBubbleView({
             >
               {copied
 ? (
-                <CheckIcon className="size-3.5 text-emerald-500" aria-hidden="true" />
+                <CheckIcon className="size-3.5 !text-emerald-500" aria-hidden="true" />
               )
 : (
                 <CopyIcon className="size-3.5" aria-hidden="true" />

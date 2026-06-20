@@ -88,7 +88,7 @@ export function useChatSession(chatSessionId: string | null, active = true) {
     ),
   )
   const serverStreaming = Boolean(runtimeStatus && (runtimeStatus.status === 'streaming' || runtimeStatus.activeRun))
-  const resolvedStreaming = serverStreaming || (!runtimeStatus && isStreaming)
+  const resolvedStreaming = serverStreaming || isStreaming
 
   useEffect(() => {
     if (latestError) {
@@ -101,8 +101,8 @@ export function useChatSession(chatSessionId: string | null, active = true) {
     messageCount,
     status: visibleStatus,
     isStreaming: resolvedStreaming,
-    isBusy: serverBusy || (!runtimeStatus && isStreaming),
-    canStop: serverStreaming || (!runtimeStatus && isStreaming),
+    isBusy: serverBusy || isStreaming,
+    canStop: serverStreaming || isStreaming,
     error: latestError?.message,
     sendMessage,
     respondToToolApproval,

@@ -16,7 +16,7 @@ import {
   Cursor2Line as MousePointer2Icon,
   PackageLine as PackageIcon,
   AttachmentLine as PaperclipIcon,
-  PuzzledLine as PuzzleIcon,
+  Plugin2Line,
   Scan2Line as ScanEyeIcon,
   SearchLine as SearchIcon,
   Settings2Line as SettingsIcon,
@@ -172,7 +172,7 @@ function renderCommandIcon(command: ChatComposerSlashCommand): ReactNode {
     case 'user-input':
       return <CircleHelpIcon className={className} aria-hidden="true" />
     case 'plugin':
-      return <PuzzleIcon className={className} aria-hidden="true" />
+      return <Plugin2Line className={className} aria-hidden="true" />
     case 'reasoning':
       return <BrainIcon className={className} aria-hidden="true" />
     case 'search':

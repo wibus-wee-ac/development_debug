@@ -13,7 +13,7 @@ import {
   Key2Line as KeyRoundIcon,
   ListCheckLine as ListChecksIcon,
   PackageLine as PackageIcon,
-  PuzzledLine as PuzzleIcon,
+  Plugin2Line,
   SearchLine as SearchIcon,
   ServerLine as ServerIcon,
   Settings2Line as Settings2Icon,
@@ -777,7 +777,7 @@ function readSlotIcon(iconKey?: ChatRuntimeUiSlotIconKey, kind?: ChatRuntimeUiSl
     case 'personality':
       return SparklesIcon
     case 'plugin':
-      return PuzzleIcon
+      return Plugin2Line
     case 'progress':
       return ListChecksIcon
     case 'reasoning':

@@ -15,6 +15,7 @@ import type { ChatViewProps } from './chat-view'
 import { searchSessionPluginMentions } from './mentions/plugin-mentions'
 import type { SkillMentionItem } from './mentions/skill-mention-panel'
 import type { SendMessageOptions } from './session/use-chat-session'
+import { ClaudeSessionModelMatrixControl } from './runtime/claude-session-model-matrix-control'
 
 const ChatView = lazy(() => import('./chat-view').then(module => ({ default: module.ChatView })))
 
@@ -250,8 +251,29 @@ export function ChatRuntimeView({
     },
   })
 
+  const selectedProviderKind = sessionComposerState.effectiveProfile?.providerKind
+  const selectedApiProviderKind = selectedProviderKind && selectedProviderKind !== 'cli-tool'
+    ? selectedProviderKind
+    : null
+  const claudeMatrixControl = (
+    <ClaudeSessionModelMatrixControl
+      active={active}
+      sessionId={sessionId}
+      runtimeKind={runtimeKind}
+      providerTargetId={sessionComposerState.selection.profileId}
+      providerKind={selectedApiProviderKind}
+      modelId={sessionComposerState.selection.modelId}
+      models={sessionComposerState.models}
+    />
+  )
   const composerToolbar = (
     <ComposerToolbar context="chat" state={sessionComposerState} />
+  )
+  const composerToolbarAddons = (
+    <>
+      {claudeMatrixControl}
+      {composerToolbarAddon}
+    </>
   )
 
   return (
@@ -265,7 +287,7 @@ export function ChatRuntimeView({
         searchPlugins={searchPlugins}
         searchSkills={searchSkills}
         composerToolbar={composerToolbar}
-        composerToolbarAddon={composerToolbarAddon}
+        composerToolbarAddon={composerToolbarAddons}
         composerContextBar={composerContextBar}
         sendOverridesRef={sendOverridesRef}
         composerModel={sessionComposerState.effectiveModel}

@@ -33,7 +33,7 @@ import {
   readRuntimeToolApprovalRequest,
   readRuntimeUserInputRequestId,
   readSideChatCommand,
-  releaseStaleSessionStreamingState,
+  releaseSessionStreamingStateForTerminalRun,
   STEER_FALLBACK_ERROR_CODES,
 } from './use-chat-session-types'
 
@@ -388,7 +388,7 @@ export function useChatActions(input: UseChatActionsInput) {
               ...runtimeSessionStatusQueryOptions(chatSessionId),
               staleTime: 0,
             }).catch(() => null)
-            releaseStaleSessionStreamingState(chatSessionId)
+            releaseSessionStreamingStateForTerminalRun(chatSessionId, runtimeStatus?.latestRun)
             void queryClient.invalidateQueries({ queryKey: runtimeSessionStatusQueryKey(chatSessionId) })
             if (
               !runtimeStatus

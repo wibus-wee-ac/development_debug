@@ -20,8 +20,8 @@ import {
   QUEUE_DRAIN_SYNC_DELAY_MS,
   readLatestFailedMainAssistantRow,
   readStableSnapshotRows,
-  releasePassiveSessionStreamingState,
-  releaseStaleSessionStreamingState,
+  detachPassiveSessionStreamingState,
+  releaseSessionStreamingStateForTerminalRun,
   shouldHoldEmptyStreamingSnapshot,
 } from './use-chat-session-types'
 
@@ -49,6 +49,7 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
   const runtimeStatusQuery = useRuntimeSessionStatus(driverEnabled ? chatSessionId : null)
   const snapshotRows = snapshotRowsQuery.data
   const runtimeStatus = runtimeStatusQuery.data
+  const runtimeActiveRun = runtimeStatus?.activeRun ?? null
   const runtimeActiveRunMessageId = runtimeStatus?.activeRun?.messageId ?? null
   const runtimeStatusKnown = Boolean(runtimeStatus)
   const runtimeIdle = Boolean(
@@ -119,7 +120,7 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
       passiveStreamRef.current = null
     }
     if (chatSessionId) {
-      releasePassiveSessionStreamingState(chatSessionId)
+      detachPassiveSessionStreamingState(chatSessionId)
     }
     requestedRuntimeActiveRunMessageRef.current = null
     runtimeQueueSignatureRef.current = null
@@ -202,30 +203,24 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
   }, [chatSessionId, driverEnabled, snapshotRowsQuery.isError])
 
   useEffect(() => {
-    if (!driverEnabled || !chatSessionId || !runtimeStatus || runtimeStatus.status !== 'idle' || runtimeStatus.activeRun) {
+    if (!driverEnabled || !chatSessionId || !runtimeActiveRun?.messageId) {
       return
     }
 
-    const state = useChatStore.getState()
-    const meta = state.sessionMetaMap.get(chatSessionId)
-    const sessionMessages = state.messagesMap.get(chatSessionId) ?? []
-    const hasStaleStreamingState = Boolean(meta?.locallyDriving || meta?.passiveStatus === 'streaming')
-      || sessionMessages.some(
-        message => state.generatingMessageIds.has(message.id) || state.passiveStreamingMessageIds.has(message.id),
-      )
-    if (!hasStaleStreamingState) {
+    useChatStore.getState().setRunDisplayId(runtimeActiveRun.messageId, runtimeActiveRun.runId)
+  }, [chatSessionId, driverEnabled, runtimeActiveRun])
+
+  useEffect(() => {
+    if (!driverEnabled || !chatSessionId || !runtimeStatus || runtimeStatus.activeRun) {
       return
     }
 
-    if (passiveStreamRef.current?.sessionId === chatSessionId) {
-      passiveStreamRef.current.controller.abort()
-      passiveStreamRef.current.handler.dispose()
-      passiveStreamRef.current = null
+    const released = releaseSessionStreamingStateForTerminalRun(chatSessionId, runtimeStatus.latestRun)
+    if (released) {
+      scheduleSnapshotRefresh(0)
+      refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
     }
-    releaseStaleSessionStreamingState(chatSessionId)
-    scheduleSnapshotRefresh(0)
-    refreshQueue(QUEUE_DRAIN_SYNC_DELAY_MS)
-  }, [chatSessionId, driverEnabled, refreshQueue, runtimeStatus, scheduleSnapshotRefresh, snapshotRows])
+  }, [chatSessionId, driverEnabled, refreshQueue, runtimeStatus, scheduleSnapshotRefresh])
 
   useEffect(() => {
     return () => {
@@ -234,7 +229,7 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
         current.controller.abort()
         current.handler.dispose()
         passiveStreamRef.current = null
-        releasePassiveSessionStreamingState(current.sessionId)
+        detachPassiveSessionStreamingState(current.sessionId)
       }
       requestedRuntimeActiveRunMessageRef.current = null
       runtimeQueueSignatureRef.current = null
@@ -315,7 +310,7 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
         passiveStreamRef.current.controller.abort()
         passiveStreamRef.current.handler.dispose()
         passiveStreamRef.current = null
-        releasePassiveSessionStreamingState(chatSessionId)
+        detachPassiveSessionStreamingState(chatSessionId)
       }
       return
     }
@@ -327,7 +322,7 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
         passiveStreamRef.current.controller.abort()
         passiveStreamRef.current.handler.dispose()
         passiveStreamRef.current = null
-        releasePassiveSessionStreamingState(chatSessionId)
+        detachPassiveSessionStreamingState(chatSessionId)
       }
       return
     }
@@ -340,7 +335,7 @@ export function useChatSessionDriver(chatSessionId: string | null, active = true
       current.controller.abort()
       current.handler.dispose()
       passiveStreamRef.current = null
-      releasePassiveSessionStreamingState(current.sessionId)
+      detachPassiveSessionStreamingState(current.sessionId)
     }
 
     const controller = new AbortController()

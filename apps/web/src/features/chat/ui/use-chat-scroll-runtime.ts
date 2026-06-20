@@ -38,13 +38,28 @@ const EMPTY_SCROLL_METRICS: ChatScrollMetrics = { offset: 0, scrollHeight: 0, vi
 const EMPTY_STREAMING_MESSAGE_IDS = new Set<string>()
 const BOTTOM_PROXIMITY_PX = 8
 
+function clampScrollOffset(offset: number, scrollHeight: number, viewportHeight: number): number {
+  const maxScroll = Math.max(scrollHeight - viewportHeight, 0)
+  return Math.min(Math.max(offset, 0), maxScroll)
+}
+
+function normalizeScrollMetrics(metrics: ChatScrollMetrics): ChatScrollMetrics {
+  return {
+    ...metrics,
+    offset: clampScrollOffset(metrics.offset, metrics.scrollHeight, metrics.viewportHeight),
+  }
+}
+
 function readScrollRatio(metrics: ChatScrollMetrics): number {
   const scrollable = Math.max(metrics.scrollHeight - metrics.viewportHeight, 0)
-  return scrollable > 0 ? metrics.offset / scrollable : 1
+  const offset = clampScrollOffset(metrics.offset, metrics.scrollHeight, metrics.viewportHeight)
+  return scrollable > 0 ? offset / scrollable : 1
 }
 
 function readIsAtBottom(metrics: ChatScrollMetrics): boolean {
-  return metrics.offset + metrics.viewportHeight >= metrics.scrollHeight - BOTTOM_PROXIMITY_PX
+  const maxScroll = Math.max(metrics.scrollHeight - metrics.viewportHeight, 0)
+  const offset = clampScrollOffset(metrics.offset, metrics.scrollHeight, metrics.viewportHeight)
+  return offset >= maxScroll - BOTTOM_PROXIMITY_PX
 }
 
 export function useChatScrollRuntime({
@@ -133,21 +148,21 @@ export function useChatScrollRuntime({
       return null
     }
 
-    return {
+    return normalizeScrollMetrics({
       offset: viewport.scrollTop,
       scrollHeight: viewport.scrollHeight,
-      viewportHeight: viewport.offsetHeight,
-    }
+      viewportHeight: viewport.clientHeight,
+    })
   }, [])
 
   const readCachedScrollMetrics = useCallback((offset: number): ChatScrollMetrics | null => {
     const cachedMetrics = metricsRef.current
     if (cachedMetrics.scrollHeight > 0 || cachedMetrics.viewportHeight > 0) {
-      return {
+      return normalizeScrollMetrics({
         offset,
         scrollHeight: cachedMetrics.scrollHeight,
         viewportHeight: cachedMetrics.viewportHeight,
-      }
+      })
     }
     return readScrollMetrics()
   }, [readScrollMetrics])
@@ -258,20 +273,21 @@ export function useChatScrollRuntime({
     if (!active) {
       return
     }
-    const scrolledUp = nextMetrics.offset < lastScrollOffsetRef.current - 1
-    const isAtBottom = readIsAtBottom(nextMetrics)
+    const metrics = normalizeScrollMetrics(nextMetrics)
+    const scrolledUp = metrics.offset < lastScrollOffsetRef.current - 1
+    const isAtBottom = readIsAtBottom(metrics)
     const isUserScroll = options?.source === 'scroll' && !isProgrammaticScrollRef.current
 
     isAtBottomRef.current = isAtBottom
-    if (isUserScroll && scrolledUp) {
+    if (isUserScroll && scrolledUp && !isAtBottom) {
       detachFromBottomFollow()
     }
-    else if (isAtBottom && !scrolledUp) {
+    else if (isAtBottom) {
       shouldFollowBottomRef.current = true
     }
 
-    lastScrollOffsetRef.current = nextMetrics.offset
-    scheduleMinimapSync(nextMetrics)
+    lastScrollOffsetRef.current = metrics.offset
+    scheduleMinimapSync(metrics)
   }, [active, detachFromBottomFollow, scheduleMinimapSync])
 
   const scrollToBottom = useCallback(() => {
@@ -281,10 +297,14 @@ export function useChatScrollRuntime({
     const viewport = viewportRef.current
     if (viewport) {
       markProgrammaticScroll()
-      viewport.scrollTop = Number.MAX_SAFE_INTEGER
+      viewport.scrollTop = Math.max(viewport.scrollHeight - viewport.clientHeight, 0)
       isAtBottomRef.current = true
       shouldFollowBottomRef.current = true
-      lastScrollOffsetRef.current = viewport.scrollTop
+      lastScrollOffsetRef.current = clampScrollOffset(
+        viewport.scrollTop,
+        viewport.scrollHeight,
+        viewport.clientHeight,
+      )
     }
   }, [active, markProgrammaticScroll])
 
@@ -453,7 +473,7 @@ export function useChatScrollRuntime({
 
     const onResize = () => {
       const scrollHeight = viewport.scrollHeight
-      const viewportHeight = viewport.offsetHeight
+      const viewportHeight = viewport.clientHeight
 
       if (scrollHeight !== lastScrollHeight) {
         handleTranscriptLayoutChange()
@@ -570,9 +590,10 @@ export function useChatScrollRuntime({
     }
     const viewport = viewportRef.current
     if (viewport) {
-      shouldFollowBottomRef.current = offset + viewport.offsetHeight >= viewport.scrollHeight - BOTTOM_PROXIMITY_PX
+      const nextOffset = clampScrollOffset(offset, viewport.scrollHeight, viewport.clientHeight)
+      shouldFollowBottomRef.current = nextOffset + viewport.clientHeight >= viewport.scrollHeight - BOTTOM_PROXIMITY_PX
       markProgrammaticScroll()
-      viewport.scrollTop = offset
+      viewport.scrollTop = nextOffset
     }
   }, [active, markProgrammaticScroll])
 

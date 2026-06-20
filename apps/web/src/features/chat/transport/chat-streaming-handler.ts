@@ -144,6 +144,9 @@ export class ChatStreamingHandler {
         store.markRunFirstContent(messageId, receivedAtMs)
       }
       const displayMessage = store.projectStreamingMessageForDisplay(this.sessionId, message)
+      if (displayMessage.id !== messageId) {
+        store.moveStreamingMessage(this.sessionId, messageId, displayMessage.id)
+      }
       const reconcileChange: MessageReconcileChange = { dirtyToolCallIds }
       store.updateMessage(this.sessionId, displayMessage.id, () => displayMessage, reconcileChange)
     }
