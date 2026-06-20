@@ -96,6 +96,10 @@ describe('desktop plugin discovery', () => {
     }])
 
     expect(result.manifests.map(manifest => manifest.name)).toEqual(['@cradle/marketplace-plugin'])
+    expect(result.descriptors[0]?.activation).toEqual({
+      enabled: true,
+      source: 'default',
+    })
     expect(result.descriptors[0]?.source.provenance).toMatchObject({
       kind: 'marketplace-install',
       mode: 'downloaded',
@@ -136,6 +140,10 @@ describe('desktop plugin discovery', () => {
 
     expect(result.manifests).toHaveLength(0)
     expect(result.descriptors[0]?.identity).toBe('')
+    expect(result.descriptors[0]?.activation).toEqual({
+      enabled: true,
+      source: 'default',
+    })
     expect(result.descriptors[0]?.layers.desktop.status).toBe('invalid')
     expect(result.descriptors[0]?.warnings.join('\n')).toContain(
       'cradle.capabilities is not supported in apiVersion 1; use cradle.contributes.capabilities.',

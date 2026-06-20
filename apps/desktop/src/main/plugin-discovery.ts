@@ -3,6 +3,7 @@ import { readdir, readFile } from 'node:fs/promises'
 import { resolve } from 'node:path'
 
 import type {
+  PluginActivationState,
   PluginDescriptor,
   PluginLayer,
   PluginLayerState,
@@ -50,6 +51,13 @@ function createInvalidLayerState(layer: PluginLayer, error: string): PluginLayer
   }
 }
 
+function createDefaultActivationState(): PluginActivationState {
+  return {
+    enabled: true,
+    source: 'default',
+  }
+}
+
 function createSourceDescriptor(
   source: DesktopPluginSource,
   packageDir: string,
@@ -83,6 +91,7 @@ function createDescriptor(
     icon: cradle.icon,
     deployments: cradle.deployments,
     source: createSourceDescriptor(source, manifest.packageDir, provenance),
+    activation: createDefaultActivationState(),
     layers: {
       server: createLayerState('server', cradle.server),
       web: createLayerState('web', cradle.web),
@@ -114,6 +123,7 @@ function createInvalidDescriptor(
     version: '0.0.0',
     displayName: directoryName,
     source: createSourceDescriptor(source, packageDir),
+    activation: createDefaultActivationState(),
     layers: {
       server: createInvalidLayerState('server', error),
       web: createInvalidLayerState('web', error),
