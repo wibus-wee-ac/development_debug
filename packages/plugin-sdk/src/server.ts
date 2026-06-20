@@ -86,7 +86,11 @@ export interface ServerPluginRouteRegistry {
   register: (route: ServerPluginRouteRegistration) => Disposable
 }
 
-export interface McpServerConfig {
+export type McpServerConfig = StdioMcpServerConfig | StreamableHttpMcpServerConfig
+
+export interface StdioMcpServerConfig {
+  /** MCP transport kind. Stdio servers are spawned as local child processes. */
+  transport: 'stdio'
   /** Unique name for this MCP server */
   name: string
   /** Command to execute (e.g. 'node') */
@@ -95,6 +99,19 @@ export interface McpServerConfig {
   args: string[]
   /** Environment variables for the process */
   env?: Record<string, string>
+  /** Predicate — if returns false, server is not registered */
+  when?: () => boolean | Promise<boolean>
+}
+
+export interface StreamableHttpMcpServerConfig {
+  /** MCP transport kind. Streamable HTTP servers are already reachable over HTTP. */
+  transport: 'streamable-http'
+  /** Unique name for this MCP server */
+  name: string
+  /** HTTP MCP endpoint URL. */
+  url: string
+  /** Optional HTTP headers for the runtime MCP client. May contain secrets. */
+  headers?: Record<string, string>
   /** Predicate — if returns false, server is not registered */
   when?: () => boolean | Promise<boolean>
 }

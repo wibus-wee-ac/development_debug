@@ -1,7 +1,7 @@
 import { dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
-import type { ServerPluginContext, ServerPluginRouteContext } from '@cradle/plugin-sdk/server'
+import type { Disposable, ServerPluginContext, ServerPluginRouteContext } from '@cradle/plugin-sdk/server'
 import { z } from 'zod'
 
 import {
@@ -66,8 +66,11 @@ interface RegisterNowledgeRoutesOptions {
   fetch?: typeof fetch
 }
 
-export function activate(ctx: ServerPluginContext): void {
+let activeMcpRegistration: Disposable | undefined
+
+export async function activate(ctx: ServerPluginContext): Promise<void> {
   registerNowledgeRoutes(ctx)
+  await syncNowledgeMcpServer(ctx)
 
   ctx.skills.register({
     name: 'nowledge-mem',
@@ -76,6 +79,23 @@ export function activate(ctx: ServerPluginContext): void {
   })
 
   ctx.logger.info('Nowledge Mem plugin activated')
+}
+
+async function syncNowledgeMcpServer(ctx: ServerPluginContext): Promise<void> {
+  activeMcpRegistration?.dispose()
+  activeMcpRegistration = undefined
+
+  const config = await readNowledgePluginConfig(ctx)
+  if (!config.enabled || !config.mcpUrl) {
+    return
+  }
+
+  activeMcpRegistration = await ctx.mcp.registerServer({
+    transport: 'streamable-http',
+    name: 'nowledge-mem',
+    url: config.mcpUrl,
+    ...(config.apiKey ? { headers: { Authorization: `Bearer ${config.apiKey}` } } : {}),
+  })
 }
 
 export function registerNowledgeRoutes(
@@ -120,6 +140,7 @@ export function registerNowledgeRoutes(
       try {
         const config = await writeNowledgePluginConfig(ctx, routeCtx.body)
         const resolved = await readNowledgePluginConfig(ctx)
+        await syncNowledgeMcpServer(ctx)
         return ok({
           ...config,
           hasApiKey: resolved.hasApiKey,

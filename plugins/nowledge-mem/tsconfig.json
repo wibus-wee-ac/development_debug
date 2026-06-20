@@ -8,5 +8,6 @@
     "types": ["node", "vitest"],
     "outDir": "dist"
   },
-  "include": ["src"]
+  "include": ["src"],
+  "exclude": ["src/web.tsx"]
 }

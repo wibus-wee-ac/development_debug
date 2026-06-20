@@ -1,26 +1,11 @@
-import { getRegisteredMcpServers } from '../../../../plugins/mcp-registry'
 import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../../chat-runtime/runtime-provider-types'
 import type { CodexConfig } from '../../../provider-contracts/provider-base'
 import { readTrustedCodexConfig } from '../../../provider-contracts/provider-base'
 import type { SecretValueWithMetadata } from '../../../secrets/service'
-import type { CodexAppServerCapabilityManifest, CodexAppServerMethodCapability } from './capabilities'
-import { CODEX_APP_SERVER_CAPABILITIES, CODEX_APP_SERVER_CLIENT_METHOD_SET, readCodexAppServerMethodCapability } from './capabilities'
-import type { CodexAppServerClientOptions, CodexAppServerServerRequest } from './client'
-import { isCodexAppServerUnknownMethodError } from './client'
-import { buildCodexAppServerEnv } from './env'
-import type { CodexAppServerHostLease } from './host-lease'
-import { CODEX_PROVIDER_APP_SERVER_SCOPE_ID, acquireCodexAppServerHostLease, invalidateCodexAppServerHost } from './host-lease'
-import { subscribeCodexAppServerHostNotifications } from './host-resource'
-import type { CodexAppServerAuthResolution, CodexChatgptAuthCredential } from './chatgpt-auth'
-import {
-  readCodexApiKeyAuth,
-  readCodexChatgptAuth,
-  refreshCodexChatgptAuthCredential,
-  resolveCodexAppServerAuth,
-} from './chatgpt-auth'
 import {
   buildCodexBedrockModelProviderConfig,
   buildCodexExternalModelProviderConfig,
+  buildCodexMcpServersConfig,
   codexConfigRequiresApiKey,
   resolveCodexAuthMode,
   resolveCodexExternalModelProviderBaseUrl,
@@ -28,6 +13,21 @@ import {
 import { resolveCodexRuntimeContext } from '../config/runtime-context'
 import { buildCodexServerRequestToolInput, buildCodexServerRequestToolOutput } from '../tools/mapper'
 import type { CodexAppServerClientLike } from '../types'
+import type { CodexAppServerCapabilityManifest, CodexAppServerMethodCapability } from './capabilities'
+import { CODEX_APP_SERVER_CAPABILITIES, CODEX_APP_SERVER_CLIENT_METHOD_SET, readCodexAppServerMethodCapability } from './capabilities'
+import type { CodexAppServerAuthResolution, CodexChatgptAuthCredential } from './chatgpt-auth'
+import {
+  readCodexApiKeyAuth,
+  readCodexChatgptAuth,
+  refreshCodexChatgptAuthCredential,
+  resolveCodexAppServerAuth,
+} from './chatgpt-auth'
+import type { CodexAppServerClientOptions, CodexAppServerServerRequest } from './client'
+import { isCodexAppServerUnknownMethodError } from './client'
+import { buildCodexAppServerEnv } from './env'
+import type { CodexAppServerHostLease } from './host-lease'
+import { acquireCodexAppServerHostLease, CODEX_PROVIDER_APP_SERVER_SCOPE_ID, invalidateCodexAppServerHost } from './host-lease'
+import { subscribeCodexAppServerHostNotifications } from './host-resource'
 
 export type { CodexAppServerCapabilityManifest } from './capabilities'
 
@@ -318,21 +318,6 @@ function buildBridgeCodexConfig(
       : {}),
     ...(effectiveModel ?? config.model ? { model: effectiveModel ?? config.model } : {}),
   }
-}
-
-function buildCodexMcpServersConfig(): Record<string, { command: string, args: string[], env?: Record<string, string> }> {
-  return Object.fromEntries(
-    Object.entries(getRegisteredMcpServers()).map(([name, config]) => {
-      const server: { command: string, args: string[], env?: Record<string, string> } = {
-        command: config.command,
-        args: config.args,
-      }
-      if (config.env && Object.keys(config.env).length > 0) {
-        server.env = config.env
-      }
-      return [name, server]
-    }),
-  )
 }
 
 function defaultCloseMethodsFor(method: string): string[] {

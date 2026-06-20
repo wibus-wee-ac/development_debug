@@ -11,18 +11,20 @@ Nowledge Mem gives agents access to persistent memories, saved threads, Working 
 - Searches durable memories.
 - Creates explicit memories when requested.
 - Searches, reads, creates, and appends Nowledge threads.
+- Optionally registers Nowledge's streamable HTTP MCP endpoint when configured.
 - Registers a `nowledge-mem` skill so agents know how to use the plugin routes.
 - Keeps API keys out of plugin storage and public config responses.
 
 ## Current Scope
 
-This is the M0 integration. It is intentionally explicit and route-driven.
+This is the M0 integration plus the M1.1 direct MCP registration path. Memory use is still explicit and route-driven unless an agent runtime chooses to call the registered MCP tools.
 
 Supported today:
 
 - Guided read/search/write operations through Cradle plugin routes.
 - Optional default Nowledge space.
 - Optional Nowledge API key via environment or shared plugin config.
+- Optional streamable HTTP MCP registration via `NMEM_MCP_URL` or non-secret plugin config.
 - Focused tests against mocked Nowledge API responses.
 
 Not included yet:
@@ -30,7 +32,6 @@ Not included yet:
 - Automatic pre-turn recall.
 - Automatic session capture.
 - Pre-compaction capture.
-- Streamable HTTP MCP registration.
 - Provider-neutral tool exposure across runtimes.
 
 Those features need additional Cradle plugin host lifecycle support.
@@ -59,15 +60,32 @@ By default, the plugin connects to:
 You can configure the Nowledge endpoint and credentials with environment variables:
 
     NMEM_API_URL=http://127.0.0.1:14242
+    NMEM_MCP_URL=http://127.0.0.1:14242/mcp
     NMEM_API_KEY=...
 
 The plugin also accepts non-secret configuration through `PUT /config`:
 
 - `apiUrl`
+- `mcpUrl`
 - `spaceId`
 - `enabled`
 
 API keys are never written to plugin storage. `GET /config` only returns `hasApiKey`.
+
+When `mcpUrl` is configured and the plugin is enabled, activation registers a `nowledge-mem` streamable HTTP MCP server. If an API key is available, the runtime-only MCP config includes an `Authorization` header. That header is not written to plugin storage or returned by config routes.
+
+## Web Panel
+
+The plugin ships its own settings surface registered as the `panel.config` web-panel contribution. It opens from the sidebar and reads/writes the same `/config` route; there is no separate UI storage path.
+
+The panel manages:
+
+- `apiUrl`
+- `mcpUrl`
+- `spaceId`
+- `enabled`
+
+It also surfaces a read-only `hasApiKey` badge. The API key itself is never displayed, edited, or persisted from the UI; it continues to flow through `NMEM_API_KEY` in the environment or shared plugin config. Saving the form issues a single `PUT /config` with the four non-secret fields.
 
 ## HTTP Routes
 
@@ -163,6 +181,7 @@ Cradle owns:
 
 - this plugin package
 - plugin route and skill registration
+- optional plugin-owned MCP registration
 - plugin-local non-secret configuration
 
 The plugin does not write into `~/.nowledge-mem`, Chronicle tables, `~/.agents/skills`, or any other external product namespace.
@@ -174,5 +193,5 @@ The next milestone is host lifecycle support for native-feeling memory:
 - plugin-safe pre-turn context injection
 - after-assistant-final capture hooks
 - transcript export for plugins
-- streamable HTTP MCP or provider-neutral tool exposure
+- provider-neutral tool exposure beyond runtimes that support streamable HTTP MCP directly
 - provider-neutral compaction lifecycle

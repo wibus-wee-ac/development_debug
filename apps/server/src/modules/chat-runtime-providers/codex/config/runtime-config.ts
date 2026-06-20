@@ -3,6 +3,7 @@ import { writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
+import type { RegisteredMcpServer } from '../../../../plugins/mcp-registry'
 import { getRegisteredMcpServers } from '../../../../plugins/mcp-registry'
 import type {
   ChatRuntimeAccessMode,
@@ -10,16 +11,16 @@ import type {
   ChatThinkingEffort,
 } from '../../../chat-runtime/runtime-provider-types'
 import type { CodexAuthMode, CodexConfig } from '../../../provider-contracts/provider-base'
-import type { CollaborationMode } from '../app-server-protocol/CollaborationMode'
-import type { ReasoningEffort } from '../app-server-protocol/ReasoningEffort'
-import type { ThreadForkParams } from '../app-server-protocol/v2/ThreadForkParams'
-import type { SandboxPolicy } from '../app-server-protocol/v2/SandboxPolicy'
 import type { CodexAppServerAuthResolution } from '../app-server/chatgpt-auth'
 import {
   CODEX_BEDROCK_API_KEY_ENV,
   CODEX_BEDROCK_REGION_ENV,
   CODEX_PERSONAL_ACCESS_TOKEN_ENV,
 } from '../app-server/chatgpt-auth'
+import type { CollaborationMode } from '../app-server-protocol/CollaborationMode'
+import type { ReasoningEffort } from '../app-server-protocol/ReasoningEffort'
+import type { SandboxPolicy } from '../app-server-protocol/v2/SandboxPolicy'
+import type { ThreadForkParams } from '../app-server-protocol/v2/ThreadForkParams'
 import { toSandboxPolicy } from './sandbox-policy'
 
 export const CRADLE_CODEX_MODEL_PROVIDER = 'cradle-openai-compatible'
@@ -27,12 +28,13 @@ export const CODEX_AMAZON_BEDROCK_MODEL_PROVIDER = 'amazon-bedrock'
 export const CRADLE_CODEX_API_KEY_ENV = 'CRADLE_CODEX_API_KEY'
 export const CODEX_API_KEY_ENV = 'CODEX_API_KEY'
 export const OPENAI_API_KEY_ENV = 'OPENAI_API_KEY'
+const CRADLE_CODEX_MCP_HEADER_ENV_PREFIX = 'CRADLE_CODEX_MCP_HEADER'
 
 export function resolveCodexExternalModelProviderBaseUrl(
   config: CodexConfig,
 ): string | null {
   const baseUrl = config.baseUrl?.trim()
-  return baseUrl ? baseUrl : null
+  return baseUrl || null
 }
 
 export function resolveCodexAuthMode(
@@ -227,19 +229,64 @@ export function buildCodexCollaborationMode(
   }
 }
 
-function buildCodexMcpServersConfig(): Record<string, { command: string, args: string[], env?: Record<string, string> }> {
+export type CodexMcpServerConfig
+  = | { command: string, args: string[], env?: Record<string, string> }
+    | { url: string, env_http_headers?: Record<string, string> }
+
+export function buildCodexMcpServersConfig(): Record<string, CodexMcpServerConfig> {
   return Object.fromEntries(
-    Object.entries(getRegisteredMcpServers()).map(([name, config]) => {
-      const server: { command: string, args: string[], env?: Record<string, string> } = {
-        command: config.command,
-        args: config.args,
-      }
-      if (config.env && Object.keys(config.env).length > 0) {
-        server.env = config.env
-      }
-      return [name, server]
-    }),
+    Object.entries(getRegisteredMcpServers()).map(([name, config]) => [name, projectCodexMcpServer(name, config)]),
   )
+}
+
+export function buildCodexMcpServersEnvironment(): Record<string, string> {
+  const env: Record<string, string> = {}
+  for (const [serverName, config] of Object.entries(getRegisteredMcpServers())) {
+    if (config.transport !== 'streamable-http') {
+      continue
+    }
+    for (const [headerName, headerValue] of Object.entries(config.headers)) {
+      env[buildCodexMcpHeaderEnvName(serverName, headerName)] = headerValue
+    }
+  }
+  return env
+}
+
+function projectCodexMcpServer(name: string, config: RegisteredMcpServer): CodexMcpServerConfig {
+  if (config.transport === 'stdio') {
+    const server: CodexMcpServerConfig = {
+      command: config.command,
+      args: config.args,
+    }
+    if (config.env && Object.keys(config.env).length > 0) {
+      server.env = config.env
+    }
+    return server
+  }
+
+  const envHttpHeaders = Object.fromEntries(
+    Object.keys(config.headers).map(headerName => [
+      headerName,
+      buildCodexMcpHeaderEnvName(name, headerName),
+    ]),
+  )
+  return {
+    url: config.url,
+    ...(Object.keys(envHttpHeaders).length > 0 ? { env_http_headers: envHttpHeaders } : {}),
+  }
+}
+
+function buildCodexMcpHeaderEnvName(serverName: string, headerName: string): string {
+  return [
+    CRADLE_CODEX_MCP_HEADER_ENV_PREFIX,
+    normalizeEnvToken(serverName),
+    normalizeEnvToken(headerName),
+  ].join('_')
+}
+
+function normalizeEnvToken(value: string): string {
+  const normalized = value.toUpperCase().replaceAll(/[^A-Z0-9]+/g, '_').replaceAll(/^_+|_+$/g, '')
+  return normalized || 'VALUE'
 }
 
 function isCodexReasoningEffort(value: unknown): value is ReasoningEffort {

@@ -8,6 +8,7 @@
     "displayName": "Nowledge Mem",
     "description": "Official Nowledge Mem adapter for guided memory, Working Memory, thread, and context operations.",
     "server": "dist/server.mjs",
+    "web": "dist/web.mjs",
     "contributes": {
       "capabilities": [
         {
@@ -22,6 +23,14 @@
           "type": "server-route",
           "layer": "server",
           "label": "Nowledge config",
+          "permissions": []
+        },
+        {
+          "id": "panel.config",
+          "type": "web-panel",
+          "layer": "web",
+          "label": "Nowledge config",
+          "description": "Plugin-owned settings surface for apiUrl, mcpUrl, spaceId, and enabled. API keys stay out of the UI.",
           "permissions": []
         },
         {
@@ -114,6 +123,13 @@
           "layer": "server",
           "label": "Nowledge Mem skill",
           "permissions": []
+        },
+        {
+          "id": "mcp.nowledge-mem",
+          "type": "mcp-server",
+          "layer": "server",
+          "label": "Nowledge Mem MCP server",
+          "permissions": ["nowledge.network"]
         }
       ],
       "permissions": [
@@ -135,7 +151,12 @@
   },
   "devDependencies": {
     "@cradle/plugin-sdk": "workspace:*",
+    "@mingcute/react": "^1.4.1",
     "@types/node": "^22.19.1",
+    "@types/react": "^19.2.1",
+    "@vitejs/plugin-react": "^5.1.1",
+    "react": "^19.2.1",
+    "react-dom": "^19.2.1",
     "typescript": "^5.9.3",
     "vite": "^8.0.0",
     "vitest": "^4.1.4"

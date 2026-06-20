@@ -37,10 +37,12 @@ function createPluginContext(sharedConfig = new Map<string, string>()): {
   routes: ServerPluginRouteRegistration[]
   storage: Map<string, string>
   skills: Array<{ name: string, description: string, skillFile: string }>
+  mcpServers: Array<Parameters<ServerPluginContext['mcp']['registerServer']>[0]>
 } {
   const routes: ServerPluginRouteRegistration[] = []
   const storage = new Map<string, string>()
   const skills: Array<{ name: string, description: string, skillFile: string }> = []
+  const mcpServers: Array<Parameters<ServerPluginContext['mcp']['registerServer']>[0]> = []
   const disposable: Disposable = { dispose() {} }
   const manifest: PluginManifest = {
     name: '@cradle/nowledge-mem',
@@ -61,7 +63,10 @@ function createPluginContext(sharedConfig = new Map<string, string>()): {
       },
     },
     mcp: {
-      registerServer: () => disposable,
+      registerServer(config) {
+        mcpServers.push(config)
+        return disposable
+      },
     },
     skills: {
       register(skill) {
@@ -114,7 +119,7 @@ function createPluginContext(sharedConfig = new Map<string, string>()): {
     },
   }
 
-  return { ctx, routes, storage, skills }
+  return { ctx, routes, storage, skills, mcpServers }
 }
 
 async function callRoute(
@@ -149,10 +154,10 @@ function findRoute(
 }
 
 describe('nowledge mem server plugin', () => {
-  it('registers routes and bundled skill on activation', () => {
-    const { ctx, routes, skills } = createPluginContext()
+  it('registers routes and bundled skill on activation', async () => {
+    const { ctx, routes, skills, mcpServers } = createPluginContext()
 
-    activate(ctx)
+    await activate(ctx)
 
     expect(routes.map(route => `${route.method} ${route.path}`)).toEqual([
       'GET /status',
@@ -173,10 +178,50 @@ describe('nowledge mem server plugin', () => {
         skillFile: expect.stringContaining('SKILL.md'),
       }),
     ])
+    expect(mcpServers).toEqual([
+      {
+        transport: 'streamable-http',
+        name: 'nowledge-mem',
+        url: 'http://127.0.0.1:14242/mcp',
+      },
+    ])
+  })
+
+  it('registers configured streamable HTTP MCP without persisting or returning headers', async () => {
+    const { ctx, mcpServers, routes, storage } = createPluginContext(new Map([
+      ['NMEM_MCP_URL', 'https://nowledge.example.test/mcp/'],
+      ['NMEM_API_KEY', 'shared-secret'],
+    ]))
+
+    await activate(ctx)
+
+    expect(mcpServers).toEqual([
+      {
+        transport: 'streamable-http',
+        name: 'nowledge-mem',
+        url: 'https://nowledge.example.test/mcp',
+        headers: { Authorization: 'Bearer shared-secret' },
+      },
+    ])
+
+    const configResponse = await callRoute(findRoute(routes, 'GET', '/config'))
+    expect(configResponse.body).toEqual({
+      ok: true,
+      data: {
+        apiUrl: 'http://127.0.0.1:14242',
+        mcpUrl: 'https://nowledge.example.test/mcp',
+        enabled: true,
+        recallEnabled: false,
+        captureEnabled: false,
+        hasApiKey: true,
+      },
+    })
+    expect(JSON.stringify(configResponse.body)).not.toContain('shared-secret')
+    expect(storage.get('config')).toBeUndefined()
   })
 
   it('does not persist or return API keys through config routes', async () => {
-    const { ctx, routes, storage } = createPluginContext(new Map([
+    const { ctx, routes, storage, mcpServers } = createPluginContext(new Map([
       ['NMEM_API_KEY', 'shared-secret'],
     ]))
     registerNowledgeRoutes(ctx)
@@ -187,6 +232,7 @@ describe('nowledge mem server plugin', () => {
     const update = await callRoute(putConfig, {
       body: {
         apiUrl: 'http://nmem.test/',
+        mcpUrl: 'https://nmem.test/mcp/',
         spaceId: 'Research Agent',
         enabled: true,
         apiKey: 'must-not-persist',
@@ -198,6 +244,7 @@ describe('nowledge mem server plugin', () => {
       ok: true,
       data: {
         apiUrl: 'http://nmem.test',
+        mcpUrl: 'https://nmem.test/mcp',
         spaceId: 'Research Agent',
         enabled: true,
         recallEnabled: false,
@@ -206,8 +253,47 @@ describe('nowledge mem server plugin', () => {
       },
     })
     expect(read.body).toEqual(update.body)
+    expect(mcpServers).toEqual([
+      {
+        transport: 'streamable-http',
+        name: 'nowledge-mem',
+        url: 'https://nmem.test/mcp',
+        headers: { Authorization: 'Bearer shared-secret' },
+      },
+    ])
     expect(storage.get('config')).not.toContain('must-not-persist')
     expect(JSON.stringify(read.body)).not.toContain('shared-secret')
+  })
+
+  it('derives MCP URL from API URL and syncs registration after config updates', async () => {
+    const { ctx, routes, mcpServers } = createPluginContext()
+    registerNowledgeRoutes(ctx)
+
+    const update = await callRoute(findRoute(routes, 'PUT', '/config'), {
+      body: {
+        apiUrl: 'http://nmem.test/',
+        enabled: true,
+      },
+    })
+
+    expect(update.body).toEqual({
+      ok: true,
+      data: {
+        apiUrl: 'http://nmem.test',
+        mcpUrl: 'http://nmem.test/mcp',
+        enabled: true,
+        recallEnabled: false,
+        captureEnabled: false,
+        hasApiKey: false,
+      },
+    })
+    expect(mcpServers).toEqual([
+      {
+        transport: 'streamable-http',
+        name: 'nowledge-mem',
+        url: 'http://nmem.test/mcp',
+      },
+    ])
   })
 
   it('calls Nowledge memory search with q and never query', async () => {

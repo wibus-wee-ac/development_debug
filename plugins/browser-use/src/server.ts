@@ -11,6 +11,7 @@ export function activate(ctx: ServerPluginContext): void {
   // Only register MCP server if the socket path is available (desktop deployment)
   if (socketPath) {
     ctx.mcp.registerServer({
+      transport: 'stdio',
       name: 'browser-use',
       command: 'node',
       args: [resolve(__dirname, 'mcp-server.mjs')],

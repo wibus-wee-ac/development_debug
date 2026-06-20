@@ -1,5 +1,5 @@
+import { buildCodexAuthEnvironment, buildCodexMcpServersEnvironment } from '../config/runtime-config'
 import type { CodexAppServerAuthResolution } from './chatgpt-auth'
-import { buildCodexAuthEnvironment } from '../config/runtime-config'
 import { buildCradleCodexAppServerEnv } from './client'
 
 export function buildCodexAppServerEnv(
@@ -9,5 +9,6 @@ export function buildCodexAppServerEnv(
   return {
     ...buildCradleCodexAppServerEnv(input),
     ...buildCodexAuthEnvironment(auth),
+    ...buildCodexMcpServersEnvironment(),
   }
 }
