@@ -1,3 +1,4 @@
+import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, delimiter, dirname, resolve } from 'node:path'
 import { fileURLToPath } from 'node:url'
@@ -135,6 +136,12 @@ export async function activateServerPlugins(app: Elysia): Promise<void> {
   for (const manifest of manifests.filter(m => m.cradle.web)) {
     const descriptor = descriptors.find(d => d.identity === manifest.name)
     if (!descriptor || descriptor.layers.web.status === 'invalid') { continue }
+    const entryPath = resolve(manifest.packageDir, manifest.cradle.web!)
+    if (!existsSync(entryPath)) {
+      setPluginLayerState(manifest.name, 'web', 'failed', `Web entry is missing: ${manifest.cradle.web}`)
+      logger.error('plugin web entry missing', { plugin: manifest.name, entryPath })
+      continue
+    }
     const permissionDecision = evaluatePluginPermissionPolicy(descriptor, 'web', process.env)
     if (!permissionDecision.allowed) {
       setPluginLayerState(manifest.name, 'web', 'disabled', permissionDecision.reason)

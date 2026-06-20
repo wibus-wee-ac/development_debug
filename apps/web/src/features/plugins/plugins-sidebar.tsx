@@ -1,4 +1,4 @@
-import { PuzzledLine as PuzzleIcon } from '@mingcute/react'
+import { Plugin2Line } from '@mingcute/react'
 import { cn } from '~/lib/cn'
 import { usePluginStore } from '~/lib/plugin-store'
 import { useActiveSurface } from '~/navigation/active-surface'
@@ -44,10 +44,10 @@ export function PluginsSidebar({ collapsed }: { collapsed?: boolean }) {
             activePluginPanelKey !== `${panel.routeSegment}/${panel.localId}` && 'text-muted-foreground',
           )}
         >
-          <PuzzleIcon className="size-3.5 shrink-0" />
+          <Plugin2Line className="size-3.5 shrink-0" />
           <span
             className={cn(
-              'min-w-0 flex-1 truncate',
+              'min-w-0 truncate text-xs',
               collapsed ? 'opacity-0' : 'opacity-100',
             )}
           >

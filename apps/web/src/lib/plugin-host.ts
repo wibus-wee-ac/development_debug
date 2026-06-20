@@ -259,7 +259,7 @@ function getWebBundleRouteSegment(plugin: WebPluginDescriptor): string {
 
 export function isWebLayerLoadable(plugin: WebPluginDescriptor): boolean {
   const status = plugin.layers?.web.status
-  return plugin.hasWeb && status !== 'invalid' && status !== 'disabled'
+  return plugin.hasWeb && status !== 'invalid' && status !== 'disabled' && status !== 'failed'
 }
 
 /**

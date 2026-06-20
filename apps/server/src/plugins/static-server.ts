@@ -3,7 +3,7 @@ import { resolve } from 'node:path'
 
 import type { PluginManifest } from '@cradle/plugin-sdk'
 
-import { getPluginDescriptorByRouteSegment, listPluginDescriptors } from './runtime-registry'
+import { getPluginDescriptorByRouteSegment, listPluginDescriptors, setPluginLayerState } from './runtime-registry'
 
 /**
  * Creates a plugin static server that serves web plugin entries as static assets.
@@ -23,7 +23,12 @@ export function createPluginStaticServer(manifests: PluginManifest[]) {
         : manifests.find(m => m.name === pluginName)
       if (!manifest?.cradle.web) { return null }
       const entryPath = resolve(manifest.packageDir, manifest.cradle.web)
-      return existsSync(entryPath) ? entryPath : null
+      if (existsSync(entryPath)) {
+        return entryPath
+      }
+
+      setPluginLayerState(manifest.name, 'web', 'failed', `Web entry is missing: ${manifest.cradle.web}`)
+      return null
     },
     getPluginList() {
       return listPluginDescriptors()

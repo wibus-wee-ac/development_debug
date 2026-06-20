@@ -57,6 +57,25 @@ function preparePlugin(directoryName) {
     throw new Error(`Plugin ${packageJson.name ?? directoryName} has no dist directory. Run its build before preparing desktop plugins.`)
   }
 
+  validateDeclaredEntry({
+    packageDir,
+    packageName: packageJson.name ?? directoryName,
+    entryPath: cradle.server,
+    label: 'server',
+  })
+  validateDeclaredEntry({
+    packageDir,
+    packageName: packageJson.name ?? directoryName,
+    entryPath: cradle.web,
+    label: 'web',
+  })
+  validateDeclaredEntry({
+    packageDir,
+    packageName: packageJson.name ?? directoryName,
+    entryPath: cradle.desktop,
+    label: 'desktop',
+  })
+
   const pluginArtifactDir = join(artifactDir, directoryName)
   mkdirSync(pluginArtifactDir, { recursive: true })
   cpSync(packageJsonPath, join(pluginArtifactDir, 'package.json'))
@@ -81,6 +100,32 @@ function isDesktopDeployment(deployments) {
     return true
   }
   return Array.isArray(deployments) && deployments.includes('desktop')
+}
+
+function validateDeclaredEntry({ packageDir, packageName, entryPath, label }) {
+  if (typeof entryPath !== 'string' || entryPath.trim() === '') {
+    return
+  }
+
+  const normalizedEntryPath = entryPath.trim()
+  if (isAbsolute(normalizedEntryPath)) {
+    throw new Error(`Plugin ${packageName} ${label} entry must be package-relative: ${entryPath}`)
+  }
+
+  const sourcePath = resolve(packageDir, normalizedEntryPath)
+  const packageRelativePath = relative(packageDir, sourcePath)
+  if (
+    packageRelativePath === ''
+    || packageRelativePath === '..'
+    || packageRelativePath.startsWith(`..${sep}`)
+    || isAbsolute(packageRelativePath)
+  ) {
+    throw new Error(`Plugin ${packageName} ${label} entry escapes the package directory: ${entryPath}`)
+  }
+
+  if (!existsSync(sourcePath) || !statSync(sourcePath).isFile()) {
+    throw new Error(`Plugin ${packageName} declares missing ${label} entry: ${entryPath}`)
+  }
 }
 
 function copyPackageRelativeAsset({ packageDir, pluginArtifactDir, packageName, assetPath, label }) {

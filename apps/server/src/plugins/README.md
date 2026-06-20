@@ -14,7 +14,7 @@
 - **install-receipt.ts**：读取 plugin package 内的 Marketplace install receipt，并投影为 descriptor source provenance。
 - **loader.ts**：发现 plugin packages，构建 governed descriptors，尊重 desktop fork 传入的 primary plugin source kind，激活 server entries，并把插件路由挂载到 `/api/plugins/:routeSegment`。
 - **loader.test.ts**：覆盖 server plugin activation 后由 `deactivateAllPlugins()` 清理 owner-scoped registrations 和 capability records。
-- **mcp-registry.ts**：保存 MCP server registrations，并投影 owner-scoped MCP capability records。
+- **mcp-registry.ts**：保存 stdio 和 streamable HTTP MCP server registrations，并投影 owner-scoped MCP capability records；HTTP headers 只保留在 runtime config 中，不写入公开 capability metadata。
 - **runtime-registry.ts**：维护 host-owned plugin descriptors、source descriptors、layer lifecycle states、route ownership 和 capability records。
 - **runtime-registry.test.ts**：覆盖 identity、route collision、source classification 和 capability id 行为的 focused tests。
 - **skill-registry.ts**：保存 plugin skill registrations，并投影 owner-scoped skill capability records。

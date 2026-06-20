@@ -60,6 +60,7 @@ describe('server plugin context lifecycle', () => {
     const ctx = createServerPluginContext(pluginManifest, new Elysia())
 
     const disposable = await ctx.mcp.registerServer({
+      transport: 'stdio',
       name: 'context-async-skip',
       command: 'node',
       args: ['server.mjs'],
@@ -79,6 +80,7 @@ describe('server plugin context lifecycle', () => {
 
     let resolvePredicate: (value: boolean) => void = () => {}
     const registration = ctx.mcp.registerServer({
+      transport: 'stdio',
       name: 'context-async-dispose',
       command: 'node',
       args: ['server.mjs'],
@@ -102,18 +104,96 @@ describe('server plugin context lifecycle', () => {
     const ctx = createServerPluginContext(pluginManifest, new Elysia())
 
     const disposable = ctx.mcp.registerServer({
+      transport: 'stdio',
       name: 'context-dispose',
       command: 'node',
       args: ['server.mjs'],
     }) as Disposable
 
     expect(ctx.subscriptions).toEqual([disposable])
-    expect(getRegisteredMcpServers()).toHaveProperty('context-dispose')
-    expect(listPluginDescriptors()[0]?.capabilities).toHaveLength(1)
+    expect(getRegisteredMcpServers()).toHaveProperty('context-dispose', {
+      transport: 'stdio',
+      name: 'context-dispose',
+      command: 'node',
+      args: ['server.mjs'],
+      env: {},
+    })
+    expect(listPluginDescriptors()[0]?.capabilities).toEqual([
+      expect.objectContaining({
+        type: 'mcp-server',
+        metadata: expect.objectContaining({
+          transport: 'stdio',
+          command: 'node',
+          args: ['server.mjs'],
+          hasEnv: false,
+        }),
+      }),
+    ])
 
     disposable.dispose()
 
     expect(getRegisteredMcpServers()).not.toHaveProperty('context-dispose')
+    expect(listPluginDescriptors()[0]?.capabilities).toHaveLength(0)
+  })
+
+  it('tracks streamable HTTP MCP registrations without exposing headers in capability metadata', () => {
+    const pluginManifest = manifest('@cradle/context-http-mcp')
+    registerDescriptor(pluginManifest)
+    const ctx = createServerPluginContext(pluginManifest, new Elysia())
+
+    const disposable = ctx.mcp.registerServer({
+      transport: 'streamable-http',
+      name: 'context-http-mcp',
+      url: 'https://nowledge.example.test/mcp',
+      headers: {
+        Authorization: 'Bearer secret-token',
+      },
+    }) as Disposable
+
+    expect(ctx.subscriptions).toEqual([disposable])
+    expect(getRegisteredMcpServers()).toHaveProperty('context-http-mcp', {
+      transport: 'streamable-http',
+      name: 'context-http-mcp',
+      url: 'https://nowledge.example.test/mcp',
+      headers: {
+        Authorization: 'Bearer secret-token',
+      },
+    })
+    expect(listPluginDescriptors()[0]?.capabilities).toEqual([
+      expect.objectContaining({
+        type: 'mcp-server',
+        metadata: expect.objectContaining({
+          transport: 'streamable-http',
+          urlOrigin: 'https://nowledge.example.test',
+          urlPathname: '/mcp',
+          hasHeaders: true,
+        }),
+      }),
+    ])
+    expect(JSON.stringify(listPluginDescriptors()[0]?.capabilities)).not.toContain('secret-token')
+    expect(JSON.stringify(listPluginDescriptors()[0]?.capabilities)).not.toContain('Authorization')
+
+    disposable.dispose()
+
+    expect(getRegisteredMcpServers()).not.toHaveProperty('context-http-mcp')
+    expect(listPluginDescriptors()[0]?.capabilities).toHaveLength(0)
+  })
+
+  it('skips streamable HTTP MCP registration when an async predicate returns false', async () => {
+    const pluginManifest = manifest('@cradle/context-http-async-skip')
+    registerDescriptor(pluginManifest)
+    const ctx = createServerPluginContext(pluginManifest, new Elysia())
+
+    const disposable = await ctx.mcp.registerServer({
+      transport: 'streamable-http',
+      name: 'context-http-async-skip',
+      url: 'https://nowledge.example.test/mcp',
+      when: async () => false,
+    })
+
+    expect(disposable).toBeUndefined()
+    expect(ctx.subscriptions).toHaveLength(1)
+    expect(getRegisteredMcpServers()).not.toHaveProperty('context-http-async-skip')
     expect(listPluginDescriptors()[0]?.capabilities).toHaveLength(0)
   })
 
@@ -142,6 +222,7 @@ describe('server plugin context lifecycle', () => {
     const ctx = createServerPluginContext(pluginManifest, new Elysia())
 
     const mcp = ctx.mcp.registerServer({
+      transport: 'stdio',
       name: 'context-namespaces',
       command: 'node',
       args: ['server.mjs'],

@@ -20,6 +20,8 @@ interface PluginPackageOptions {
   provenance?: boolean
   server?: boolean
   web?: boolean
+  writeWebEntry?: boolean
+  mcpTransport?: 'stdio' | 'streamable-http'
 }
 
 async function writePluginPackage(options: PluginPackageOptions = {}): Promise<string> {
@@ -54,13 +56,19 @@ async function writePluginPackage(options: PluginPackageOptions = {}): Promise<s
   )
   await writeFile(
     join(pluginDir, 'server.mjs'),
-    [
-      'export function activate(ctx) {',
-      '  ctx.mcp.registerServer({ name: "loader-cleanup", command: "node", args: ["server.mjs"] })',
-      '}',
-    ].join('\n'),
+    options.mcpTransport === 'streamable-http'
+      ? [
+          'export function activate(ctx) {',
+          '  ctx.mcp.registerServer({ transport: "streamable-http", name: "loader-cleanup", url: "https://nowledge.example.test/mcp", headers: { Authorization: "Bearer secret-token" } })',
+          '}',
+        ].join('\n')
+      : [
+          'export function activate(ctx) {',
+          '  ctx.mcp.registerServer({ transport: "stdio", name: "loader-cleanup", command: "node", args: ["server.mjs"] })',
+          '}',
+        ].join('\n'),
   )
-  if (options.web === true) {
+  if (options.web === true && options.writeWebEntry !== false) {
     await writeFile(
       join(pluginDir, 'web.mjs'),
       'export function activate() {}',
@@ -310,6 +318,28 @@ describe('server plugin loader lifecycle', () => {
     expect(getRegisteredMcpServers()).not.toHaveProperty('loader-cleanup')
   })
 
+  it('fails external local server plugins that register undeclared streamable HTTP MCP capabilities', async () => {
+    tempPluginsDir = await writePluginPackage({
+      mcpTransport: 'streamable-http',
+      contributes: {
+        capabilities: [],
+        permissions: [],
+      },
+    })
+    process.env.CRADLE_PLUGINS_DIR = tempPluginsDir
+    process.env.CRADLE_PLUGINS_SOURCE_KIND = 'externalLocal'
+
+    await activateServerPlugins(new Elysia())
+
+    const descriptor = listPluginDescriptors().find(plugin => plugin.identity === '@cradle/loader-cleanup')
+    expect(descriptor?.layers.server.status).toBe('failed')
+    expect(descriptor?.layers.server.error).toContain(
+      'Runtime capability mcp-server:loader-cleanup is not declared',
+    )
+    expect(descriptor?.capabilities).toHaveLength(0)
+    expect(getRegisteredMcpServers()).not.toHaveProperty('loader-cleanup')
+  })
+
   it('disables external local web bundles when required permissions are not granted', async () => {
     tempPluginsDir = await writePluginPackage({
       server: false,
@@ -371,6 +401,38 @@ describe('server plugin loader lifecycle', () => {
     const response = await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/web.mjs'))
     expect(response.status).toBe(200)
     expect(await response.text()).toBe('export function activate() {}')
+  })
+
+  it('marks plugins with missing web bundles as failed before listing descriptors', async () => {
+    tempPluginsDir = await writePluginPackage({
+      server: false,
+      web: true,
+      writeWebEntry: false,
+      contributes: {
+        capabilities: [{
+          id: 'panel.loader-cleanup',
+          type: 'web-panel',
+          layer: 'web',
+          permissions: [],
+        }],
+        permissions: [],
+      },
+    })
+    process.env.CRADLE_PLUGINS_DIR = tempPluginsDir
+    process.env.CRADLE_PLUGINS_SOURCE_KIND = 'workspaceDev'
+
+    const app = new Elysia()
+    await activateServerPlugins(app)
+
+    const listResponse = await app.handle(new Request('http://localhost/api/plugins/'))
+    expect(listResponse.status).toBe(200)
+    const plugins = await listResponse.json() as Array<{ identity: string, layers: { web: { status: string, error?: string } } }>
+    const descriptor = plugins.find(plugin => plugin.identity === '@cradle/loader-cleanup')
+    expect(descriptor?.layers.web.status).toBe('failed')
+    expect(descriptor?.layers.web.error).toBe('Web entry is missing: web.mjs')
+
+    const webResponse = await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/web.mjs'))
+    expect(webResponse.status).toBe(404)
   })
 
   it('projects Marketplace install receipt provenance into plugin descriptors', async () => {
