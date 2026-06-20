@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { automationRuns, workspaces } from '@cradle/db'
+import { automationRuns, sessions, workspaces } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
@@ -498,6 +498,8 @@ describe('automation capability', () => {
         backendRunId: expect.any(String),
         artifactCount: 1,
       }))
+      const chatSession = db().select().from(sessions).where(eq(sessions.id, run.chatSessionId!)).get()
+      expect(chatSession?.origin).toBe('automation')
 
       const runsRes = await app.handle(new Request('http://localhost/automations/automation-weekly-report/runs'))
       expect(await runsRes.json()).toEqual([expect.objectContaining({ id: run.id, backendRunId: run.backendRunId })])

@@ -32,9 +32,10 @@ const RuntimeTargetResponseSchema = z.object({
 const ProviderTargetModelSettingsResponseSchema = z.object({
   providerTargetKind: z.enum(['manual', 'external']),
   providerTargetId: z.string(),
+  connectionConfigJson: z.string(),
+  enabledModelsJson: z.string(),
   configJson: z.string(),
   customModelsJson: z.string(),
-  modelRegistryMappingsJson: z.string(),
 })
 
 function makeTempDir(prefix: string): string {
@@ -628,7 +629,6 @@ describe('external provider sources capability', () => {
           credentialRef: null,
           enabledModelsJson: '[]',
           customModelsJson: '[]',
-          modelRegistryMappingsJson: '[]',
           iconSlug: null,
           sourceFingerprint: 'legacy-target-fingerprint',
           createdAt: now,
@@ -825,54 +825,36 @@ describe('external provider sources capability', () => {
         expect.objectContaining({ id: 'provider-private-model', label: 'Provider Private Model' }),
       ])
 
-      const mappingRes = await app.handle(
-        new Request(`http://localhost/provider-targets/${target.id}/model-registry-mappings`, {
+      const claudeAgentSettingsRes = await app.handle(
+        new Request(`http://localhost/provider-targets/${target.id}/model-settings`, {
           method: 'PATCH',
           headers: { 'content-type': 'application/json' },
           body: JSON.stringify({
-            modelId: 'gpt-4.1-mini',
-            model: {
-              id: 'gpt-4.1-mini',
-              name: 'GPT-4.1 Mini',
-              limit: { context: 1047576, output: 32768 },
-              modalities: { input: ['text'], output: ['text'] },
-              tool_call: true,
+            claudeAgent: {
+              modelAliases: {
+                haiku: 'external-haiku-model',
+                sonnet: 'external-sonnet-model',
+                opus: 'external-opus-model',
+              },
             },
           }),
         }),
       )
-      expect(mappingRes.status).toBe(200)
-      expect(await mappingRes.json()).toEqual([
-        expect.objectContaining({ modelId: 'gpt-4.1-mini', registryModelId: 'gpt-4.1-mini' }),
-      ])
-
-      const mappedModelsRes = await app.handle(
-        new Request('http://localhost/providers/models', {
-          method: 'POST',
-          headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({
-            providerKind: 'openai-compatible',
-            label: 'ignored',
-            config: {},
-            secretRef: null,
-            providerTargetKind: 'external',
-            providerTargetId: target.id,
-          }),
+      expect(claudeAgentSettingsRes.status).toBe(200)
+      const claudeAgentSettings = ProviderTargetModelSettingsResponseSchema.parse(
+        await claudeAgentSettingsRes.json(),
+      )
+      expect(JSON.parse(claudeAgentSettings.connectionConfigJson)).toEqual(
+        expect.objectContaining({
+          claudeAgent: {
+            modelAliases: {
+              haiku: 'external-haiku-model',
+              sonnet: 'external-sonnet-model',
+              opus: 'external-opus-model',
+            },
+          },
         }),
       )
-      expect(mappedModelsRes.status).toBe(200)
-      expect(await mappedModelsRes.json()).toEqual([
-        expect.objectContaining({
-          id: 'gpt-4.1-mini',
-          label: 'GPT-4.1 Mini',
-          capabilities: expect.objectContaining({
-            registryMatch: 'manual',
-            contextWindow: 1047576,
-          }),
-        }),
-        expect.objectContaining({ id: 'gpt-4.1', providerKind: 'openai-compatible' }),
-        expect.objectContaining({ id: 'provider-private-model', label: 'Provider Private Model' }),
-      ])
 
       const refreshAfterPreferences = await app.handle(
         new Request(`http://localhost/external-provider-sources/${sourceKey}/refresh`, {
@@ -890,19 +872,23 @@ describe('external provider sources capability', () => {
       expect(JSON.parse(settingsAfterRefresh.configJson)).toEqual(
         expect.objectContaining({
           enabledModels: ['gpt-4.1'],
+          claudeAgent: {
+            modelAliases: {
+              haiku: 'external-haiku-model',
+              sonnet: 'external-sonnet-model',
+              opus: 'external-opus-model',
+            },
+          },
         }),
       )
       expect(JSON.parse(settingsAfterRefresh.customModelsJson)).toEqual([
         expect.objectContaining({ id: 'provider-private-model' }),
       ])
-      expect(JSON.parse(settingsAfterRefresh.modelRegistryMappingsJson)).toEqual([
-        expect.objectContaining({ modelId: 'gpt-4.1-mini', registryModelId: 'gpt-4.1-mini' }),
-      ])
 
       const providerFetchCount = fetchSpy.mock.calls.filter(
         ([callInput]) => getRequestUrl(callInput) === 'https://target-openai.example.test/v1/models',
       ).length
-      expect(providerFetchCount).toBe(2)
+      expect(providerFetchCount).toBe(1)
 
       registration.dispose()
     }

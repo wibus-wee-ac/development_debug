@@ -346,6 +346,7 @@ async function runSession(agentSessionId: string): Promise<void> {
     const chatSession = Session.create({
       workspaceId: issue.workspaceId,
       title: `Issue: ${issue.title}`,
+      origin: 'cradle-issue',
       providerTargetId: session.providerTargetId,
       modelId: agent.modelId,
       thinkingEffort: agent.thinkingEffort,

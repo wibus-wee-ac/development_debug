@@ -16,12 +16,17 @@ import stringify from 'safe-stable-stringify'
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
+import { parseJsonObjectOrEmpty } from '../../helpers/json-record'
 import { db } from '../../infra'
 import {
   deriveExternalProviderSourceKey,
   getExternalProviderSource,
   listExternalProviderSources as listRegisteredExternalProviderSources,
 } from '../../plugins/external-provider-source-registry'
+import {
+  applyClaudeAgentConfigPatch,
+  readClaudeAgentConfig,
+} from '../provider-contracts/claude-agent-config'
 import { upsertSecretInDb } from '../secrets/service'
 
 export interface ExternalProviderSourceView {
@@ -200,6 +205,21 @@ function recordFingerprint(record: ParsedExternalProviderRecord): string {
   })
 
   return hashText(stringify(payload))
+}
+
+function mergeExternalRecordConfigWithExistingPreferences(
+  recordConfig: Record<string, unknown>,
+  existingConnectionConfigJson: string | null | undefined,
+): Record<string, unknown> {
+  if (!existingConnectionConfigJson) {
+    return recordConfig
+  }
+
+  const existingConfig = parseJsonObjectOrEmpty(existingConnectionConfigJson)
+  const existingClaudeAgent = readClaudeAgentConfig(existingConfig.claudeAgent)
+  return existingClaudeAgent
+    ? applyClaudeAgentConfigPatch(recordConfig, existingClaudeAgent)
+    : recordConfig
 }
 
 function metadataString(metadata: Record<string, unknown>, key: string): string | null {
@@ -454,6 +474,10 @@ function syncRuntimeTarget(
     : (existing?.credentialRef ?? null)
   const now = nowUnix()
   const sourceIconSlug = sourceIconSlugFromMetadata(record)
+  const connectionConfig = mergeExternalRecordConfigWithExistingPreferences(
+    record.config,
+    existing?.connectionConfigJson,
+  )
 
   database
     .insert(providerTargets)
@@ -465,7 +489,7 @@ function syncRuntimeTarget(
       providerKind: record.providerKind,
       displayName: record.name,
       enabled: existing?.enabled ?? true,
-      connectionConfigJson: JSON.stringify(record.config),
+      connectionConfigJson: JSON.stringify(connectionConfig),
       credentialRef,
       enabledModelsJson: existing?.enabledModelsJson ?? '[]',
       customModelsJson: existing?.customModelsJson ?? '[]',
@@ -479,7 +503,7 @@ function syncRuntimeTarget(
       set: {
         providerKind: record.providerKind,
         displayName: record.name,
-        connectionConfigJson: JSON.stringify(record.config),
+        connectionConfigJson: JSON.stringify(connectionConfig),
         credentialRef,
         iconSlug: sourceIconSlug,
         sourceFingerprint: recordFingerprint(record),

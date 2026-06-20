@@ -473,6 +473,7 @@ export async function executeRun(runId: string): Promise<AutomationRunView> {
     const session = Session.create({
       workspaceId: run.workspaceId,
       title: `Automation: ${getDefinitionRow(run.automationDefinitionId).title}`,
+      origin: 'automation',
       providerTargetId: recipe.providerTargetId,
       agentId: recipe.agentId,
       runtimeKind: recipe.runtimeKind,

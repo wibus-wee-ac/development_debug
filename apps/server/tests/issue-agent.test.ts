@@ -2,7 +2,8 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { agents, providerTargets, workspaces } from '@cradle/db'
+import { agents, providerTargets, sessions, workspaces } from '@cradle/db'
+import { eq } from 'drizzle-orm'
 import { describe, expect, it, vi } from 'vitest'
 
 import { createServerApp } from '../src/app'
@@ -332,6 +333,8 @@ describe('issue-agent capability', () => {
         agentSessionId: delegatedSession.id,
       }))
       expect(delegationState.chatSessionId).toBeTruthy()
+      const chatSession = db().select().from(sessions).where(eq(sessions.id, delegationState.chatSessionId!)).get()
+      expect(chatSession?.origin).toBe('cradle-issue')
 
       const assignedIssueRes = await app.handle(new Request(`http://localhost/issues/${encodeURIComponent(issue.id)}`))
       expect(assignedIssueRes.status).toBe(200)
