@@ -43,11 +43,17 @@ export async function generateClaudeSessionTitle(input: {
   const abortTitleRead = () => abortController.abort()
   input.signal.addEventListener('abort', abortTitleRead, { once: true })
 
+  let apiKey: string | null = null
+
   try {
     const config = readTrustedClaudeAgentConfig(input.profile.configJson)
-    const apiKey = resolveApiKey(input.profile, config.apiKey, 'ANTHROPIC_API_KEY', input.deps)
+    apiKey = resolveApiKey(input.profile, config.apiKey, 'ANTHROPIC_API_KEY', input.deps)
 
     if (!apiKey) {
+      input.deps.logger?.warn('claude session title generation skipped: no api key resolved', {
+        modelId: input.modelId ?? null,
+        profileId: input.profile.id,
+      })
       return null
     }
 
@@ -98,11 +104,29 @@ export async function generateClaudeSessionTitle(input: {
 
     titleQuery.close()
     const generatedTitle = titleCollector.read()?.trim() ?? ''
-    return generatedTitle.length > 0 && generatedTitle.length <= CLAUDE_SESSION_TITLE_MAX_LENGTH * 1.5
-      ? generatedTitle
-      : null
+    if (generatedTitle.length === 0) {
+      input.deps.logger?.warn('claude session title generation produced no assistant text', {
+        modelId: input.modelId ?? null,
+      })
+      return null
+    }
+    if (generatedTitle.length > CLAUDE_SESSION_TITLE_MAX_LENGTH * 1.5) {
+      input.deps.logger?.warn('claude session title generation exceeded length cap', {
+        modelId: input.modelId ?? null,
+        length: generatedTitle.length,
+        cap: CLAUDE_SESSION_TITLE_MAX_LENGTH * 1.5,
+        preview: generatedTitle.slice(0, 80),
+      })
+      return null
+    }
+    return generatedTitle
   }
-  catch {
+  catch (error) {
+    input.deps.logger?.warn('claude session title generation failed', {
+      err: error,
+      modelId: input.modelId ?? null,
+      hasApiKey: Boolean(apiKey),
+    })
     return null
   }
   finally {

@@ -262,6 +262,7 @@ function mapSystemOrUnknown(msg: SDKMessage, state: ClaudeAgentChunkMapperState,
 function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
   const chunks: UIMessageChunk[] = []
   const capturedPlans: ClaudeAgentCapturedPlan[] = []
+  const capturedTodos: ClaudeAgentCapturedTodos[] = []
 
   const flushTextSegment = (text: string) => {
     if (text.length === 0) {
@@ -286,6 +287,7 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
       const mapped = mapContentBlock(block, state)
       chunks.push(...mapped.chunks)
       capturedPlans.push(...mapped.capturedPlans)
+      capturedTodos.push(...mapped.capturedTodos)
       state.hadToolCallSinceLastText = true
       continue
     }
@@ -299,6 +301,7 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
     const mapped = mapContentBlock(block, state)
     chunks.push(...mapped.chunks)
     capturedPlans.push(...mapped.capturedPlans)
+    capturedTodos.push(...mapped.capturedTodos)
   }
   flushTextSegment(pendingText)
 
@@ -310,7 +313,7 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
       }
     : null
 
-  return { chunks, sessionId: msg.session_id, usage, capturedPlans, capturedTodos: [] }
+  return { chunks, sessionId: msg.session_id, usage, capturedPlans, capturedTodos }
 }
 
 async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState): Promise<ClaudeAgentChunkMapperResult> {
@@ -368,7 +371,7 @@ async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState):
 function mapContentBlock(
   block: BetaContentBlock,
   state: ClaudeAgentChunkMapperState,
-): { chunks: UIMessageChunk[], capturedPlans: ClaudeAgentCapturedPlan[] } {
+): { chunks: UIMessageChunk[], capturedPlans: ClaudeAgentCapturedPlan[], capturedTodos: ClaudeAgentCapturedTodos[] } {
   switch (block.type) {
     case 'text': {
       const chunks: UIMessageChunk[] = []
@@ -379,7 +382,7 @@ function mapContentBlock(
       if (block.text) {
         chunks.push({ type: 'text-delta', id: state.textItemId, delta: block.text })
       }
-      return { chunks, capturedPlans: [] }
+      return { chunks, capturedPlans: [], capturedTodos: [] }
     }
     case 'thinking': {
       const itemId = `thinking-${state.textItemId}`
@@ -390,20 +393,22 @@ function mapContentBlock(
         chunks.push({ type: 'reasoning-delta', id: itemId, delta: block.thinking })
       }
       chunks.push({ type: 'reasoning-end', id: itemId })
-      return { chunks, capturedPlans: [] }
+      return { chunks, capturedPlans: [], capturedTodos: [] }
     }
     case 'tool_use':
       if (!block.id || !block.name) {
-        return { chunks: [], capturedPlans: [] }
+        return { chunks: [], capturedPlans: [], capturedTodos: [] }
       }
       return emitToolUseChunks(block.id, block.name, block.input, state)
     default:
-      return { chunks: [], capturedPlans: [] }
+      return { chunks: [], capturedPlans: [], capturedTodos: [] }
   }
 }
 
 function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunkMapperState): ClaudeAgentChunkMapperResult {
   const chunks: UIMessageChunk[] = []
+  const capturedPlans: ClaudeAgentCapturedPlan[] = []
+  const capturedTodos: ClaudeAgentCapturedTodos[] = []
   let usage: TokenUsage | null = null
 
   switch (msg.event.type) {
@@ -472,6 +477,8 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
           state,
         )
         chunks.push(...emitted.chunks)
+        capturedPlans.push(...emitted.capturedPlans)
+        capturedTodos.push(...emitted.capturedTodos)
       }
       break
     }
@@ -491,12 +498,25 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
         state.activeThinkingBlockByIndex.delete(stopEvent.index)
         state.completedThinkingBlockIndices.add(stopEvent.index)
         chunks.push({ type: 'reasoning-end', id: thinkingItemId })
+        break
+      }
+      const toolId = state.activeToolBlockIds.get(stopEvent.index)
+      if (toolId !== undefined) {
+        state.activeToolBlockIds.delete(stopEvent.index)
+        const toolName = state.toolNamesByToolCallId.get(toolId)
+        if (toolName) {
+          const input = readToolCallArgs(toolId, state)
+          const emitted = emitToolUseChunks(toolId, toolName, input, state)
+          chunks.push(...emitted.chunks)
+          capturedPlans.push(...emitted.capturedPlans)
+          capturedTodos.push(...emitted.capturedTodos)
+        }
       }
       break
     }
   }
 
-  return { chunks, sessionId: msg.session_id, usage, capturedPlans: [], capturedTodos: [] }
+  return { chunks, sessionId: msg.session_id, usage, capturedPlans, capturedTodos }
 }
 
 function ensureTextBlockStarted(state: ClaudeAgentChunkMapperState, blockIndex: number): UIMessageChunk[] {
@@ -624,10 +644,11 @@ function emitToolUseChunks(
   toolName: string,
   input: unknown,
   state: ClaudeAgentChunkMapperState,
-): { chunks: UIMessageChunk[], capturedPlans: ClaudeAgentCapturedPlan[] } {
+): { chunks: UIMessageChunk[], capturedPlans: ClaudeAgentCapturedPlan[], capturedTodos: ClaudeAgentCapturedTodos[] } {
   const current = state.emittedToolStateByToolCallId.get(toolCallId) ?? { started: false, inputAvailable: false }
   const chunks: UIMessageChunk[] = []
   const capturedPlans: ClaudeAgentCapturedPlan[] = []
+  const capturedTodos: ClaudeAgentCapturedTodos[] = []
   state.toolNamesByToolCallId.set(toolCallId, toolName)
 
   if (!current.started) {
@@ -644,6 +665,10 @@ function emitToolUseChunks(
       input: createClaudeCodeToolInputPayload(toolName, input),
     })
     current.inputAvailable = true
+    const todoPluginState = isTodoWriteToolName(toolName) ? synthesizeTodoWritePluginState(input) : null
+    if (todoPluginState) {
+      capturedTodos.push({ toolCallId, todos: todoPluginState.todos })
+    }
   }
 
   const exitPlan = readExitPlanModePlan(toolName, input)
@@ -665,7 +690,7 @@ function emitToolUseChunks(
   if (exitPlan) {
     chunks.push(...emitPlanImplementationApprovalChunks(toolCallId, exitPlan, state))
   }
-  return { chunks, capturedPlans }
+  return { chunks, capturedPlans, capturedTodos }
 }
 
 function readExitPlanModePlan(toolName: string, input: unknown): string | null {
