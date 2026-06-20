@@ -612,6 +612,116 @@ describe('session capability', () => {
     }
   })
 
+  it('persists and filters coarse session origins', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const d = db()
+
+      const workspaceId = randomUUID()
+      const providerTargetId = randomUUID()
+      d.insert(workspaces)
+        .values({
+          id: workspaceId,
+          name: 'Origin Workspace',
+          path: workspaceRoot,
+        })
+        .run()
+      d.insert(providerTargets)
+        .values({
+          id: providerTargetId,
+          kind: 'manual',
+          displayName: 'Origin Provider Target',
+          providerKind: 'openai-compatible',
+        })
+        .run()
+
+      const manualSessionId = randomUUID()
+      const manualCreateRes = await app.handle(
+        new Request('http://localhost/sessions', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            id: manualSessionId,
+            workspaceId,
+            title: 'Manual Origin Session',
+            providerTargetId,
+          }),
+        }),
+      )
+      expect(manualCreateRes.status).toBe(200)
+      expect(await manualCreateRes.json()).toEqual(expect.objectContaining({
+        id: manualSessionId,
+        origin: 'manual',
+      }))
+
+      const automationSessionId = randomUUID()
+      const automationCreateRes = await app.handle(
+        new Request('http://localhost/sessions', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            id: automationSessionId,
+            workspaceId,
+            title: 'Automation Origin Session',
+            origin: 'automation',
+            providerTargetId,
+          }),
+        }),
+      )
+      expect(automationCreateRes.status).toBe(200)
+      expect(await automationCreateRes.json()).toEqual(expect.objectContaining({
+        id: automationSessionId,
+        origin: 'automation',
+      }))
+
+      const automationListRes = await app.handle(
+        new Request(`http://localhost/sessions?workspaceId=${encodeURIComponent(workspaceId)}&origin=automation`),
+      )
+      expect(automationListRes.status).toBe(200)
+      expect(await automationListRes.json()).toEqual([
+        expect.objectContaining({
+          id: automationSessionId,
+          origin: 'automation',
+        }),
+      ])
+
+      const manualListRes = await app.handle(
+        new Request(`http://localhost/sessions?workspaceId=${encodeURIComponent(workspaceId)}&origin=manual`),
+      )
+      expect(manualListRes.status).toBe(200)
+      expect(await manualListRes.json()).toEqual([
+        expect.objectContaining({
+          id: manualSessionId,
+          origin: 'manual',
+        }),
+      ])
+
+      const getAutomationRes = await app.handle(new Request(`http://localhost/sessions/${automationSessionId}`))
+      expect(getAutomationRes.status).toBe(200)
+      expect(await getAutomationRes.json()).toEqual(expect.objectContaining({
+        id: automationSessionId,
+        origin: 'automation',
+      }))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
   it('repairs persisted streaming runs during app startup', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')

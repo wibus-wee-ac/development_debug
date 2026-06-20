@@ -23,6 +23,7 @@ export const SessionModel = {
     sideContextSource: t.Nullable(sideContextSourceSchema),
     workspaceId: nullableString,
     title: nullableString,
+    origin: t.String(),
     providerTargetId: nullableString,
     agentId: nullableString,
     modelId: nullableString,
@@ -65,12 +66,14 @@ export const SessionModel = {
 
   listQuery: t.Object({
     workspaceId: t.Optional(t.String({ minLength: 1 })),
+    origin: t.Optional(t.String({ minLength: 1 })),
     archived: t.Optional(t.Boolean()),
   }),
 
   createBody: t.Object({
     workspaceId: t.Optional(nullableRequiredString),
     title: t.String({ minLength: 1 }),
+    origin: t.Optional(t.String({ minLength: 1 })),
     providerTargetId: t.Optional(nullableRequiredString),
     modelId: t.Optional(nullableRequiredString),
     agentId: t.Optional(t.String({ minLength: 1 })),

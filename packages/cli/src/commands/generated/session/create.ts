@@ -25,6 +25,12 @@ const spec = {
       "type": "string"
     },
     {
+      "name": "origin",
+      "required": false,
+      "target": "body.origin",
+      "type": "string"
+    },
+    {
       "name": "providerTargetId",
       "required": false,
       "target": "body.providerTargetId",

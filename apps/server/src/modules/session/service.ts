@@ -41,6 +41,7 @@ const SessionCreateInputSchema = z.object({
   id: z.string().default(() => randomUUID()),
   workspaceId: z.string().nullable().optional(),
   title: z.string(),
+  origin: z.string().trim().min(1).default('manual'),
   parentSessionId: z.string().nullable().optional(),
   sideContextSource: z.enum(['provider-native', 'cradle-context']).nullable().optional(),
   providerTargetId: z.string().nullable().optional(),
@@ -372,9 +373,10 @@ function assertTargetCompatibleWithRuntime(input: {
   }
 }
 
-export function list(input: { workspaceId?: string, archived?: boolean } = {}): SessionView[] {
+export function list(input: { workspaceId?: string, origin?: string, archived?: boolean } = {}): SessionView[] {
   const predicates = [
     input.workspaceId ? eq(sessions.workspaceId, input.workspaceId) : undefined,
+    input.origin ? eq(sessions.origin, input.origin) : undefined,
     input.archived ? isNotNull(sessions.archivedAt) : isNull(sessions.archivedAt),
   ].filter(predicate => predicate !== undefined)
   const where = predicates.length > 0 ? and(...predicates) : undefined
@@ -499,6 +501,7 @@ export function create(input: {
   id?: string
   workspaceId?: string | null
   title: string
+  origin?: string
   parentSessionId?: string | null
   sideContextSource?: 'provider-native' | 'cradle-context' | null
   providerTargetId?: string | null
@@ -537,6 +540,7 @@ export function create(input: {
       sideContextSource: parsed.sideContextSource ?? null,
       workspaceId,
       title: parsed.title,
+      origin: parsed.origin,
       providerTargetId: resolved.providerTargetId,
       runtimeKind: resolved.runtimeKind,
       agentId: resolved.agentId,
