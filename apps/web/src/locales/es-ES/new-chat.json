@@ -15,7 +15,7 @@
   "quick.risk.label": "Buscar cambios riesgosos",
   "quick.risk.prompt": "Inspecciona los cambios recientes de este proyecto e identifica áreas riesgosas, regresiones probables y el plan mínimo de verificación.",
   "readiness.agent.action": "Abrir Agents",
-  "readiness.agent.message": "No hay ningún CLI agent disponible. Habilita un agent local en ajustes para empezar.",
+  "readiness.agent.message": "No hay ningún Agent disponible. Habilita un Agent en ajustes para empezar.",
   "readiness.provider.action": "Abrir Providers",
   "readiness.provider.message": "No provider is available. Configure a provider before sending the first message.",
   "recent.title": "Chats recientes",

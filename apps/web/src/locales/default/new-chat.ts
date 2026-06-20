@@ -25,7 +25,7 @@ export default {
   'relative.daysAgo': '{{count}} days ago',
   'relative.monthsAgo': '{{count}} months ago',
   'readiness.agent.message':
-    'No CLI agent is available. Enable a local agent in settings to start.',
+    'No Agent is available. Enable an Agent in settings to start.',
   'readiness.agent.action': 'Open agents',
   'readiness.provider.message':
     'No provider is available. Configure a provider before sending the first message.',

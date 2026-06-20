@@ -15,7 +15,7 @@
   "quick.risk.label": "Find risky changes",
   "quick.risk.prompt": "Inspect the recent changes in this project and identify risky areas, likely regressions, and the smallest verification plan.",
   "readiness.agent.action": "Open agents",
-  "readiness.agent.message": "No CLI agent is available. Enable a local agent in settings to start.",
+  "readiness.agent.message": "No Agent is available. Enable an Agent in settings to start.",
   "readiness.provider.action": "Open providers",
   "readiness.provider.message": "No provider is available. Configure a provider before sending the first message.",
   "recent.title": "Recent chats",
