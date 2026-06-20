@@ -212,6 +212,7 @@ import { register as registerWorkspaceDiffsCommitPlanCreate } from './workspace/
 import { register as registerWorkspaceDiffsCommitPlanUpdate } from './workspace/diffs/commit-plan/update'
 import { register as registerWorkspaceDiffsFileViewed } from './workspace/diffs/file/viewed'
 import { register as registerWorkspaceDiffsGet } from './workspace/diffs/get'
+import { register as registerWorkspaceDiffsGuideCancel } from './workspace/diffs/guide/cancel'
 import { register as registerWorkspaceDiffsGuideGenerate } from './workspace/diffs/guide/generate'
 import { register as registerWorkspaceDiffsList } from './workspace/diffs/list'
 import { register as registerWorkspaceDiffsLocalWorkingTree } from './workspace/diffs/local-working-tree'
@@ -458,6 +459,7 @@ export function registerGeneratedCommands(program: Command): void {
   registerWorkspaceDiffsCommitPlanUpdate(program)
   registerWorkspaceDiffsFileViewed(program)
   registerWorkspaceDiffsGet(program)
+  registerWorkspaceDiffsGuideCancel(program)
   registerWorkspaceDiffsGuideGenerate(program)
   registerWorkspaceDiffsList(program)
   registerWorkspaceDiffsLocalWorkingTree(program)

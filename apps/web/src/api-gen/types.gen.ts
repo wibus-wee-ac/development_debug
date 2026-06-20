@@ -1550,6 +1550,39 @@ export type GetProviderTargetsByProviderTargetIdModelSettingsResponses = {
 
 export type GetProviderTargetsByProviderTargetIdModelSettingsResponse = GetProviderTargetsByProviderTargetIdModelSettingsResponses[keyof GetProviderTargetsByProviderTargetIdModelSettingsResponses];
 
+export type PatchProviderTargetsByProviderTargetIdModelSettingsData = {
+    body: {
+        claudeAgent: {
+            modelAliases?: {
+                haiku?: string;
+                sonnet?: string;
+                opus?: string;
+            };
+        } | null;
+    };
+    path: {
+        providerTargetId: string;
+    };
+    query?: never;
+    url: '/provider-targets/{providerTargetId}/model-settings';
+};
+
+export type PatchProviderTargetsByProviderTargetIdModelSettingsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        providerTargetKind?: 'manual' | 'external';
+        providerTargetId: string;
+        connectionConfigJson: string;
+        enabledModelsJson: string;
+        configJson: string;
+        customModelsJson: string;
+    };
+};
+
+export type PatchProviderTargetsByProviderTargetIdModelSettingsResponse = PatchProviderTargetsByProviderTargetIdModelSettingsResponses[keyof PatchProviderTargetsByProviderTargetIdModelSettingsResponses];
+
 export type GetProviderTargetsByProviderTargetIdCodexAccountDiagnosticsData = {
     body?: never;
     path: {
@@ -4096,6 +4129,7 @@ export type GetSessionsData = {
     path?: never;
     query?: {
         workspaceId?: string;
+        origin?: string;
         archived?: boolean;
     };
     url: '/sessions/';
@@ -4111,6 +4145,7 @@ export type GetSessionsResponses = {
         sideContextSource: string | null;
         workspaceId: string | null;
         title: string | null;
+        origin: string;
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
@@ -4134,6 +4169,7 @@ export type PostSessionsData = {
     body: {
         workspaceId?: string | null;
         title: string;
+        origin?: string;
         providerTargetId?: string | null;
         modelId?: string | null;
         agentId?: string;
@@ -4159,6 +4195,7 @@ export type PostSessionsResponses = {
         sideContextSource: string | null;
         workspaceId: string | null;
         title: string | null;
+        origin: string;
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
@@ -4217,6 +4254,7 @@ export type GetSessionsByIdResponses = {
         sideContextSource: string | null;
         workspaceId: string | null;
         title: string | null;
+        origin: string;
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
@@ -4260,6 +4298,7 @@ export type PatchSessionsByIdResponses = {
         sideContextSource: string | null;
         workspaceId: string | null;
         title: string | null;
+        origin: string;
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
@@ -4300,6 +4339,7 @@ export type PostSessionsByIdArchiveResponses = {
         sideContextSource: string | null;
         workspaceId: string | null;
         title: string | null;
+        origin: string;
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
@@ -4338,6 +4378,7 @@ export type PostSessionsByIdReadResponses = {
         sideContextSource: string | null;
         workspaceId: string | null;
         title: string | null;
+        origin: string;
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
@@ -4376,6 +4417,7 @@ export type PostSessionsByIdUnreadResponses = {
         sideContextSource: string | null;
         workspaceId: string | null;
         title: string | null;
+        origin: string;
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
@@ -5457,6 +5499,7 @@ export type GetIssuesByIdSessionsResponses = {
         sideContextSource: string | null;
         workspaceId: string | null;
         title: string | null;
+        origin: string;
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
@@ -5988,6 +6031,7 @@ export type GetSearchThreadsData = {
     query: {
         query: string;
         workspaceId?: string;
+        origin?: string;
         limit?: string | number;
         snippetsPerHit?: string | number;
     };
@@ -6003,6 +6047,7 @@ export type GetSearchThreadsResponses = {
         workspaceId: string | null;
         workspaceName: string | null;
         sessionTitle: string | null;
+        origin: string;
         titleRanges: Array<{
             start: number;
             end: number;
@@ -11916,6 +11961,7 @@ export type PostChatSessionsBySessionIdTitleRegenerateResponses = {
         sideContextSource: string | null;
         workspaceId: string | null;
         title: string | null;
+        origin: string;
         providerTargetId: string | null;
         agentId: string | null;
         modelId: string | null;
@@ -13670,7 +13716,7 @@ export type GetChatRunsByRunIdSnapshotResponses = {
         workspaceId?: string;
         status: 'running' | 'complete' | 'aborted' | 'failed';
         startedAt: number;
-        completedAt?: number;
+        completedAt: number | null;
         completionReason?: string;
         errorText?: string;
         summary: {
@@ -13775,7 +13821,7 @@ export type GetChatSessionsBySessionIdRunSnapshotsResponses = {
             workspaceId?: string;
             status: 'running' | 'complete' | 'aborted' | 'failed';
             startedAt: number;
-            completedAt?: number;
+            completedAt: number | null;
             completionReason?: string;
             errorText?: string;
             summary: {
@@ -13847,6 +13893,13 @@ export type GetChatSessionsBySessionIdRuntimeSettingsResponses = {
             accessMode: 'approval-required' | 'full-access';
             interactionMode: 'default' | 'plan';
         };
+        claudeAgent: {
+            modelAliases: {
+                haiku: string;
+                sonnet: string;
+                opus: string;
+            };
+        } | null;
         applied: boolean;
     };
 };
@@ -13857,6 +13910,13 @@ export type PatchChatSessionsBySessionIdRuntimeSettingsData = {
     body: {
         accessMode?: 'approval-required' | 'full-access';
         interactionMode?: 'default' | 'plan';
+        claudeAgent?: {
+            modelAliases?: {
+                haiku?: string;
+                sonnet?: string;
+                opus?: string;
+            };
+        } | null;
     };
     path: {
         sessionId: string;
@@ -13875,6 +13935,13 @@ export type PatchChatSessionsBySessionIdRuntimeSettingsResponses = {
             accessMode: 'approval-required' | 'full-access';
             interactionMode: 'default' | 'plan';
         };
+        claudeAgent: {
+            modelAliases: {
+                haiku: string;
+                sonnet: string;
+                opus: string;
+            };
+        } | null;
         applied: boolean;
     };
 };
@@ -16870,6 +16937,9 @@ export type GetObservabilityRuntimeSnapshotResponses = {
                     [key: string]: unknown;
                 }>;
                 activeStreamingMessages: Array<{
+                    [key: string]: unknown;
+                }>;
+                runDisplayMetaMessages: Array<{
                     [key: string]: unknown;
                 }>;
             };

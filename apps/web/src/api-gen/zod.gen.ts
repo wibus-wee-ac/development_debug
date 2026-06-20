@@ -342,6 +342,20 @@ export const zGetProviderTargetsByProviderTargetIdModelSettingsPath = z.object({
     providerTargetId: z.string().min(1)
 });
 
+export const zPatchProviderTargetsByProviderTargetIdModelSettingsBody = z.object({
+    claudeAgent: z.object({
+        modelAliases: z.object({
+            haiku: z.string().optional(),
+            sonnet: z.string().optional(),
+            opus: z.string().optional()
+        }).optional()
+    }).nullable()
+});
+
+export const zPatchProviderTargetsByProviderTargetIdModelSettingsPath = z.object({
+    providerTargetId: z.string().min(1)
+});
+
 export const zGetProviderTargetsByProviderTargetIdCodexAccountDiagnosticsPath = z.object({
     providerTargetId: z.string().min(1)
 });
@@ -867,12 +881,14 @@ export const zGetAutomationsByIdArtifactsByArtifactIdPath = z.object({
 
 export const zGetSessionsQuery = z.object({
     workspaceId: z.string().min(1).optional(),
+    origin: z.string().min(1).optional(),
     archived: z.boolean().optional()
 });
 
 export const zPostSessionsBody = z.object({
     workspaceId: z.string().min(1).nullish(),
     title: z.string().min(1),
+    origin: z.string().min(1).optional(),
     providerTargetId: z.string().min(1).nullish(),
     modelId: z.string().min(1).nullish(),
     agentId: z.string().min(1).optional(),
@@ -1273,6 +1289,7 @@ export const zPatchKanbanBoardsByIdPath = z.object({
 export const zGetSearchThreadsQuery = z.object({
     query: z.string().min(1),
     workspaceId: z.string().optional(),
+    origin: z.string().min(1).optional(),
     limit: z.union([
         z.string(),
         z.number().gte(1)
@@ -2334,7 +2351,14 @@ export const zGetChatSessionsBySessionIdRuntimeSettingsPath = z.object({
 
 export const zPatchChatSessionsBySessionIdRuntimeSettingsBody = z.object({
     accessMode: z.enum(['approval-required', 'full-access']).optional(),
-    interactionMode: z.enum(['default', 'plan']).optional()
+    interactionMode: z.enum(['default', 'plan']).optional(),
+    claudeAgent: z.object({
+        modelAliases: z.object({
+            haiku: z.string().optional(),
+            sonnet: z.string().optional(),
+            opus: z.string().optional()
+        }).optional()
+    }).nullish()
 });
 
 export const zPatchChatSessionsBySessionIdRuntimeSettingsPath = z.object({

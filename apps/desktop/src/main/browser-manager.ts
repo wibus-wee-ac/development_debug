@@ -1654,6 +1654,7 @@ export class DesktopBrowserManager {
   closeTab(input: BrowserTabInput): ThreadBrowserState {
     const state = this.ensureWorkspace(input.threadId)
     const tab = this.resolveTab(state, input.tabId)
+    const closedIndex = state.tabs.findIndex(candidate => candidate.id === tab.id)
     const nextTabs = state.tabs.filter(candidate => candidate.id !== tab.id)
     if (nextTabs.length === state.tabs.length) {
       return this.snapshotThreadState(input.threadId, state)
@@ -1676,8 +1677,8 @@ export class DesktopBrowserManager {
       return this.snapshotThreadState(input.threadId, state)
     }
 
-    if (!state.activeTabId || state.activeTabId === input.tabId) {
-      state.activeTabId = nextTabs[Math.max(0, nextTabs.length - 1)]?.id ?? null
+    if (!state.activeTabId || state.activeTabId === tab.id) {
+      state.activeTabId = nextTabs[Math.max(0, closedIndex - 1)]?.id ?? null
     }
 
     const bounds = this.getVisibleBoundsForThread(input.threadId)

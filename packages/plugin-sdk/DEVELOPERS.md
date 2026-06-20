@@ -252,6 +252,7 @@ const __dirname = dirname(fileURLToPath(import.meta.url))
 
 export function activate(ctx: ServerPluginContext): void {
   const disposable = ctx.mcp.registerServer({
+    transport: 'stdio',
     name: 'my-tool',
     command: 'node',
     args: [resolve(__dirname, 'mcp-server.mjs')],
@@ -265,16 +266,34 @@ export function activate(ctx: ServerPluginContext): void {
 }
 ```
 
+Streamable HTTP MCP servers are already running at an HTTP endpoint. Use headers only for values the runtime client must send; headers may contain secrets and are not exposed through public plugin capability metadata.
+
+```ts
+export function activate(ctx: ServerPluginContext): void {
+  const token = ctx.sharedConfig.get('MY_TOOL_TOKEN')
+
+  ctx.mcp.registerServer({
+    transport: 'streamable-http',
+    name: 'my-http-tool',
+    url: 'https://mcp.example.test/mcp',
+    headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+  })
+}
+```
+
 Server registrations return `Disposable` handles and are also tracked in `ctx.subscriptions`. Use namespace APIs such as `ctx.routes.register`, `ctx.mcp.registerServer`, `ctx.skills.register`, `ctx.providers.externalSources.register`, and `ctx.runtimes.register`. When `when` is asynchronous, await the result if later initialization depends on the MCP server being registered.
 
 **`McpServerConfig` fields:**
 
 | Field | Type | Description |
 |-------|------|-------------|
+| `transport` | `'stdio' \| 'streamable-http'` | MCP transport kind |
 | `name` | `string` | Unique identifier for the MCP server |
-| `command` | `string` | Executable command (e.g. `'node'`, `'python'`) |
-| `args` | `string[]` | Command arguments |
-| `env` | `Record<string, string>` | Optional environment variables |
+| `command` | `string` | Stdio-only executable command (e.g. `'node'`, `'python'`) |
+| `args` | `string[]` | Stdio-only command arguments |
+| `env` | `Record<string, string>` | Stdio-only optional environment variables |
+| `url` | `string` | Streamable HTTP-only MCP endpoint URL |
+| `headers` | `Record<string, string>` | Streamable HTTP-only optional request headers; may contain secrets |
 | `when` | `() => boolean \| Promise<boolean>` | Optional predicate — skips registration if returns `false` |
 
 ### `ctx.skills.register(skill)` — Skill Registration
@@ -1090,11 +1109,22 @@ interface ChatRuntimeContributionMetadata {
   sortOrder?: number
 }
 
-interface McpServerConfig {
+type McpServerConfig = StdioMcpServerConfig | StreamableHttpMcpServerConfig
+
+interface StdioMcpServerConfig {
+  transport: 'stdio'
   name: string
   command: string
   args: string[]
   env?: Record<string, string>
+  when?: () => boolean | Promise<boolean>
+}
+
+interface StreamableHttpMcpServerConfig {
+  transport: 'streamable-http'
+  name: string
+  url: string
+  headers?: Record<string, string>
   when?: () => boolean | Promise<boolean>
 }
 
@@ -1673,6 +1703,7 @@ export function activate(ctx: ServerPluginContext): void {
   // Only register MCP server when socket is available (desktop mode)
   if (socketPath) {
     ctx.mcp.registerServer({
+      transport: 'stdio',
       name: 'my-tool',
       command: 'node',
       args: [resolve(__dirname, 'mcp-server.mjs')],

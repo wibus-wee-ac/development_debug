@@ -243,6 +243,27 @@ describe('desktop browser manager tab runtime retention', () => {
     manager.dispose()
   })
 
+  it('activates the previous adjacent tab when closing the active tab', async () => {
+    const manager = await createManager()
+    const threadId = 'thread-1'
+
+    const firstState = manager.open({ threadId, initialUrl: 'https://one.test/' })
+    const firstTabId = firstState.activeTabId!
+    const secondState = manager.newTab({ threadId, url: 'https://two.test/', activate: true })
+    const secondTabId = secondState.activeTabId!
+    const thirdState = manager.newTab({ threadId, url: 'https://three.test/', activate: true })
+    const thirdTabId = thirdState.activeTabId!
+
+    manager.selectTab({ threadId, tabId: secondTabId })
+    const closedState = manager.closeTab({ threadId, tabId: secondTabId })
+
+    expect(closedState.tabs.map(tab => tab.id)).toEqual([firstTabId, thirdTabId])
+    expect(closedState.activeTabId).toBe(firstTabId)
+    expect(manager.getState({ threadId }).activeTabId).toBe(firstTabId)
+
+    manager.dispose()
+  })
+
   it('keeps browser runtimes when the panel is hidden and shown again', async () => {
     vi.useFakeTimers()
     const manager = await createManager()
