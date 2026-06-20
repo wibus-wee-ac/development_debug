@@ -3,7 +3,7 @@
   <img src="https://github.com/farion1231/cc-switch/blob/main/src-tauri/icons/icon.png?raw=true" alt="Nowledge Icon" width="136" />
   <h1 align="center"><b>CC-Switch for Cradle</b></h1>
   <p align="center">
-    Official Cradle plugin for read model providers from CC-Switch.
+    Official Cradle plugin for reading model providers from CC-Switch.
     <br />
     <br />
   </p>
