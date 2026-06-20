@@ -307,6 +307,11 @@ type SessionMenuAction = {
   variant?: 'default' | 'destructive'
 }
 
+type SessionMenuActionGroup = {
+  key: string
+  actions: SessionMenuAction[]
+}
+
 type WorkspaceMenuAction = {
   key: string
   label: string
@@ -352,35 +357,32 @@ function createPointMenuAnchor(clientX: number, clientY: number): SessionMenuAnc
 }
 
 function SessionMenuActionItems({
-  actions,
+  groups,
   testIdSurface = 'button'
 }: {
-  actions: SessionMenuAction[]
+  groups: SessionMenuActionGroup[]
   testIdSurface?: 'button' | 'context'
 }) {
-  return actions.map((action) => {
-    const content = (
-      <>
-        {action.icon}
-        {action.label}
-      </>
-    )
-
-    return (
-      <Fragment key={action.key}>
-        {action.variant === 'destructive' && <MenuSeparator />}
+  return groups.map((group, groupIndex) => (
+    <Fragment key={group.key}>
+      {groupIndex > 0 && <MenuSeparator />}
+      {group.actions.map((action) => (
         <MenuItem
+          key={action.key}
           variant={action.variant}
           onClick={() => {
             void action.invoke()
           }}
-          data-testid={testIdSurface === 'context' ? `${action.testId}-context` : action.testId}
+          data-testid={
+            testIdSurface === 'context' ? `${action.testId}-context` : action.testId
+          }
         >
-          {content}
+          {action.icon}
+          {action.label}
         </MenuItem>
-      </Fragment>
-    )
-  })
+      ))}
+    </Fragment>
+  ))
 }
 
 function SessionActionsMenu({
@@ -541,84 +543,104 @@ function SessionActionsMenu({
     await invalidateSessionQueries()
   }, [invalidateSessionQueries, session])
 
-  const actions = useMemo<SessionMenuAction[]>(() => {
+  const actionGroups = useMemo<SessionMenuActionGroup[]>(() => {
     if (!session) {
       return []
     }
 
-    return [
+    const openActions: SessionMenuAction[] = [
       {
         key: 'open-surface',
         label: t('session.action.openInSurface'),
         icon: <PlusIcon />,
         testId: `session-menu-open-surface-${session.id}`,
         invoke: handleOpenInNewTab
-      },
-      ...(isElectron
-        ? [
-            {
-              key: 'open-new-window',
-              label: t('session.action.openInNewWindow'),
-              icon: <ExternalLinkIcon />,
-              testId: `session-menu-open-new-window-${session.id}`,
-              invoke: handleOpenInNewWindow
-            }
-          ]
-        : []),
-      {
-        key: 'rename',
-        label: t('session.action.rename'),
-        icon: <PencilIcon />,
-        testId: `session-menu-rename-${session.id}`,
-        invoke: handleStartRename
-      },
-      {
-        key: 'regenerate-title',
-        label: t('session.action.regenerateTitle'),
-        icon: <RefreshCwIcon />,
-        testId: `session-menu-regenerate-title-${session.id}`,
-        invoke: handleRegenerateTitle
-      },
-      {
-        key: 'toggle-read-state',
-        label: session.unread ? t('session.action.markRead') : t('session.action.markUnread'),
-        icon: session.unread ? <MailOpenIcon /> : <MailIcon />,
-        testId: `session-menu-toggle-read-state-${session.id}`,
-        invoke: handleToggleReadState
-      },
-      {
-        key: 'toggle-pin',
-        label: session.pinned ? t('session.action.unpin') : t('session.action.pin'),
-        icon: session.pinned ? <PinOffIcon /> : <PinIcon />,
-        testId: `session-menu-toggle-pin-${session.id}`,
-        invoke: handleTogglePin
-      },
+      }
+    ]
+    if (isElectron) {
+      openActions.push({
+        key: 'open-new-window',
+        label: t('session.action.openInNewWindow'),
+        icon: <ExternalLinkIcon />,
+        testId: `session-menu-open-new-window-${session.id}`,
+        invoke: handleOpenInNewWindow
+      })
+    }
+
+    const copyActions: SessionMenuAction[] = [
       {
         key: 'copy-markdown',
         label: t('session.action.copyMarkdown'),
         icon: <ClipboardCopyIcon />,
         testId: `session-menu-copy-markdown-${session.id}`,
         invoke: handleExport
-      },
-      ...(import.meta.env.DEV
-        ? [
-            {
-              key: 'copy-session-id',
-              label: t('session.action.copySessionId'),
-              icon: <ClipboardCopyIcon />,
-              testId: `session-menu-copy-session-id-${session.id}`,
-              invoke: () => {
-                navigator.clipboard.writeText(session.id)
-              }
-            }
-          ]
-        : []),
+      }
+    ]
+    if (import.meta.env.DEV) {
+      copyActions.push({
+        key: 'copy-session-id',
+        label: t('session.action.copySessionId'),
+        icon: <CopyIcon />,
+        testId: `session-menu-copy-session-id-${session.id}`,
+        invoke: () => {
+          navigator.clipboard.writeText(session.id)
+        }
+      })
+    }
+
+    return [
+      { key: 'open', actions: openActions },
       {
-        key: 'archive',
-        label: t('session.action.archive'),
-        icon: <ArchiveIcon />,
-        testId: `session-menu-archive-${session.id}`,
-        invoke: handleArchive
+        key: 'edit',
+        actions: [
+          {
+            key: 'rename',
+            label: t('session.action.rename'),
+            icon: <PencilIcon />,
+            testId: `session-menu-rename-${session.id}`,
+            invoke: handleStartRename
+          },
+          {
+            key: 'regenerate-title',
+            label: t('session.action.regenerateTitle'),
+            icon: <RefreshCwIcon />,
+            testId: `session-menu-regenerate-title-${session.id}`,
+            invoke: handleRegenerateTitle
+          }
+        ]
+      },
+      {
+        key: 'state',
+        actions: [
+          {
+            key: 'toggle-read-state',
+            label: session.unread ? t('session.action.markRead') : t('session.action.markUnread'),
+            icon: session.unread ? <MailOpenIcon /> : <MailIcon />,
+            testId: `session-menu-toggle-read-state-${session.id}`,
+            invoke: handleToggleReadState
+          },
+          {
+            key: 'toggle-pin',
+            label: session.pinned ? t('session.action.unpin') : t('session.action.pin'),
+            icon: session.pinned ? <PinOffIcon /> : <PinIcon />,
+            testId: `session-menu-toggle-pin-${session.id}`,
+            invoke: handleTogglePin
+          }
+        ]
+      },
+      { key: 'copy', actions: copyActions },
+      {
+        key: 'danger',
+        actions: [
+          {
+            key: 'archive',
+            label: t('session.action.archive'),
+            icon: <ArchiveIcon />,
+            testId: `session-menu-archive-${session.id}`,
+            invoke: handleArchive,
+            variant: 'destructive'
+          }
+        ]
       }
     ]
   }, [
@@ -643,7 +665,7 @@ function SessionActionsMenu({
           side="bottom"
           sideOffset={state.surface === 'context' ? 0 : 4}
         >
-          <SessionMenuActionItems actions={actions} testIdSurface={state.surface} />
+          <SessionMenuActionItems groups={actionGroups} testIdSurface={state.surface} />
         </MenuPopup>
       ) : null}
     </Menu>
@@ -2042,7 +2064,8 @@ const WorkspaceGroup = memo(
           label: workspacePinned ? t('workspace.action.unpin') : t('workspace.action.pin'),
           icon: workspacePinned ? <PinOffIcon /> : <PinIcon />,
           testId: `workspace-toggle-pin-${workspace.id}`,
-          invoke: handleTogglePin
+          invoke: handleTogglePin,
+          separatorBefore: true
         },
         {
           key: 'remove',

@@ -1,22 +1,21 @@
 import {
-  HeartbeatLine as ActivityIcon,
-  ArrowToDownLine as ArrowDownToLineIcon,
   ArrowLeftLine as ArrowLeftIcon,
-  RobotLine as BotIcon,
+  ArrowToDownLine as ArrowDownToLineIcon,
   Box3Line as BoxesIcon,
+  Cursor2Line as MousePointer2Icon,
   CylinderLine as DatabaseIcon,
   Flag2Line as FlagIcon,
-  SandglassLine as HourglassIcon,
+  HeartbeatLine as ActivityIcon,
   InformationLine as InfoIcon,
   KeyboardLine as KeyboardIcon,
   LifebuoyLine as LifeBuoyIcon,
   Message1Line as MessageSquareIcon,
   MonitorLine as MonitorIcon,
-  Cursor2Line as MousePointer2Icon,
   PaletteLine as PaletteIcon,
   PluginLine as PlugIcon,
-  PuzzledLine as PuzzleIcon,
-  ServerLine as ServerIcon
+  RobotLine as BotIcon,
+  SandglassLine as HourglassIcon,
+  ServerLine as ServerIcon,
 } from '@mingcute/react'
 import { useTranslation } from 'react-i18next'
 
@@ -57,7 +56,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
       { id: 'chat', labelKey: 'nav.chat', icon: MessageSquareIcon },
       { id: 'await', labelKey: 'nav.await', icon: HourglassIcon },
       { id: 'jarvis', labelKey: 'nav.jarvis', icon: MousePointer2Icon },
-      { id: 'plugins', labelKey: 'nav.plugins', icon: PuzzleIcon },
+      { id: 'plugins', labelKey: 'nav.plugins', icon: PlugIcon },
       ...(import.meta.env.DEV
         ? [{ id: 'chronicle', labelKey: 'nav.chronicle', icon: ActivityIcon } satisfies SettingsNavItem]
         : []),

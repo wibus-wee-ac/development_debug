@@ -98,6 +98,7 @@ export function DesktopUpdateSettings() {
   const busy = loading || status.isCheckingForUpdates || status.isDownloadingUpdate
   const canCheck = isElectron && !!nativeIpc && !status.unsupported && !busy
   const canDownload = canCheck && !!status.updateInfo && !status.updateDownloaded
+  const canApply = canCheck && status.updateDownloaded
 
   const updateStatusLabel = useMemo(() => {
     if (status.unsupported) {
@@ -320,6 +321,16 @@ export function DesktopUpdateSettings() {
                 >
                   <DownloadIcon className="size-3.5" aria-hidden="true" />
                   {t('desktop.updates.actions.download' as SettingsKey)}
+                </Button>
+                <Button
+                  type="button"
+                  variant="default"
+                  size="sm"
+                  onClick={() => void runUpdateAction(() => nativeIpc!.desktopUpdate.applyUpdate())}
+                  disabled={!canApply}
+                >
+                  <RefreshCwIcon className="size-3.5" aria-hidden="true" />
+                  {t('desktop.updates.actions.restart' as SettingsKey)}
                 </Button>
               </div>
             </OperationsCard>

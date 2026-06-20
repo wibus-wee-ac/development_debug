@@ -1,4 +1,3 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   GridLine as GridIcon,
   MonitorLine as MonitorIcon,
@@ -8,6 +7,7 @@ import {
   ServerLine as ServerIcon,
   WindowsLine as WindowIcon,
 } from '@mingcute/react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -17,6 +17,7 @@ import { Spinner } from '~/components/ui/spinner'
 import { Switch } from '~/components/ui/switch'
 import { toastManager } from '~/components/ui/toast'
 import { cn } from '~/lib/cn'
+import { getServerUrl } from '~/lib/electron'
 
 import { SettingsPage } from './settings-container'
 
@@ -90,13 +91,11 @@ export function PluginsSettings() {
     onMutate: async ({ routeSegment, enabled }) => {
       await queryClient.cancelQueries({ queryKey: ['plugins', 'list'] })
       const previous = queryClient.getQueryData<PluginListEntry[]>(['plugins', 'list'])
-      queryClient.setQueryData<PluginListEntry[]>(['plugins', 'list'], (current) =>
+      queryClient.setQueryData<PluginListEntry[]>(['plugins', 'list'], current =>
         (current ?? []).map(plugin =>
           plugin.routeSegment === routeSegment
             ? { ...plugin, activation: { ...plugin.activation, enabled, source: 'user', updatedAt: Date.now() } }
-            : plugin,
-        ),
-      )
+            : plugin))
       return { previous }
     },
     onError: (_err, _vars, ctx) => {
@@ -118,11 +117,10 @@ export function PluginsSettings() {
     },
   })
 
-  const plugins = pluginsQuery.data ?? []
+  const plugins = useMemo(() => pluginsQuery.data ?? [], [pluginsQuery.data])
   const loading = pluginsQuery.isLoading
 
   const enabledCount = useMemo(() => plugins.filter(p => p.activation.enabled).length, [plugins])
-  const disabledCount = plugins.length - enabledCount
 
   const visiblePlugins = useMemo(() => {
     const normalizedQuery = query.trim().toLowerCase()
@@ -276,7 +274,8 @@ function PluginCard({
               {plugin.displayName || plugin.name}
             </span>
             <span className="shrink-0 rounded-md bg-fill px-1.5 py-px font-mono text-[10.5px] text-muted-foreground">
-              v{plugin.version}
+              v
+{plugin.version}
             </span>
             {plugin.activation.source === 'user' && (
               <span className="shrink-0 text-[10.5px] text-muted-foreground/80">
@@ -315,7 +314,9 @@ function PluginCard({
           )}
           {plugin.warnings.length > 0 && (
             <span className="line-clamp-1 text-[11px] text-muted-foreground/80" title={plugin.warnings[0]}>
-              · {plugin.warnings[0]}
+              ·
+{' '}
+{plugin.warnings[0]}
             </span>
           )}
           <span className="ml-auto truncate font-mono text-[10px] text-muted-foreground/60" title={plugin.routeSegment}>
@@ -328,16 +329,25 @@ function PluginCard({
 }
 
 function PluginMark({ plugin }: { plugin: PluginListEntry }) {
-  if (plugin.iconUrl) {
+  const [failed, setFailed] = useState(false)
+  const absoluteIconUrl = useMemo(() => {
+    if (!plugin.iconUrl) { return null }
+    try {
+      return new URL(plugin.iconUrl, getServerUrl()).toString()
+    }
+ catch {
+      return plugin.iconUrl
+    }
+  }, [plugin.iconUrl])
+
+  if (absoluteIconUrl && !failed) {
     return (
       <div className="flex size-8 shrink-0 items-center justify-center overflow-hidden rounded-lg border border-border/60 bg-card">
         <img
-          src={plugin.iconUrl}
+          src={absoluteIconUrl}
           alt=""
           className="size-full object-cover"
-          onError={(event) => {
-            ;(event.currentTarget as HTMLImageElement).style.display = 'none'
-          }}
+          onError={() => setFailed(true)}
         />
       </div>
     )
