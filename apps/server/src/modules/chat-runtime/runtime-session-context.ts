@@ -15,7 +15,7 @@ import {
   resolveExistingProviderRuntimeSession,
   resolveProviderRuntimeSession
 } from '../provider-runtime/service'
-import { getProviderTarget, resolveProviderTarget } from '../provider-targets/service'
+import { getProviderTarget, resolveProviderTargetForRuntime } from '../provider-targets/service'
 import * as SessionService from '../session/service'
 import { resolveSessionSystemPrompt } from './context/turn-context'
 import { getRuntimeRegistry } from './chat-runtime-provider-registry'
@@ -57,7 +57,8 @@ export function getSessionRunContext(
     return null
   }
 
-  const resolvedTarget = resolveProviderTarget(providerTarget)
+  const runtimeKind = session.runtimeKind ?? 'standard'
+  const resolvedTarget = resolveProviderTargetForRuntime(providerTarget, runtimeKind)
   const profileConfig = parseJsonObject(resolvedTarget.configJson)
   const targetModelRegistryConfig = {
     modelRegistryMappings: ModelRegistry.listMappingEntries()

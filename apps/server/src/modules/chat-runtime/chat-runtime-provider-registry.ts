@@ -13,7 +13,7 @@ import { record as recordObservability } from '../observability/service'
 import * as Preferences from '../preferences/service'
 import { registerRuntimeProviderKinds } from '../provider-contracts/runtime-compatibility'
 import type { RuntimeKind } from '../provider-contracts/types'
-import { resolveProviderTarget } from '../provider-targets/service'
+import { resolveProviderTargetForRuntime } from '../provider-targets/service'
 import * as Secrets from '../secrets/service'
 import { resolveScopeRoot } from '../skills/skills-paths'
 import { requestRuntimeToolApproval } from './pending-tool-approval'
@@ -320,7 +320,7 @@ export function getRuntimeRegistry(): RuntimeRegistry {
       readCodexPreferences: () => Preferences.getCodexPreferencesSync(),
       readChatPreferences: () => Preferences.getChatPreferencesSync(),
       resolveProviderTargetProfile: (providerTargetId) => {
-        const target = resolveProviderTarget(providerTargetId)
+        const target = resolveProviderTargetForRuntime(providerTargetId, 'codex')
         if (!target.enabled) {
           return null
         }
