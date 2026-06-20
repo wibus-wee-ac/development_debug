@@ -37,6 +37,12 @@ const spec = {
         "default",
         "plan"
       ]
+    },
+    {
+      "name": "claudeAgent",
+      "required": false,
+      "target": "body.claudeAgent",
+      "type": "json"
     }
   ],
   "method": "patch",

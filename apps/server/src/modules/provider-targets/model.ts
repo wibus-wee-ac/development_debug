@@ -7,6 +7,17 @@ const providerKind = providerKindSchema
 const nullableString = t.Union([t.String(), t.Null()])
 const nullableNumber = t.Union([t.Number(), t.Null()])
 
+const claudeAgentConfigPatch = t.Union([
+  t.Object({
+    modelAliases: t.Optional(t.Object({
+      haiku: t.Optional(t.String()),
+      sonnet: t.Optional(t.String()),
+      opus: t.Optional(t.String()),
+    }, { additionalProperties: false })),
+  }, { additionalProperties: false }),
+  t.Null(),
+])
+
 const codexRateLimitWindowDiagnostics = t.Object({
   usedPercent: t.Number(),
   windowDurationMins: nullableNumber,
@@ -99,6 +110,10 @@ export const ProviderTargetsModel = {
     configJson: t.String(),
     customModelsJson: t.String(),
   }),
+
+  modelSettingsBody: t.Object({
+    claudeAgent: claudeAgentConfigPatch,
+  }, { additionalProperties: false }),
 
   modelVisibilityBody: t.Object({
     enabledModels: t.Array(t.String({ minLength: 1 })),

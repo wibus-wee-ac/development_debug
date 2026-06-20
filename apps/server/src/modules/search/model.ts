@@ -18,6 +18,7 @@ const threadSearchHit = t.Object({
   workspaceId: t.Nullable(t.String()),
   workspaceName: t.Nullable(t.String()),
   sessionTitle: t.Nullable(t.String()),
+  origin: t.String(),
   titleRanges: t.Array(matchRange),
   snippets: t.Array(threadSearchSnippet),
   matchCount: t.Number(),
@@ -72,6 +73,7 @@ export const SearchModel = {
   searchQuery: t.Object({
     query: t.String({ minLength: 1 }),
     workspaceId: t.Optional(t.String()),
+    origin: t.Optional(t.String({ minLength: 1 })),
     limit: t.Optional(t.Numeric({ minimum: 1 })),
     snippetsPerHit: t.Optional(t.Numeric({ minimum: 1 })),
   }),

@@ -1,8 +1,14 @@
 // React Query integration for Chat Runtime session settings.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
-import type { ChatRuntimeSettings, ChatRuntimeSettingsPatch } from '../commands/chat-response-command'
-import type { ChatRuntimeSettingsResponse } from '../commands/runtime-settings-command'
+import { DEFAULT_CLAUDE_AGENT_ALIASES } from '~/features/agent-runtime/claude-agent-config'
+
+import type { ChatRuntimeSettings } from '../commands/chat-response-command'
+import type {
+  ChatRuntimeSettingsResponse,
+  SessionClaudeAgentConfig,
+  SessionRuntimeSettingsPatch,
+} from '../commands/runtime-settings-command'
 import {
   DEFAULT_CHAT_RUNTIME_SETTINGS,
   getSessionRuntimeSettings,
@@ -12,11 +18,12 @@ import {
 
 export interface ChatRuntimeSettingsState {
   settings: ChatRuntimeSettings
+  claudeAgent: SessionClaudeAgentConfig | null
   applied: boolean
   loaded: boolean
   loading: boolean
   saving: boolean
-  update: (patch: ChatRuntimeSettingsPatch) => Promise<ChatRuntimeSettingsResponse | null>
+  update: (patch: SessionRuntimeSettingsPatch) => Promise<ChatRuntimeSettingsResponse | null>
 }
 
 export function useRuntimeSettings(sessionId: string | null, active = true): ChatRuntimeSettingsState {
@@ -29,7 +36,7 @@ export function useRuntimeSettings(sessionId: string | null, active = true): Cha
     retry: false,
   })
   const mutation = useMutation({
-    mutationFn: (patch: ChatRuntimeSettingsPatch) => updateSessionRuntimeSettings({
+    mutationFn: (patch: SessionRuntimeSettingsPatch) => updateSessionRuntimeSettings({
       sessionId: sessionId!,
       patch,
     }),
@@ -38,12 +45,24 @@ export function useRuntimeSettings(sessionId: string | null, active = true): Cha
       const queryKey = runtimeSettingsQueryKey(currentSessionId)
       await queryClient.cancelQueries({ queryKey })
       const previous = queryClient.getQueryData<ChatRuntimeSettingsResponse>(queryKey)
+      const { claudeAgent, ...runtimeSettingsPatch } = patch
+      const optimisticClaudeAgent = Object.hasOwn(patch, 'claudeAgent')
+        ? claudeAgent?.modelAliases
+          ? {
+              modelAliases: {
+                ...DEFAULT_CLAUDE_AGENT_ALIASES,
+                ...claudeAgent.modelAliases,
+              },
+            }
+          : null
+        : previous?.claudeAgent ?? null
       queryClient.setQueryData<ChatRuntimeSettingsResponse>(queryKey, {
         sessionId: currentSessionId,
         runtimeSettings: {
           ...(previous?.runtimeSettings ?? DEFAULT_CHAT_RUNTIME_SETTINGS),
-          ...patch,
+          ...runtimeSettingsPatch,
         },
+        claudeAgent: optimisticClaudeAgent,
         applied: false,
       })
       return { previous, queryKey }
@@ -61,6 +80,7 @@ export function useRuntimeSettings(sessionId: string | null, active = true): Cha
 
   return {
     settings: query.data?.runtimeSettings ?? DEFAULT_CHAT_RUNTIME_SETTINGS,
+    claudeAgent: query.data?.claudeAgent ?? null,
     applied: query.data?.applied ?? false,
     loaded: Boolean(query.data),
     loading: query.isLoading,

@@ -5,6 +5,13 @@ import type {
   ChatRuntimeSettingsPatch,
 } from './runtime-provider-types'
 import { parseJsonObject, readObjectRecord } from '../../helpers/json-record'
+import {
+  applyClaudeAgentConfigPatch,
+  readClaudeAgentConfig,
+  type ClaudeAgentConfigPatch,
+  type ClaudeAgentConfigPatchInput,
+  type ClaudeAgentConfigView,
+} from '../provider-contracts/claude-agent-config'
 
 export const DEFAULT_RUNTIME_SETTINGS: ChatRuntimeSettings = {
   accessMode: 'full-access',
@@ -50,6 +57,11 @@ export function readSessionRuntimeSettings(configJson: string | null | undefined
   return mergeRuntimeSettings(DEFAULT_RUNTIME_SETTINGS, readRuntimeSettingsRecord(config.runtimeSettings))
 }
 
+export function readSessionClaudeAgentConfig(configJson: string | null | undefined): ClaudeAgentConfigView | null {
+  const config = parseJsonObject(configJson ?? '{}')
+  return readClaudeAgentConfig(config.claudeAgent)
+}
+
 export function writeSessionRuntimeSettingsConfigJson(
   configJson: string | null | undefined,
   settings: ChatRuntimeSettings,
@@ -59,4 +71,35 @@ export function writeSessionRuntimeSettingsConfigJson(
     ...config,
     runtimeSettings: settings,
   })
+}
+
+export function writeSessionClaudeAgentConfigJson(
+  configJson: string | null | undefined,
+  patch: ClaudeAgentConfigPatch | null,
+): string {
+  const config = parseJsonObject(configJson ?? '{}')
+  return JSON.stringify(applyClaudeAgentConfigPatch(config, patch))
+}
+
+export function writeSessionRuntimeConfigJson(input: {
+  configJson: string | null | undefined
+  runtimeSettings: ChatRuntimeSettings
+  claudeAgent?: ClaudeAgentConfigPatch | null
+  updateClaudeAgent: boolean
+}): string {
+  const config = parseJsonObject(input.configJson ?? '{}')
+  const withRuntimeSettings = {
+    ...config,
+    runtimeSettings: input.runtimeSettings,
+  }
+  const next = input.updateClaudeAgent
+    ? applyClaudeAgentConfigPatch(withRuntimeSettings, input.claudeAgent ?? null)
+    : withRuntimeSettings
+  return JSON.stringify(next)
+}
+
+export type {
+  ClaudeAgentConfigPatch as SessionClaudeAgentConfigPatch,
+  ClaudeAgentConfigPatchInput as SessionClaudeAgentConfigPatchInput,
+  ClaudeAgentConfigView as SessionClaudeAgentConfig,
 }

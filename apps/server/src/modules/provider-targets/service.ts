@@ -25,6 +25,11 @@ import {
   CODEX_PERSONAL_ACCESS_TOKEN_SECRET_KIND,
 } from '../chat-runtime-providers/codex/app-server/chatgpt-auth'
 import { CodexAuthModeSchema } from '../provider-contracts/provider-base'
+import {
+  applyClaudeAgentConfigPatch,
+  normalizeClaudeAgentConfigPatch,
+  type ClaudeAgentConfigPatch,
+} from '../provider-contracts/claude-agent-config'
 import { runtimeSupportsProviderKind } from '../provider-contracts/runtime-compatibility'
 import type { ModelCapabilities, ProviderKind, RuntimeKind } from '../provider-contracts/types'
 import {
@@ -475,6 +480,34 @@ export function updateProviderTargetModelVisibility(
     .run()
 
   return getProviderTargetModelSettings(providerTargetId)
+}
+
+export function updateProviderTargetClaudeAgentConfig(
+  input: ProviderTarget | string,
+  patch: ClaudeAgentConfigPatch | null,
+): ProviderTargetModelSettings {
+  const providerTargetId = parseTargetId(input)
+  const target = resolveProviderTarget(providerTargetId)
+  const connectionConfig = JsonObjectTextSchema.parse(target.connectionConfigJson)
+  const nextConnectionConfig = applyClaudeAgentConfigPatch(connectionConfig, patch)
+
+  db()
+    .update(providerTargets)
+    .set({
+      connectionConfigJson: JSON.stringify(nextConnectionConfig),
+      updatedAt: nowUnix(),
+    })
+    .where(eq(providerTargets.id, providerTargetId))
+    .run()
+
+  return getProviderTargetModelSettings(providerTargetId)
+}
+
+export function updateProviderTargetClaudeAgentConfigFromJson(
+  input: ProviderTarget | string,
+  value: unknown,
+): ProviderTargetModelSettings {
+  return updateProviderTargetClaudeAgentConfig(input, normalizeClaudeAgentConfigPatch(value))
 }
 
 export async function updateProviderTargetCustomModels(

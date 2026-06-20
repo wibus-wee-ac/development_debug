@@ -8,11 +8,15 @@ import {
   areRuntimeSettingsEqual,
   mergeRuntimeSettings,
   normalizeRuntimeSettingsPatch,
+  readSessionClaudeAgentConfig,
   readSessionRuntimeSettings,
-  writeSessionRuntimeSettingsConfigJson
+  writeSessionRuntimeConfigJson,
+  type SessionClaudeAgentConfig,
+  type SessionClaudeAgentConfigPatchInput,
 } from './runtime-settings'
 import { assertStoredSession, getSessionRunContext } from './runtime-session-context'
 import { runRegistry } from './run-registry'
+import { normalizeClaudeAgentConfigPatch } from '../provider-contracts/claude-agent-config'
 import type {
   ChatRuntimeSettings,
   ChatRuntimeSettingsPatch
@@ -23,7 +27,16 @@ const settingsLogger = createChildLogger({ module: 'chat-runtime.runtime-setting
 export interface ChatRuntimeSettingsDto {
   sessionId: string
   runtimeSettings: ChatRuntimeSettings
+  claudeAgent: SessionClaudeAgentConfig | null
   applied: boolean
+}
+
+export type ChatRuntimeSettingsUpdatePatch = ChatRuntimeSettingsPatch & {
+  claudeAgent?: SessionClaudeAgentConfigPatchInput | null
+}
+
+function hasOwn(value: Record<string, unknown>, key: string): boolean {
+  return Object.prototype.hasOwnProperty.call(value, key)
 }
 
 export function getSessionRuntimeSettings(sessionId: string): ChatRuntimeSettingsDto {
@@ -32,15 +45,21 @@ export function getSessionRuntimeSettings(sessionId: string): ChatRuntimeSetting
   return {
     sessionId,
     runtimeSettings,
+    claudeAgent: readSessionClaudeAgentConfig(session.configJson),
     applied: readRuntimeSettingsApplied(sessionId, runtimeSettings)
   }
 }
 
 export async function updateSessionRuntimeSettings(input: {
   sessionId: string
-  patch: ChatRuntimeSettingsPatch
+  patch: ChatRuntimeSettingsUpdatePatch
 }): Promise<ChatRuntimeSettingsDto> {
   const session = assertStoredSession(input.sessionId)
+  const rawPatch = input.patch as Record<string, unknown>
+  const updateClaudeAgent = hasOwn(rawPatch, 'claudeAgent')
+  const claudeAgent = updateClaudeAgent
+    ? normalizeClaudeAgentConfigPatch(rawPatch.claudeAgent)
+    : undefined
   const runtimeSettings = mergeRuntimeSettings(
     readSessionRuntimeSettings(session.configJson),
     normalizeRuntimeSettingsPatch(input.patch)
@@ -48,7 +67,12 @@ export async function updateSessionRuntimeSettings(input: {
   db()
     .update(sessions)
     .set({
-      configJson: writeSessionRuntimeSettingsConfigJson(session.configJson, runtimeSettings),
+      configJson: writeSessionRuntimeConfigJson({
+        configJson: session.configJson,
+        runtimeSettings,
+        claudeAgent,
+        updateClaudeAgent,
+      }),
       updatedAt: currentUnixSeconds()
     })
     .where(eq(sessions.id, input.sessionId))
@@ -59,6 +83,7 @@ export async function updateSessionRuntimeSettings(input: {
     return {
       sessionId: input.sessionId,
       runtimeSettings,
+      claudeAgent: readSessionClaudeAgentConfig(assertStoredSession(input.sessionId).configJson),
       applied: readRuntimeSettingsApplied(input.sessionId, runtimeSettings)
     }
   }
@@ -94,6 +119,7 @@ export async function updateSessionRuntimeSettings(input: {
   return {
     sessionId: input.sessionId,
     runtimeSettings,
+    claudeAgent: readSessionClaudeAgentConfig(assertStoredSession(input.sessionId).configJson),
     applied
   }
 }

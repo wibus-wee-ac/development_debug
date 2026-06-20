@@ -107,6 +107,19 @@ export const providerTargets = new Elysia({
       response: { 200: ProviderTargetsModel.modelSettings },
     },
   )
+  .patch(
+    '/:providerTargetId/model-settings',
+    ({ params, body }) =>
+      ProviderTargets.updateProviderTargetClaudeAgentConfigFromJson(params.providerTargetId, body.claudeAgent),
+    {
+      detail: {
+        summary: 'Update model settings for a provider target',
+      },
+      params: ProviderTargetsModel.idParams,
+      body: ProviderTargetsModel.modelSettingsBody,
+      response: { 200: ProviderTargetsModel.modelSettings },
+    },
+  )
   .get(
     '/:providerTargetId/codex/account-diagnostics',
     ({ params }) => readCodexAccountDiagnostics({ providerTargetId: params.providerTargetId }),
