@@ -612,6 +612,89 @@ describe('session capability', () => {
     }
   })
 
+  it('creates provider-backed agent sessions with agent runtime defaults', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    process.env.CRADLE_DATA_DIR = dataDir
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      const d = db()
+
+      const workspaceId = randomUUID()
+      const providerTargetId = randomUUID()
+      const agentId = randomUUID()
+      d.insert(workspaces)
+        .values({
+          id: workspaceId,
+          name: 'Workspace',
+          path: workspaceRoot,
+        })
+        .run()
+      d.insert(providerTargets)
+        .values({
+          id: providerTargetId,
+          kind: 'manual',
+          displayName: 'Codex Provider Target',
+          providerKind: 'openai-compatible',
+        })
+        .run()
+      d.insert(agents)
+        .values({
+          id: agentId,
+          name: 'Codex Agent',
+          avatarStyle: 'bottts-neutral',
+          avatarSeed: 'codex-agent-seed',
+          providerTargetId,
+          modelId: 'gpt-5.5',
+          thinkingEffort: 'medium',
+          runtimeKind: 'codex',
+        })
+        .run()
+
+      const sessionId = randomUUID()
+      const createRes = await app.handle(
+        new Request('http://localhost/sessions', {
+          method: 'POST',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            id: sessionId,
+            workspaceId,
+            title: 'Agent Session',
+            agentId,
+          }),
+        }),
+      )
+      expect(createRes.status).toBe(200)
+      expect(await createRes.json()).toEqual(expect.objectContaining({
+        id: sessionId,
+        agentId,
+        providerTargetId,
+        runtimeKind: 'codex',
+        modelId: 'gpt-5.5',
+      }))
+
+      const sessionRow = d.select().from(sessions).where(eq(sessions.id, sessionId)).get()
+      expect(JSON.parse(sessionRow?.configJson ?? '{}')).toEqual(expect.objectContaining({
+        requestedModelId: 'gpt-5.5',
+        requestedThinkingEffort: 'medium',
+      }))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
   it('persists and filters coarse session origins', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const workspaceRoot = makeTempDir('cradle-workspace-')

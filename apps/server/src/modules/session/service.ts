@@ -571,7 +571,7 @@ export function create(input: {
     .returning()
     .get()
 
-  return toSessionView(created, null, 'idle')
+  return toSessionView(created, readSessionModelPreference(created.configJson), 'idle')
 }
 
 function resolveSessionWorkspaceId(input: { workspaceId?: string | null }): string | null {
@@ -669,7 +669,10 @@ function resolveSessionCreateInput(input: {
       providerTargetId: agent.providerTargetId,
       runtimeKind: agent.runtimeKind,
       agentId: agent.id,
-      configJson: '{}',
+      configJson: writeSessionThinkingEffortPreferenceConfigJson(
+        writeSessionModelPreferenceConfigJson('{}', agent.modelId),
+        agent.thinkingEffort,
+      ),
     }
   }
 
