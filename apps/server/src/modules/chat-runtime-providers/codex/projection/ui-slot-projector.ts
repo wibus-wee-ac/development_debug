@@ -722,11 +722,12 @@ function projectCodexCompactState(
   const autoCompactTokenLimit = readConfigNumber(
     configResponse?.config?.model_auto_compact_token_limit
   )
+  const currentWindowTokens = last.totalTokens > 0 ? last.totalTokens : total.totalTokens
   const usagePercent = modelContextWindow
-    ? readPercent(total.totalTokens, modelContextWindow)
+    ? readPercent(currentWindowTokens, modelContextWindow)
     : null
   const autoCompactPercent = autoCompactTokenLimit
-    ? readPercent(total.totalTokens, autoCompactTokenLimit)
+    ? readPercent(currentWindowTokens, autoCompactTokenLimit)
     : null
   const status = readCompactStatus({
     lifecycleStatus: snapshot.status ?? null,

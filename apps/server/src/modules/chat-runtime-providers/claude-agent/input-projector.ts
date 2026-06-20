@@ -4,7 +4,7 @@
  * Position: Claude Agent provider package boundary from Cradle runtime contracts to SDK-native input.
  */
 
-import type { Options } from '@anthropic-ai/claude-agent-sdk'
+import type { McpServerConfig, Options } from '@anthropic-ai/claude-agent-sdk'
 import type { UIMessage } from 'ai'
 
 import { readObjectRecord as readRecord } from '../../../helpers/json-record'
@@ -224,7 +224,7 @@ export function buildClaudeQueryOptions(input: {
 
   const registeredServers = getRegisteredMcpServers()
   if (Object.keys(registeredServers).length > 0) {
-    queryOptions.mcpServers = { ...queryOptions.mcpServers, ...registeredServers }
+    queryOptions.mcpServers = { ...queryOptions.mcpServers, ...projectClaudeAgentMcpServers(registeredServers) }
   }
 
   queryOptions.settingSources = []
@@ -350,6 +350,29 @@ function readRecentCradleLocalHistory(history: UIMessage[] | undefined): UIMessa
     }
   }
   return history?.slice(latestAssistantIndex + 1)
+}
+
+function projectClaudeAgentMcpServers(
+  servers: ReturnType<typeof getRegisteredMcpServers>,
+): Record<string, McpServerConfig> {
+  return Object.fromEntries(
+    Object.entries(servers).map(([name, config]) => {
+      if (config.transport === 'stdio') {
+        return [name, {
+          type: 'stdio',
+          command: config.command,
+          args: config.args,
+          env: config.env,
+        } satisfies McpServerConfig]
+      }
+
+      return [name, {
+        type: 'http',
+        url: config.url,
+        ...(Object.keys(config.headers).length > 0 ? { headers: config.headers } : {}),
+      } satisfies McpServerConfig]
+    }),
+  )
 }
 
 function readBangCommandMetadata(message: UIMessage): { command: string } | null {

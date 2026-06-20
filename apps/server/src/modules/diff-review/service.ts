@@ -1991,6 +1991,7 @@ export async function generateGuide(input: {
   const session = Session.create({
     workspaceId: review.workspaceId,
     title: `Diff guide: ${review.title}`,
+    origin: 'cradle-review',
     providerTargetId: input.providerTargetId,
     modelId: input.modelId ?? null,
     runtimeKind,
@@ -2419,6 +2420,7 @@ async function startAgentFixRun(input: {
     const session = Session.create({
       workspaceId: review.workspaceId,
       title: `Diff fix: ${review.title}`,
+      origin: 'cradle-review',
       agentId,
       providerTargetId,
       modelId: input.modelId ?? agentRow?.modelId ?? null,

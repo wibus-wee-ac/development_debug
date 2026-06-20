@@ -3,8 +3,9 @@ import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-import { agents, diffReviewGuides, providerTargets, workspaces } from '@cradle/db'
+import { agents, diffReviewGuides, providerTargets, sessions, workspaces } from '@cradle/db'
 import type { UIMessageChunk } from 'ai'
+import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
 
 import { createServerApp } from '../src/app'
@@ -688,6 +689,8 @@ describe('diff-review capability', () => {
         errorMessage: null,
         steps: [],
       })
+      const guideSession = db().select().from(sessions).where(eq(sessions.id, generated.guide.sessionId!)).get()
+      expect(guideSession?.origin).toBe('cradle-review')
 
       const completed = await waitForCondition(async () => {
         const reloaded = await getJson<DiffReviewResponse>(
@@ -919,6 +922,8 @@ describe('diff-review capability', () => {
         sessionId: expect.any(String),
         runId: expect.any(String),
       })
+      const agentFixSession = db().select().from(sessions).where(eq(sessions.id, running!.sessionId!)).get()
+      expect(agentFixSession?.origin).toBe('cradle-review')
       expect(runtime.streamInputs[0]?.message.parts).toEqual(
         expect.arrayContaining([
           expect.objectContaining({

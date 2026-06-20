@@ -249,6 +249,7 @@ function createBangResultMessage(input: {
 describe('claudeAgentProvider MCP integration', () => {
   afterEach(() => {
     removeHostMcpServer('browser-use')
+    removeHostMcpServer('nowledge-mem')
     sdkMocks.query.mockReset()
     sdkMocks.getSessionInfo.mockReset()
     sdkMocks.renameSession.mockReset()
@@ -256,6 +257,7 @@ describe('claudeAgentProvider MCP integration', () => {
 
   it('passes plugin-registered browser-use MCP server config to the Claude Agent SDK', async () => {
     addHostMcpServer({
+      transport: 'stdio',
       name: 'browser-use',
       command: 'node',
       args: ['/plugins/browser-use/dist/mcp-server.mjs'],
@@ -300,6 +302,7 @@ describe('claudeAgentProvider MCP integration', () => {
       options: expect.objectContaining({
         mcpServers: expect.objectContaining({
           'browser-use': {
+            type: 'stdio',
             command: 'node',
             args: ['/plugins/browser-use/dist/mcp-server.mjs'],
             env: { BROWSER_BACKEND_SOCKET: '/tmp/cradle-browser.sock' },
@@ -308,6 +311,58 @@ describe('claudeAgentProvider MCP integration', () => {
       }),
     }))
     await expect(readPromptText(0)).resolves.toBe('Open the browser')
+  })
+
+  it('passes plugin-registered streamable HTTP MCP server config to the Claude Agent SDK', async () => {
+    addHostMcpServer({
+      transport: 'streamable-http',
+      name: 'nowledge-mem',
+      url: 'https://nowledge.example.test/mcp',
+      headers: { Authorization: 'Bearer nowledge-secret' },
+    })
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-http-mcp',
+        message: {
+          content: [{ type: 'text', text: 'ready' }],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-session-http-mcp',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of provider.streamTurn({
+      runId: 'run-claude-agent-http-mcp-test',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Read Nowledge memory'),
+      workspaceId: 'workspace-1',
+    })) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'text-delta', delta: 'ready' }),
+    ]))
+    expect(sdkMocks.query).toHaveBeenCalledWith(expect.objectContaining({
+      options: expect.objectContaining({
+        mcpServers: expect.objectContaining({
+          'nowledge-mem': {
+            type: 'http',
+            url: 'https://nowledge.example.test/mcp',
+            headers: { Authorization: 'Bearer nowledge-secret' },
+          },
+        }),
+      }),
+    }))
   })
 
   it('defaults Claude Agent runs to bypass permissions and persists under Cradle runtime data', async () => {
@@ -820,6 +875,7 @@ describe('claudeAgentProvider MCP integration', () => {
 
   it('streams quick questions without persisting SDK sessions or loading tools', async () => {
     addHostMcpServer({
+      transport: 'stdio',
       name: 'browser-use',
       command: 'node',
       args: ['/plugins/browser-use/dist/mcp-server.mjs'],
