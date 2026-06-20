@@ -97,8 +97,12 @@ function handleAppshotHotkey(payload: unknown) {
   const event = payload as MacAppshotHotkeyEvent | undefined
   void (async () => {
     try {
+      const targetWindow = event?.targetWindow
+      if (targetWindow) {
+        await nativeIpc.window.focusCurrent()
+      }
       await target.capture?.({
-        targetWindow: event?.targetWindow,
+        targetWindow,
         bundleIdentifier: event?.bundleIdentifier ?? event?.context?.bundleIdentifier ?? undefined,
       })
     }

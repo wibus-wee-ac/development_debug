@@ -475,6 +475,23 @@ function readIpcSenderWindow(): BrowserWindow | null {
   }
 }
 
+function focusBrowserWindow(window: BrowserWindow | null | undefined): boolean {
+  if (!window || window.isDestroyed()) {
+    return false
+  }
+  if (window.isMinimized()) {
+    window.restore()
+  }
+  if (!window.isVisible()) {
+    window.show()
+  }
+  if (process.platform === 'darwin') {
+    app.focus({ steal: true })
+  }
+  window.focus()
+  return true
+}
+
 function serializeAppshotBrowserWindowForLog(window: BrowserWindow | null | undefined) {
   if (!window || window.isDestroyed()) {
     return null
@@ -639,6 +656,11 @@ class WindowService extends IpcService {
       clearInterval(existing)
       pointerMonitors.delete(contentsId)
     }
+  }
+
+  @IpcMethod()
+  async focusCurrent(): Promise<boolean> {
+    return focusBrowserWindow(readIpcSenderWindow())
   }
 
   @IpcMethod()

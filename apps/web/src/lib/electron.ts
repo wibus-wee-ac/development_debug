@@ -238,6 +238,7 @@ interface WindowServiceMethods {
   getOpenSessions: () => Promise<string[]>
   startPointerMonitor: () => Promise<void>
   stopPointerMonitor: () => Promise<void>
+  focusCurrent: () => Promise<boolean>
   close: () => Promise<void>
 }
 
