@@ -5,7 +5,7 @@ import {
   Link2Line as Link2,
   RouteLine as Route,
   ScanLine as ScanSearch
-} from '@mingcute/react'
+} from '@/lib/mingcute-icons'
 import { cn } from '@/lib/cn'
 import type { DocsGraphPageScore } from '@/lib/docs-graph'
 import { buildDocsGraph } from '@/lib/docs-graph'

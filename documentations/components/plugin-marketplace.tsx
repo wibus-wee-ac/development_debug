@@ -11,7 +11,7 @@ import {
   SearchLine as Search,
   SafeShieldLine as ShieldCheck,
   SparklesLine as Sparkles
-} from '@mingcute/react'
+} from '@/lib/mingcute-icons'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 

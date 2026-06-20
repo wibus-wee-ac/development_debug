@@ -7,7 +7,7 @@ import {
   FileCodeLine as FileCode,
   GitPullRequestLine as GitPullRequest,
   LayersLine as Layers
-} from '@mingcute/react'
+} from '@/lib/mingcute-icons'
 import { useEffect, useRef } from 'react'
 
 gsap.registerPlugin(ScrollTrigger)

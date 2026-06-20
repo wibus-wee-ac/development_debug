@@ -5,7 +5,7 @@ import {
   FileCodeLine as FileJson,
   PluginLine as Plug,
   SafeShieldLine as ShieldCheck
-} from '@mingcute/react'
+} from '@/lib/mingcute-icons'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 

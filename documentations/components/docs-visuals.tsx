@@ -26,7 +26,7 @@ import {
   SitemapLine as Waypoints,
   ProcessLine as Workflow,
   FlashLine as Zap
-} from '@mingcute/react'
+} from '@/lib/mingcute-icons'
 import Link from 'next/link'
 import type { ComponentType, SVGProps } from 'react'
 
