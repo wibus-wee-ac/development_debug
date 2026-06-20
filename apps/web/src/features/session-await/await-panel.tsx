@@ -9,7 +9,7 @@ import {
   PlusLine as PlusIcon,
   Magic2Line as WandSparklesIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import type { FormEvent } from 'react'
 import { useEffect, useId, useRef, useState } from 'react'
@@ -291,9 +291,9 @@ function StepStatusIcon({ status, conclusion }: { status: LiveWorkflowJobStep['s
         return <SkippedRunIcon className="text-muted-foreground/70" />
       }
       if (conclusion === 'success') {
-        return <CheckIcon className="size-3 text-green-500" strokeWidth={2.2} />
+        return <CheckIcon className="size-3 !text-green-500" strokeWidth={2.2} />
       }
-      return <XIcon className="size-3 text-red-500" strokeWidth={2.1} />
+      return <XIcon className="size-3 !text-red-500" strokeWidth={2.1} />
     }
     return <Spinner className="size-3 text-amber-500" />
   })()
@@ -1027,10 +1027,10 @@ function GitHubReviewCard({ review }: { review: LiveReviewStatus }) {
           {review.reviews.map(item => (
             <div key={item.id} className="flex min-w-0 items-center gap-1.5 text-[11px]">
               {item.state === 'APPROVED'
-                ? <MessageSquareCheckIcon className="size-3 shrink-0 text-green-500" aria-hidden />
+                ? <MessageSquareCheckIcon className="size-3 shrink-0 !text-green-500" aria-hidden />
                 : item.state === 'CHANGES_REQUESTED'
-                  ? <MessageSquareWarningIcon className="size-3 shrink-0 text-red-500" aria-hidden />
-                  : <GitPullRequestIcon className="size-3 shrink-0 text-muted-foreground/70" aria-hidden />}
+                  ? <MessageSquareWarningIcon className="size-3 shrink-0 !text-red-500" aria-hidden />
+                  : <GitPullRequestIcon className="size-3 shrink-0 !text-muted-foreground/70" aria-hidden />}
               <span className="min-w-0 flex-1 truncate">{item.reviewer ?? 'Unknown reviewer'}</span>
               <span className="shrink-0 text-muted-foreground/70">{item.state.toLowerCase().replaceAll('_', ' ')}</span>
             </div>

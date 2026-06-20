@@ -5,7 +5,7 @@ import {
   PlusLine as PlusIcon,
   DeleteLine as TrashIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -232,7 +232,7 @@ function BoardItem({ board }: { board: { id: string, name: string } }) {
       {isRenaming
 ? (
         <div className="flex-1 flex items-center gap-2 px-2.5 py-1">
-          <LayoutDashboardIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+          <LayoutDashboardIcon className="size-3.5 shrink-0 !text-muted-foreground/70" />
           <input
             ref={renameInputRef}
             value={renameValue}
@@ -251,7 +251,7 @@ function BoardItem({ board }: { board: { id: string, name: string } }) {
           onDoubleClick={handleRenameStart}
           className="flex-1 flex items-center gap-2 px-2.5 py-1.5 text-xs text-sidebar-foreground/80"
         >
-          <LayoutDashboardIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+          <LayoutDashboardIcon className="size-3.5 shrink-0 !text-muted-foreground/70" />
           <span className="truncate">{board.name}</span>
         </button>
       )}

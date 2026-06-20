@@ -4,7 +4,7 @@ import * as React from "react"
 import { Menubar as MenubarPrimitive } from "radix-ui"
 
 import { cn } from "~/lib/cn"
-import { CheckLine as CheckIcon, RightSmallLine as ChevronRightIcon } from "~/components/ui/mingcute-icons"
+import { CheckLine as CheckIcon, RightSmallLine as ChevronRightIcon } from '@mingcute/react'
 function Menubar({
   className,
   ...props

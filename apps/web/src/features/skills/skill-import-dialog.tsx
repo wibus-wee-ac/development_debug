@@ -3,7 +3,7 @@ import {
   RightSmallLine as ChevronRightIcon,
   LinkLine as LinkIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import { useEffect, useReducer, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -223,7 +223,7 @@ function RightPanelSelect({
               <CheckIcon
                 className={cn(
                   'size-3 shrink-0',
-                  isSelected ? 'text-emerald-500' : 'text-muted-foreground/20',
+                  isSelected ? '!text-emerald-500' : '!text-muted-foreground/20',
                 )}
               />
               <span className="truncate text-[12px] text-foreground">{skill.name}</span>
@@ -308,7 +308,7 @@ function InputForm({
             error && 'border-destructive/30',
           )}
         >
-          <LinkIcon className="size-4 shrink-0 text-muted-foreground/25" />
+          <LinkIcon className="size-4 shrink-0 !text-muted-foreground/25" />
           <input
             ref={inputRef}
             type="text"
@@ -442,7 +442,7 @@ function SelectBody({
                       : 'ring-1 ring-foreground/20 hover:ring-foreground/40',
                   )}
                 >
-                  {isSelected && <CheckIcon className="size-2.5 stroke-[2.5] text-background" />}
+                  {isSelected && <CheckIcon className="size-2.5 stroke-[2.5] !text-background" />}
                 </div>
                 <div className="min-w-0 flex-1">
                   <span className="block text-[13px] font-medium text-foreground">{skill.name}</span>

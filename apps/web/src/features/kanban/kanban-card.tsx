@@ -1,5 +1,5 @@
 import { useDraggable } from '@dnd-kit/core'
-import { CheckLine as CheckIcon, GitBranchLine as GitBranchIcon } from '~/components/ui/mingcute-icons'
+import { CheckLine as CheckIcon, GitBranchLine as GitBranchIcon } from '@mingcute/react'
 import type { CSSProperties, HTMLAttributes, MouseEvent, PointerEvent, ReactNode, Ref } from 'react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'

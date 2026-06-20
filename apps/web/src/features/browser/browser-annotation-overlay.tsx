@@ -7,7 +7,7 @@ import {
   FullscreenLine as Maximize2Icon,
   PlusLine as PlusIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type {
   ChangeEvent,
   ClipboardEvent as ReactClipboardEvent,

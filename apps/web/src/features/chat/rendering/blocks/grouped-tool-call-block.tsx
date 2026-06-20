@@ -17,7 +17,7 @@ import {
   LayoutTopLine as PanelTopIcon,
   ServerLine as ServerIcon,
   TerminalBoxLine as SquareTerminalIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import type { ComponentType } from 'react'
 import { useState } from 'react'
@@ -124,22 +124,22 @@ function getOverallState(items: ToolCallItem[]): ToolState {
 
 function ItemStatusIcon({ state, animated = true }: { state: ToolState, animated?: boolean }) {
   if (state === 'output-error' || state === 'output-denied') {
-    return <CircleAlertIcon className="size-3 text-destructive" aria-hidden />
+    return <CircleAlertIcon className="size-3 !text-destructive" aria-hidden />
   }
   if (state === 'output-available' || state === 'approval-responded') {
-    return <CheckCircle2Icon className="size-3 text-emerald-500" aria-hidden />
+    return <CheckCircle2Icon className="size-3 !text-emerald-500" aria-hidden />
   }
-  return <ClockIcon className={cn('size-3 text-muted-foreground/60', animated && 'animate-pulse')} aria-hidden />
+  return <ClockIcon className={cn('size-3 !text-muted-foreground/60', animated && 'animate-pulse')} aria-hidden />
 }
 
 function OverallStatusIcon({ state, animated = true }: { state: ToolState, animated?: boolean }) {
   if (state === 'output-error' || state === 'output-denied') {
-    return <CircleAlertIcon className="size-3.5 text-destructive" aria-hidden />
+    return <CircleAlertIcon className="size-3.5 !text-destructive" aria-hidden />
   }
   if (state === 'output-available' || state === 'approval-responded') {
-    return <CheckCircle2Icon className="size-3.5 text-emerald-500" aria-hidden />
+    return <CheckCircle2Icon className="size-3.5 !text-emerald-500" aria-hidden />
   }
-  return <ClockIcon className={cn('size-3.5 text-amber-500 dark:text-amber-400', animated && 'animate-pulse')} aria-hidden />
+  return <ClockIcon className={cn('size-3.5 !text-amber-500 dark:!text-amber-400', animated && 'animate-pulse')} aria-hidden />
 }
 
 export function GroupedToolCallBlock({
@@ -280,7 +280,7 @@ export function GroupedToolCallBlock({
                 {expandable && (
                   <ChevronRightIcon
                     className={cn(
-                      'size-3 shrink-0 text-muted-foreground/40',
+                      'size-3 shrink-0 !text-muted-foreground/40',
                       animated && 'transition-transform duration-200',
                       expanded && 'rotate-90',
                     )}

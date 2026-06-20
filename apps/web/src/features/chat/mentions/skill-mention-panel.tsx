@@ -1,4 +1,4 @@
-import { PackageLine as PackageIcon } from '~/components/ui/mingcute-icons'
+import { PackageLine as PackageIcon } from '@mingcute/react'
 import { useCallback, useMemo } from 'react'
 
 import type { SkillScope } from '~/features/skills/types'
@@ -44,7 +44,7 @@ export function SkillMentionPanel({ items, query, searchItems, onSelect, onClose
     positions: Set<number>
   }) => (
     <>
-      <PackageIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+      <PackageIcon className="size-3.5 shrink-0 !text-muted-foreground/60" aria-hidden="true" />
       <span className="min-w-0 flex-1 truncate">
         <span className="font-medium">
           <HighlightedAutocompleteText text={item.name} positions={positions} />

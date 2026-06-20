@@ -18,7 +18,7 @@ import {
   Settings2Line as SettingsIcon,
   SparklesLine as SparklesIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { shallow } from 'zustand/shallow'
 

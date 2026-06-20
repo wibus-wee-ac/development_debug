@@ -3,7 +3,7 @@ import {
   AlertLine as AlertCircleIcon,
   ExternalLinkLine as ExternalLinkIcon,
   LoadingLine as LoaderCircleIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -229,7 +229,7 @@ function ChatTranscriptContent({
               className="flex items-start gap-2 pl-1 pt-4"
             >
               <AlertCircleIcon
-                className="size-3.5 shrink-0 text-destructive/70"
+                className="size-3.5 shrink-0 !text-destructive/70"
                 aria-hidden="true"
               />
               <span className="min-w-0 break-all text-xs text-destructive/70">

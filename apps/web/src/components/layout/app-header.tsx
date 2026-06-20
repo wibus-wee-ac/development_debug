@@ -4,7 +4,7 @@ import {
   LayoutLeftbarCloseLine as PanelLeftCloseIcon,
   LayoutLeftbarOpenLine as PanelLeftOpenIcon,
   LayoutRightLine as PanelRightIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import { useCallback } from 'react'
 import { useTranslation } from 'react-i18next'

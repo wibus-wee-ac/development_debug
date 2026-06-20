@@ -3,7 +3,7 @@ import {
   Refresh1Line as RefreshCwIcon,
   SearchLine as SearchIcon,
   SparklesLine as SparklesIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -237,7 +237,7 @@ export function ModelsPanel({
 
       {/* Search */}
       <div className="relative">
-        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 !text-muted-foreground/60" />
         <Input
           value={filter}
           onChange={e => setFilter(e.target.value)}

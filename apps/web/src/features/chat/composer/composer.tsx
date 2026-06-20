@@ -5,7 +5,7 @@ import {
   SendPlaneLine as SendHorizonalIcon,
   SquareLine as SquareIcon,
   TerminalBoxLine as SquareTerminalIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type { ChangeEvent } from 'react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 

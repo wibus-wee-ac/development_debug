@@ -6,7 +6,7 @@ import {
   ItalicLine as ItalicIcon,
   LinkLine as LinkIcon,
   StrikethroughLine as StrikethroughIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'

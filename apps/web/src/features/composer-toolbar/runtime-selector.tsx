@@ -1,4 +1,4 @@
-import { DownSmallLine as ChevronDownIcon } from '~/components/ui/mingcute-icons'
+import { DownSmallLine as ChevronDownIcon } from '@mingcute/react'
 import { useTranslation } from 'react-i18next'
 
 import { getRuntimeIconKey, PROVIDER_ICONS } from '~/components/common/provider-icons'
@@ -119,7 +119,7 @@ export function RuntimeSelector({
         <span className="hidden min-[480px]:inline">
           {currentLabel}
         </span>
-        <ChevronDownIcon className="size-2.5 shrink-0 text-muted-foreground/50" />
+        <ChevronDownIcon className="size-2.5 shrink-0 !text-muted-foreground/50" />
       </MenuTrigger>
       <MenuPopup
         align="start"

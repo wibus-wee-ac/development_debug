@@ -1,4 +1,4 @@
-import { PencilLine as PencilIcon } from '~/components/ui/mingcute-icons'
+import { PencilLine as PencilIcon } from '@mingcute/react'
 import { useCallback, useEffect, useRef, useState } from 'react'
 
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
@@ -76,7 +76,7 @@ export function PlanRefineEditor({ tabId, title, text, className }: PlanRefineEd
     <div className={cn('flex h-full min-h-0 flex-col bg-background', className)}>
       <div className="flex h-10 shrink-0 items-center justify-between gap-3 border-b border-border/70 px-4">
         <div className="flex min-w-0 items-center gap-2">
-          <PencilIcon className="size-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
+          <PencilIcon className="size-3.5 shrink-0 !text-muted-foreground/70" aria-hidden="true" />
           <span className="min-w-0 truncate text-[13px] font-medium text-foreground">{title}</span>
         </div>
         <span

@@ -10,7 +10,7 @@ import {
   LoadingLine as LoaderCircleIcon,
   StopwatchLine as TimerIcon,
   ToolLine as WrenchIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useSyncExternalStore } from 'react'
 
 import type { RuntimeKind } from '~/features/agent-runtime/types'
@@ -233,7 +233,7 @@ export function RuntimeSessionPanel({
                   <CircleIcon
                     className={cn(
                       'size-2.5 shrink-0 fill-current',
-                      tool.state === 'output-error' ? 'text-destructive' : 'text-muted-foreground'
+                      tool.state === 'output-error' ? '!text-destructive' : '!text-muted-foreground'
                     )}
                   />
                   <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-foreground">

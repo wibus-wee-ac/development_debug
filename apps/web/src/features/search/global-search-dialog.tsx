@@ -9,7 +9,7 @@ import {
   PuzzledLine as PuzzleIcon,
   Settings2Line as SettingsIcon,
   TerminalLine as TerminalIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type { ComponentType } from 'react'
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -898,7 +898,7 @@ const FileSearchCommandRow = ({
       className="flex items-center gap-2.5 px-2.5 py-1.5"
       data-testid={`global-search-file-result-${file.path}`}
     >
-      <FileIcon className="size-3.5 shrink-0 text-muted-foreground" />
+      <FileIcon className="size-3.5 shrink-0 !text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate font-mono text-xs">{file.path}</span>
     </CommandItem>
   )
@@ -970,7 +970,7 @@ const IssueSearchResultRow = ({
       className="flex items-center gap-2.5 px-2.5 py-1.5"
       data-testid={`global-search-issue-result-${issue.title}`}
     >
-      <CircleDotIcon className="size-3.5 shrink-0 text-muted-foreground" />
+      <CircleDotIcon className="size-3.5 shrink-0 !text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate text-sm">{issue.title}</span>
     </CommandItem>
   )

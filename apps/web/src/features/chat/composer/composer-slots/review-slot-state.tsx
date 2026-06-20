@@ -11,7 +11,7 @@ import {
   LoadingLine as LoaderCircleIcon,
   Refresh1Line as RefreshCwIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type { ReactNode } from 'react'
 import { useMemo, useState } from 'react'
 
@@ -110,7 +110,7 @@ export function ReviewSlotState({
   return (
     <ComposerSlotShell stateName="review" testId="codex-review-mode-slot" className={cn('py-2', className)}>
       <div className="mb-2 flex h-6 min-w-0 items-center gap-2">
-        <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <GitBranchIcon className="size-3.5 shrink-0 !text-muted-foreground" aria-hidden="true" />
         <div className="min-w-0 flex-1">
           <span className="font-medium text-foreground/80">Code review</span>
           <span className="ml-1.5 text-muted-foreground">
@@ -209,10 +209,10 @@ export function ReviewSlotState({
                         submittingBranchName === branch.label && 'bg-muted',
                       )}
                     >
-                      <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <GitBranchIcon className="size-3.5 shrink-0 !text-muted-foreground" aria-hidden="true" />
                       <span className="min-w-0 flex-1 truncate text-foreground/85">{branch.label}</span>
                       {submittingBranchName === branch.label && (
-                        <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />
+                        <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin !text-muted-foreground" aria-hidden="true" />
                       )}
                     </button>
                   ))}

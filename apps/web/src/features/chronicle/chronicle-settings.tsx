@@ -17,7 +17,7 @@ import {
   SearchLine as SearchIcon,
   WarningLine as TriangleAlertIcon,
   User2Line as UserRoundIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -488,7 +488,7 @@ export function ChronicleSettings() {
 
       {dependencyNotice && (
         <Alert className="border-border bg-muted/30">
-          <TriangleAlertIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+          <TriangleAlertIcon className="size-4 !text-muted-foreground" aria-hidden="true" />
           <AlertTitle>{dependencyNotice.title}</AlertTitle>
           <AlertDescription className="text-[12px] leading-5">
             {dependencyNotice.description}
@@ -666,7 +666,7 @@ export function ChronicleSettings() {
           <SettingsRow label={t('memorySearch.title')} description={t('memorySearch.description')} vertical>
             <div className="flex flex-col gap-3">
               <div className="relative">
-                <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+                <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 !text-muted-foreground/60" />
                 <Input
                   value={searchQuery}
                   onChange={event => setSearchQuery(event.target.value)}
@@ -1210,7 +1210,7 @@ function SlackSourcePanel({ loading, sources }: { loading: boolean, sources: Chr
     <div className="flex flex-col gap-3">
       <div className="rounded-lg border border-foreground/5 bg-background p-4 shadow-sm">
         <div className="mb-3 flex items-center gap-2">
-          <MessageSquareIcon className="size-3.5 text-muted-foreground" />
+          <MessageSquareIcon className="size-3.5 !text-muted-foreground" />
           <span className="text-[13px] font-medium text-foreground">{t('slack.title')}</span>
           <Badge variant="outline" className="ml-auto text-[11px]">
             {sources.length === 0 ? t('common.status.disconnected') : t('slack.sourceCount', { count: sources.length })}
@@ -1259,7 +1259,7 @@ function SlackSourcePanel({ loading, sources }: { loading: boolean, sources: Chr
 
         <div className="mt-2 flex gap-2">
           <div className="relative min-w-0 flex-1">
-            <KeyRoundIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+            <KeyRoundIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 !text-muted-foreground/60" />
             <Input
               value={draft.token}
               type="password"
@@ -1270,7 +1270,7 @@ function SlackSourcePanel({ loading, sources }: { loading: boolean, sources: Chr
           </div>
           {draft.realtimeMode === 'events-api' && (
             <div className="relative min-w-0 flex-1">
-              <KeyRoundIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+              <KeyRoundIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 !text-muted-foreground/60" />
               <Input
                 value={draft.signingSecret}
                 type="password"
@@ -1309,7 +1309,7 @@ function SlackSourcePanel({ loading, sources }: { loading: boolean, sources: Chr
                 {sources.map(source => (
                   <div key={source.id} className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
                     <div className="flex min-w-0 items-center gap-2">
-                      <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                      <MessageSquareIcon className="size-3.5 shrink-0 !text-muted-foreground" />
                       <span className="truncate text-[13px] font-medium text-foreground">{source.label}</span>
                       <Badge variant="outline" className="ml-auto text-[11px]">{source.status}</Badge>
                     </div>
@@ -1774,7 +1774,7 @@ function ActivityPipelinePanel({
       <div className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
         <div className="mb-3 flex min-w-0 flex-col gap-2 sm:flex-row sm:items-center">
           <div className="flex min-w-0 items-center gap-2">
-            <CpuIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            <CpuIcon className="size-3.5 shrink-0 !text-muted-foreground" />
             <span className="truncate text-[13px] font-medium text-foreground">{t('pipeline.runs.title')}</span>
             <Badge variant="outline" className="text-[11px]">{runs.length}</Badge>
           </div>
@@ -1849,7 +1849,7 @@ function ActivitySegmentCard({
   return (
     <article className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
       <div className="mb-2 flex min-w-0 items-center gap-2">
-        <ActivityIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <ActivityIcon className="size-3.5 shrink-0 !text-muted-foreground" />
         <span className="truncate text-[13px] font-medium text-foreground">
           {segment.title ?? segment.frontApp ?? t('activitySegment.fallback.title')}
         </span>
@@ -2135,7 +2135,7 @@ function KnowledgeCardList({
           data-testid={`chronicle-knowledge-card-${card.id}`}
         >
           <div className="mb-2 flex min-w-0 items-center gap-2">
-            <BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            <BrainIcon className="size-3.5 shrink-0 !text-muted-foreground" />
             <span className="truncate text-[13px] font-medium text-foreground">{card.title}</span>
             <Badge variant="outline" className="ml-auto text-[11px]">{formatKnowledgeDimension(t, card.dimension)}</Badge>
           </div>
@@ -2174,7 +2174,7 @@ function DreamRunPanel({ loading, runs }: { loading: boolean, runs: ChronicleDre
     <div className="flex flex-col gap-3">
       <div className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
         <div className="flex min-w-0 flex-wrap items-center gap-2">
-          <ClockIcon className="size-3.5 shrink-0 text-muted-foreground" />
+          <ClockIcon className="size-3.5 shrink-0 !text-muted-foreground" />
           <span className="truncate text-[13px] font-medium text-foreground">{t('dreamRun.candidatesTitle')}</span>
           <Button
             type="button"
@@ -2209,7 +2209,7 @@ function DreamRunPanel({ loading, runs }: { loading: boolean, runs: ChronicleDre
                 {runs.slice(0, 8).map(run => (
                   <article key={run.id} className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
                     <div className="mb-2 flex min-w-0 items-center gap-2">
-                      <ClockIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                      <ClockIcon className="size-3.5 shrink-0 !text-muted-foreground" />
                       <span className="truncate text-[13px] font-medium text-foreground">{formatDreamRunType(t, run.runType)}</span>
                       <Badge
                         variant={run.status === 'completed' ? 'secondary' : 'outline'}
@@ -2255,7 +2255,7 @@ function AccessibilitySnapshotList({ snapshots }: { snapshots: ChronicleAccessib
         return (
           <article key={snapshot.id} className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
             <div className="mb-2 flex min-w-0 items-center gap-2">
-              <EyeIcon className="size-3.5 shrink-0 text-muted-foreground" />
+              <EyeIcon className="size-3.5 shrink-0 !text-muted-foreground" />
               <span className="truncate text-[13px] font-medium text-foreground">
                 {snapshot.windowTitle ?? snapshot.appBundleId ?? t('accessibility.snapshotFallback.title')}
               </span>
@@ -2335,7 +2335,7 @@ function AccessibilityEventList({ events }: { events: ChronicleAccessibilityEven
       {events.map(event => (
         <article key={event.id} className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
           <div className="mb-2 flex min-w-0 items-center gap-2">
-            <ActivityIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            <ActivityIcon className="size-3.5 shrink-0 !text-muted-foreground" />
             <span className="truncate text-[13px] font-medium text-foreground">
               {formatAccessibilityEventNotification(t, event.notification)}
             </span>
@@ -2370,7 +2370,7 @@ function SpeakerProfileList({ profiles }: { profiles: ChronicleSpeakerProfile[] 
       {profiles.map(profile => (
         <article key={profile.id} className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
           <div className="mb-2 flex min-w-0 items-center gap-2">
-            <UserRoundIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            <UserRoundIcon className="size-3.5 shrink-0 !text-muted-foreground" />
             <span className="truncate text-[13px] font-medium text-foreground">{profile.displayName}</span>
             <Badge variant="outline" className="ml-auto text-[11px]">
               {t('speaker.sampleCount', { count: profile.sampleCount })}
@@ -2411,7 +2411,7 @@ function AudioTranscriptList({ transcripts }: { transcripts: ChronicleAudioTrans
       {transcripts.map(transcript => (
         <article key={transcript.id} className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
           <div className="mb-2 flex min-w-0 items-center gap-2">
-            <FileAudioIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            <FileAudioIcon className="size-3.5 shrink-0 !text-muted-foreground" />
             <span className="truncate text-[13px] font-medium text-foreground">
               {transcript.title ?? transcript.windowTitle ?? t('timeline.fallback.audioTranscript')}
             </span>
@@ -2442,7 +2442,7 @@ function AudioRawSegmentList({ segments }: { segments: ChronicleAudioRawSegment[
       {segments.map(segment => (
         <article key={segment.id} className="rounded-lg border border-foreground/5 bg-background p-3 shadow-sm">
           <div className="mb-2 flex min-w-0 items-center gap-2">
-            <FileAudioIcon className="size-3.5 shrink-0 text-muted-foreground" />
+            <FileAudioIcon className="size-3.5 shrink-0 !text-muted-foreground" />
             <span className="truncate text-[13px] font-medium text-foreground">
               {formatAudioSegmentTitle(t, segment)}
             </span>
@@ -2525,7 +2525,7 @@ function MemoryCard({ entry, focused }: { entry: MemoryEntry, focused: boolean }
       data-testid={`chronicle-memory-card-${entry.id}`}
     >
       <div className="mb-2 flex min-w-0 items-center gap-2">
-        <BrainIcon className="size-3.5 shrink-0 text-muted-foreground" />
+        <BrainIcon className="size-3.5 shrink-0 !text-muted-foreground" />
         <span className="truncate text-[13px] font-medium text-foreground">{entry.title ?? t('memory.fallbackTitle')}</span>
         <div className="ml-auto flex shrink-0 items-center gap-1.5">
           {entry.matchKind && (
@@ -2635,7 +2635,7 @@ function StatusPanel({
   return (
     <div className="rounded-lg border border-foreground/5 bg-background p-4 shadow-sm">
       <div className="mb-3 flex items-center gap-2">
-        <ActivityIcon className="size-3.5 text-muted-foreground" />
+        <ActivityIcon className="size-3.5 !text-muted-foreground" />
         <span className="text-[13px] font-medium text-foreground">{t('status.title')}</span>
         <StatusBadge running={running} available={available} />
       </div>

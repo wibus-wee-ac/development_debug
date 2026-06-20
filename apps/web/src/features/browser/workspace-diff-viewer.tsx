@@ -17,7 +17,7 @@ import {
   GitCompareLine as FileDiffIcon,
   LoadingLine as Loader2Icon,
   Rows3Line as Rows3Icon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useDeferredValue, useEffect, useRef, useState, useTransition } from 'react'
 
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
@@ -201,7 +201,7 @@ function WorkspaceDiffViewerContent({ ownerId, tabId, workspaceId, repositoryPat
         className="flex h-full w-full items-center justify-center"
         data-testid="workspace-diff-loading"
       >
-        <Loader2Icon className="size-4 animate-spin text-muted-foreground/40" aria-hidden />
+        <Loader2Icon className="size-4 animate-spin !text-muted-foreground/40" aria-hidden />
       </div>
     )
   }
@@ -213,7 +213,7 @@ function WorkspaceDiffViewerContent({ ownerId, tabId, workspaceId, repositoryPat
         data-testid="workspace-diff-error"
       >
         <div className="flex flex-col items-center gap-2">
-          <FileDiffIcon className="size-5 text-muted-foreground/30" aria-hidden />
+          <FileDiffIcon className="size-5 !text-muted-foreground/30" aria-hidden />
           <p className="text-xs text-muted-foreground">Failed to load diff</p>
         </div>
       </div>
@@ -227,7 +227,7 @@ function WorkspaceDiffViewerContent({ ownerId, tabId, workspaceId, repositoryPat
         data-testid="workspace-diff-empty"
       >
         <div className="flex flex-col items-center gap-2">
-          <FileDiffIcon className="size-5 text-muted-foreground/30" aria-hidden />
+          <FileDiffIcon className="size-5 !text-muted-foreground/30" aria-hidden />
           <p className="text-xs text-muted-foreground">No changes</p>
         </div>
       </div>

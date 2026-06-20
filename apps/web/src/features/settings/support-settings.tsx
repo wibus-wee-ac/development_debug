@@ -4,7 +4,7 @@ import {
   LifebuoyLine as LifeBuoyIcon,
   AnticlockwiseLine as RotateCcwIcon,
   Share2Line as Share2Icon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'

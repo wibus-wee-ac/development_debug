@@ -4,7 +4,7 @@ import {
   ArrowUpLine as ArrowUpIcon,
   DotsVerticalLine as GripVerticalIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

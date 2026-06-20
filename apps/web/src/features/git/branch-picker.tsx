@@ -5,7 +5,7 @@ import {
   PlusLine as PlusIcon,
   Refresh1Line as RefreshCwIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useDeferredValue, useEffect, useReducer, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -122,7 +122,7 @@ function BranchPickerCreatePanel({
   return (
     <div className="flex flex-col">
       <div className="flex items-center gap-1.5 border-b border-border px-3 py-2">
-        <GitBranchIcon className="size-3.5 shrink-0 text-muted-foreground/50" aria-hidden />
+        <GitBranchIcon className="size-3.5 shrink-0 !text-muted-foreground/50" aria-hidden />
         <Input
           ref={inputRef}
           className="h-7 flex-1 text-xs font-mono"
@@ -251,9 +251,9 @@ function BranchPickerListPanel({
                 data-branch-current={branch.name === currentBranch ? 'true' : 'false'}
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-accent/60"
               >
-                <GitBranchIcon className="size-3 shrink-0 text-muted-foreground/50" aria-hidden />
+                <GitBranchIcon className="size-3 shrink-0 !text-muted-foreground/50" aria-hidden />
                 <span className="flex-1 break-all font-mono">{branch.name}</span>
-                {branch.name === currentBranch && <CheckIcon className="size-3 shrink-0 text-primary" aria-hidden />}
+                {branch.name === currentBranch && <CheckIcon className="size-3 shrink-0 !text-primary" aria-hidden />}
               </button>
             ))}
           </div>
@@ -275,7 +275,7 @@ function BranchPickerListPanel({
                 data-branch-current="false"
                 className="flex w-full items-center gap-2 px-3 py-1.5 text-left text-xs transition-colors hover:bg-accent/60"
               >
-                <GitBranchIcon className="size-3 shrink-0 text-muted-foreground/30" aria-hidden />
+                <GitBranchIcon className="size-3 shrink-0 !text-muted-foreground/30" aria-hidden />
                 <span className="flex-1 break-all font-mono text-muted-foreground">{branch.name}</span>
               </button>
             ))}

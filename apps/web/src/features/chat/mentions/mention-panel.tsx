@@ -1,4 +1,4 @@
-import { FolderLine as FolderIcon } from '~/components/ui/mingcute-icons'
+import { FolderLine as FolderIcon } from '@mingcute/react'
 import { useCallback, useMemo } from 'react'
 
 import { WorkspaceFileIcon, WorkspaceFileIconSpriteSheet } from '~/components/common/workspace-file-icon'
@@ -190,7 +190,7 @@ function MentionPanelRow({ item, positions }: { item: MentionPanelItem, position
   return (
     <>
       {item.type === 'directory'
-        ? <FolderIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+        ? <FolderIcon className="size-3.5 shrink-0 !text-muted-foreground/60" aria-hidden="true" />
         : <WorkspaceFileIcon path={item.path} className="size-3.5 text-muted-foreground/60" />}
       <span className="min-w-0 truncate">
         <HighlightedAutocompleteText text={item.path} positions={positions} />

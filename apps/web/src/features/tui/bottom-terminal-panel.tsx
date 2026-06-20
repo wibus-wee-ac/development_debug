@@ -2,7 +2,7 @@ import {
   PlusLine as PlusIcon,
   TerminalBoxLine as SquareTerminalIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useEffect, useState } from 'react'
 
 import { deleteTerminalSessionsShellByPtyId } from '~/api-gen/sdk.gen'

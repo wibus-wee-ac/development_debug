@@ -4,7 +4,7 @@ import {
   DownloadLine as DownloadIcon,
   GlobeLine as GlobeIcon,
   Key2Line as KeyIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useCallback, useMemo, useRef, useState } from 'react'
 import { z } from 'zod'
 
@@ -367,7 +367,7 @@ export function ImportProviderDialog({
                       </SelectContent>
                     </Select>
                     <div className="flex-1 flex items-center gap-1.5">
-                      <GlobeIcon className="size-3.5 shrink-0 text-muted-foreground" />
+                      <GlobeIcon className="size-3.5 shrink-0 !text-muted-foreground" />
                       <Input
                         value={manualUrl}
                         onChange={e => setManualUrl(e.target.value)}

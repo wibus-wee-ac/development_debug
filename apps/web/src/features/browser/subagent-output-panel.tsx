@@ -4,7 +4,7 @@ import {
   CheckCircleLine as CheckCircle2Icon,
   LoadingLine as LoaderCircleIcon,
   CloseCircleLine as XCircleIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useCallback, useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 import { useShallow } from 'zustand/react/shallow'
@@ -251,7 +251,7 @@ export function SubagentOutputPanel({
         {hasError
           ? (
           <div className="flex flex-col items-center justify-center gap-2 py-8 text-muted-foreground/60">
-            <XCircleIcon className="size-8 text-destructive/70" />
+            <XCircleIcon className="size-8 !text-destructive/70" />
             <p className="text-[11px]">Unable to load subagent thread</p>
           </div>
         )

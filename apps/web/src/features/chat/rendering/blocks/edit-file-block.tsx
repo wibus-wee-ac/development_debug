@@ -5,7 +5,7 @@ import {
   Columns2Line as Columns2Icon,
   FileLine as FilePenLineIcon,
   Rows3Line as Rows3Icon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import { useState } from 'react'
 
@@ -108,7 +108,7 @@ export function EditFileBlock({ filePath, oldContent, newContent, defaultOpen = 
             )}
           >
             <FilePenLineIcon
-              className="size-3.5 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground/70"
+              className="size-3.5 shrink-0 !text-muted-foreground/50 transition-colors group-hover:!text-muted-foreground/70"
               aria-hidden
             />
 
@@ -143,7 +143,7 @@ export function EditFileBlock({ filePath, oldContent, newContent, defaultOpen = 
 
             <ChevronRightIcon
               className={cn(
-                'size-3 shrink-0 text-muted-foreground/40',
+                'size-3 shrink-0 !text-muted-foreground/40',
                 'transition-transform duration-200',
                 open && 'rotate-90',
               )}

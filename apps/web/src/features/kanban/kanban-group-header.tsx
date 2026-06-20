@@ -1,4 +1,4 @@
-import { RightSmallLine as ChevronRightIcon, PlusLine as PlusIcon } from '~/components/ui/mingcute-icons'
+import { RightSmallLine as ChevronRightIcon, PlusLine as PlusIcon } from '@mingcute/react'
 import { m } from 'motion/react'
 
 import { cn } from '~/lib/cn'

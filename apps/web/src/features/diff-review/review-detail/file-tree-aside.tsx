@@ -4,7 +4,7 @@ import {
   CheckLine as CheckIcon,
   PlaylistLine as ListIcon,
   TreeLine as ListTreeIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useMemo, useState } from 'react'
 
 import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'

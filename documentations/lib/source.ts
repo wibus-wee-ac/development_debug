@@ -19,7 +19,7 @@ import {
   ServerLine,
   Settings2Line,
   TerminalLine,
-} from '@/lib/mingcute-icons'
+} from '@mingcute/react'
 import { loader } from 'fumadocs-core/source'
 import { createElement } from 'react'
 

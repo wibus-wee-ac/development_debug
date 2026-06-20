@@ -8,7 +8,7 @@ import {
   LayersLine as Layers,
   Plugin2Line as PlugZap,
   ProcessLine as Workflow
-} from '../lib/mingcute-icons'
+} from '@mingcute/react'
 import { useRef } from 'react'
 
 const STEPS = [

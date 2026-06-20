@@ -1,5 +1,5 @@
 import type { CodeViewItem } from '@pierre/diffs'
-import { GitCompareLine as FileDiffIcon, LoadingLine as Loader2Icon } from '~/components/ui/mingcute-icons'
+import { GitCompareLine as FileDiffIcon, LoadingLine as Loader2Icon } from '@mingcute/react'
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 
 import { ResizeHandle } from '~/components/layout/resize-handle'
@@ -163,7 +163,7 @@ export function ReviewDetailPage({
   if (isLoading) {
     return (
       <div className="flex h-full w-full items-center justify-center" data-testid="review-detail-loading">
-        <Loader2Icon className="size-4 animate-spin text-muted-foreground/40" aria-hidden />
+        <Loader2Icon className="size-4 animate-spin !text-muted-foreground/40" aria-hidden />
       </div>
     )
   }
@@ -171,7 +171,7 @@ export function ReviewDetailPage({
   if (isError || !review) {
     return (
       <div className="flex h-full w-full flex-col items-center justify-center gap-2 p-4 text-center" data-testid="review-detail-error">
-        <FileDiffIcon className="size-5 text-muted-foreground/30" aria-hidden />
+        <FileDiffIcon className="size-5 !text-muted-foreground/30" aria-hidden />
         <p className="text-[12px] text-muted-foreground">Review unavailable</p>
       </div>
     )

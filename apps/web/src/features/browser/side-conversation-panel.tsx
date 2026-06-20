@@ -3,7 +3,7 @@ import {
   RobotLine as BotIcon,
   SendLine as SendIcon,
   CloseCircleLine as XCircleIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useState } from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
@@ -131,7 +131,7 @@ export function SideConversationPanel({
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" data-testid="side-conversation-panel">
       <div className="flex shrink-0 items-center gap-2 border-b border-border/50 bg-card px-3 py-2">
         <div className="flex size-6 shrink-0 items-center rounded-md bg-primary/10">
-          <BotIcon className="mx-auto size-3.5 text-primary" />
+          <BotIcon className="mx-auto size-3.5 !text-primary" />
         </div>
         <div className="min-w-0 flex-1">
           <p className="truncate text-xs font-medium text-foreground">{title}</p>

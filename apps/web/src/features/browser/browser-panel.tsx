@@ -25,7 +25,7 @@ import {
   TerminalBoxLine as SquareTerminalIcon,
   DeleteLine as Trash2Icon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type { CSSProperties, FormEvent, KeyboardEvent as ReactKeyboardEvent } from 'react'
 import {
   lazy,
@@ -442,7 +442,7 @@ const BrowserNewTabSurface = ({
               <span className="shrink-0 rounded-md bg-background px-2 py-1 text-[10px] font-medium text-muted-foreground tabular-nums ring-1 ring-border/60">
                 {localServerStatusLabel(server.statusCode)}
               </span>
-              <ExternalLinkIcon className="size-3.5 shrink-0 text-muted-foreground transition-colors group-hover:text-foreground" />
+              <ExternalLinkIcon className="size-3.5 shrink-0 !text-muted-foreground transition-colors group-hover:!text-foreground" />
             </button>
           ))}
         </div>
@@ -1076,7 +1076,7 @@ function BrowserAnnotationRail({
             aria-label="Collapse browser annotations"
             aria-expanded="true"
           >
-            <MessageSquarePlusIcon className="size-3.5 shrink-0 text-primary" />
+            <MessageSquarePlusIcon className="size-3.5 shrink-0 !text-primary" />
             <span className="truncate">Annotations</span>
             <span className="rounded bg-foreground/7 px-1.5 py-0.5 text-[10px] text-muted-foreground tabular-nums">
               {annotations.length}
@@ -2647,7 +2647,7 @@ export function BrowserPanel({
               >
                 {tab.kind === 'browser' && tab.isLoading && (
                   <LoaderCircleIcon
-                    className="size-3 shrink-0 animate-spin text-primary"
+                    className="size-3 shrink-0 animate-spin !text-primary"
                     aria-hidden="true"
                   />
                 )}
@@ -2656,36 +2656,36 @@ export function BrowserPanel({
                 )}
                 {tab.kind === 'browser' && !tab.isLoading && !tab.faviconUrl && (
                   <GlobeIcon
-                    className="size-3 shrink-0 text-muted-foreground/60"
+                    className="size-3 shrink-0 !text-muted-foreground/60"
                     aria-hidden="true"
                   />
                 )}
                 {tab.kind === 'workspace-file' && (
-                  <FileTextIcon className="size-3 shrink-0 text-muted-foreground/60" />
+                  <FileTextIcon className="size-3 shrink-0 !text-muted-foreground/60" />
                 )}
                 {tab.kind === 'workspace-diff' && (
-                  <FileDiffIcon className="size-3 shrink-0 text-muted-foreground/60" />
+                  <FileDiffIcon className="size-3 shrink-0 !text-muted-foreground/60" />
                 )}
                 {tab.kind === 'subagent' && (
-                  <BotIcon className="size-3 shrink-0 text-muted-foreground/60" />
+                  <BotIcon className="size-3 shrink-0 !text-muted-foreground/60" />
                 )}
                 {tab.kind === 'side-conversation' && (
-                  <MessageSquarePlusIcon className="size-3 shrink-0 text-muted-foreground/60" />
+                  <MessageSquarePlusIcon className="size-3 shrink-0 !text-muted-foreground/60" />
                 )}
                 {tab.kind === 'context-usage-report' && (
-                  <GaugeIcon className="size-3 shrink-0 text-muted-foreground/60" />
+                  <GaugeIcon className="size-3 shrink-0 !text-muted-foreground/60" />
                 )}
                 {tab.kind === 'launcher' && (
-                  <PlusIcon className="size-3 shrink-0 text-muted-foreground/60" />
+                  <PlusIcon className="size-3 shrink-0 !text-muted-foreground/60" />
                 )}
                 {tab.kind === 'tui' && (
-                  <SquareTerminalIcon className="size-3 shrink-0 text-muted-foreground/60" />
+                  <SquareTerminalIcon className="size-3 shrink-0 !text-muted-foreground/60" />
                 )}
                 {tab.kind === 'plan-document' && (
-                  <PanelTopIcon className="size-3 shrink-0 text-muted-foreground/60" />
+                  <PanelTopIcon className="size-3 shrink-0 !text-muted-foreground/60" />
                 )}
                 {tab.kind === 'plan-refine' && (
-                  <PencilIcon className="size-3 shrink-0 text-muted-foreground/60" />
+                  <PencilIcon className="size-3 shrink-0 !text-muted-foreground/60" />
                 )}
                 <span className="truncate">{getPanelTabTitle(tab)}</span>
                 {tab.kind === 'browser'
@@ -2888,7 +2888,7 @@ export function BrowserPanel({
                       )}
                       {!suggestion.faviconUrl && (
                         <GlobeIcon
-                          className="size-3.5 shrink-0 text-muted-foreground/60"
+                          className="size-3.5 shrink-0 !text-muted-foreground/60"
                           aria-hidden="true"
                         />
                       )}

@@ -8,7 +8,7 @@ import {
   Rows3Line as Rows3Icon,
   SendLine as SendIcon,
   SelectorHorizontalLine as SlidersHorizontalIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useState, useTransition } from 'react'
 
 import { Button } from '~/components/ui/button'

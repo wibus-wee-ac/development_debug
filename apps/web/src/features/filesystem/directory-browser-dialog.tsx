@@ -10,7 +10,7 @@ import {
   Home2Line as HomeIcon,
   LoadingLine as Loader2Icon,
   MonitorLine as MonitorIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
@@ -216,7 +216,7 @@ export function DirectoryBrowserDialog({
             <ScrollArea className="flex-1 min-h-0">
               {isLoading && (
                 <div className="flex items-center justify-center h-full min-h-40">
-                  <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+                  <Loader2Icon className="size-4 animate-spin !text-muted-foreground" />
                 </div>
               )}
 
@@ -448,7 +448,7 @@ function PathBar({
                   i === selectedSuggestion && 'bg-accent',
                 )}
               >
-                <FolderIcon className="size-3 text-muted-foreground shrink-0" />
+                <FolderIcon className="size-3 !text-muted-foreground shrink-0" />
                 <span className="truncate font-mono">{s.path}</span>
               </button>
             ))}
@@ -485,7 +485,7 @@ function PathBar({
         const isLast = i === segments.length - 1
         return (
           <span key={segPath} className="flex items-center gap-1 shrink-0">
-            <ChevronRightIcon className="size-2.5 text-muted-foreground/40" />
+            <ChevronRightIcon className="size-2.5 !text-muted-foreground/40" />
             {isLast
               ? <span className="font-medium text-foreground">{seg}</span>
               : (
@@ -579,9 +579,9 @@ function DirectoryRow({
         isSelected && 'bg-accent',
       )}
     >
-      <FolderIcon className="size-3.5 shrink-0 text-muted-foreground" />
+      <FolderIcon className="size-3.5 shrink-0 !text-muted-foreground" />
       <span className="truncate flex-1">{name}</span>
-      <ChevronRightIcon className="size-3 shrink-0 text-muted-foreground/30" />
+      <ChevronRightIcon className="size-3 shrink-0 !text-muted-foreground/30" />
     </button>
   )
 }

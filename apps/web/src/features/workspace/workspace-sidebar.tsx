@@ -29,7 +29,7 @@ import {
   SearchLine as SearchIcon,
   Settings2Line as SettingsIcon,
   DeleteLine as Trash2Icon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import {
   Fragment,
   memo,
@@ -249,7 +249,7 @@ function SessionRenameInput({
     >
       {pinned ? (
         <PinIcon
-          className="size-3 shrink-0 text-primary/60"
+          className="size-3 shrink-0 !text-primary/60"
           aria-label={t('session.aria.pinned')}
           data-testid={`session-pin-indicator-${sessionId}`}
         />
@@ -1252,7 +1252,7 @@ const SessionItem = memo(
             >
               {hasError ? (
                 <CircleAlertIcon
-                  className="size-3.5 shrink-0 text-destructive/80"
+                  className="size-3.5 shrink-0 !text-destructive/80"
                   aria-label={t('session.aria.error')}
                   data-testid={`session-error-indicator-${session.id}`}
                 />
@@ -1264,7 +1264,7 @@ const SessionItem = memo(
               )}
               {session.pinned ? (
                 <PinIcon
-                  className="size-3 shrink-0 text-primary/60"
+                  className="size-3 shrink-0 !text-primary/60"
                   aria-label={t('session.aria.pinned')}
                   data-testid={`session-pin-indicator-${session.id}`}
                 />
@@ -1439,7 +1439,7 @@ function WorkspaceGroupDisclosure({
       >
         {workspacePinned ? (
           <PinIcon
-            className="size-3 shrink-0 text-primary/60"
+            className="size-3 shrink-0 !text-primary/60"
             aria-label={t('workspace.aria.pinned')}
             data-testid={`workspace-pin-indicator-${workspace.id}`}
           />
@@ -2544,7 +2544,7 @@ const WorkspaceSidebarBody = memo(
             {workspaces.length === 0 && (
               <div className="flex flex-col items-center gap-3 px-4 py-8 text-center">
                 <div className="flex size-10 items-center justify-center rounded-xl bg-muted/60">
-                  <FolderOpenIcon className="size-5 text-muted-foreground/50" aria-hidden="true" />
+                  <FolderOpenIcon className="size-5 !text-muted-foreground/50" aria-hidden="true" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <p className="text-xs font-medium text-muted-foreground">
@@ -2599,7 +2599,7 @@ const WorkspaceSidebarBody = memo(
             {hasFilteredWorkspaces && (
               <div className="flex flex-col items-center gap-2 px-4 py-6 text-center">
                 <div className="flex size-9 items-center justify-center rounded-xl bg-muted/60">
-                  <ListFilterIcon className="size-4 text-muted-foreground/50" aria-hidden="true" />
+                  <ListFilterIcon className="size-4 !text-muted-foreground/50" aria-hidden="true" />
                 </div>
                 <div className="flex flex-col gap-1">
                   <p className="text-xs font-medium text-muted-foreground">

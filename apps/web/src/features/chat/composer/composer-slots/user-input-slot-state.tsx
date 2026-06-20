@@ -1,5 +1,5 @@
 import { useQueryClient } from '@tanstack/react-query'
-import { QuestionLine as CircleHelpIcon } from '~/components/ui/mingcute-icons'
+import { QuestionLine as CircleHelpIcon } from '@mingcute/react'
 import { cn } from '~/lib/cn'
 
 import type { ChatRuntimeUserInputUiSlotState } from '../../capabilities/chat-capabilities'
@@ -36,7 +36,7 @@ export function UserInputSlotState({
     >
       <div className="flex min-w-0 items-center gap-2 border-b border-border/60 px-3 py-2">
         <CircleHelpIcon
-          className="size-3.5 shrink-0 text-amber-500 dark:text-amber-400"
+          className="size-3.5 shrink-0 !text-amber-500 dark:!text-amber-400"
           aria-hidden="true"
         />
         <div className="flex min-w-0 flex-1 items-baseline gap-1.5">

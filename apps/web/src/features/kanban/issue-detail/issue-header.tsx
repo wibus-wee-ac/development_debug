@@ -5,7 +5,7 @@ import {
   CornerUpLeftLine as CornerUpLeftIcon,
   More2Line as MoreHorizontalIcon,
   DeleteLine as TrashIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
 import type { KanbanIssue, KanbanStatus } from '~/features/kanban/types'
 
@@ -72,7 +72,7 @@ export const IssueHeader = ({
               <span className="truncate">{parentIssue.title}</span>
             </button>
             <ChevronRightIcon
-              className="size-3 shrink-0 text-muted-foreground/50"
+              className="size-3 shrink-0 !text-muted-foreground/50"
               aria-hidden="true"
             />
           </>
@@ -84,7 +84,7 @@ export const IssueHeader = ({
               <span>{status.name}</span>
             </span>
             <ChevronRightIcon
-              className="size-3 text-muted-foreground/50 shrink-0"
+              className="size-3 !text-muted-foreground/50 shrink-0"
               aria-hidden="true"
             />
           </>

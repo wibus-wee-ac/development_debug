@@ -1,7 +1,7 @@
 "use client";
 
 import { NumberField as NumberFieldPrimitive } from "@base-ui/react/number-field";
-import { SubtractLine as MinusIcon, PlusLine as PlusIcon } from "~/components/ui/mingcute-icons";
+import { SubtractLine as MinusIcon, PlusLine as PlusIcon } from '@mingcute/react';
 import * as React from "react";
 import { cn } from "~/lib/cn";
 import { Label } from "~/components/ui/label";

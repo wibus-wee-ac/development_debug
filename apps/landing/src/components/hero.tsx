@@ -6,7 +6,7 @@
 
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
-import { DownloadLine as Download } from '../lib/mingcute-icons'
+import { DownloadLine as Download } from '@mingcute/react'
 import { motion } from 'motion/react'
 import { useRef } from 'react'
 import { StarBorders } from './blueprint-annotations'

@@ -4,7 +4,7 @@ import {
   DotCircleLine as CircleDotIcon,
   HistoryLine as HistoryIcon,
   LoadingLine as Loader2Icon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
 

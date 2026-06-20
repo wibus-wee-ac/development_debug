@@ -7,7 +7,7 @@ import {
   PowerLine as PowerIcon,
   Refresh1Line as RefreshCwIcon,
   DeleteLine as Trash2Icon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -571,7 +571,7 @@ function SourceCard({
           )
         : (
             <div className="flex items-center gap-2 border-t border-border/60 px-3.5 py-4 text-[12px] text-muted-foreground/80">
-              <PlugZapIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+              <PlugZapIcon className="size-3.5 shrink-0 !text-muted-foreground/60" aria-hidden="true" />
               {t('externalIssues.source.unavailableHint')}
             </div>
           )}
@@ -693,7 +693,7 @@ function RepositoryRow({
           {binding.scheduleEnabled && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <ClockIcon className="size-3 shrink-0 text-muted-foreground/60" aria-label={t('externalIssues.menu.autoRefresh')} />
+                <ClockIcon className="size-3 shrink-0 !text-muted-foreground/60" aria-label={t('externalIssues.menu.autoRefresh')} />
               </TooltipTrigger>
               <TooltipContent side="top" className="text-xs">{t('externalIssues.menu.autoRefresh')}</TooltipContent>
             </Tooltip>

@@ -1,4 +1,4 @@
-import { DownloadLine as DownloadIcon, SparklesLine as SparklesIcon } from '~/components/ui/mingcute-icons'
+import { DownloadLine as DownloadIcon, SparklesLine as SparklesIcon } from '@mingcute/react'
 import { m } from 'motion/react'
 import { memo, useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'

@@ -5,7 +5,7 @@ import {
   GitPullRequestLine as GitPullRequestArrowIcon,
   LoadingLine as Loader2Icon,
   PlusLine as PlusIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useState } from 'react'
 
 import {
@@ -118,7 +118,7 @@ export function ReviewsListPage({
         {isLoading
           ? (
               <div className="flex h-full items-center justify-center">
-                <Loader2Icon className="size-4 animate-spin text-muted-foreground/40" aria-hidden />
+                <Loader2Icon className="size-4 animate-spin !text-muted-foreground/40" aria-hidden />
               </div>
             )
           : isError
@@ -164,7 +164,7 @@ function ReviewsContent({
       {groupsForTab(tab).length === 0 && reviews.length === 0
         ? (
             <div className="py-16 text-center">
-              <GitPullRequestArrowIcon className="mx-auto size-5 text-muted-foreground/30" aria-hidden />
+              <GitPullRequestArrowIcon className="mx-auto size-5 !text-muted-foreground/30" aria-hidden />
               <p className="mt-2 text-[12px] text-muted-foreground">No reviews yet</p>
             </div>
           )

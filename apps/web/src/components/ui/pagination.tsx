@@ -6,7 +6,7 @@ import {
   LeftSmallLine as ChevronLeftIcon,
   RightSmallLine as ChevronRightIcon,
   More2Line as MoreHorizontalIcon
-} from "~/components/ui/mingcute-icons"
+} from '@mingcute/react'
 function Pagination({ className, ...props }: React.ComponentProps<"nav">) {
   return (
     <nav

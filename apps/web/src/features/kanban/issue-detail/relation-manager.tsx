@@ -3,7 +3,7 @@ import {
   PlusLine as PlusIcon,
   SearchLine as SearchIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useState } from 'react'
 
 import {
@@ -267,7 +267,7 @@ export function RelationManager({ issueId, workspaceId, readOnly = false }: Rela
                           size="sm"
                           startAddon={(
                             <SearchIcon
-                              className="size-3 text-muted-foreground"
+                              className="size-3 !text-muted-foreground"
                               aria-hidden="true"
                             />
                           )}
@@ -371,7 +371,7 @@ function RelationRow({
 
   return (
     <div className="group flex items-center gap-2 py-1">
-      <LinkIcon className="size-3 text-muted-foreground/60" aria-hidden="true" />
+      <LinkIcon className="size-3 !text-muted-foreground/60" aria-hidden="true" />
       <span className="flex min-w-0 flex-1 items-center gap-1.5 truncate text-[12px] text-foreground">
         <span className="shrink-0 font-mono tabular-nums">{targetLabel}</span>
         {targetTitle && <span className="truncate text-muted-foreground">{targetTitle}</span>}

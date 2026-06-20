@@ -1,5 +1,5 @@
 // Renders persisted Composer bang command results as terminal-style chat context.
-import { DownSmallLine as ChevronDownIcon, TerminalBoxLine as SquareTerminalIcon } from '~/components/ui/mingcute-icons'
+import { DownSmallLine as ChevronDownIcon, TerminalBoxLine as SquareTerminalIcon } from '@mingcute/react'
 import { useState } from 'react'
 
 import { Badge } from '~/components/ui/badge'
@@ -17,7 +17,7 @@ export function BangCommandPromptBlock({ command }: BangCommandMetadata) {
       className="flex min-w-0 items-center gap-2 rounded-lg border border-zinc-800 bg-zinc-950 px-3 py-2 text-left font-mono text-xs text-zinc-50 shadow-xs"
       data-testid="chat-bang-command-prompt"
     >
-      <SquareTerminalIcon className="size-4 shrink-0 text-emerald-300" aria-hidden="true" />
+      <SquareTerminalIcon className="size-4 shrink-0 !text-emerald-300" aria-hidden="true" />
       <span className="shrink-0 text-emerald-300">$</span>
       <span className="min-w-0 truncate">{command}</span>
     </div>
@@ -41,7 +41,7 @@ export function BangCommandBlock({ result }: { result: BangResultMetadata }) {
         onClick={() => setExpanded(value => !value)}
         className="h-auto min-w-0 justify-start gap-2 px-1 py-0.5 text-left hover:bg-transparent"
       >
-        <SquareTerminalIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <SquareTerminalIcon className="size-4 shrink-0 !text-muted-foreground" aria-hidden="true" />
         <span className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
           {result.command}
         </span>
@@ -58,7 +58,7 @@ export function BangCommandBlock({ result }: { result: BangResultMetadata }) {
           {formatShortDurationMs(result.durationMs)}
         </span>
         <ChevronDownIcon
-          className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', expanded && 'rotate-180')}
+          className={cn('size-3.5 shrink-0 !text-muted-foreground transition-transform', expanded && 'rotate-180')}
           aria-hidden="true"
         />
       </Button>

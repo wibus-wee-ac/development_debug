@@ -3,7 +3,7 @@ import {
   RightSmallLine as ChevronRightIcon,
   StopCircleLine as CircleStopIcon,
   TerminalLine as TerminalIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useState } from 'react'
 
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from '~/components/ui/collapsible'
@@ -56,14 +56,14 @@ export function TerminalSlotState({
             className="flex w-full min-w-0 items-center gap-2 text-left"
           >
             <TerminalIcon
-              className="size-3.5 shrink-0 text-emerald-600 dark:text-emerald-400"
+              className="size-3.5 shrink-0 !text-emerald-600 dark:!text-emerald-400"
               aria-hidden="true"
             />
             <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground/80">
               {summary}
             </span>
             <ChevronRightIcon
-              className={cn('size-3.5 shrink-0 text-muted-foreground transition-transform', {
+              className={cn('size-3.5 shrink-0 !text-muted-foreground transition-transform', {
                 'rotate-90': open,
               })}
               aria-hidden="true"
@@ -112,7 +112,7 @@ function BackgroundTerminalRow({
         onClick={onTerminate}
       >
         <CircleStopIcon
-          className={cn('size-3.5', terminating ? 'text-muted-foreground' : 'text-destructive')}
+          className={cn('size-3.5', terminating ? '!text-muted-foreground' : '!text-destructive')}
           aria-hidden="true"
         />
       </ComposerSlotIconAction>

@@ -3,7 +3,7 @@ import {
   FileUnknownLine as FileQuestionIcon,
   PicLine as ImageIcon,
   LoadingLine as Loader2Icon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 import type { BundledLanguage } from 'shiki'
 
@@ -57,7 +57,7 @@ export function WorkspaceFilePreview({ workspaceId, path, onOpenEditor }: Worksp
       <div className="min-h-0 flex-1 overflow-y-auto bg-background/80">
         {infoQuery.isLoading && (
           <div className="flex h-32 items-center justify-center">
-            <Loader2Icon className="size-4 animate-spin text-muted-foreground/50" aria-hidden="true" />
+            <Loader2Icon className="size-4 animate-spin !text-muted-foreground/50" aria-hidden="true" />
           </div>
         )}
         {infoQuery.isError && (
@@ -102,7 +102,7 @@ function TextBackedPreview({ workspaceId, path, kind }: { workspaceId: string, p
   if (query.isLoading) {
     return (
       <div className="flex h-32 items-center justify-center">
-        <Loader2Icon className="size-4 animate-spin text-muted-foreground/50" aria-hidden="true" />
+        <Loader2Icon className="size-4 animate-spin !text-muted-foreground/50" aria-hidden="true" />
       </div>
     )
   }
@@ -158,7 +158,7 @@ function UnsupportedPreview({ info }: { info: WorkspaceFileInfo }) {
   return (
     <div className="flex h-40 items-center justify-center px-6 text-center">
       <div className="flex max-w-md flex-col items-center gap-2">
-        <FileQuestionIcon className="size-5 text-muted-foreground/70" aria-hidden="true" />
+        <FileQuestionIcon className="size-5 !text-muted-foreground/70" aria-hidden="true" />
         <p className="text-sm text-muted-foreground">No preview is available for this file type.</p>
         <p className="font-mono text-[11px] text-muted-foreground/80">{info.mimeType}</p>
       </div>

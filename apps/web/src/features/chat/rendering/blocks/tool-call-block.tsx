@@ -21,7 +21,7 @@ import {
   ServerLine as ServerIcon,
   TerminalBoxLine as SquareTerminalIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import type {
   ComponentType,
@@ -466,7 +466,7 @@ function PathList({
           key={path}
           className="flex min-w-0 items-center gap-2 rounded-md bg-muted/30 px-2 py-1.5"
         >
-          <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden />
+          <FileTextIcon className="size-3.5 shrink-0 !text-muted-foreground" aria-hidden />
           <span className="min-w-0 truncate font-mono text-[11px] text-foreground/80" title={path}>
             {path}
           </span>
@@ -609,7 +609,7 @@ function DiffSummary({
         data-testid="chat-edit-file-streaming-preview"
       >
         <div className="flex min-w-0 items-center gap-2">
-          <FilePenLineIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden />
+          <FilePenLineIcon className="size-3.5 shrink-0 !text-muted-foreground/60" aria-hidden />
           <span
             className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground/75"
             title={filePath ?? undefined}
@@ -758,7 +758,7 @@ function TodoSummary({ input, output }: { input: ToolPayload; output: ToolPayloa
             <CheckCircle2Icon
               className={cn(
                 'mt-0.5 size-3.5 shrink-0',
-                todo.status === 'completed' ? 'text-emerald-500' : 'text-muted-foreground'
+                todo.status === 'completed' ? '!text-emerald-500' : '!text-muted-foreground'
               )}
               aria-hidden
             />
@@ -846,7 +846,7 @@ function PlanSummary({
     >
       <div className="flex h-8 items-center justify-between border-b border-border/60 px-3">
         <div className="flex min-w-0 items-center gap-2">
-          <PanelTopIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+          <PanelTopIcon className="size-3.5 shrink-0 !text-muted-foreground/60" aria-hidden="true" />
           <span className="min-w-0 truncate text-xs font-medium text-foreground/80">
             Plan document
           </span>
@@ -1017,15 +1017,15 @@ function DetailSection({ title, children }: { title: string; children: ReactNode
 
 function StatusIcon({ state, animated = true }: { state: ToolState; animated?: boolean }) {
   if (isError(state)) {
-    return <CircleAlertIcon className="size-3.5 text-destructive" aria-hidden />
+    return <CircleAlertIcon className="size-3.5 !text-destructive" aria-hidden />
   }
   if (state === 'output-available' || state === 'approval-responded') {
-    return <CheckCircle2Icon className="size-3.5 text-emerald-500" aria-hidden />
+    return <CheckCircle2Icon className="size-3.5 !text-emerald-500" aria-hidden />
   }
   return (
     <ClockIcon
       className={cn(
-        'size-3.5 text-muted-foreground',
+        'size-3.5 !text-muted-foreground',
         animated && isRunning(state) && 'animate-pulse'
       )}
       aria-hidden
@@ -1315,7 +1315,7 @@ export function ToolCallBlock({
           {expandable && (
             <ChevronDownIcon
               className={cn(
-                'size-3 shrink-0 text-muted-foreground/40',
+                'size-3 shrink-0 !text-muted-foreground/40',
                 animated && 'transition-transform duration-200',
                 expanded && 'rotate-180'
               )}

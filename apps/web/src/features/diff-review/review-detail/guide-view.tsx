@@ -17,7 +17,7 @@ import {
   AnticlockwiseLine as RotateCcwIcon,
   SparklesLine as SparklesIcon,
   CloseCircleLine as XCircleIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type { CSSProperties } from 'react'
 import { useEffect, useMemo, useRef, useState } from 'react'
 
@@ -72,7 +72,7 @@ export function GuideView({ workspaceId, repositoryPath, reviewId, onBack }: Gui
   if (isLoading) {
     return (
       <div className="flex h-full w-full items-center justify-center" data-testid="guide-loading">
-        <Loader2Icon className="size-4 animate-spin text-muted-foreground/40" aria-hidden />
+        <Loader2Icon className="size-4 animate-spin !text-muted-foreground/40" aria-hidden />
       </div>
     )
   }
@@ -99,7 +99,7 @@ export function GuideView({ workspaceId, repositoryPath, reviewId, onBack }: Gui
           Back to review
         </Button>
         <div className="h-4 w-px bg-border" />
-        <ListTreeIcon className="size-3.5 text-muted-foreground/60" aria-hidden />
+        <ListTreeIcon className="size-3.5 !text-muted-foreground/60" aria-hidden />
         <h1 className="text-sm font-medium text-foreground">Guide</h1>
         {hasGuide && (
           <span className="rounded-full bg-emerald-500/12 px-1.5 py-0.5 text-[10px] font-medium text-emerald-600 dark:text-emerald-400">
@@ -791,9 +791,9 @@ function CollapsedFileBlock({
       className="flex w-full items-center gap-2 px-3 py-2 text-left transition-colors hover:bg-muted/40"
     >
       {expanded
-        ? <ChevronDownIcon className="size-3.5 shrink-0 text-muted-foreground/60" />
-        : <ChevronRightIcon className="size-3.5 shrink-0 text-muted-foreground/60" />}
-      <FileDiffIcon className="size-3.5 shrink-0 text-muted-foreground/60" />
+        ? <ChevronDownIcon className="size-3.5 shrink-0 !text-muted-foreground/60" />
+        : <ChevronRightIcon className="size-3.5 shrink-0 !text-muted-foreground/60" />}
+      <FileDiffIcon className="size-3.5 shrink-0 !text-muted-foreground/60" />
       <span className="min-w-0 flex-1 truncate font-mono text-[11px] text-foreground/90">
         {fileDiff.name}
       </span>

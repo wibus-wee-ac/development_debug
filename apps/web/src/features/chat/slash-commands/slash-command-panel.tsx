@@ -25,7 +25,7 @@ import {
   TerminalBoxLine as SquareTerminalIcon,
   TargetLine as TargetIcon,
   GroupLine as UsersIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useEffectEvent, useMemo, useRef, useState } from 'react'
 

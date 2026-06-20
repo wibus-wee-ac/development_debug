@@ -2,7 +2,7 @@ import {
   PicLine as ImageIcon,
   Rows3Line as Rows3Icon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import type { KeyboardEvent, MouseEvent } from 'react'
 import { useState } from 'react'

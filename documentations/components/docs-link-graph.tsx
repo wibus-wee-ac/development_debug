@@ -5,7 +5,7 @@ import {
   Link2Line as Link2,
   RouteLine as Route,
   ScanLine as ScanSearch
-} from '@/lib/mingcute-icons'
+} from '@mingcute/react'
 import { cn } from '@/lib/cn'
 import type { DocsGraphPageScore } from '@/lib/docs-graph'
 import { buildDocsGraph } from '@/lib/docs-graph'
@@ -204,7 +204,7 @@ export function DocsLinkGraph() {
                 <a href={reference.sourceUrl} className="truncate text-fd-foreground no-underline">
                   {reference.sourceTitle}
                 </a>
-                <ArrowRight className="hidden size-4 text-fd-muted-foreground sm:block" />
+                <ArrowRight className="hidden size-4 !text-fd-muted-foreground sm:block" />
                 <code className="truncate text-xs text-fd-muted-foreground">{reference.href}</code>
               </div>
             ))}

@@ -1,5 +1,5 @@
 import { Command as CommandPrimitive } from 'cmdk'
-import { CheckLine as CheckIcon, SearchLine as SearchIcon } from '~/components/ui/mingcute-icons'
+import { CheckLine as CheckIcon, SearchLine as SearchIcon } from '@mingcute/react'
 import * as React from 'react'
 
 import {
@@ -68,7 +68,7 @@ function CommandInput({
       data-slot="command-input-wrapper"
       className="flex h-12 items-center gap-2 border-b border-border/70 px-3"
     >
-      <SearchIcon className="size-4 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+      <SearchIcon className="size-4 shrink-0 !text-muted-foreground/60" aria-hidden="true" />
       <CommandPrimitive.Input
         data-slot="command-input"
         className={cn(
@@ -162,7 +162,7 @@ function CommandItem({
     >
       {children}
       {checked && (
-        <CheckIcon className="ml-auto size-3.5 shrink-0 text-primary" aria-hidden="true" />
+        <CheckIcon className="ml-auto size-3.5 shrink-0 !text-primary" aria-hidden="true" />
       )}
     </CommandPrimitive.Item>
   )

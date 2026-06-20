@@ -1,4 +1,4 @@
-import { InformationLine as InfoIcon } from '~/components/ui/mingcute-icons'
+import { InformationLine as InfoIcon } from '@mingcute/react'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 import { SettingsDivider } from './settings-divider'
@@ -34,7 +34,7 @@ export function SettingsRow({
           {info && (
             <Tooltip>
               <TooltipTrigger asChild>
-                <InfoIcon className="size-3.5 cursor-help text-muted-foreground" />
+                <InfoIcon className="size-3.5 cursor-help !text-muted-foreground" />
               </TooltipTrigger>
               <TooltipContent side="top" className="max-w-xs text-xs">
                 {info}

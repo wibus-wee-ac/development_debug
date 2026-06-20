@@ -12,7 +12,7 @@ import {
   LoadingLine as LoaderCircleIcon,
   QuestionLine as MessageCircleQuestionIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type { AnchorHTMLAttributes } from 'react'
 import { useEffect, useRef, useState } from 'react'
 
@@ -85,13 +85,13 @@ export function QuickQuestionSlotState({
   return (
     <ComposerSlotShell stateName="quick-question" testId="quick-question-slot" className={cn('py-2', className)}>
       <div className="mb-2 flex h-6 min-w-0 items-center gap-2">
-        <MessageCircleQuestionIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+        <MessageCircleQuestionIcon className="size-3.5 shrink-0 !text-muted-foreground" aria-hidden="true" />
         <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
           <span className="shrink-0 font-medium text-foreground/80">Quick question</span>
           <span className="min-w-0 truncate text-muted-foreground">{question}</span>
         </div>
         {streaming && (
-          <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin text-muted-foreground" aria-hidden="true" />
+          <LoaderCircleIcon className="size-3.5 shrink-0 animate-spin !text-muted-foreground" aria-hidden="true" />
         )}
         <ComposerSlotIconAction label="Close quick question" onClick={quickQuestion.onDismiss}>
           <XIcon className="size-3.5" aria-hidden="true" />

@@ -2,7 +2,7 @@ import * as React from "react"
 import { Slot } from "radix-ui"
 
 import { cn } from "~/lib/cn"
-import { RightSmallLine as ChevronRightIcon, More2Line as MoreHorizontalIcon } from "~/components/ui/mingcute-icons"
+import { RightSmallLine as ChevronRightIcon, More2Line as MoreHorizontalIcon } from '@mingcute/react'
 function Breadcrumb({ className, ...props }: React.ComponentProps<"nav">) {
   return (
     <nav

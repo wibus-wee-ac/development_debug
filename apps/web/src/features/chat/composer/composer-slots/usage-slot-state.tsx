@@ -8,7 +8,7 @@ import {
   WarningLine as AlertTriangleIcon,
   Dashboard2Line as GaugeIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { Progress } from '~/components/ui/progress'
 import { cn } from '~/lib/cn'
 import { clampPercent } from '~/lib/number-format'

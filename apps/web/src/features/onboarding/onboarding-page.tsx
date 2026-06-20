@@ -5,7 +5,7 @@ import {
   Message1Line as MessageSquareIcon,
   Settings2Line as Settings2Icon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'

@@ -4,7 +4,7 @@
 
 import { useGSAP } from '@gsap/react'
 import gsap from 'gsap'
-import { DownloadLine as Download } from '../lib/mingcute-icons'
+import { DownloadLine as Download } from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 import { ThemeToggle } from './blueprint-annotations'
 

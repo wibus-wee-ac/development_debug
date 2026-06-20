@@ -1,4 +1,4 @@
-import { PuzzledLine as PuzzleIcon } from '~/components/ui/mingcute-icons'
+import { PuzzledLine as PuzzleIcon } from '@mingcute/react'
 import { cn } from '~/lib/cn'
 import { usePluginStore } from '~/lib/plugin-store'
 import { useActiveSurface } from '~/navigation/active-surface'

@@ -5,7 +5,7 @@ import {
   Dashboard2Line as GaugeIcon,
   Refresh1Line as RefreshCwIcon,
   Stopwatch2Line as TimerResetIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 
@@ -94,7 +94,7 @@ export function CodexAccountDiagnosticsPanel({ providerTargetId }: { providerTar
         <div className="flex flex-wrap items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              <GaugeIcon className="size-3.5 text-muted-foreground" />
+              <GaugeIcon className="size-3.5 !text-muted-foreground" />
               <h5 className="text-[13px] font-medium text-foreground">Account diagnostics</h5>
               {diagnostics?.account?.planType && (
                 <Badge variant="secondary" className="h-5 px-1.5 text-[10px] font-medium">

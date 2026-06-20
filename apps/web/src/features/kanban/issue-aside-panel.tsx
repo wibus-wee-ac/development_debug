@@ -6,7 +6,7 @@ import {
   Message3Line as MessageSquareTextIcon,
   SearchLine as SearchIcon,
   UnlinkLine as UnlinkIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -148,7 +148,7 @@ export function IssueAsidePanel({ sessionId, workspaceId }: IssueAsidePanelProps
         data-testid="right-aside-issue-panel"
         data-right-aside-issue-ready="false"
       >
-        <CircleDotIcon className="size-7 text-muted-foreground" aria-hidden="true" />
+        <CircleDotIcon className="size-7 !text-muted-foreground" aria-hidden="true" />
         <div className="space-y-1">
           <p className="text-sm font-medium text-foreground">{t('aside.empty.title')}</p>
           <p className="text-xs leading-5 text-muted-foreground">{t('aside.empty.description')}</p>
@@ -337,7 +337,7 @@ function LinkedIssueBody({
         </PropertyRow>
         <PropertyRow label={t('aside.metric.comments')}>
           <span className="inline-flex items-center gap-1.5 tabular-nums">
-            <MessageSquareTextIcon className="size-3 text-muted-foreground/70" aria-hidden="true" />
+            <MessageSquareTextIcon className="size-3 !text-muted-foreground/70" aria-hidden="true" />
             {commentCount}
           </span>
         </PropertyRow>
@@ -492,7 +492,7 @@ function IssuePicker({
         placeholder={t('aside.picker.searchPlaceholder')}
         showClear
         showTrigger
-        startAddon={<SearchIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />}
+        startAddon={<SearchIcon className="size-3.5 !text-muted-foreground" aria-hidden="true" />}
         className="w-full"
       />
       <ComboboxContent align="start" sideOffset={6} className="w-88 min-w-72 p-1.5">

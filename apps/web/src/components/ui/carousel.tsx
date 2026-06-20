@@ -5,7 +5,7 @@ import useEmblaCarousel, {
 
 import { cn } from "~/lib/cn"
 import { Button } from "~/components/ui/button"
-import { LeftSmallLine as ChevronLeftIcon, RightSmallLine as ChevronRightIcon } from "~/components/ui/mingcute-icons"
+import { LeftSmallLine as ChevronLeftIcon, RightSmallLine as ChevronRightIcon } from '@mingcute/react'
 type CarouselApi = UseEmblaCarouselType[1]
 type UseCarouselParameters = Parameters<typeof useEmblaCarousel>
 type CarouselOptions = UseCarouselParameters[0]

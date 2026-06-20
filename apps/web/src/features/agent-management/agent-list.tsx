@@ -10,7 +10,7 @@ import {
   SquareLine as SquareIcon,
   DeleteLine as Trash2Icon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -266,7 +266,7 @@ function AgentSidebarRow({
         </div>
         <ChevronRightIcon
           className={cn(
-            'size-3 shrink-0 text-muted-foreground/40 transition-[opacity,transform] duration-150',
+            'size-3 shrink-0 !text-muted-foreground/40 transition-[opacity,transform] duration-150',
             active
               ? 'opacity-100 translate-x-0'
               : 'opacity-0 -translate-x-1 group-hover/sidebar-row:opacity-60 group-hover/sidebar-row:translate-x-0',
@@ -952,7 +952,7 @@ export function AgentList() {
       className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 p-3"
     >
       <div className="relative">
-        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 !text-muted-foreground/60" />
         <Input
           value={filter}
           onChange={e => setFilter(e.target.value)}

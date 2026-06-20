@@ -6,7 +6,7 @@ import {
   NewFolderLine as FolderPlusIcon,
   SearchLine as SearchIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useEffect, useEffectEvent, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
@@ -802,7 +802,7 @@ function FileTreeInner({ workspaceId, paths, preparedInput, ready, gitStatus, on
     >
       <div className="shrink-0 px-2 pb-2">
         <div className="flex h-8 items-center gap-1.5 rounded-md border border-border/60 bg-background/60 px-2 focus-within:border-ring/50 focus-within:ring-2 focus-within:ring-ring/15">
-          <SearchIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+          <SearchIcon className="size-3.5 shrink-0 !text-muted-foreground/60" aria-hidden="true" />
           <input
             value={searchQuery}
             onChange={event => onSearchQueryChange(event.target.value)}

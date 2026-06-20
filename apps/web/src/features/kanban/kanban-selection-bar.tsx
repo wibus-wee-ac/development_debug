@@ -3,7 +3,7 @@ import {
   CircleDashLine as CircleDashedIcon,
   Flag2Line as FlagIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 
@@ -110,7 +110,7 @@ export function KanbanSelectionBar({ issues, statuses, onClear }: KanbanSelectio
             data-testid="kanban-selection-bar"
           >
             <span className="flex items-center gap-1.5 px-2 text-sm font-medium tabular-nums">
-              <CheckIcon className="size-4 text-primary" aria-hidden="true" />
+              <CheckIcon className="size-4 !text-primary" aria-hidden="true" />
               <span>{issues.length}</span>
               <span>{t('selection.selected')}</span>
             </span>

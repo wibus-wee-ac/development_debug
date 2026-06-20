@@ -14,7 +14,7 @@ import {
   SparklesLine as SparklesIcon,
   WarningLine as TriangleAlertIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import type { ReactNode } from 'react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
@@ -726,7 +726,7 @@ function ArtifactRow({
         active ? 'bg-accent text-foreground' : 'hover:bg-accent/50',
       )}
     >
-      <FileTextIcon className="size-3.5 shrink-0 text-muted-foreground" />
+      <FileTextIcon className="size-3.5 shrink-0 !text-muted-foreground" />
       <span className="min-w-0 flex-1 truncate text-foreground">{artifact.title ?? artifact.name ?? artifact.id}</span>
       <span className="shrink-0 text-[10px] text-muted-foreground">{artifact.kind ?? artifact.mediaType ?? t('artifact.fallbackKind')}</span>
     </button>

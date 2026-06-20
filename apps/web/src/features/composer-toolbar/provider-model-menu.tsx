@@ -3,7 +3,7 @@ import {
   CheckLine as CheckIcon,
   HammerLine as HammerIcon,
   Scan2Line as ScanEyeIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -210,7 +210,7 @@ function ProviderTargetGroup<TThinking extends string | null>({
         onPointerEnter={() => onRequestProviderTargetModels?.(providerTarget.id)}
         className={cn(isActive && 'font-medium')}
       >
-        <CheckIcon className={cn('size-3.5 shrink-0', isActive ? 'text-primary' : 'text-transparent')} />
+        <CheckIcon className={cn('size-3.5 shrink-0', isActive ? '!text-primary' : '!text-transparent')} />
         <ProviderIcon
           iconSlug={providerTargetDisplayIconSlug(providerTarget)}
           presetId={preset.id}
@@ -264,7 +264,7 @@ function ModelSubmenu<TThinking extends string | null>({
   const hasAdjustableThinking = thinkingOptions.some(option => option.value !== null)
   const content = (
     <>
-      <CheckIcon className={cn('size-3.5 shrink-0 self-start mt-0.5', isModelSelected ? 'text-primary' : 'text-transparent')} />
+      <CheckIcon className={cn('size-3.5 shrink-0 self-start mt-0.5', isModelSelected ? '!text-primary' : '!text-transparent')} />
       <div className="flex min-w-0 flex-col gap-0.5">
         <div className="flex items-center gap-1.5">
           <span className="truncate font-medium">{model.label}</span>
@@ -329,7 +329,7 @@ function ModelSubmenu<TThinking extends string | null>({
           >
             <div className="flex w-full items-center gap-2">
               <span className="font-medium">{option.label}</span>
-              <CheckIcon className={cn('ml-auto size-3.5 shrink-0', thinkingValue === option.value ? 'text-primary' : 'text-transparent')} />
+              <CheckIcon className={cn('ml-auto size-3.5 shrink-0', thinkingValue === option.value ? '!text-primary' : '!text-transparent')} />
             </div>
             <span className="text-[11px] text-muted-foreground/60">{option.description}</span>
           </MenuItem>
@@ -368,7 +368,7 @@ export function ProviderModelMenu<TThinking extends string | null>({
             onClick={leadingSelection.onSelect}
             className={cn('items-start', leadingSelection.active && 'text-primary font-medium')}
           >
-            <CheckIcon className={cn('mt-0.5 size-3.5 shrink-0', leadingSelection.active ? 'text-primary' : 'text-transparent')} />
+            <CheckIcon className={cn('mt-0.5 size-3.5 shrink-0', leadingSelection.active ? '!text-primary' : '!text-transparent')} />
             <div className="flex min-w-0 flex-col gap-0.5">
               <span className="truncate font-medium">{leadingSelection.label}</span>
               {leadingSelection.description && (

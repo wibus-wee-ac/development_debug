@@ -6,7 +6,7 @@ import {
   Refresh1Line as RefreshCwIcon,
   ServerLine as ServerIcon,
   WarningLine as TriangleAlertIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { VList } from 'virtua'
@@ -189,8 +189,8 @@ const ExternalWorkImportRow = ({
         <div className="min-w-0 flex-1">
           <div className="flex min-w-0 items-center gap-2">
             {item.sourceScope === 'server'
-              ? <ServerIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
-              : <LaptopIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />}
+              ? <ServerIcon className="size-3.5 shrink-0 !text-muted-foreground" aria-hidden="true" />
+              : <LaptopIcon className="size-3.5 shrink-0 !text-muted-foreground" aria-hidden="true" />}
             <span className="truncate text-[13px] font-medium text-foreground">{item.title}</span>
             {item.duplicate && (
               <Badge variant="outline">{duplicateLabel}</Badge>

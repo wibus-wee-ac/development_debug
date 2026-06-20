@@ -15,7 +15,7 @@ import {
   DownSmallLine as ChevronDownIcon,
   CloseLine as XIcon,
   CheckLine as CheckIcon
-} from "~/components/ui/mingcute-icons"
+} from '@mingcute/react'
 const Combobox = ComboboxPrimitive.Root
 
 function ComboboxValue({ ...props }: ComboboxPrimitive.Value.Props) {
@@ -34,7 +34,7 @@ function ComboboxTrigger({
       {...props}
     >
       {children}
-      <ChevronDownIcon className="pointer-events-none size-4 text-muted-foreground" />
+      <ChevronDownIcon className="pointer-events-none size-4 !text-muted-foreground" />
     </ComboboxPrimitive.Trigger>
   )
 }

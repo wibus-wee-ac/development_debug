@@ -1,4 +1,4 @@
-import { CheckLine as CheckIcon } from '~/components/ui/mingcute-icons'
+import { CheckLine as CheckIcon } from '@mingcute/react'
 import { startTransition, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 

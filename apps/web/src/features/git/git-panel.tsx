@@ -5,7 +5,7 @@ import {
   GitBranchLine as GitBranchIcon,
   GitBranch2Line as GitGraphIcon,
   Refresh1Line as RefreshCwIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import type { VListHandle } from 'virtua'
@@ -55,7 +55,7 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
     return (
       <div className="flex flex-1 items-center justify-center p-4 text-center" data-testid="git-panel-error">
         <div className="flex flex-col items-center gap-2">
-          <GitGraphIcon className="size-5 text-muted-foreground/30" />
+          <GitGraphIcon className="size-5 !text-muted-foreground/30" />
           <p className="text-xs text-muted-foreground">{t('panel.error')}</p>
         </div>
       </div>
@@ -71,7 +71,7 @@ export function GitPanel({ workspaceId }: GitPanelProps) {
       {isLoading
         ? (
           <div className="flex flex-1 items-center justify-center" data-testid="git-panel-loading">
-            <RefreshCwIcon className="size-4 animate-spin text-muted-foreground/30" aria-hidden />
+            <RefreshCwIcon className="size-4 animate-spin !text-muted-foreground/30" aria-hidden />
           </div>
         )
         : gitRepositories.length === 0
@@ -188,7 +188,7 @@ function GitRepositoryPanelSection({
             data-branch-name={repository.branch}
             data-repository-path={repository.path}
           >
-            <GitBranchIcon className="size-3 shrink-0 text-muted-foreground/60" aria-hidden />
+            <GitBranchIcon className="size-3 shrink-0 !text-muted-foreground/60" aria-hidden />
             <span className="min-w-0 truncate font-medium">{repository.branch}</span>
             {repository.ahead > 0 && (
               <span className="flex items-center gap-px text-[10px] text-primary font-medium tabular-nums">
@@ -224,7 +224,7 @@ function GitRepositoryPanelSection({
       {graphLoading
         ? (
           <div className="flex flex-1 items-center justify-center" data-testid="git-commit-graph-loading">
-            <RefreshCwIcon className="size-4 animate-spin text-muted-foreground/30" aria-hidden />
+            <RefreshCwIcon className="size-4 animate-spin !text-muted-foreground/30" aria-hidden />
           </div>
         )
         : layoutCommits.length === 0
@@ -256,7 +256,7 @@ function GitRepositoryPanelSection({
               </TooltipProvider>
               {graphFetching && !graphLoading && (
                 <div className="flex shrink-0 items-center justify-center py-1.5">
-                  <RefreshCwIcon className="size-3.5 animate-spin text-muted-foreground/30" aria-hidden />
+                  <RefreshCwIcon className="size-3.5 animate-spin !text-muted-foreground/30" aria-hidden />
                 </div>
               )}
             </div>

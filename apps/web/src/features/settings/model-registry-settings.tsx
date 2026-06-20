@@ -5,7 +5,7 @@ import {
   PlusLine as PlusIcon,
   SearchLine as SearchIcon,
   DeleteLine as Trash2Icon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -192,7 +192,7 @@ export function ModelRegistrySettings() {
       data-testid="model-registry-settings"
     >
       <div className="relative">
-        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" aria-hidden="true" />
+        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 !text-muted-foreground/60" aria-hidden="true" />
         <Input
           value={query}
           onChange={e => setQuery(e.target.value)}
@@ -211,7 +211,7 @@ export function ModelRegistrySettings() {
         : filteredMappings.length === 0
           ? (
               <div className="flex flex-col items-center justify-center gap-2 rounded-xl border border-dashed border-foreground/10 bg-muted/20 px-4 py-10 text-center">
-                <DatabaseIcon className="size-5 text-muted-foreground/40" aria-hidden="true" />
+                <DatabaseIcon className="size-5 !text-muted-foreground/40" aria-hidden="true" />
                 <p className="text-[12px] text-muted-foreground/70">
                   {query
                     ? t('registry.search.noMatches' as SettingsKey)

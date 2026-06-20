@@ -1,4 +1,4 @@
-import { CornerDownRightLine as CornerDownRightIcon, PlusLine as PlusIcon } from '~/components/ui/mingcute-icons'
+import { CornerDownRightLine as CornerDownRightIcon, PlusLine as PlusIcon } from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -105,7 +105,7 @@ export function SubIssuesList({
             aria-label={t('subIssue.openAria', { title: sub.title })}
           >
             <CornerDownRightIcon
-              className="ml-1 size-3.5 shrink-0 text-muted-foreground/60"
+              className="ml-1 size-3.5 shrink-0 !text-muted-foreground/60"
               aria-hidden="true"
             />
             {status

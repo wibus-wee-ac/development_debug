@@ -10,7 +10,7 @@ import {
   LayoutLine as PanelsTopLeftIcon,
   AttachmentLine as PaperclipIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import * as React from 'react'
 import { useTranslation } from 'react-i18next'
@@ -211,7 +211,7 @@ function JarvisEmptyState({
   return (
     <div className="flex h-full min-h-72 flex-col items-center justify-center px-8">
       <div className="mb-4 flex size-10 items-center justify-center rounded-xl bg-muted">
-        <MousePointer2Icon className="size-4.5 text-foreground" />
+        <MousePointer2Icon className="size-4.5 !text-foreground" />
       </div>
       {!hasProfile
         ? (
@@ -672,7 +672,7 @@ export function JarvisPopover({
       <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="flex shrink-0 items-center justify-between px-4 py-3">
           <div className="flex items-center gap-2">
-            <MousePointer2Icon className="size-3.5 text-muted-foreground" />
+            <MousePointer2Icon className="size-3.5 !text-muted-foreground" />
             <span className="text-[13px] font-medium text-foreground">Jarvis</span>
           </div>
           <div className="flex items-center gap-1">

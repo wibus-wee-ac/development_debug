@@ -2,7 +2,7 @@ import {
   RightSmallLine as ChevronRightIcon,
   Message4Line as MessagesSquareIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { cn } from '~/lib/cn'
 
 import type { CradleDiffReview, ReviewFile, ReviewThread } from '../shared/types'
@@ -53,7 +53,7 @@ export function OpenThreadsRail({
         {openThreads.length === 0
           ? (
               <div className="flex flex-col items-center justify-center gap-1.5 px-4 py-12 text-center">
-                <MessagesSquareIcon className="size-4 text-muted-foreground/30" aria-hidden />
+                <MessagesSquareIcon className="size-4 !text-muted-foreground/30" aria-hidden />
                 <p className="text-[11px] text-muted-foreground/60">No open threads</p>
               </div>
             )
@@ -105,7 +105,7 @@ export function OpenThreadsRail({
                             {thread.state === 'stale' ? ' · stale' : ''}
                           </span>
                         </span>
-                        <ChevronRightIcon className="mt-1 size-3 shrink-0 text-muted-foreground/30" aria-hidden />
+                        <ChevronRightIcon className="mt-1 size-3 shrink-0 !text-muted-foreground/30" aria-hidden />
                       </button>
                       <button
                         type="button"

@@ -1,4 +1,4 @@
-import { LoadingLine as Loader2Icon } from '~/components/ui/mingcute-icons'
+import { LoadingLine as Loader2Icon } from '@mingcute/react'
 import type { PDFDocumentProxy } from 'pdfjs-dist'
 import { getDocument, GlobalWorkerOptions } from 'pdfjs-dist'
 import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.mjs?url'
@@ -62,7 +62,7 @@ export function WorkspacePdfPreview({ url, title }: WorkspacePdfPreviewProps) {
   if (!documentProxy) {
     return (
       <div className="flex h-40 items-center justify-center">
-        <Loader2Icon className="size-4 animate-spin text-muted-foreground/50" aria-hidden="true" />
+        <Loader2Icon className="size-4 animate-spin !text-muted-foreground/50" aria-hidden="true" />
       </div>
     )
   }

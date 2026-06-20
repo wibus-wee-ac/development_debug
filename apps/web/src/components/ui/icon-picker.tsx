@@ -1,4 +1,4 @@
-import { SearchLine as SearchIcon, CloseLine as XIcon } from '~/components/ui/mingcute-icons'
+import { SearchLine as SearchIcon, CloseLine as XIcon } from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 
 import { cn } from '~/lib/cn'
@@ -97,7 +97,7 @@ export function IconPicker({ value, onChange, children, disabled, renderIcon }: 
       >
         {/* Search */}
         <div className="flex items-center gap-2 border-b border-border/50 px-3 py-2">
-          <SearchIcon className="size-3.5 shrink-0 text-muted-foreground/60" />
+          <SearchIcon className="size-3.5 shrink-0 !text-muted-foreground/60" />
           <input
             ref={inputRef}
             type="text"

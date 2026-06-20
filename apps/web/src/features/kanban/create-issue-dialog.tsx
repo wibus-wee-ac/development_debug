@@ -7,7 +7,7 @@ import {
   TagLine as TagsIcon,
   UserXLine as UserRoundXIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -332,7 +332,7 @@ function AssigneePicker({ value, onChange }: { value: string, onChange: (value: 
           }}
         >
           <DropdownMenuRadioItem value="">
-            <UserRoundXIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+            <UserRoundXIcon className="size-4 !text-muted-foreground" aria-hidden="true" />
             <span>{t('assignee.unassigned')}</span>
           </DropdownMenuRadioItem>
           <DropdownMenuRadioItem value={`user:${CURRENT_USER_ASSIGNEE_ID}`}>
@@ -442,7 +442,7 @@ function LabelsPicker({ labels, issues, onChange }: { labels: string[], issues: 
       <PopoverContent align="start" className="w-72 p-0">
         <div className="border-b border-border p-2">
           <div className="flex h-8 items-center gap-2 rounded-md border border-input bg-background px-2">
-            <SearchIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+            <SearchIcon className="size-3.5 !text-muted-foreground" aria-hidden="true" />
             <input
               ref={inputRef}
               value={inputValue}

@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { DownSmallLine as ChevronDownIcon, RightSmallLine as ChevronRightIcon } from '~/components/ui/mingcute-icons'
+import { DownSmallLine as ChevronDownIcon, RightSmallLine as ChevronRightIcon } from '@mingcute/react'
 import { m } from 'motion/react'
 import { useState } from 'react'
 
@@ -479,8 +479,8 @@ function ContextSectionRow({
         >
           {hasItems
             ? open
-              ? <ChevronDownIcon className="size-3.5 text-text-secondary" strokeWidth={1.7} aria-hidden="true" />
-              : <ChevronRightIcon className="size-3.5 text-text-secondary" strokeWidth={1.7} aria-hidden="true" />
+              ? <ChevronDownIcon className="size-3.5 !text-text-secondary" strokeWidth={1.7} aria-hidden="true" />
+              : <ChevronRightIcon className="size-3.5 !text-text-secondary" strokeWidth={1.7} aria-hidden="true" />
             : <span className="size-3.5" />}
 
           <span className="flex min-w-0 items-center gap-2">
@@ -541,8 +541,8 @@ function ContextItemRow({
       >
         {hasMetadata
           ? expanded
-            ? <ChevronDownIcon className="size-3 text-text-tertiary" strokeWidth={1.7} aria-hidden="true" />
-            : <ChevronRightIcon className="size-3 text-text-tertiary" strokeWidth={1.7} aria-hidden="true" />
+            ? <ChevronDownIcon className="size-3 !text-text-tertiary" strokeWidth={1.7} aria-hidden="true" />
+            : <ChevronRightIcon className="size-3 !text-text-tertiary" strokeWidth={1.7} aria-hidden="true" />
           : <span className="size-3" />}
 
         <span className="min-w-0 truncate text-[12px] text-foreground">{item.label}</span>

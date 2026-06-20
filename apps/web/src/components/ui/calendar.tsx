@@ -12,7 +12,7 @@ import {
   LeftSmallLine as ChevronLeftIcon,
   RightSmallLine as ChevronRightIcon,
   DownSmallLine as ChevronDownIcon
-} from "~/components/ui/mingcute-icons"
+} from '@mingcute/react'
 function Calendar({
   className,
   classNames,

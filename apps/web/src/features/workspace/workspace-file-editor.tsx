@@ -3,7 +3,7 @@ import {
   CheckLine as CheckIcon,
   LoadingLine as Loader2Icon,
   SaveLine as SaveIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
@@ -132,7 +132,7 @@ export function WorkspaceFileEditor({ workspaceId, path }: { workspaceId: string
   if (fileQuery.isLoading) {
     return (
       <div className="flex h-full w-full items-center justify-center bg-background">
-        <Loader2Icon className="size-4 animate-spin text-muted-foreground/50" aria-hidden="true" />
+        <Loader2Icon className="size-4 animate-spin !text-muted-foreground/50" aria-hidden="true" />
       </div>
     )
   }

@@ -6,7 +6,7 @@ import {
   PlusLine as PlusIcon,
   SafeShieldLine as ShieldCheckIcon,
   DeleteLine as TrashIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -116,7 +116,7 @@ function useBypassRuleMutations(workspaceId: string) {
 function EmptyState({ message }: { message: string }) {
   return (
     <div className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-foreground/10 bg-muted/20 px-4 py-5 text-center">
-      <ShieldCheckIcon className="size-4 text-muted-foreground/40" />
+      <ShieldCheckIcon className="size-4 !text-muted-foreground/40" />
       <span className="text-[11px] text-muted-foreground/70">{message}</span>
     </div>
   )
@@ -154,7 +154,7 @@ function CheckRow({ name, required, isBypassed, onToggle, isPending }: {
       >
         {required ? 'req' : 'opt'}
       </span>
-      {isPending && <LoaderCircleIcon className="size-3 animate-spin text-muted-foreground/50" />}
+      {isPending && <LoaderCircleIcon className="size-3 animate-spin !text-muted-foreground/50" />}
     </div>
   )
 }
@@ -211,8 +211,8 @@ function DiscoveredRepoSection({ workspaceId, repoFullName, rules, createMut, re
         className="flex items-center gap-2 rounded-md px-1 py-1 text-left hover:bg-muted/30 transition-colors"
         onClick={() => setExpanded(!expanded)}
       >
-        <ChevronRightIcon className={cn('size-3 text-muted-foreground/50 transition-transform', expanded && 'rotate-90')} />
-        <GitBranchIcon className="size-3 text-muted-foreground/50" />
+        <ChevronRightIcon className={cn('size-3 !text-muted-foreground/50 transition-transform', expanded && 'rotate-90')} />
+        <GitBranchIcon className="size-3 !text-muted-foreground/50" />
         <span className="text-[11px] font-medium text-foreground/80 font-mono">{repoFullName}</span>
         {checks.length > 0 && (
           <span className="text-[10px] text-muted-foreground/50 tabular-nums ml-auto">
@@ -225,7 +225,7 @@ function DiscoveredRepoSection({ workspaceId, repoFullName, rules, createMut, re
         <div className="flex flex-col gap-1 pl-5">
           {isPending && (
             <div className="flex items-center justify-center py-3">
-              <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground/50" />
+              <LoaderCircleIcon className="size-3.5 animate-spin !text-muted-foreground/50" />
             </div>
           )}
 
@@ -268,7 +268,7 @@ function DiscoveredRepoSection({ workspaceId, repoFullName, rules, createMut, re
                 className="opacity-0 group-hover:opacity-100 transition-opacity p-0.5"
                 onClick={() => removeMut.mutate(rule.id)}
               >
-                <TrashIcon className="size-3 text-muted-foreground/50" />
+                <TrashIcon className="size-3 !text-muted-foreground/50" />
               </button>
             </div>
           ))}
@@ -291,7 +291,7 @@ function ManualRuleCard({ rule, onToggle, onDelete }: { rule: BypassRule, onTogg
         className="scale-75 origin-left"
       />
       <div className="flex flex-1 min-w-0 items-center gap-2">
-        <GitBranchIcon className="size-3 shrink-0 text-muted-foreground/50" />
+        <GitBranchIcon className="size-3 shrink-0 !text-muted-foreground/50" />
         <div className="min-w-0 flex-1">
           <span className="text-[11px] font-medium text-foreground/80 truncate block">{rule.repo}</span>
           <span className="text-[10px] text-muted-foreground truncate block font-mono">{rule.checkPattern}</span>
@@ -304,7 +304,7 @@ function ManualRuleCard({ rule, onToggle, onDelete }: { rule: BypassRule, onTogg
         className="opacity-0 group-hover:opacity-100 transition-opacity"
         aria-label="Delete rule"
       >
-        <TrashIcon className="size-3 text-muted-foreground/50" />
+        <TrashIcon className="size-3 !text-muted-foreground/50" />
       </Button>
     </div>
   )
@@ -407,7 +407,7 @@ const WorkspaceBypassSection = ({ workspace }: { workspace: Workspace }) => {
 
       {isInitialLoading && (
         <div className="flex items-center justify-center py-4">
-          <LoaderCircleIcon className="size-3.5 animate-spin text-muted-foreground/50" />
+          <LoaderCircleIcon className="size-3.5 animate-spin !text-muted-foreground/50" />
         </div>
       )}
 

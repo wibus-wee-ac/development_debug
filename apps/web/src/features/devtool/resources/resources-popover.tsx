@@ -9,7 +9,7 @@ import {
   Refresh1Line as RefreshCwIcon,
   ServerLine as ServerIcon,
   TerminalBoxLine as SquareTerminalIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
 import { z } from 'zod'
@@ -571,7 +571,7 @@ export function ResourcesPopover() {
               Memory
             </div>
             <div className="flex items-center gap-1.5 text-base font-semibold tabular-nums leading-none">
-              <MemoryStickIcon className="size-4 text-muted-foreground" />
+              <MemoryStickIcon className="size-4 !text-muted-foreground" />
               {formatMegabytes(totalMB)}
             </div>
           </div>
@@ -580,7 +580,7 @@ export function ResourcesPopover() {
               CPU
             </div>
             <div className="flex items-center gap-1.5 text-base font-semibold tabular-nums leading-none">
-              <CpuIcon className="size-4 text-muted-foreground" />
+              <CpuIcon className="size-4 !text-muted-foreground" />
               {formatCpuPercent(totalCpuPercent)}
             </div>
           </div>

@@ -26,7 +26,7 @@ import {
   SitemapLine as Waypoints,
   ProcessLine as Workflow,
   FlashLine as Zap
-} from '@/lib/mingcute-icons'
+} from '@mingcute/react'
 import Link from 'next/link'
 import type { ComponentType, SVGProps } from 'react'
 
@@ -551,7 +551,7 @@ function FlowLane({ items }: { items: FlowItem[] }) {
           {index < items.length - 1
 ? (
             <div className="hidden items-center md:flex">
-              <ArrowRight className="size-4 text-fd-muted-foreground" aria-hidden="true" />
+              <ArrowRight className="size-4 !text-fd-muted-foreground" aria-hidden="true" />
             </div>
           )
 : null}

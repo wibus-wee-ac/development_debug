@@ -3,7 +3,7 @@
 // Layer: Browser feature UI
 // Depends on: ui/popover primitive, motion
 
-import { CheckLine as CheckIcon, ColorPickerLine as PipetteIcon } from '~/components/ui/mingcute-icons'
+import { CheckLine as CheckIcon, ColorPickerLine as PipetteIcon } from '@mingcute/react'
 import { m } from 'motion/react'
 import type { CSSProperties, KeyboardEvent, ReactNode } from 'react'
 import { useEffect, useId, useRef, useState } from 'react'
@@ -550,7 +550,7 @@ export function BrowserColorPalette({ value, onChange, label = 'Color', classNam
                     <CheckIcon
                       className={cn(
                         'size-3 drop-shadow-[0_1px_1px_rgba(0,0,0,0.45)]',
-                        presetRgba && presetRgba.r + presetRgba.g + presetRgba.b > 420 ? 'text-black' : 'text-white',
+                        presetRgba && presetRgba.r + presetRgba.g + presetRgba.b > 420 ? '!text-black' : '!text-white',
                       )}
                     />
                   )}

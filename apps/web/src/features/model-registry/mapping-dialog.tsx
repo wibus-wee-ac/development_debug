@@ -9,7 +9,7 @@ import { useQueryClient } from '@tanstack/react-query'
 import {
   SearchLine as SearchIcon,
   SelectorHorizontalLine as SlidersHorizontalIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
@@ -539,7 +539,7 @@ export function ModelRegistryMappingDialog({
 : null}
 
             <div className="relative">
-              <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+              <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 !text-muted-foreground/60" />
               <Input
                 value={searchQuery}
                 onChange={event => setSearchQuery(event.target.value)}

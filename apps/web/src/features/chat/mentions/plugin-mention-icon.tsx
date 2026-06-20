@@ -1,4 +1,4 @@
-import { PluginLine as PlugIcon } from '~/components/ui/mingcute-icons'
+import { PluginLine as PlugIcon } from '@mingcute/react'
 import { cn } from '~/lib/cn'
 
 export function PluginMentionIcon({
@@ -22,7 +22,7 @@ export function PluginMentionIcon({
 
   return (
     <PlugIcon
-      className={cn('size-3.5 shrink-0 text-sky-600 dark:text-sky-400', className)}
+      className={cn('size-3.5 shrink-0 !text-sky-600 dark:!text-sky-400', className)}
       aria-hidden="true"
     />
   )

@@ -12,7 +12,7 @@ import {
   SquareLine as SquareIcon,
   DeleteLine as Trash2Icon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -193,7 +193,7 @@ const ProviderRow = ({
           </div>
           <ChevronRightIcon
             className={cn(
-              'size-3 shrink-0 text-muted-foreground/40 transition-[opacity,transform,width] duration-150',
+              'size-3 shrink-0 !text-muted-foreground/40 transition-[opacity,transform,width] duration-150',
               active
                 ? 'w-3 opacity-100 translate-x-0'
                 : 'w-0 opacity-0 -translate-x-1 group-hover/sidebar-row:w-3 group-hover/sidebar-row:opacity-60 group-hover/sidebar-row:translate-x-0',
@@ -664,7 +664,7 @@ export function AgentRuntimeSettings() {
       className="flex min-h-0 min-w-0 flex-1 flex-col gap-3 p-3"
     >
       <div className="relative min-w-0">
-        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" />
+        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 !text-muted-foreground/60" />
         <Input
           value={filter}
           onChange={e => setFilter(e.target.value)}
@@ -755,7 +755,7 @@ export function AgentRuntimeSettings() {
                         <span className="flex min-w-0 items-center gap-1.5">
                           <ChevronDownIcon
                             className={cn(
-                              'size-3 shrink-0 text-muted-foreground/45 transition-transform duration-200',
+                              'size-3 shrink-0 !text-muted-foreground/45 transition-transform duration-200',
                               !isOpen && '-rotate-90',
                             )}
                             aria-hidden
@@ -906,7 +906,7 @@ export function AgentRuntimeSettings() {
         <AlertDialogContent>
           <AlertDialogHeader>
             <AlertDialogMedia>
-              <Trash2Icon className="size-5 text-destructive" />
+              <Trash2Icon className="size-5 !text-destructive" />
             </AlertDialogMedia>
             <AlertDialogTitle>
               {t('runtime.deleteDialog.title')}

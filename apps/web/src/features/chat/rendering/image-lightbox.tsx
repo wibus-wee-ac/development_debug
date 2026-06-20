@@ -2,7 +2,7 @@ import {
   LeftSmallLine as ChevronLeftIcon,
   RightSmallLine as ChevronRightIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { Dialog as DialogPrimitive } from 'radix-ui'
 import { useEffect, useState } from 'react'
 

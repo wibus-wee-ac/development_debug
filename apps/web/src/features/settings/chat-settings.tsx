@@ -6,7 +6,7 @@ import {
   CheckLine as CheckIcon,
   Message1Line as MessageSquareIcon,
   SearchLine as SearchIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -130,7 +130,7 @@ function ArchivedSessionRow({
 
   return (
     <div className="group flex min-w-0 items-center gap-2.5 rounded-md border border-border/50 bg-muted/20 px-3 py-2 transition-colors hover:bg-muted/30">
-      <MessageSquareIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+      <MessageSquareIcon className="size-3.5 shrink-0 !text-muted-foreground/60" aria-hidden="true" />
       <div className="min-w-0 flex-1">
         <div className="truncate text-[12.5px] font-medium text-foreground/90">{title}</div>
         <div className="truncate text-[10.5px] tabular-nums text-muted-foreground/65">{meta}</div>
@@ -216,7 +216,7 @@ function ArchivedSessionList() {
       </div>
 
       <div className="relative">
-        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 text-muted-foreground/60" aria-hidden="true" />
+        <SearchIcon className="pointer-events-none absolute left-2.5 top-1/2 size-3.5 -translate-y-1/2 !text-muted-foreground/60" aria-hidden="true" />
         <Input
           type="search"
           value={query}
@@ -238,14 +238,14 @@ function ArchivedSessionList() {
         : sortedSessions.length === 0
           ? (
             <div className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-foreground/10 bg-muted/20 px-4 py-5 text-center">
-              <ArchiveRestoreIcon className="size-4 text-muted-foreground/40" aria-hidden="true" />
+              <ArchiveRestoreIcon className="size-4 !text-muted-foreground/40" aria-hidden="true" />
               <span className="text-[11px] text-muted-foreground/70">{t('chat.archive.empty' as SettingsKey)}</span>
             </div>
           )
           : filteredSessions.length === 0
             ? (
               <div className="flex flex-col items-center justify-center gap-1.5 rounded-lg border border-dashed border-foreground/10 bg-muted/20 px-4 py-5 text-center">
-                <SearchIcon className="size-4 text-muted-foreground/40" aria-hidden="true" />
+                <SearchIcon className="size-4 !text-muted-foreground/40" aria-hidden="true" />
                 <span className="text-[11px] text-muted-foreground/70">{t('chat.archive.searchEmpty' as SettingsKey)}</span>
               </div>
             )
@@ -283,7 +283,7 @@ function ThinkingEffortPicker({
   return (
     <Menu>
       <MenuTrigger render={<Button type="button" variant="ghost" size="xs" disabled={disabled} data-testid="chat-title-generation-thinking" />}>
-        <BrainIcon className="size-3.5 shrink-0 text-muted-foreground/70" aria-hidden="true" />
+        <BrainIcon className="size-3.5 shrink-0 !text-muted-foreground/70" aria-hidden="true" />
         <span className="max-w-24 truncate">{selected?.label}</span>
       </MenuTrigger>
       <MenuPopup side="bottom" align="end">
@@ -295,7 +295,7 @@ function ThinkingEffortPicker({
           >
             <div className="flex w-full items-center gap-2">
               <span className="font-medium">{option.label}</span>
-              <CheckIcon className={cn('ml-auto size-3.5 shrink-0', value === option.value ? 'text-primary' : 'text-transparent')} />
+              <CheckIcon className={cn('ml-auto size-3.5 shrink-0', value === option.value ? '!text-primary' : '!text-transparent')} />
             </div>
             <span className="text-[11px] text-muted-foreground/60">{option.description}</span>
           </MenuItem>

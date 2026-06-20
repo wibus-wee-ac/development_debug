@@ -8,7 +8,7 @@ import {
   FileNewLine as FilePlusIcon,
   FolderOpenLine as FolderOpenIcon,
   NewFolderLine as FolderPlusIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 import { z } from 'zod'
 

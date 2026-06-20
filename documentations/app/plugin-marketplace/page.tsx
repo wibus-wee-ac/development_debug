@@ -5,7 +5,7 @@ import {
   FileCodeLine as FileJson,
   PluginLine as Plug,
   SafeShieldLine as ShieldCheck
-} from '@/lib/mingcute-icons'
+} from '@mingcute/react'
 import type { Metadata } from 'next'
 import Link from 'next/link'
 
@@ -69,7 +69,7 @@ export default function PluginMarketplacePage() {
         <div className="mx-auto grid w-full max-w-7xl gap-8 px-5 py-12 sm:px-6 lg:grid-cols-[minmax(0,1fr)_24rem] lg:px-8 lg:py-16">
           <div className="min-w-0">
             <div className="mb-5 inline-flex min-h-8 items-center gap-2 rounded-md bg-fd-muted px-3 text-sm font-medium text-fd-muted-foreground">
-              <ShieldCheck className="size-4 text-emerald-600 dark:text-emerald-300" aria-hidden="true" />
+              <ShieldCheck className="size-4 !text-emerald-600 dark:!text-emerald-300" aria-hidden="true" />
               First-party plugin directory
             </div>
             <h1 className="m-0 max-w-3xl text-4xl font-semibold leading-tight text-fd-foreground sm:text-5xl">

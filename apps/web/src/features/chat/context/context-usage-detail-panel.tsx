@@ -1,5 +1,5 @@
 import { useQuery } from '@tanstack/react-query'
-import { CloseLine as XIcon } from '~/components/ui/mingcute-icons'
+import { CloseLine as XIcon } from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 
 import { cn } from '~/lib/cn'

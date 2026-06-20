@@ -3,7 +3,7 @@ import {
   CheckLine as CheckIcon,
   RandomLine as DicesIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import { Select as RadixSelect } from 'radix-ui'
 import { useCallback, useEffect, useEffectEvent, useReducer, useRef, useState } from 'react'
@@ -911,7 +911,7 @@ function AgentIdentitySection({
                   />
                 )}
             <div className="absolute inset-0 flex items-center justify-center bg-black/20 opacity-0 transition-opacity group-hover:opacity-100">
-              <DicesIcon className="size-4 text-white" />
+              <DicesIcon className="size-4 !text-white" />
             </div>
           </m.button>
 

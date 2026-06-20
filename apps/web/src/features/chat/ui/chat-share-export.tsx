@@ -5,7 +5,7 @@ import {
   PicLine as ImageDownIcon,
   LoadingLine as LoaderCircleIcon,
   Chat1Line as MessageCircleIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { domToPng } from 'modern-screenshot'
 import { useRef, useState } from 'react'
 
@@ -372,7 +372,7 @@ export function ChatShareExport({ sessionId, disabled }: ChatShareExportProps) {
                       </div>
 
                       <div className="mx-auto flex min-w-0 max-w-[620px] items-center gap-2 rounded-lg bg-background px-3 py-1.5 text-center text-sm font-medium text-foreground">
-                        <MessageCircleIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <MessageCircleIcon className="size-3.5 shrink-0 !text-muted-foreground" aria-hidden="true" />
                         <span className="min-w-0 truncate text-sm font-medium text-foreground">
                           {exportTitle}
                         </span>

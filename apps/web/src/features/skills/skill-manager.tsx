@@ -8,7 +8,7 @@ import {
   SearchLine as SearchIcon,
   DeleteLine as Trash2Icon,
   UploadLine as UploadIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useEffect, useReducer } from 'react'
 
 import { Button } from '~/components/ui/button'
@@ -633,7 +633,7 @@ export function SkillManager({
       {/* Search + filter row */}
       <div className="flex items-center gap-3 py-2">
         <div className="relative flex-1">
-          <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 text-muted-foreground/50" />
+          <SearchIcon className="absolute left-2.5 top-1/2 -translate-y-1/2 size-3 !text-muted-foreground/50" />
           <input
             type="text"
             aria-label="Search skills"

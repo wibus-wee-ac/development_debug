@@ -20,7 +20,7 @@ import {
   AnticlockwiseLine as RotateCcwIcon,
   Rows2Line as Rows2Icon,
   SelectorHorizontalLine as SlidersHorizontalIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 
@@ -393,7 +393,7 @@ function InspectorSection({ title, children }: InspectorSectionProps) {
   return (
     <section className="border-b border-border/55 px-3 py-3 dark:border-white/6">
       <div className="mb-2 flex items-center gap-1.5">
-        <ChevronDownIcon className="size-3.5 text-muted-foreground/70" aria-hidden="true" />
+        <ChevronDownIcon className="size-3.5 !text-muted-foreground/70" aria-hidden="true" />
         <h3 className="text-xs font-semibold text-foreground">{title}</h3>
       </div>
       <div className="space-y-2">{children}</div>

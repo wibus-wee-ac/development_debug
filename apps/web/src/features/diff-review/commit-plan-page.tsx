@@ -7,7 +7,7 @@ import {
   LoadingLine as Loader2Icon,
   PencilLine as PencilIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
@@ -95,7 +95,7 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
   if (isLoading) {
     return (
       <div className="flex h-full w-full items-center justify-center">
-        <Loader2Icon className="size-4 animate-spin text-muted-foreground/40" aria-hidden />
+        <Loader2Icon className="size-4 animate-spin !text-muted-foreground/40" aria-hidden />
       </div>
     )
   }
@@ -124,7 +124,7 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
           Back to review
         </Link>
         <div className="h-4 w-px bg-border" />
-        <GitCommitVerticalIcon className="size-3.5 text-muted-foreground/60" aria-hidden />
+        <GitCommitVerticalIcon className="size-3.5 !text-muted-foreground/60" aria-hidden />
         <h1 className="text-xs font-medium text-foreground">Commit plan</h1>
         {plan && (
           <span className={cn('text-[10px] font-medium', STATUS_TONE[plan.status])}>{plan.status}</span>
@@ -135,7 +135,7 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
         <div className="mx-auto max-w-2xl space-y-3">
           <div className="rounded-lg border border-border bg-background p-3">
             <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-foreground">
-              <ListChecksIcon className="size-3.5 text-muted-foreground/70" />
+              <ListChecksIcon className="size-3.5 !text-muted-foreground/70" />
               Generate a plan
             </div>
             <p className="mb-2 text-[11px] leading-relaxed text-muted-foreground">

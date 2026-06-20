@@ -11,7 +11,7 @@ import {
   DeleteLine as Trash2Icon,
   UserXLine as UserRoundXIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -447,7 +447,7 @@ function DueDateEditor({
             selectedDate ? 'text-foreground' : 'text-muted-foreground',
           )}
         >
-          <CalendarIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+          <CalendarIcon className="size-3.5 !text-muted-foreground" aria-hidden="true" />
           <span className="truncate">
             {selectedDate ? toDateInputValue(dueDate) : t('priority.none')}
           </span>
@@ -540,7 +540,7 @@ function AssigneePicker({
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuRadioGroup value={selectedValue} onValueChange={handleAssigneeChange}>
           <DropdownMenuRadioItem value="" data-testid="issue-assignee-option-unassigned">
-            <UserRoundXIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+            <UserRoundXIcon className="size-4 !text-muted-foreground" aria-hidden="true" />
             <span>{t('assignee.unassigned')}</span>
           </DropdownMenuRadioItem>
           <DropdownMenuSeparator />
@@ -635,7 +635,7 @@ function AgentDelegatePicker({
       <DropdownMenuContent align="end" className="w-56">
         <DropdownMenuRadioGroup value={selectedValue} onValueChange={handleAgentChange}>
           <DropdownMenuRadioItem value="" data-testid="issue-agent-option-none">
-            <UserRoundXIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+            <UserRoundXIcon className="size-4 !text-muted-foreground" aria-hidden="true" />
             <span>{t('agent.none')}</span>
           </DropdownMenuRadioItem>
           <DropdownMenuSeparator />
@@ -643,7 +643,7 @@ function AgentDelegatePicker({
           {agentCandidates.length === 0
 ? (
             <DropdownMenuItem disabled>
-              <BotIcon className="size-4 text-muted-foreground" aria-hidden="true" />
+              <BotIcon className="size-4 !text-muted-foreground" aria-hidden="true" />
               {t('agent.noAgentsConfigured')}
             </DropdownMenuItem>
           )
@@ -832,7 +832,7 @@ function LabelsEditor({
           <PopoverContent align="end" className="w-72 p-0">
             <div className="border-b border-border p-2">
               <div className="flex h-8 items-center gap-2 rounded-md border border-input bg-background px-2">
-                <SearchIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                <SearchIcon className="size-3.5 !text-muted-foreground" aria-hidden="true" />
                 <input
                   ref={inputRef}
                   value={inputValue}
@@ -878,7 +878,7 @@ function LabelsEditor({
                     aria-label={t('issue.label.createAria', { label: trimmedInput })}
                     data-testid="issue-label-create-option"
                   >
-                    <PlusIcon className="size-3.5 text-muted-foreground" aria-hidden="true" />
+                    <PlusIcon className="size-3.5 !text-muted-foreground" aria-hidden="true" />
                     <span className="min-w-0 flex-1 truncate">
                       {t('issue.label.create', { label: trimmedInput })}
                     </span>

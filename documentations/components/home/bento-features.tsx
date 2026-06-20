@@ -11,7 +11,7 @@ import {
   TerminalLine as Terminal,
   ProcessLine as Workflow,
   FlashLine as Zap
-} from '@/lib/mingcute-icons'
+} from '@mingcute/react'
 import { useEffect, useRef } from 'react'
 
 gsap.registerPlugin(ScrollTrigger)

@@ -11,7 +11,7 @@ import {
   PencilLine as PencilIcon,
   TargetLine as TargetIcon,
   CloseLine as XIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
@@ -64,7 +64,7 @@ export function PlanSlotState({
   return (
     <ComposerSlotShell stateName="plan" testId="plan-slot" className={className}>
       <div className="flex min-h-7 min-w-0 items-center gap-2">
-        <ListChecksIcon className="size-3.5 shrink-0 text-primary/75" aria-hidden="true" />
+        <ListChecksIcon className="size-3.5 shrink-0 !text-primary/75" aria-hidden="true" />
         <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
           <span className="shrink-0 font-medium text-foreground/80">Plan ready</span>
           {summary && (

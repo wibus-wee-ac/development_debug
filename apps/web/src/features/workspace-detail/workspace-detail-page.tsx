@@ -5,7 +5,7 @@ import {
   LoadingLine as Loader2Icon,
   PencilLine as PencilIcon,
   ScrollableListLine as ScrollTextIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import type { CSSProperties } from 'react'
 import { lazy, Suspense, useEffect, useRef, useState } from 'react'
@@ -231,7 +231,7 @@ function InlineEditTitle({
             className="group inline-flex items-center gap-2 text-left"
           >
             <span className="text-lg font-semibold text-foreground">{value}</span>
-            <PencilIcon className="size-3 text-muted-foreground/30 opacity-0 transition-opacity group-hover:opacity-100" />
+            <PencilIcon className="size-3 !text-muted-foreground/30 opacity-0 transition-opacity group-hover:opacity-100" />
           </button>
         )
   )
@@ -848,7 +848,7 @@ export function WorkspaceDetailPage({ workspaceId }: WorkspaceDetailPageProps) {
   if (!owner.workspace) {
     return (
       <div className="flex h-full items-center justify-center">
-        <Loader2Icon className="size-4 animate-spin text-muted-foreground" />
+        <Loader2Icon className="size-4 animate-spin !text-muted-foreground" />
       </div>
     )
   }

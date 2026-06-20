@@ -11,7 +11,7 @@ import {
   SearchLine as Search,
   SafeShieldLine as ShieldCheck,
   SparklesLine as Sparkles
-} from '@/lib/mingcute-icons'
+} from '@mingcute/react'
 import Link from 'next/link'
 import { useMemo, useState } from 'react'
 
@@ -109,7 +109,7 @@ function MarketplaceHeader({
         </div>
         <div className="rounded-lg bg-fd-muted p-3">
           <div className="flex items-center gap-2 text-sm font-medium text-fd-foreground">
-            <ShieldCheck className="size-4 text-emerald-600 dark:text-emerald-300" aria-hidden="true" />
+            <ShieldCheck className="size-4 !text-emerald-600 dark:!text-emerald-300" aria-hidden="true" />
             Trust boundary
           </div>
           <p className="m-0 mt-2 text-sm leading-6 text-fd-muted-foreground">
@@ -121,7 +121,7 @@ function MarketplaceHeader({
       <div className="grid gap-4 p-4 lg:grid-cols-[minmax(0,1fr)_auto] lg:items-center">
         <label className="relative block min-w-0">
           <Search
-            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 text-fd-muted-foreground"
+            className="pointer-events-none absolute left-3 top-1/2 size-4 -translate-y-1/2 !text-fd-muted-foreground"
             aria-hidden="true"
           />
           <span className="sr-only">Search plugins</span>
@@ -233,7 +233,7 @@ function PluginCard({ plugin }: { plugin: PluginMarketplaceEntry }) {
             <ul className="m-0 grid list-none gap-1 p-0">
               {plugin.capabilities.map(capability => (
                 <li key={capability} className="flex min-w-0 items-start gap-2 text-sm leading-6 text-fd-muted-foreground">
-                  <Check className="mt-1 size-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" aria-hidden="true" />
+                  <Check className="mt-1 size-3.5 shrink-0 !text-emerald-600 dark:!text-emerald-300" aria-hidden="true" />
                   <span>{capability}</span>
                 </li>
               ))}
@@ -247,7 +247,7 @@ function PluginCard({ plugin }: { plugin: PluginMarketplaceEntry }) {
             <ul className="m-0 grid list-none gap-1 p-0">
               {plugin.trustNotes.map(note => (
                 <li key={note} className="flex min-w-0 items-start gap-2 text-sm leading-6 text-fd-muted-foreground">
-                  <Check className="mt-1 size-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" aria-hidden="true" />
+                  <Check className="mt-1 size-3.5 shrink-0 !text-emerald-600 dark:!text-emerald-300" aria-hidden="true" />
                   <span>{note}</span>
                 </li>
               ))}
@@ -288,7 +288,7 @@ function PluginCard({ plugin }: { plugin: PluginMarketplaceEntry }) {
           >
             {copied
 ? (
-              <Check className="size-4 text-emerald-600 dark:text-emerald-300" aria-hidden="true" />
+              <Check className="size-4 !text-emerald-600 dark:!text-emerald-300" aria-hidden="true" />
             )
 : (
               <Copy className="size-4" aria-hidden="true" />

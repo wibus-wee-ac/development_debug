@@ -7,7 +7,7 @@ import {
   PlusLine as PlusIcon,
   SelectorHorizontalLine as SlidersHorizontalIcon,
   SortAscendingLine as SortAscIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useTranslation } from 'react-i18next'
 
 import { Checkbox } from '~/components/ui/checkbox'

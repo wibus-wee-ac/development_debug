@@ -2,7 +2,7 @@
 
 import gsap from 'gsap'
 import { ScrollTrigger } from 'gsap/ScrollTrigger'
-import { ArrowRightLine as ArrowRight, Book2Line as BookOpen } from '@/lib/mingcute-icons'
+import { ArrowRightLine as ArrowRight, Book2Line as BookOpen } from '@mingcute/react'
 import Link from 'next/link'
 import { useEffect, useRef } from 'react'
 

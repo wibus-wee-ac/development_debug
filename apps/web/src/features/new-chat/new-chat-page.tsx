@@ -6,7 +6,7 @@ import {
   FolderLine as FolderIcon,
   NewFolderLine as FolderPlusIcon,
   Message1Line as MessageSquareIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { m } from 'motion/react'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -415,7 +415,7 @@ export function NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useN
     >
       <div className="mx-auto max-w-160 px-6 py-4">
         <div className="mb-2.5 flex items-center gap-1.5">
-          <ClockIcon className="size-3 text-muted-foreground/50" />
+          <ClockIcon className="size-3 !text-muted-foreground/50" />
           <span className="select-none text-[11px] text-muted-foreground/50">{t('recent.title')}</span>
         </div>
         <div className="grid grid-cols-3 gap-2">
@@ -434,7 +434,7 @@ export function NewChatRecentSessions({ owner }: { owner: ReturnType<typeof useN
               transition={{ delay: 0.3 + index * 0.04, duration: 0.22 }}
             >
               <div className="flex w-full items-center gap-2">
-                <MessageSquareIcon className="size-3 shrink-0 text-muted-foreground/50 transition-colors group-hover:text-muted-foreground/70" />
+                <MessageSquareIcon className="size-3 shrink-0 !text-muted-foreground/50 transition-colors group-hover:!text-muted-foreground/70" />
                 <span className="flex-1 truncate text-[13px] text-foreground transition-colors group-hover:text-foreground">
                   {session.title || t('recent.untitled')}
                 </span>

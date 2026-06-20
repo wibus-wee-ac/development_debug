@@ -8,7 +8,7 @@ import {
   DownSmallLine as ChevronDownIcon,
   CheckLine as CheckIcon,
   UpSmallLine as ChevronUpIcon
-} from "~/components/ui/mingcute-icons"
+} from '@mingcute/react'
 const EMPTY_ITEM_VALUE = "__select_empty__"
 
 function Select({
@@ -71,7 +71,7 @@ function SelectTrigger({
     >
       {children}
       <SelectPrimitive.Icon asChild>
-        <ChevronDownIcon className="pointer-events-none size-4 text-muted-foreground" />
+        <ChevronDownIcon className="pointer-events-none size-4 !text-muted-foreground" />
       </SelectPrimitive.Icon>
     </SelectPrimitive.Trigger>
   )

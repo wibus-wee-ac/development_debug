@@ -8,7 +8,7 @@ import {
   LoadingLine as LoaderCircleIcon,
   WarningLine as TriangleAlertIcon,
   CloseLine as XIcon
-} from "~/components/ui/mingcute-icons";
+} from '@mingcute/react';
 import type React from "react";
 import { cn } from "~/lib/cn";
 

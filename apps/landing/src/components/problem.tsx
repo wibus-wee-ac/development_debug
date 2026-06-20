@@ -8,7 +8,7 @@ import {
   EyeLine as Eye,
   LayersLine as Layers,
   Message1Line as MessageSquare
-} from '../lib/mingcute-icons'
+} from '@mingcute/react'
 import { useCallback, useRef, useState } from 'react'
 
 gsap.registerPlugin(useGSAP)

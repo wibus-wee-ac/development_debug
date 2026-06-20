@@ -3,7 +3,7 @@ import {
   SaveLine as SaveIcon,
   ServerLine as ServerIcon,
   WifiLine as WifiIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import { useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -119,7 +119,7 @@ export function ServerEndpointSettings() {
           description={t('serverEndpoint.current.description')}
         >
           <div className="flex max-w-[360px] items-center justify-end gap-2 text-right">
-            <ServerIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+            <ServerIcon className="size-3.5 shrink-0 !text-muted-foreground" aria-hidden="true" />
             <span className="truncate text-[12px] font-medium text-foreground">{savedUrl}</span>
           </div>
         </SettingsRow>

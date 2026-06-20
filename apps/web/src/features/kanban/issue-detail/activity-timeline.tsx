@@ -7,7 +7,7 @@ import {
   DeleteLine as Trash2Icon,
   UserFollowLine as UserRoundCheckIcon,
   UserRemoveLine as UserRoundMinusIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type { ElementType, ReactNode } from 'react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -189,7 +189,7 @@ const CreatedItem = ({ item }: { item: KanbanIssueActivityItem }) => {
   const { t } = useTranslation('kanban')
   return (
     <TimelineLine
-      icon={<CirclePlusIcon className="size-3.5 text-text-tertiary" aria-hidden="true" />}
+      icon={<CirclePlusIcon className="size-3.5 !text-text-tertiary" aria-hidden="true" />}
       testId={`activity-created-${item.id}`}
     >
       <span className="font-medium text-foreground">{formatActorName(item.actor, t)}</span>
@@ -208,7 +208,7 @@ const FieldChangeItem = ({ item }: { item: KanbanIssueActivityItem }) => {
 
   return (
     <TimelineLine
-      icon={<GitBranchIcon className="size-3.5 text-text-tertiary" aria-hidden="true" />}
+      icon={<GitBranchIcon className="size-3.5 !text-text-tertiary" aria-hidden="true" />}
       testId={`field-change-${item.id}`}
     >
       <span className="font-medium text-foreground">{formatActorName(item.actor, t)}</span>
@@ -275,7 +275,7 @@ const CommentItem = ({
         )
 : (
           <div className="flex size-5.5 shrink-0 items-center justify-center mt-0.5">
-            <SparklesIcon className="size-3.5 text-text-tertiary" aria-hidden="true" />
+            <SparklesIcon className="size-3.5 !text-text-tertiary" aria-hidden="true" />
           </div>
         )
       )

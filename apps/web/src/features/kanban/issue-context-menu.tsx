@@ -10,7 +10,7 @@ import {
   DeleteLine as Trash2Icon,
   User2Line as UserIcon,
   UserXLine as UserRoundXIcon
-} from '~/components/ui/mingcute-icons'
+} from '@mingcute/react'
 import type { ReactNode } from 'react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -342,7 +342,7 @@ export function IssueContextMenu({ issue, statuses, milestones, onOpen, children
         <AlertDialogContent size="sm">
           <AlertDialogHeader>
             <AlertDialogMedia>
-              <Trash2Icon className="size-5 text-destructive" />
+              <Trash2Icon className="size-5 !text-destructive" />
             </AlertDialogMedia>
             <AlertDialogTitle>
               {t('context.deleteIssue')}

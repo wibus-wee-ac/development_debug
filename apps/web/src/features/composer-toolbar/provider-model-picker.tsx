@@ -1,4 +1,4 @@
-import { ChipLine as CpuIcon } from '~/components/ui/mingcute-icons'
+import { ChipLine as CpuIcon } from '@mingcute/react'
 import { useTranslation } from 'react-i18next'
 
 import { ProviderIcon } from '~/components/common/provider-icons'
@@ -124,7 +124,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
                 className="size-3.5 shrink-0"
               />
             )
-          : <CpuIcon className="size-3.5 shrink-0 text-muted-foreground/70" />}
+          : <CpuIcon className="size-3.5 shrink-0 !text-muted-foreground/70" />}
         <span className="flex min-w-0 max-w-64 items-center gap-1">
           {providerLabel && (
             <>
