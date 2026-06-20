@@ -152,7 +152,7 @@ The panel should display:
 
 The panel should include a `Use reset credit` button only when reset credits are available and the latest diagnostics indicate a limit state where consuming a credit could be meaningful. Because that decision may be provider-specific, keep the first implementation conservative: show the button when available count is greater than zero and require a confirmation dialog before POSTing. Generate an idempotency key once per click attempt with `crypto.randomUUID()` in the browser, keep it stable while retrying the same failed request, and clear it after a definitive native outcome.
 
-Follow existing frontend conventions: use static Tailwind classes with `cn()` from `~/lib/cn`, use lucide icons in buttons, place the component under the feature domain `features/agent-management`, and do not add frontend component tests for this UI unless explicitly requested. The settings panel should be quiet and utility-focused, not a marketing card.
+Follow existing frontend conventions: use static Tailwind classes with `cn()` from `~/lib/cn`, use MingCute icons in buttons, place the component under the feature domain `features/agent-management`, and do not add frontend component tests for this UI unless explicitly requested. The settings panel should be quiet and utility-focused, not a marketing card.
 
 Sixth, keep chat `/usage` unchanged except for any server type widening needed to avoid dropping `rateLimitResetCredits`. If this feature needs to show reset credit count in chat later, add it in a separate change. The current plan is for full diagnostics in Settings only.
 
@@ -303,7 +303,7 @@ Validation transcripts from implementation:
 
 ## Interfaces and Dependencies
 
-Use existing dependencies only. The server already has Elysia for routes, TypeBox schemas through `elysia/t`, Drizzle for database reads, and Codex app-server client/host helpers. The web app already has React, TanStack Query, Tailwind, lucide icons, and generated API clients.
+Use existing dependencies only. The server already has Elysia for routes, TypeBox schemas through `elysia/t`, Drizzle for database reads, and Codex app-server client/host helpers. The web app already has React, TanStack Query, Tailwind, MingCute icons, and generated API clients.
 
 Define Cradle-owned server response types in provider-targets model. The exact TypeScript names may vary, but the API shape should contain these concepts:
 

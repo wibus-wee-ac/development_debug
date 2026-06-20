@@ -110,7 +110,7 @@ The Codex provider lives under `apps/server/src/modules/chat-runtime-providers/c
 
 The current terminal UI slot is declared in `apps/server/src/modules/chat-runtime-providers/codex/projection/ui-slot-projector.ts` with id `codex:terminal`. Its current state is projected by `projectCodexTerminalState`, which uses a bounded notification snapshot and returns only counts plus the latest command/output preview. The shared server contract is `RuntimeTerminalUiSlotState` in `apps/server/src/modules/chat-runtime/runtime-provider-types.ts`. The web mirror type is `ChatRuntimeTerminalUiSlotState` in `apps/web/src/features/chat/capabilities/chat-capabilities.ts`.
 
-The Composer slot renderer is `apps/web/src/features/chat/composer/composer-slot-states.tsx`. It currently renders usage, goal, plan, progress, user input, quick question, and review slot states. New Composer-specific UI components live under `apps/web/src/features/chat/composer/composer-slots/`. Use static Tailwind classes and the existing `cn()` helper from `~/lib/utils` when combining classes. Use existing design-system conventions and lucide icons for buttons.
+The Composer slot renderer is `apps/web/src/features/chat/composer/composer-slot-states.tsx`. It currently renders usage, goal, plan, progress, user input, quick question, and review slot states. New Composer-specific UI components live under `apps/web/src/features/chat/composer/composer-slots/`. Use static Tailwind classes and the existing `cn()` helper from `~/lib/utils` when combining classes. Use existing design-system conventions and MingCute icons for buttons.
 
 ## Plan of Work
 

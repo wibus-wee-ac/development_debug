@@ -232,7 +232,7 @@ After creating both files, the dev server's TanStack Router plugin regenerates `
 
 **Sidebar navigation:**
 
-Open `src/renderer/src/features/workspace/workspace-sidebar.tsx`. Near the top of the visible sidebar area (above the workspace list but below the draggable title bar spacer) add a navigation link to `/kanban` using TanStack Router's `<Link>`. Use the `LayoutDashboard` icon from `lucide-react`. The link should be styled consistently with the existing icon-only top-nav items already in the sidebar.
+Open `src/renderer/src/features/workspace/workspace-sidebar.tsx`. Near the top of the visible sidebar area (above the workspace list but below the draggable title bar spacer) add a navigation link to `/kanban` using TanStack Router's `<Link>`. Use the MingCute dashboard icon. The link should be styled consistently with the existing icon-only top-nav items already in the sidebar.
 
 Acceptance: clicking the new sidebar icon navigates to `/kanban` and shows the stub text. The back button (or clicking another route) navigates away correctly.
 
@@ -449,7 +449,7 @@ New files following TanStack Router's `createFileRoute` pattern. See Milestone 3
 
 ### `src/renderer/src/features/workspace/workspace-sidebar.tsx`
 
-Add a `<Link to="/kanban">` navigation entry with `LayoutDashboard` icon from `lucide-react`. Place it in the icon row at the top of the sidebar, consistent with any existing top-nav icons.
+Add a `<Link to="/kanban">` navigation entry with the MingCute dashboard icon. Place it in the icon row at the top of the sidebar, consistent with any existing top-nav icons.
 
 ---
 
