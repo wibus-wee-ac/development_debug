@@ -25,7 +25,7 @@
   "update.status.downloaded": "已下载",
   "update.status.downloading": "下载中 {{progress}}%",
   "update.status.unavailable": "更新不可用",
-  "update.toast.availableDescription": "打开桌面端设置，将安装包下载到桌面。",
+  "update.toast.availableDescription": "打开桌面端设置，下载并准备安装更新。",
   "update.toast.availableTitle": "Cradle {{version}} 可用",
   "update.tooltip.available": "可用版本：{{version}}",
   "update.tooltip.title": "Cradle 更新",

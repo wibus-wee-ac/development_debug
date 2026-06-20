@@ -130,7 +130,7 @@
   "desktop.page.description": "Configure desktop app behavior and update preferences.",
   "desktop.page.title": "Desktop",
   "desktop.updates.actions.check": "Check",
-  "desktop.updates.actions.download": "Download to Desktop",
+  "desktop.updates.actions.download": "Download",
   "desktop.updates.actions.refresh": "Refresh",
   "desktop.updates.actions.restart": "Restart",
   "desktop.updates.availableVersion": "Available update",

@@ -299,7 +299,7 @@ export default {
   'desktop.updates.none': 'None',
   'desktop.updates.actions.refresh': 'Refresh',
   'desktop.updates.actions.check': 'Check',
-  'desktop.updates.actions.download': 'Download to Desktop',
+  'desktop.updates.actions.download': 'Download',
   'desktop.updates.actions.restart': 'Restart',
   'desktop.updates.status.unavailable': 'Unavailable',
   'desktop.updates.status.checking': 'Checking',

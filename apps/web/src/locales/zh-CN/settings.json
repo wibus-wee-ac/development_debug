@@ -319,7 +319,7 @@
   "desktop.updates.none": "无",
   "desktop.updates.actions.refresh": "刷新",
   "desktop.updates.actions.check": "检查",
-  "desktop.updates.actions.download": "下载到桌面",
+  "desktop.updates.actions.download": "下载",
   "desktop.updates.actions.restart": "重启",
   "desktop.updates.status.unavailable": "不可用",
   "desktop.updates.status.checking": "检查中",
