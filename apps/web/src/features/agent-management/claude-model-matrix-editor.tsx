@@ -1,9 +1,4 @@
-import {
-  ArrowRightUpLine as PassthroughIcon,
-  BrainLine as OpusIcon,
-  FlashLine as HaikuIcon,
-  SparklesLine as SonnetIcon,
-} from '@mingcute/react'
+import { ArrowRightUpLine as PassthroughIcon } from '@mingcute/react'
 import { Spinner } from '~/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import type { ClaudeAgentAliasKey, ClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
@@ -18,60 +13,10 @@ import { SettingsDivider } from '../settings/settings-row'
 
 const CURRENT_MODEL_VALUE = '__cradle_current_model__'
 
-interface TierMeta {
-  key: ClaudeAgentAliasKey
-  label: string
-  description: string
-  glyph: typeof HaikuIcon
-  accent: {
-    text: string
-    chip: string
-    chipActive: string
-    rail: string
-    bar: string
-  }
-}
-
-const TIERS: TierMeta[] = [
-  {
-    key: 'haiku',
-    label: 'Haiku',
-    description: 'Fast · lightweight',
-    glyph: HaikuIcon,
-    accent: {
-      text: 'text-emerald-600 dark:text-emerald-400',
-      chip: 'bg-emerald-500/10 text-emerald-600 dark:text-emerald-400',
-      chipActive: 'bg-emerald-500/15 text-emerald-700 dark:text-emerald-300 ring-1 ring-inset ring-emerald-500/35',
-      rail: 'bg-emerald-500/4',
-      bar: 'bg-emerald-500/60',
-    },
-  },
-  {
-    key: 'sonnet',
-    label: 'Sonnet',
-    description: 'Balanced',
-    glyph: SonnetIcon,
-    accent: {
-      text: 'text-violet-600 dark:text-violet-400',
-      chip: 'bg-violet-500/10 text-violet-600 dark:text-violet-400',
-      chipActive: 'bg-violet-500/15 text-violet-700 dark:text-violet-300 ring-1 ring-inset ring-violet-500/35',
-      rail: 'bg-violet-500/4',
-      bar: 'bg-violet-500/60',
-    },
-  },
-  {
-    key: 'opus',
-    label: 'Opus',
-    description: 'Smart · heavy',
-    glyph: OpusIcon,
-    accent: {
-      text: 'text-amber-600 dark:text-amber-400',
-      chip: 'bg-amber-500/10 text-amber-600 dark:text-amber-400',
-      chipActive: 'bg-amber-500/15 text-amber-700 dark:text-amber-300 ring-1 ring-inset ring-amber-500/35',
-      rail: 'bg-amber-500/4',
-      bar: 'bg-amber-500/60',
-    },
-  },
+const TIERS: Array<{ key: ClaudeAgentAliasKey, label: string }> = [
+  { key: 'haiku', label: 'Haiku' },
+  { key: 'sonnet', label: 'Sonnet' },
+  { key: 'opus', label: 'Opus' },
 ]
 
 function modelLabel(model: ModelDescriptor): string {
@@ -135,17 +80,14 @@ export function ClaudeModelMatrixEditor({
 
   return (
     <div className="flex flex-col gap-0">
-      <div className="mb-2.5 flex items-start justify-between gap-3">
-        <div className="min-w-0">
-          <h5 className="font-heading text-[13px] font-medium text-foreground">
-            Model routing matrix
+      <div className="mb-1.5 flex items-center justify-between gap-3">
+        <div className="flex min-w-0 items-center gap-1.5">
+          <h5 className="text-[12px] font-medium text-foreground">
+            Tier routing
           </h5>
-          <p className="mt-0.5 text-[11px] text-muted-foreground">
-            Map each Claude tier to a concrete model.
-          </p>
+          {loading && <Spinner className="size-3 text-muted-foreground" />}
         </div>
         <div className="flex shrink-0 items-center gap-1">
-          {loading && <Spinner className="size-3 text-muted-foreground" />}
           <Tooltip>
             <TooltipTrigger asChild>
               <button
@@ -161,7 +103,7 @@ export function ClaudeModelMatrixEditor({
                     opus: mainModelId,
                   })
                 }}
-                className="rounded-md px-1.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
+                className="rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
               >
                 Pin all
               </button>
@@ -175,7 +117,7 @@ export function ClaudeModelMatrixEditor({
               <button
                 type="button"
                 onClick={() => onChange(DEFAULT_CLAUDE_AGENT_ALIASES)}
-                className="rounded-md px-1.5 py-1 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
+                className="rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
                 Reset
               </button>
@@ -187,87 +129,47 @@ export function ClaudeModelMatrixEditor({
         </div>
       </div>
 
-      <div className="overflow-hidden rounded-lg ring-1 ring-foreground/6 dark:ring-foreground/8">
+      <div className="overflow-hidden rounded-md ring-1 ring-foreground/8">
         {TIERS.map((tier, index) => {
-          const Glyph = tier.glyph
           const currentValue = aliases[tier.key] || CURRENT_MODEL_VALUE
           const isPassthrough = currentValue === CURRENT_MODEL_VALUE
-          const activeModel = modelOptions.find(m => m.id === currentValue)
 
           return (
             <div key={tier.key}>
               {index > 0 && <SettingsDivider />}
-              <div className="relative flex gap-3 px-2.5 py-2">
-                <div className={cn('absolute inset-y-0 left-0 w-0.5', tier.accent.bar)} aria-hidden="true" />
-
-                <div className="flex w-[5.5rem] shrink-0 flex-col gap-1">
-                  <div className="flex items-center gap-1.5">
-                    <span className={cn('flex size-5 items-center justify-center rounded-md', tier.accent.chip)}>
-                      <Glyph className="size-3" aria-hidden="true" />
-                    </span>
-                    <span className="text-[12px] font-medium text-foreground">{tier.label}</span>
-                  </div>
-                  <span className="text-[10.5px] text-muted-foreground/80">{tier.description}</span>
-                </div>
-
-                <div className="min-w-0 flex-1">
-                  <div className="mb-1 flex items-center gap-1.5">
-                    <span
-                      className={cn(
-                        'inline-flex h-4 items-center gap-1 rounded px-1.5 font-mono text-[10px] font-medium',
-                        isPassthrough
-                          ? 'bg-muted text-muted-foreground'
-                          : cn(tier.accent.chipActive, 'font-mono'),
-                      )}
-                    >
-                      {isPassthrough
-                        ? (
-                            <>
-                              <PassthroughIcon className="size-2.5" aria-hidden="true" />
-                              passthrough
-                            </>
-                          )
-                        : (activeModel?.label ?? currentValue)}
-                    </span>
-                  </div>
-
-                  <div
-                    className={cn(
-                      'flex items-center gap-1 overflow-x-auto rounded-md px-1 py-0.5',
-                      tier.accent.rail,
-                    )}
+              <div className="flex items-center gap-2 px-2 py-1.5">
+                <span className="w-[3.5rem] shrink-0 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
+                  {tier.label}
+                </span>
+                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+                  <TierChip
+                    active={isPassthrough}
+                    onClick={() => setAlias(tier.key, CURRENT_MODEL_VALUE)}
+                    title="Use main model"
                   >
-                    <TierChip
-                      active={isPassthrough}
-                      onClick={() => setAlias(tier.key, CURRENT_MODEL_VALUE)}
-                      tierAccentClass={tier.accent.chipActive}
-                      title="Use current model"
-                    >
-                      <PassthroughIcon className="size-2.5" aria-hidden="true" />
-                      <span>current</span>
-                    </TierChip>
+                    <PassthroughIcon className="size-2.5" aria-hidden="true" />
+                    <span>main</span>
+                  </TierChip>
 
-                    {modelOptions.map(model => {
-                      const active = model.id === currentValue
-                      return (
-                        <TierChip
-                          key={model.id}
-                          active={active}
-                          onClick={() => setAlias(tier.key, model.id)}
-                          tierAccentClass={tier.accent.chipActive}
-                          title={model.id}
-                        >
-                          <span className="truncate">{model.label}</span>
-                        </TierChip>
-                      )
-                    })}
+                  {modelOptions.map(model => {
+                    const active = model.id === currentValue
+                    return (
+                      <TierChip
+                        key={model.id}
+                        active={active}
+                        onClick={() => setAlias(tier.key, model.id)}
+                        title={model.id}
+                      >
+                        <span className="truncate">{model.label}</span>
+                      </TierChip>
+                    )
+                  })}
 
-                    {modelOptions.length === 0 && (
-                      <span className="px-1.5 text-[10.5px] text-muted-foreground/60">
-                        No models discovered yet.
-                      </span>
-                    )}
-                  </div>
+                  {modelOptions.length === 0 && (
+                    <span className="px-1.5 text-[10.5px] text-muted-foreground/60">
+                      No models discovered yet.
+                    </span>
+                  )}
                 </div>
               </div>
             </div>
@@ -281,25 +183,26 @@ export function ClaudeModelMatrixEditor({
 function TierChip({
   active,
   onClick,
-  tierAccentClass,
   title,
   children,
 }: {
   active: boolean
   onClick: () => void
-  tierAccentClass: string
   title?: string
   children: React.ReactNode
 }) {
   return (
     <button
       type="button"
-      onClick={onClick}
+      onClick={(event) => {
+        event.stopPropagation()
+        onClick()
+      }}
       title={title}
       className={cn(
         'inline-flex h-6 shrink-0 max-w-[10rem] items-center gap-1 rounded-md px-2 text-[11px] font-medium transition-colors',
         active
-          ? tierAccentClass
+          ? 'bg-primary/10 text-primary ring-1 ring-inset ring-primary/25'
           : 'text-muted-foreground hover:bg-foreground/5 hover:text-foreground',
       )}
     >

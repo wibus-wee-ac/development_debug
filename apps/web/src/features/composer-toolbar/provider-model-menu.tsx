@@ -12,16 +12,10 @@ import { ProviderIcon } from '~/components/common/provider-icons'
 import { MenuItem, MenuSeparator, MenuSub, MenuSubPopup, MenuSubTrigger } from '~/components/ui/menu'
 import type { ModelDescriptor } from '~/features/agent-runtime/types'
 import { BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS } from '~/features/browser/native-surface-occlusion'
-import { ClaudeModelMatrixMenuBlock, type ClaudeMatrixSlot } from '~/features/chat/runtime/claude-session-model-matrix-control'
 import { cn } from '~/lib/cn'
 
 import { presetForProviderKind, providerTargetDisplayIconSlug } from '../agent-management/provider-settings-utils'
 import type { ProviderModelOption } from './types'
-
-export interface ClaudeMatrixMenuSlot {
-  slot: ClaudeMatrixSlot
-  providerSettingsLoading?: boolean
-}
 
 export interface ThinkingOption<TThinking extends string | null> {
   value: TThinking
@@ -49,7 +43,6 @@ interface ProviderModelMenuProps<TThinking extends string | null> {
     active: boolean
     onSelect: () => void
   }
-  claudeMatrix?: ClaudeMatrixMenuSlot | null
   onRequestProviderTargetModels?: (id: string, options?: { refresh?: boolean }) => void
   onSelectProviderTarget: (id: string) => void
   onSelectModel: (id: string | null, providerTargetId: string) => void
@@ -359,7 +352,6 @@ export function ProviderModelMenu<TThinking extends string | null>({
   isProviderTargetSelectionDisabled = false,
   occludeNativeBrowserSurface = false,
   leadingSelection,
-  claudeMatrix,
   onRequestProviderTargetModels,
   onSelectProviderTarget,
   onSelectModel,
@@ -407,14 +399,6 @@ export function ProviderModelMenu<TThinking extends string | null>({
       ))}
       {providerTargets.length === 0 && (
         <MenuItem disabled>{emptyProviderTargetsLabel ?? t('model.noProviderTargets')}</MenuItem>
-      )}
-      {claudeMatrix && selectedProviderTargetId && (
-        <ClaudeModelMatrixMenuBlock
-          slot={claudeMatrix.slot}
-          models={modelsByProviderTargetId[selectedProviderTargetId] ?? []}
-          mainModelId={selectedModelId}
-          providerSettingsLoading={claudeMatrix.providerSettingsLoading}
-        />
       )}
     </>
   )

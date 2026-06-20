@@ -1,20 +1,26 @@
 import { useQuery } from '@tanstack/react-query'
 import { useEffect, useMemo, useState } from 'react'
 
-import { Settings2Line as SettingsIcon } from '@mingcute/react'
-import { MenuSeparator, MenuSub, MenuSubPopup, MenuSubTrigger } from '~/components/ui/menu'
+import {
+  CheckLine as CheckLineIcon,
+} from '@mingcute/react'
+import { Button } from '~/components/ui/button'
+import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
 import { toastManager } from '~/components/ui/toast'
+import { ProviderIcon } from '~/components/common/provider-icons'
 import { ClaudeModelMatrixEditor } from '~/features/agent-management/claude-model-matrix-editor'
 import {
   claudeAgentAliasesFromConfig,
   loadProviderTargetModelSettings,
 } from '~/features/agent-management/provider-target-model-settings'
+import { presetForProviderKind, providerTargetDisplayIconSlug } from '~/features/agent-management/provider-settings-utils'
 import type { ClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
 import {
   DEFAULT_CLAUDE_AGENT_ALIASES,
   hasClaudeAgentModelAliases,
 } from '~/features/agent-runtime/claude-agent-config'
 import type { ApiProviderKind, ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
+import { BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS } from '~/features/browser/native-surface-occlusion'
 import { cn } from '~/lib/cn'
 
 import { useRuntimeSettings } from './use-runtime-settings'
@@ -149,87 +155,139 @@ export function useProviderTargetClaudeMatrix(args: {
   }
 }
 
-/**
- * The matrix rendered as a sub-menu inside the provider model picker.
- * Trigger shows a summary (default / custom) and opens the editor flyout.
- */
-export function ClaudeModelMatrixMenuSubmenu({
-  slot,
-  models,
-  mainModelId,
-  providerSettingsLoading,
-}: {
-  slot: ClaudeMatrixSlot
-  models: ModelDescriptor[]
-  mainModelId: string | null
-  providerSettingsLoading?: boolean
-}) {
-  const { aliases, onChange, loading } = slot
-  const [draftAliases, setDraftAliases] = useState<ClaudeAgentModelAliases>(aliases)
-
-  useEffect(() => {
-    setDraftAliases(aliases)
-  }, [aliases])
-
-  const isCustom = hasClaudeAgentModelAliases(draftAliases)
-  const isLoading = loading || providerSettingsLoading
-
-  const handleAliasesChange = (next: ClaudeAgentModelAliases) => {
-    setDraftAliases(next)
-    onChange(next)
-  }
-
-  return (
-    <MenuSub>
-      <MenuSubTrigger data-testid="claude-matrix-submenu-trigger">
-        <SettingsIcon className="size-3.5 shrink-0" />
-        <span>Claude matrix</span>
-        <span
-          className={cn(
-            'ml-auto shrink-0 text-[10px] uppercase tracking-wide',
-            isCustom ? 'text-primary/80' : 'text-muted-foreground/60',
-          )}
-        >
-          {isCustom ? 'custom' : 'default'}
-        </span>
-      </MenuSubTrigger>
-      <MenuSubPopup side="right" align="start" className="w-[24rem] p-3">
-        <ClaudeModelMatrixEditor
-          aliases={draftAliases}
-          models={models}
-          mainModelId={mainModelId}
-          loading={isLoading}
-          onChange={handleAliasesChange}
-        />
-      </MenuSubPopup>
-    </MenuSub>
-  )
+export interface ClaudeAgentMatrixProviderOption {
+  id: string
+  name: string
+  providerKind: ApiProviderKind
+  iconSlug: string | null
 }
 
 /**
- * Convenience wrapper rendered as a normal MenuItem-separated block inside
- * a MenuPopup. Callers just need to drop this in.
+ * The single model-selection trigger for the Claude Agent runtime.
+ *
+ * Replaces the regular ProviderModelSelector when runtimeKind === 'claude-agent'.
+ * Trigger mirrors ProviderModelPicker's layout (icon + provider + '/' + model +
+ * '·' + label) so it visually reads as the same control. The popover lists
+ * providers as menu rows (same pattern as the model picker) with the matrix
+ * editor as a section below.
  */
-export function ClaudeModelMatrixMenuBlock({
-  slot,
+export function ClaudeAgentMatrixSelector({
+  profiles,
+  selectedProfileId,
   models,
-  mainModelId,
-  providerSettingsLoading,
+  selectedModelId,
+  matrix,
+  loadingModels,
+  onSelectProfile,
+  occludeNativeBrowserSurface,
 }: {
-  slot: ClaudeMatrixSlot
+  profiles: ClaudeAgentMatrixProviderOption[]
+  selectedProfileId: string | null
   models: ModelDescriptor[]
-  mainModelId: string | null
-  providerSettingsLoading?: boolean
+  selectedModelId: string | null
+  matrix: ClaudeMatrixSlot | null
+  loadingModels?: boolean
+  onSelectProfile: (id: string) => void
+  occludeNativeBrowserSurface?: boolean
 }) {
+  const selectedProfile = profiles.find(p => p.id === selectedProfileId) ?? null
+  const preset = selectedProfile ? presetForProviderKind(selectedProfile.providerKind) : null
+  const isCustom = matrix ? hasClaudeAgentModelAliases(matrix.aliases) : false
+
+  const selectedModel = models.find(m => m.id === selectedModelId) ?? null
+  const modelLabel = selectedModel?.label
+    ?? selectedModelId
+    ?? (loadingModels ? 'Loading…' : 'Matrix')
+
   return (
-    <>
-      <MenuSeparator />
-      <ClaudeModelMatrixMenuSubmenu
-        slot={slot}
-        models={models}
-        mainModelId={mainModelId}
-        providerSettingsLoading={providerSettingsLoading}
-      />
-    </>
+    <Menu>
+      <MenuTrigger
+        render={(
+          <Button
+            type="button"
+            variant="ghost"
+            size="xs"
+            data-testid="claude-agent-matrix-trigger"
+            data-selected-provider-target-id={selectedProfileId ?? ''}
+            data-selected-model-id={selectedModelId ?? ''}
+            className="min-w-0 max-w-full shrink"
+          />
+        )}
+      >
+        {selectedProfile && preset
+          ? (
+              <ProviderIcon
+                iconSlug={providerTargetDisplayIconSlug(selectedProfile)}
+                presetId={preset.id}
+                className="size-3.5 shrink-0"
+              />
+            )
+          : null}
+        <span className="flex min-w-0 max-w-64 items-center gap-1">
+          <span className="min-w-0 max-w-[7.5rem] truncate text-muted-foreground/80">
+            {selectedProfile?.name ?? 'Select provider'}
+          </span>
+          <span className="shrink-0 text-muted-foreground/40">/</span>
+          <span className="min-w-0 max-w-40 truncate">{modelLabel}</span>
+        </span>
+        <span className="shrink-0 text-muted-foreground/40">·</span>
+        <span
+          className={cn(
+            'shrink-0 text-[11px]',
+            isCustom ? 'text-primary/80' : 'text-muted-foreground/70',
+          )}
+        >
+          matrix
+        </span>
+      </MenuTrigger>
+      <MenuPopup
+        side="top"
+        align="start"
+        {...(occludeNativeBrowserSurface ? BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS : {})}
+        className="w-[28rem]"
+      >
+        {/* Provider list — same shape as ProviderModelMenu's top section */}
+        <div className="max-h-52 overflow-y-auto">
+          {profiles.map(profile => {
+            const isActive = profile.id === selectedProfileId
+            const profilePreset = presetForProviderKind(profile.providerKind)
+            return (
+              <MenuItem
+                key={profile.id}
+                closeOnClick={false}
+                onClick={() => onSelectProfile(profile.id)}
+                className={cn(isActive && 'font-medium')}
+              >
+                <CheckLineIcon className={cn('size-3.5 shrink-0', isActive ? '!text-primary' : '!text-transparent')} />
+                <ProviderIcon
+                  iconSlug={providerTargetDisplayIconSlug(profile)}
+                  presetId={profilePreset.id}
+                  className="size-3.5 shrink-0"
+                />
+                <span className="truncate">{profile.name}</span>
+              </MenuItem>
+            )
+          })}
+          {profiles.length === 0 && (
+            <MenuItem disabled>No providers configured</MenuItem>
+          )}
+        </div>
+
+        {matrix && selectedProfile && (
+          <>
+            <MenuSeparator />
+            <div className="p-2">
+              <ClaudeModelMatrixEditor
+                aliases={matrix.aliases}
+                models={models}
+                mainModelId={selectedModelId}
+                loading={loadingModels || matrix.loading}
+                onChange={matrix.onChange}
+              />
+            </div>
+          </>
+        )}
+      </MenuPopup>
+    </Menu>
   )
 }
