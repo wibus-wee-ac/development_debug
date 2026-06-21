@@ -1,7 +1,7 @@
 import type { KeyboardEvent, PointerEvent } from 'react'
 import { useRef, useState } from 'react'
 import type { Transition } from 'motion/react'
-import { m, useReducedMotion } from 'motion/react'
+import { AnimatePresence, m, useReducedMotion } from 'motion/react'
 
 import { BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS } from '~/features/browser/native-surface-occlusion'
 import { cn } from '~/lib/cn'
@@ -55,10 +55,16 @@ export function ThinkingEffortButton({
   const movedRef = useRef(false)
   const draggingRef = useRef(false)
   const dragIndexRef = useRef(currentIndex)
+  const previousActiveIndexRef = useRef(activeIndex)
+  const labelDirection = activeIndex >= previousActiveIndexRef.current ? 1 : -1
+  previousActiveIndexRef.current = activeIndex
   const stripWidth = tiers.length * SEGMENT_WIDTH + STRIP_PADDING_X * 2
   const transition: Transition = reduceMotion
     ? { duration: 0 }
     : { type: 'spring', stiffness: 620, damping: 42, mass: 0.58 }
+  const labelTransition: Transition = reduceMotion
+    ? { duration: 0 }
+    : { type: 'spring', stiffness: 560, damping: 36, mass: 0.5 }
 
   const clearLongPress = () => {
     if (longPressTimerRef.current) {
@@ -214,7 +220,8 @@ export function ThinkingEffortButton({
       aria-label={`Thinking effort: ${activeLabel}. Click to cycle or long-press and drag to adjust.`}
       title={`Thinking effort: ${activeLabel}`}
       className={cn(
-        'inline-flex h-6 shrink-0 select-none items-center gap-1.5 rounded-[min(var(--radius-md),10px)] px-1.5 text-xs outline-none',
+        'inline-flex h-6 shrink-0 select-none items-center rounded-[min(var(--radius-md),10px)] px-1.5 text-xs outline-none transition-[gap,color,background-color]',
+        mode === 'dragging' ? 'gap-1.5' : 'gap-0.5',
         'bg-foreground/[0.055] text-muted-foreground transition-colors',
         'hover:bg-foreground/[0.08] hover:text-foreground',
         'focus-visible:ring-2 focus-visible:ring-primary/35',
@@ -283,9 +290,23 @@ export function ThinkingEffortButton({
           )
         })}
       </m.span>
-      <m.span layout className="min-w-[3ch] whitespace-nowrap text-[11px] font-medium text-muted-foreground/80">
-        {activeLabel}
-      </m.span>
+      <span className="relative inline-flex h-4 min-w-[3ch] shrink-0 items-center overflow-hidden whitespace-nowrap text-[11px] font-medium text-muted-foreground/80">
+        {mode === 'dragging'
+          ? activeLabel
+          : (
+              <AnimatePresence initial={false} mode="popLayout">
+                <m.span
+                  key={active?.value ?? 'unknown'}
+                  initial={{ opacity: 0, y: labelDirection > 0 ? 8 : -8 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, y: labelDirection > 0 ? -8 : 8 }}
+                  transition={labelTransition}
+                >
+                  {activeLabel}
+                </m.span>
+              </AnimatePresence>
+            )}
+      </span>
     </m.button>
   )
 }
