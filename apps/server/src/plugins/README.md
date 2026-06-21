@@ -20,7 +20,7 @@
 - **runtime-registry.test.ts**：覆盖 identity、route collision、source classification 和 capability id 行为的 focused tests。
 - **route-registry.ts**：保存 plugin-owned HTTP route handlers，并由 host dispatcher 在请求时按 route segment、method 和 path 分发。禁用插件时清除这里的 owner-scoped routes。
 - **skill-registry.ts**：保存 plugin skill registrations，并投影 owner-scoped skill capability records。
-- **static-server.ts**：提供 governed `/api/plugins` descriptor list 和 validated web plugin bundles。
+- **static-server.ts**：提供 governed `/api/plugins` descriptor list、validated web plugin bundles、生产 web bundle 共享 React import rewrite，以及 `/api/plugins/-/deps/*` renderer shared-module wrapper。
 - **storage.ts**：提供 plugin-scoped server KV storage；使用 Cradle DB 的 `plugin_storage_entries` 表，按 plugin package identity 和 key 隔离。
 - **storage.test.ts**：覆盖 plugin storage 的持久化、同 key owner 隔离和删除语义。
 - **validation.ts**：验证 plugin module exports，并报告结构化 plugin load errors。

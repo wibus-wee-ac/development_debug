@@ -24,6 +24,7 @@ interface PluginPackageOptions {
   writeWebEntry?: boolean
   mcpTransport?: 'stdio' | 'streamable-http'
   serverSource?: string
+  webSource?: string
 }
 
 async function writePluginPackage(options: PluginPackageOptions = {}): Promise<string> {
@@ -73,7 +74,7 @@ async function writePluginPackage(options: PluginPackageOptions = {}): Promise<s
   if (options.web === true && options.writeWebEntry !== false) {
     await writeFile(
       join(pluginDir, 'web.mjs'),
-      'export function activate() {}',
+      options.webSource ?? 'export function activate() {}',
     )
   }
   if (options.provenance === true) {
@@ -408,6 +409,11 @@ describe('server plugin loader lifecycle', () => {
     tempPluginsDir = await writePluginPackage({
       server: false,
       web: true,
+      webSource: [
+        'import { useState } from "react";',
+        'import { jsx } from "react/jsx-runtime";',
+        'export function activate() { return [useState, jsx] }',
+      ].join('\n'),
       contributes: {
         capabilities: [{
           id: 'panel.loader-cleanup',
@@ -433,7 +439,18 @@ describe('server plugin loader lifecycle', () => {
 
     const response = await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/web.mjs'))
     expect(response.status).toBe(200)
-    expect(await response.text()).toBe('export function activate() {}')
+    expect(response.headers.get('access-control-allow-origin')).toBe('*')
+    expect(response.headers.get('cache-control')).toBe('no-cache')
+    expect(await response.text()).toBe([
+      'import { useState } from "http://localhost/api/plugins/-/deps/react.mjs";',
+      'import { jsx } from "http://localhost/api/plugins/-/deps/react-jsx-runtime.mjs";',
+      'export function activate() { return [useState, jsx] }',
+    ].join('\n'))
+
+    const dependencyResponse = await app.handle(new Request('http://localhost/api/plugins/-/deps/react.mjs'))
+    expect(dependencyResponse.status).toBe(200)
+    expect(dependencyResponse.headers.get('access-control-allow-origin')).toBe('*')
+    expect(await dependencyResponse.text()).toContain("window[Symbol.for('cradle:modules')]")
   })
 
   it('dispatches plugin HTTP routes and removes them on deactivation', async () => {

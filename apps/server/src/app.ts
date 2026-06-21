@@ -8,6 +8,7 @@ import { acp } from './modules/acp'
 import { agentIdentity } from './modules/agent-identity'
 import { agentInteractionRuntime } from './modules/agent-interaction-runtime'
 import { automation } from './modules/automation'
+import { assets } from './modules/assets'
 import { chatRuntime } from './modules/chat-runtime'
 import { chronicle } from './modules/chronicle'
 import { desktop } from './modules/desktop'
@@ -129,6 +130,7 @@ export async function createServerContractApp(options: CreateServerContractAppOp
   app.use(providers)
   app.use(agentIdentity)
   app.use(automation)
+  app.use(assets)
   app.use(session)
   app.use(sessionAwait)
   app.use(issue)

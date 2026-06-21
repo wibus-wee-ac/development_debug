@@ -33,7 +33,7 @@
     "@ai-sdk/anthropic": "^3.0.76",
     "@ai-sdk/google": "^3.0.72",
     "@ai-sdk/openai": "^3.0.53",
-    "@anthropic-ai/claude-agent-sdk": "^0.2.126",
+    "@anthropic-ai/claude-agent-sdk": "^0.3.183",
     "@cradle/db": "workspace:*",
     "@cradle/plugin-sdk": "workspace:*",
     "@elysia/openapi": "^1.4.15",
@@ -66,6 +66,7 @@
     "better-sqlite3": "^12.10.1",
     "drizzle-orm": "^0.45.2",
     "elysia": "^1.4.28",
+    "es-module-lexer": "^2.0.0",
     "extract-zip": "^2.0.1",
     "fast-glob": "^3.3.3",
     "format-duration": "^3.0.2",
@@ -94,6 +95,7 @@
     "vite": "^8.0.0",
     "vite-node": "^6.0.0",
     "vite-tsconfig-paths": "^4.3.2",
-    "vitest": "^4.1.4"
+    "vitest": "^4.1.4",
+    "ws": "^8.18.3"
   }
 }

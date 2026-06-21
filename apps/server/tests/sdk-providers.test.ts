@@ -181,6 +181,7 @@ describe('sdk-backed providers in unified chat runtime', () => {
     process.env.CRADLE_CREDENTIAL_SECRET = 'sdk-provider-secret'
     removeHostMcpServer('browser-use')
     addHostMcpServer({
+      transport: 'stdio',
       name: 'browser-use',
       command: 'node',
       args: ['/tmp/browser-use-mcp-server.mjs'],

@@ -167,6 +167,7 @@ describe('acp chat runtime capability', () => {
     acpMocks.spawn.mockReset()
     removeHostMcpServer('browser-use')
     addHostMcpServer({
+      transport: 'stdio',
       name: 'browser-use',
       command: 'node',
       args: ['/tmp/browser-use-mcp-server.mjs'],

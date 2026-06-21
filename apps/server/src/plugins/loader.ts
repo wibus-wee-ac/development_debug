@@ -27,7 +27,7 @@ import {
   setPluginActivationState,
   setPluginLayerState,
 } from './runtime-registry'
-import { createPluginStaticServer } from './static-server'
+import { createPluginStaticServer, rewritePluginWebBundleImports } from './static-server'
 import { validatePluginModule } from './validation'
 
 interface ActivePlugin {
@@ -301,15 +301,36 @@ export async function activateServerPlugins(app: Elysia): Promise<void> {
 
   const pluginRoutes = new Elysia({ prefix: '/api/plugins' })
     .get('/', () => staticServer.getPluginList())
-    .get('/:name/web.mjs', async ({ params, set }) => {
+    .get('/-/deps/:fileName', ({ params, set }) => {
+      const content = staticServer.getSharedDependency(params.fileName)
+      if (!content) {
+        set.status = 404
+        return 'Not found'
+      }
+      return new Response(content, {
+        headers: {
+          'access-control-allow-origin': '*',
+          'cache-control': 'no-cache',
+          'content-type': 'application/javascript; charset=utf-8',
+        },
+      })
+    })
+    .get('/:name/web.mjs', async ({ params, request, set }) => {
       const entryPath = staticServer.getWebEntry(params.name)
       if (!entryPath) {
         set.status = 404
         return 'Not found'
       }
-      const content = await readFile(entryPath, 'utf-8')
+      const content = await rewritePluginWebBundleImports(
+        await readFile(entryPath, 'utf-8'),
+        request.url,
+      )
       return new Response(content, {
-        headers: { 'content-type': 'application/javascript; charset=utf-8' },
+        headers: {
+          'access-control-allow-origin': '*',
+          'cache-control': 'no-cache',
+          'content-type': 'application/javascript; charset=utf-8',
+        },
       })
     })
     .all('/:routeSegment', context => dispatchPluginRouteFromElysia(context, '/'))

@@ -1,4 +1,4 @@
-import type { BackendRunSnapshot, BackendRunSnapshotEvent, ObservabilityEventRow, ObservabilityIncidentRow } from '@cradle/db'
+import type { BackendRunSnapshot, BackendRunSnapshotEvent, NewObservabilityEventRow, ObservabilityEventRow, ObservabilityIncidentRow } from '@cradle/db'
 import { backendRunSnapshotEvents, backendRunSnapshots, observabilityEvents, observabilityIncidents } from '@cradle/db'
 import type { SQL } from 'drizzle-orm'
 import { and, desc, eq, gte } from 'drizzle-orm'
@@ -110,7 +110,12 @@ const DEFAULT_BATCH_SIZE = 100
 const DEFAULT_FLUSH_INTERVAL_MS = 400
 const DEFAULT_MAX_QUEUE_SIZE = 5000
 
-const queue: ObservabilityEvent[] = []
+interface QueuedObservabilityEvent {
+  event: ObservabilityEvent
+  storageKey: string
+}
+
+const queue: QueuedObservabilityEvent[] = []
 const recentEvents: ObservabilityEvent[] = []
 let timer: ReturnType<typeof setTimeout> | null = null
 let activeFlush: Promise<void> | null = null
@@ -163,18 +168,7 @@ export async function flushEvents(): Promise<void> {
   activeFlush = Promise.resolve().then(() => {
     while (queue.length > 0) {
       const batch = queue.splice(0, DEFAULT_BATCH_SIZE)
-      try {
-        persistBatch(batch)
-      }
-      catch (error) {
-        droppedEvents += batch.length
-        recordObservabilityDroppedEvents(batch.length)
-        logger.error('failed to persist batch; dropping events', {
-          droppedBatch: batch.length,
-          droppedTotal: droppedEvents,
-          error,
-        })
-      }
+      persistBatch(batch)
     }
   }).finally(() => {
     activeFlush = null
@@ -457,7 +451,10 @@ function enqueueEvent(event: ObservabilityEvent): void {
     return
   }
 
-  queue.push(event)
+  queue.push({
+    event,
+    storageKey: currentStorageKey(),
+  })
   if (queue.length >= DEFAULT_BATCH_SIZE) {
     scheduleFlush(0)
     return
@@ -493,32 +490,92 @@ function scheduleFlush(delayMs: number): void {
   }, delayMs)
 }
 
-function persistBatch(batch: ObservabilityEvent[]): void {
+function persistBatch(batch: QueuedObservabilityEvent[]): void {
   if (batch.length === 0) {
     return
   }
 
-  db().insert(observabilityEvents).values(batch.map((event) => {
-    const persisted = EventPersistenceProjectionSchema.parse(event)
-    return {
-      id: event.id,
-      schemaVersion: event.schemaVersion,
-      source: event.source,
-      code: event.code,
-      severity: event.severity,
-      category: event.category,
-      message: event.message,
-      attrsJson: event.attrs ? JSON.stringify(event.attrs) : null,
-      chatSessionId: persisted.chatSessionId,
-      runId: persisted.runId,
-      messageId: persisted.messageId,
-      traceId: persisted.traceId,
-      dedupeKey: persisted.dedupeKey,
-      parentEventId: persisted.parentEventId,
-      occurredAt: event.occurredAt,
-      recordedAt: event.recordedAt,
+  const storageKey = currentStorageKey()
+  const events = batch.flatMap(item => item.storageKey === storageKey ? [item.event] : [])
+  const staleEvents = batch.length - events.length
+  if (staleEvents > 0) {
+    droppedEvents += staleEvents
+    recordObservabilityDroppedEvents(staleEvents)
+    logger.warn('dropping observability events from a previous storage context', {
+      droppedBatch: staleEvents,
+      droppedTotal: droppedEvents,
+    })
+  }
+
+  if (events.length === 0) {
+    return
+  }
+
+  const rows = events.map(toObservabilityEventRow)
+  try {
+    db().insert(observabilityEvents).values(rows).run()
+    return
+  }
+  catch (error) {
+    logger.warn('failed to persist observability batch; retrying events individually', {
+      batchSize: batch.length,
+      error,
+    })
+  }
+
+  let droppedBatchEvents = 0
+  for (const row of rows) {
+    try {
+      db().insert(observabilityEvents).values(row).run()
     }
-  })).run()
+    catch (error) {
+      droppedBatchEvents += 1
+      if (droppedBatchEvents === 1) {
+        logger.error('failed to persist observability event; dropping event', {
+          eventId: row.id,
+          code: row.code,
+          chatSessionId: row.chatSessionId,
+          runId: row.runId,
+          messageId: row.messageId,
+          error,
+        })
+      }
+    }
+  }
+
+  if (droppedBatchEvents > 0) {
+    droppedEvents += droppedBatchEvents
+    recordObservabilityDroppedEvents(droppedBatchEvents)
+  }
+}
+
+function toObservabilityEventRow(event: ObservabilityEvent): NewObservabilityEventRow {
+  const persisted = EventPersistenceProjectionSchema.parse(event)
+  return {
+    id: event.id,
+    schemaVersion: event.schemaVersion,
+    source: event.source,
+    code: event.code,
+    severity: event.severity,
+    category: event.category,
+    message: event.message,
+    attrsJson: event.attrs ? JSON.stringify(event.attrs) : null,
+    chatSessionId: persisted.chatSessionId,
+    runId: persisted.runId,
+    messageId: persisted.messageId,
+    traceId: persisted.traceId,
+    dedupeKey: persisted.dedupeKey,
+    parentEventId: persisted.parentEventId,
+    occurredAt: event.occurredAt,
+    recordedAt: event.recordedAt,
+  }
+}
+
+function currentStorageKey(): string {
+  return [
+    process.env.CRADLE_DATA_DIR ?? '',
+    process.env.CRADLE_DB_PATH ?? '',
+  ].join('\0')
 }
 
 interface ErrorPatternInput {
