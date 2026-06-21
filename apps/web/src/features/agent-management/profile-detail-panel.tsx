@@ -81,7 +81,7 @@ import { CustomModelsEditor } from './custom-models-editor'
 import { ModelsPanel } from './models-panel'
 import {
   ALL_DISABLED_SENTINEL,
-  presetForProfile,
+  presetForProviderKind,
   PROVIDER_KIND_LABELS,
 } from './provider-settings-utils'
 import type { EditableCustomModel } from './provider-target-model-settings'
@@ -333,7 +333,6 @@ export function ProfileDetailPanel({
   onToggle: (enabled: boolean) => void
   onSaved: () => void
 }) {
-  const preset = presetForProfile(profile)
   const queryClient = useQueryClient()
   const providerTarget: ProviderTarget = ({ kind: 'manual', id: profile.id })
 
@@ -374,6 +373,7 @@ export function ProfileDetailPanel({
   const credentialMetadata = useCredentialMetadata(profile.credentialRef)
   const showCodexAccountDiagnostics = providerKind === 'openai-compatible'
     && normalizeCodexAuthMode(authMode) === CODEX_AUTH_MODE_CHATGPT
+  const preset = presetForProviderKind(providerKind)
 
   useEffect(() => {
     latestProfileRef.current = profile
@@ -739,12 +739,14 @@ export function ProfileDetailPanel({
         .catch(() => {})
     }
 
-  const kindLabel = PROVIDER_KIND_LABELS[profile.providerKind]
+  const headerName = name.trim() || profile.name
+  const kindLabel = PROVIDER_KIND_LABELS[providerKind]
 
   return (
     <div data-testid="provider-detail-panel" className="flex flex-col gap-2">
       <ProfileDetailHeader
         profile={profile}
+        displayName={headerName}
         kindLabel={kindLabel}
         icon={(
           <IconPicker
@@ -838,6 +840,7 @@ export function ProfileDetailPanel({
 
 function ProfileDetailHeader({
   profile,
+  displayName,
   kindLabel,
   icon,
   saveState,
@@ -845,6 +848,7 @@ function ProfileDetailHeader({
   onOpenRemove,
 }: {
   profile: AgentProfile
+  displayName: string
   kindLabel: string
   icon: ReactNode
   saveState: SaveState
@@ -858,7 +862,7 @@ function ProfileDetailHeader({
       <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
           <h4 className="font-heading truncate text-[15px] font-medium text-foreground">
-            {profile.name}
+            {displayName}
           </h4>
           <Badge variant="secondary" className="font-normal text-muted-foreground">
             {kindLabel}

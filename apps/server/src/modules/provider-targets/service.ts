@@ -2,8 +2,8 @@ import { randomUUID } from 'node:crypto'
 
 import type { ProviderTarget as ProviderTargetRow } from '@cradle/db'
 import {
-  agents,
   agentCredentials,
+  agents,
   agentSessions,
   backendCapabilitySnapshots,
   chatSessionQueueItems,
@@ -24,12 +24,12 @@ import {
   CODEX_CHATGPT_AUTH_SECRET_KIND,
   CODEX_PERSONAL_ACCESS_TOKEN_SECRET_KIND,
 } from '../chat-runtime-providers/codex/app-server/chatgpt-auth'
-import { CodexAuthModeSchema, readTrustedUniversalConfig } from '../provider-contracts/provider-base'
+import type { ClaudeAgentConfigPatch } from '../provider-contracts/claude-agent-config'
 import {
   applyClaudeAgentConfigPatch,
   normalizeClaudeAgentConfigPatch,
-  type ClaudeAgentConfigPatch,
 } from '../provider-contracts/claude-agent-config'
+import { CodexAuthModeSchema, readTrustedUniversalConfig } from '../provider-contracts/provider-base'
 import { runtimeSupportsProviderKind } from '../provider-contracts/runtime-compatibility'
 import type { ModelCapabilities, ProviderKind, RuntimeKind } from '../provider-contracts/types'
 import {
@@ -344,6 +344,7 @@ export function upsertManualProviderTarget(
   const id = input.id?.trim() || randomUUID()
   const now = nowUnix()
   const existing = getProviderTarget(id)
+  const providerKindChanged = !!existing && existing.providerKind !== input.providerKind
   if (existing && existing.kind !== 'manual') {
     throw new AppError({
       code: 'invalid_provider_target',
@@ -356,6 +357,7 @@ export function upsertManualProviderTarget(
 
   const nextEnabled = input.enabled ?? existing?.enabled ?? true
   const connectionConfigJson = normalizeManualConnectionConfig(input)
+  const enabledModelsJson = providerKindChanged ? '[]' : (existing?.enabledModelsJson ?? '[]')
   const d = db()
   d.transaction((tx) => {
     tx.insert(providerTargets)
@@ -368,7 +370,7 @@ export function upsertManualProviderTarget(
         connectionConfigJson,
         credentialRef: input.credentialRef ?? null,
         iconSlug: input.iconSlug ?? null,
-        enabledModelsJson: existing?.enabledModelsJson ?? '[]',
+        enabledModelsJson,
         customModelsJson: existing?.customModelsJson ?? '[]',
         createdAt: now,
         updatedAt: now,
@@ -382,14 +384,26 @@ export function upsertManualProviderTarget(
           connectionConfigJson,
           credentialRef: input.credentialRef ?? null,
           ...(input.iconSlug !== undefined ? { iconSlug: input.iconSlug } : {}),
+          ...(providerKindChanged ? { enabledModelsJson } : {}),
           updatedAt: now,
         },
       })
       .run()
+    if (providerKindChanged) {
+      unlinkProviderTargetFromDurableProviderRuntimeBindings({
+        providerTargetId: id,
+        writer: tx,
+      })
+      tx.delete(providerTargetModelCache).where(eq(providerTargetModelCache.providerTargetId, id)).run()
+      tx.delete(agentSessions).where(eq(agentSessions.providerTargetId, id)).run()
+    }
     if (!nextEnabled) {
       disableAgentsForProviderTargetInDb(id, tx)
     }
   })
+  if (providerKindChanged) {
+    releaseLiveProviderRuntimeSessionsForProviderTarget(id)
+  }
 
   return getProviderTarget(id)!
 }

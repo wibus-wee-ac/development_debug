@@ -89,28 +89,22 @@ export function getProfile(id: string): AgentProfile | null {
   return target?.kind === 'manual' ? toProfile(target) : null
 }
 
-function assertProfileEditable(profileId: string, next?: UpsertProfileInput): void {
-  const existing = getProfile(profileId)
-  if (!existing) {
+function assertManualProfileOperation(profileId: string): void {
+  const existing = ProviderTargets.getProviderTarget(profileId)
+  if (!existing || existing.kind === 'manual') {
     return
   }
 
-  if (!next) {
-    return
-  }
-
-  if (existing.providerKind !== next.providerKind) {
-    throw new AppError({
-      code: 'invalid_profile_input',
-      status: 400,
-      message: 'Provider kind cannot be changed for an existing profile',
-      details: { profileId, providerKind: next.providerKind },
-    })
-  }
+  throw new AppError({
+    code: 'invalid_profile_input',
+    status: 400,
+    message: 'External provider targets cannot be changed through profile routes',
+    details: { profileId },
+  })
 }
 
 export function upsertProfile(input: UpsertProfileInput): AgentProfile {
-  assertProfileEditable(input.id, input)
+  assertManualProfileOperation(input.id)
   return toProfile(ProviderTargets.upsertManualProviderTarget({
     id: input.id,
     displayName: input.name,
@@ -123,12 +117,12 @@ export function upsertProfile(input: UpsertProfileInput): AgentProfile {
 }
 
 export function updateIcon(profileId: string, iconSlug: string | null): AgentProfile {
-  assertProfileEditable(profileId)
+  assertManualProfileOperation(profileId)
   return toProfile(ProviderTargets.updateProviderTargetIcon(profileId, iconSlug))
 }
 
 export function removeProfile(id: string): void {
-  assertProfileEditable(id)
+  assertManualProfileOperation(id)
   ProviderTargets.removeProviderTarget(id)
 }
 

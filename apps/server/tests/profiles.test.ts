@@ -9,6 +9,8 @@ import {
   backendSessionBindings,
   chatSessionQueueItems,
   messages,
+  providerTargetModelCache,
+  providerTargets,
   runtimeAuditLog,
   sessions,
   usageLogs,
@@ -160,6 +162,124 @@ describe('profiles capability', () => {
       )
       expect(removeSecret.status).toBe(200)
       expect(await removeSecret.json()).toEqual({ ok: true })
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+    }
+  })
+
+  it('allows changing a manual profile provider kind and clears provider-kind-owned runtime state', async () => {
+    const dataDir = makeTempDir('cradle-profile-kind-switch-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'test-secret-for-profile-kind-switch'
+
+    try {
+      const app = await createServerApp()
+      const createProfile = await app.handle(
+        new Request('http://localhost/profiles/profile-kind-switch', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Switch Profile',
+            providerKind: 'openai-compatible',
+            enabled: true,
+            config: { baseUrl: 'https://example.com/v1', model: 'gpt-4o' },
+            credentialRef: null,
+          }),
+        }),
+      )
+      expect(createProfile.status).toBe(200)
+
+      db()
+        .update(providerTargets)
+        .set({ enabledModelsJson: JSON.stringify(['gpt-4o']) })
+        .where(eq(providerTargets.id, 'profile-kind-switch'))
+        .run()
+      db()
+        .insert(providerTargetModelCache)
+        .values({
+          providerTargetId: 'profile-kind-switch',
+          modelsJson: JSON.stringify([
+            {
+              id: 'gpt-4o',
+              label: 'GPT-4o',
+              providerKind: 'openai-compatible',
+              capabilities: {},
+            },
+          ]),
+          fetchedAt: 1,
+        })
+        .run()
+      db()
+        .insert(sessions)
+        .values({
+          id: 'session-kind-switch',
+          workspaceId: null,
+          title: 'Kind Switch Session',
+          providerTargetId: 'profile-kind-switch',
+          runtimeKind: 'standard',
+          configJson: '{}',
+        })
+        .run()
+      db()
+        .insert(backendSessionBindings)
+        .values({
+          id: 'binding-kind-switch',
+          chatSessionId: 'session-kind-switch',
+          providerTargetId: 'profile-kind-switch',
+          runtimeKind: 'standard',
+          requestedModelId: 'gpt-4o',
+        })
+        .run()
+
+      const updateProfile = await app.handle(
+        new Request('http://localhost/profiles/profile-kind-switch', {
+          method: 'PUT',
+          headers: { 'content-type': 'application/json' },
+          body: JSON.stringify({
+            name: 'Switch Profile',
+            providerKind: 'anthropic',
+            enabled: true,
+            config: { baseUrl: 'https://anthropic.example.com', model: 'claude-sonnet-4' },
+            credentialRef: null,
+          }),
+        }),
+      )
+      expect(updateProfile.status).toBe(200)
+      expect(await updateProfile.json()).toEqual(expect.objectContaining({
+        id: 'profile-kind-switch',
+        providerKind: 'anthropic',
+      }))
+
+      expect(
+        db().select().from(providerTargets).where(eq(providerTargets.id, 'profile-kind-switch')).all(),
+      ).toEqual([
+        expect.objectContaining({
+          providerKind: 'anthropic',
+          enabledModelsJson: '[]',
+        }),
+      ])
+      expect(
+        db().select().from(providerTargetModelCache).where(eq(providerTargetModelCache.providerTargetId, 'profile-kind-switch')).all(),
+      ).toEqual([])
+      expect(
+        db().select().from(backendSessionBindings).where(eq(backendSessionBindings.id, 'binding-kind-switch')).all(),
+      ).toEqual([expect.objectContaining({ providerTargetId: null })])
     }
     finally {
       shutdownInfra()
