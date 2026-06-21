@@ -7,10 +7,8 @@ import {
   CheckCircleLine as CheckCircleIcon,
   LockLine as LockIcon,
 } from '@mingcute/react'
-import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
-import { TooltipProvider } from '~/components/ui/tooltip'
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
@@ -18,11 +16,13 @@ import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { Skeleton } from '~/components/ui/skeleton'
 import { Switch } from '~/components/ui/switch'
+import { TooltipProvider } from '~/components/ui/tooltip'
 import { SettingsDivider, SettingsRow, SettingsSectionHeader } from '~/features/settings/settings-row'
 import { cn } from '~/lib/cn'
 
 import { deriveMcpUrl } from '../format'
-import { useNowledgeConfig, type SaveState } from '../hooks'
+import type { SaveState } from '../hooks'
+import { useNowledgeConfig } from '../hooks'
 import type { ConfigFormState } from '../types'
 
 interface ConfigTabProps {
@@ -84,7 +84,7 @@ export function ConfigTab({ ctx }: ConfigTabProps) {
         enabled: formToSave.enabled,
       })
       if (clearTimerRef.current) { clearTimeout(clearTimerRef.current) }
-      clearTimerRef.current = setTimeout(() => setSaveState('idle'), 1600)
+      clearTimerRef.current = setTimeout(setSaveState, 1600, 'idle')
     }
     catch (err) {
       if (saveRequestRef.current !== requestId) { return }
@@ -176,12 +176,13 @@ export function ConfigTab({ ctx }: ConfigTabProps) {
           description="Read from NMEM_API_KEY in env or shared plugin config. Never persisted or returned."
         >
           <Badge variant={config.hasApiKey ? 'secondary' : 'outline'} className="gap-1">
-            {config.hasApiKey ? (
+            {config.hasApiKey && (
               <>
                 <LockIcon className="size-3" aria-hidden="true" />
                 Set
               </>
-            ) : (
+            )}
+            {!config.hasApiKey && (
               <>
                 <AlertCircleIcon className="size-3 !text-warning" aria-hidden="true" />
                 Missing
@@ -204,7 +205,9 @@ export function ConfigTab({ ctx }: ConfigTabProps) {
             <AlertCircleIcon aria-hidden="true" />
             <AlertTitle>API key not configured</AlertTitle>
             <AlertDescription>
-              Set <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">NMEM_API_KEY</code> in the environment or shared plugin config. The plugin never persists or returns the key.
+              <span>Set </span>
+              <code className="rounded bg-muted px-1 py-0.5 font-mono text-xs">NMEM_API_KEY</code>
+              <span> in the environment or shared plugin config. The plugin never persists or returns the key.</span>
             </AlertDescription>
           </Alert>
         )}
@@ -287,9 +290,7 @@ export function ConfigTab({ ctx }: ConfigTabProps) {
 
         {/* Footer: SaveState + actions */}
         <div className="mt-2 flex items-center justify-between gap-2 pb-4">
-          <AnimatePresence>
-            <SaveIndicator state={saveState} />
-          </AnimatePresence>
+          <SaveIndicator state={saveState} />
           <div className="flex items-center gap-2">
             <Button
               type="button"
@@ -327,13 +328,9 @@ function signatureOf(form: { apiUrl: string, spaceId: string, enabled: boolean }
 function SaveIndicator({ state }: { state: SaveState }) {
   if (state === 'idle') { return null }
   return (
-    <motion.span
-      initial={{ opacity: 0, x: 4 }}
-      animate={{ opacity: 1, x: 0 }}
-      exit={{ opacity: 0, x: -2 }}
-      transition={{ duration: 0.18 }}
+    <span
       className={cn(
-        'flex items-center gap-1 text-[11px] font-medium',
+        'flex items-center gap-1 text-[11px] font-medium transition-opacity duration-200',
         (state === 'saving' || state === 'pending') && 'text-muted-foreground',
         state === 'saved' && 'text-success',
         state === 'error' && 'text-destructive',
@@ -348,6 +345,6 @@ function SaveIndicator({ state }: { state: SaveState }) {
         {state === 'saved' && 'Saved'}
         {state === 'error' && 'Save failed'}
       </span>
-    </motion.span>
+    </span>
   )
 }
