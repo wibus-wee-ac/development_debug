@@ -129,16 +129,7 @@ export function SideConversationPanel({
 
   return (
     <div className="flex h-full min-h-0 min-w-0 flex-col overflow-hidden" data-testid="side-conversation-panel">
-      <div className="flex shrink-0 items-center gap-2 border-b border-border/50 bg-card px-3 py-2">
-        <div className="flex size-6 shrink-0 items-center rounded-md bg-primary/10">
-          <BotIcon className="mx-auto size-3.5 !text-primary" />
-        </div>
-        <div className="min-w-0 flex-1">
-          <p className="truncate text-xs font-medium text-foreground">{title}</p>
-          <p className="truncate text-[10px] text-muted-foreground">{parentSessionId}</p>
-        </div>
-      </div>
-
+      
       <div className="min-h-0 flex-1 overflow-y-auto px-3 py-3">
         {messages.length > 0
 ? (

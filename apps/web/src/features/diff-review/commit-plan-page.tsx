@@ -71,7 +71,7 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
   }, [plan])
 
   const editable = plan != null && plan.status !== 'applied'
-  const commitAgentBusy = createAgentFixMutation.isPending || startAgentFixMutation.isPending
+  const commitPlanningBusy = createAgentFixMutation.isPending || startAgentFixMutation.isPending
 
   const resetDrafts = () => {
     if (!plan) {
@@ -144,10 +144,10 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
           <div className="rounded-lg border border-border bg-background p-3">
             <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-foreground">
               <GitCommitVerticalIcon className="size-3.5 !text-muted-foreground/70" />
-              Ask an agent to plan commits
+              Ask the selected model to plan commits
             </div>
             <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">
-              The agent reads this review, proposes commit groups, and can make the final commit sequence traceable in chat.
+              The selected provider and model read this review, propose commit groups, and keep the planning traceable in chat.
             </p>
             <ProviderModelSelector
               profiles={composer.profiles}
@@ -167,7 +167,7 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
               type="button"
               size="sm"
               className="mt-3 w-full text-xs"
-              disabled={commitAgentBusy || files.length === 0 || !composer.selection.profileId}
+              disabled={commitPlanningBusy || files.length === 0 || !composer.selection.profileId}
               onClick={async () => {
                 if (!review || !composer.selection.profileId) {
                   return
@@ -176,7 +176,6 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
                 const createdReview = await createAgentFixMutation.mutateAsync({
                   instruction: 'Plan a clean commit sequence for this review. Propose commit messages, file groupings, dependencies, and whether the working tree is ready to commit.',
                   expectedOutput: 'commit',
-                  profileId: composer.selection.profileId,
                 })
                 const created = latestAgentFix(createdReview, beforeIds)
                 if (!created) {
@@ -193,8 +192,8 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
                 }
               }}
             >
-              {commitAgentBusy ? <Loader2Icon className="size-3.5 animate-spin" /> : <GitCommitVerticalIcon className="size-3.5" />}
-              Plan with agent
+              {commitPlanningBusy ? <Loader2Icon className="size-3.5 animate-spin" /> : <GitCommitVerticalIcon className="size-3.5" />}
+              Plan in chat
             </Button>
           </div>
 

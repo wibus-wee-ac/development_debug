@@ -243,7 +243,12 @@ export function ThinkingEffortButton({
         layout
         aria-hidden="true"
         className="relative inline-flex h-4 shrink-0 items-center overflow-hidden rounded-[6px] bg-foreground/[0.07] p-0.5"
-        style={{ width: stripWidth }}
+        animate={{
+          opacity: mode === 'dragging' ? 1 : 0,
+          scaleX: mode === 'dragging' ? 1 : 0.92,
+          width: mode === 'dragging' ? stripWidth : 0,
+        }}
+        style={{ originX: 0 }}
         transition={transition}
       >
         {!isDisabled && (

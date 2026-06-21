@@ -139,8 +139,8 @@ export function GuideView({ workspaceId, repositoryPath, reviewId, onBack }: Gui
 }
 
 /**
- * The gate before any tokens are spent. Lets the user pick the runtime + provider + model, states
- * the cost explicitly, and only fires generation on a deliberate click. In `force` mode it
+ * The gate before any tokens are spent. Lets the user pick the tool runtime plus provider/model,
+ * states the cost explicitly, and only fires generation on a deliberate click. In `force` mode it
  * replaces an existing guide rather than creating the first one.
  */
 function GuideGenerateGate({
@@ -194,13 +194,13 @@ function GuideGenerateGate({
           </h2>
           <p className="mt-1.5 text-[13px] leading-relaxed text-muted-foreground">
             {force
-              ? 'This re-runs the model over the current diff and replaces the existing guide chapter by chapter.'
-              : 'A guide walks you through this change step by step — what each part does, why it exists, and where to look. We generate it on demand by reading the diff.'}
+              ? 'This re-runs the selected runtime and model over the current diff and replaces the existing guide chapter by chapter.'
+              : 'A guide walks you through this change step by step — what each part does, why it exists, and where to look. We generate it on demand with the selected runtime and model.'}
           </p>
         </div>
 
         <div className="mt-8 space-y-4 rounded-xl border border-border bg-sidebar/40 p-4">
-          <Field label="Runtime">
+          <Field label="Tool runtime">
             <RuntimeSelector
               value={runtimeKind}
               onChange={composer.setRuntimeKind}
@@ -231,8 +231,8 @@ function GuideGenerateGate({
           <SparklesIcon className="mt-0.5 size-3.5 shrink-0" />
           <span>
             {force
-              ? 'Regenerating runs the selected model over this review again and spends tokens.'
-              : 'Generating a guide runs the selected model over this review and spends tokens.'}
+              ? 'Regenerating runs the selected runtime and model over this review again and spends tokens.'
+              : 'Generating a guide runs the selected runtime and model over this review and spends tokens.'}
             {review.currentRevision
               ? ` It covers ${review.currentRevision.fileCount} file${review.currentRevision.fileCount === 1 ? '' : 's'}.`
               : ''}

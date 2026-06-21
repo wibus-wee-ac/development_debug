@@ -1366,7 +1366,7 @@ export function Composer({
         </div>
         </div>
         {footer && (
-          <div className="relative -mt-2 flex min-h-11 min-w-0 items-center rounded-b-2xl bg-muted/45 px-2.5 pb-1 pt-3 text-[13px] shadow-[inset_0_1px_0_rgb(255_255_255_/_0.55),0_8px_18px_-18px_rgb(0_0_0_/_0.32)]">
+          <div className=" relative -mt-4 flex min-h-11 min-w-0 items-center rounded-b-2xl bg-muted/45 px-2.5 pb-1 pt-5 text-[13px] shadow-sm">
             {footer}
           </div>
         )}
