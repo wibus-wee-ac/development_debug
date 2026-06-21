@@ -1,4 +1,8 @@
 import type {
+  ConversationBridgeControlBlock,
+  ConversationBridgeControlElement,
+  ConversationBridgeControlOption,
+  ConversationBridgeControlResponse,
   ConversationBridgeAdapterRegistration,
   ConversationBridgeAdapterRuntime,
   ConversationBridgeAdapterRuntimeContext,
@@ -6,13 +10,29 @@ import type {
   ConversationBridgeDeliveryInput,
   ConversationBridgeDeliveryResult,
   ConversationBridgeHost,
+  NormalizedConversationControl,
   NormalizedConversationInboundMessage,
+} from '@cradle/plugin-sdk/server'
+import {
+  CONVERSATION_BRIDGE_CHANNEL_UNBIND_ACTION,
+  CONVERSATION_BRIDGE_SESSION_MODEL_SELECT_ACTION,
+  CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION,
+  CONVERSATION_BRIDGE_STATUS_REFRESH_ACTION,
 } from '@cradle/plugin-sdk/server'
 
 type SlackEventName = 'app_mention' | 'message'
 type SlackLogLevel = 'debug' | 'info' | 'warn' | 'error'
 type SlackBoltModule = typeof import('@slack/bolt')
 type SlackFormatModule = typeof import('./format')
+
+type SlackResponder = (message: {
+  text: string
+  blocks?: unknown[]
+  response_type?: 'ephemeral' | 'in_channel'
+  replace_original?: boolean
+}) => Promise<unknown>
+
+type SlackAck = () => Promise<unknown>
 
 export interface SlackMessageEvent {
   type?: string
@@ -29,6 +49,33 @@ export interface SlackEventEnvelope {
   event_id?: string
   team_id?: string
   event: SlackMessageEvent
+}
+
+export interface SlackCommandPayload {
+  team_id?: string
+  channel_id?: string
+  user_id?: string
+  command?: string
+  text?: string
+}
+
+export interface SlackActionPayload {
+  team?: {
+    id?: string
+  } | null
+  channel?: {
+    id?: string
+  } | null
+  user?: {
+    id?: string
+  } | null
+  actions?: Array<{
+    action_id?: string
+    selected_option?: {
+      value?: string
+    } | null
+    value?: string
+  }>
 }
 
 export interface SlackAppLike {
@@ -53,6 +100,16 @@ export interface SlackAppLike {
     }
   }
   event: (name: SlackEventName, handler: (input: { body: SlackEventEnvelope }) => Promise<void>) => void
+  command: (name: string, handler: (input: {
+    command: SlackCommandPayload
+    ack: SlackAck
+    respond: SlackResponder
+  }) => Promise<void>) => void
+  action: (actionId: string, handler: (input: {
+    body: SlackActionPayload
+    ack: SlackAck
+    respond: SlackResponder
+  }) => Promise<void>) => void
   start: () => Promise<void>
   stop: () => Promise<void>
 }
@@ -114,6 +171,24 @@ async function defaultSlackAppFactory(input: SlackAppFactoryInput): Promise<Slac
         await handler({ body: body as SlackEventEnvelope })
       })
     },
+    command(name, handler) {
+      app.command(name, async ({ command, ack, respond }) => {
+        await handler({
+          command: command as SlackCommandPayload,
+          ack,
+          respond,
+        })
+      })
+    },
+    action(actionId, handler) {
+      app.action(actionId, async ({ body, ack, respond }) => {
+        await handler({
+          body: body as SlackActionPayload,
+          ack,
+          respond,
+        })
+      })
+    },
     async start() {
       await app.start()
     },
@@ -157,6 +232,186 @@ function stripBotMention(text: string, botUserId?: string | null): string {
     cleaned = cleaned.replace(new RegExp(`<@${botUserId}>`, 'g'), '')
   }
   return cleaned.trim()
+}
+
+function truncatePlainText(text: string, maxLength: number): string {
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text
+}
+
+function blockOptionToSlack(option: ConversationBridgeControlOption) {
+  return {
+    text: {
+      type: 'plain_text' as const,
+      text: truncatePlainText(option.label, 75),
+    },
+    ...(option.description
+      ? {
+          description: {
+            type: 'plain_text' as const,
+            text: truncatePlainText(option.description, 75),
+          },
+        }
+      : {}),
+    value: option.value,
+  }
+}
+
+function blockElementToSlack(element: ConversationBridgeControlElement): Record<string, unknown> {
+  if (element.type === 'button') {
+    return {
+      type: 'button',
+      text: {
+        type: 'plain_text',
+        text: truncatePlainText(element.text, 75),
+      },
+      action_id: element.actionId,
+      ...(element.value ? { value: element.value } : {}),
+      ...(element.style ? { style: element.style } : {}),
+      ...(element.confirm
+        ? {
+            confirm: {
+              title: {
+                type: 'plain_text',
+                text: truncatePlainText(element.confirm.title, 100),
+              },
+              text: {
+                type: 'mrkdwn',
+                text: element.confirm.text,
+              },
+              confirm: {
+                type: 'plain_text',
+                text: truncatePlainText(element.confirm.confirm, 30),
+              },
+              deny: {
+                type: 'plain_text',
+                text: truncatePlainText(element.confirm.deny, 30),
+              },
+            },
+          }
+        : {}),
+    }
+  }
+
+  const initialOption = element.initialOption ? blockOptionToSlack(element.initialOption) : undefined
+  return {
+    type: 'static_select',
+    action_id: element.actionId,
+    placeholder: {
+      type: 'plain_text',
+      text: truncatePlainText(element.placeholder, 150),
+    },
+    options: element.options.map(blockOptionToSlack),
+    ...(initialOption ? { initial_option: initialOption } : {}),
+  }
+}
+
+function blockToSlack(block: ConversationBridgeControlBlock): Record<string, unknown> {
+  switch (block.type) {
+    case 'header':
+      return {
+        type: 'header',
+        text: {
+          type: 'plain_text',
+          text: truncatePlainText(block.text, 150),
+        },
+      }
+    case 'section':
+      return {
+        type: 'section',
+        text: {
+          type: 'mrkdwn',
+          text: block.text,
+        },
+        ...(block.accessory ? { accessory: blockElementToSlack(block.accessory) } : {}),
+      }
+    case 'context':
+      return {
+        type: 'context',
+        elements: [{
+          type: 'mrkdwn',
+          text: block.text,
+        }],
+      }
+    case 'actions':
+      return {
+        type: 'actions',
+        elements: block.elements.map(blockElementToSlack),
+      }
+    case 'divider':
+      return { type: 'divider' }
+  }
+}
+
+function controlResponseToSlack(message: ConversationBridgeControlResponse) {
+  return {
+    text: message.text,
+    response_type: message.visibility,
+    replace_original: message.replaceOriginal,
+    ...(message.blocks ? { blocks: message.blocks.map(blockToSlack) } : {}),
+  }
+}
+
+function errorResponseToSlack(error: unknown) {
+  return {
+    text: error instanceof Error ? error.message : String(error),
+    response_type: 'ephemeral' as const,
+  }
+}
+
+function normalizeSlackCommandControl(input: {
+  connectionId: string
+  command: SlackCommandPayload
+}): NormalizedConversationControl | null {
+  const teamId = input.command.team_id
+  const channelId = input.command.channel_id
+  if (!teamId || !channelId) {
+    return null
+  }
+  return {
+    connectionId: input.connectionId,
+    externalWorkspaceId: teamId,
+    externalChannelId: channelId,
+    externalActorId: input.command.user_id ?? null,
+    kind: 'command',
+    command: input.command.command ?? '/cradle',
+    text: input.command.text ?? '',
+    payload: {
+      slack: {
+        teamId,
+        channelId,
+        command: input.command.command ?? '/cradle',
+      },
+    },
+  }
+}
+
+function normalizeSlackActionControl(input: {
+  connectionId: string
+  body: SlackActionPayload
+}): NormalizedConversationControl | null {
+  const teamId = input.body.team?.id
+  const channelId = input.body.channel?.id
+  const action = input.body.actions?.[0]
+  if (!teamId || !channelId || !action?.action_id) {
+    return null
+  }
+  return {
+    connectionId: input.connectionId,
+    externalWorkspaceId: teamId,
+    externalChannelId: channelId,
+    externalActorId: input.body.user?.id ?? null,
+    kind: 'action',
+    actionId: action.action_id,
+    selectedValue: action.selected_option?.value ?? null,
+    value: action.value ?? null,
+    payload: {
+      slack: {
+        teamId,
+        channelId,
+        actionId: action.action_id,
+      },
+    },
+  }
 }
 
 export function normalizeSlackMessageEvent(input: {
@@ -256,6 +511,48 @@ export class SlackConversationBridgeRuntime implements ConversationBridgeAdapter
       await host.handleInboundMessage(normalized)
     }
 
+    const respondWithControl = async (
+      control: NormalizedConversationControl | null,
+      respond: SlackResponder,
+    ) => {
+      if (!control) {
+        await respond({
+          text: 'Slack command context was missing team or channel id.',
+          response_type: 'ephemeral',
+        })
+        return
+      }
+      try {
+        await respond(controlResponseToSlack(await host.handleControl(control)))
+      }
+      catch (error) {
+        await respond(errorResponseToSlack(error))
+      }
+    }
+
+    app.command('/cradle', async ({ command, ack, respond }) => {
+      await ack()
+      await respondWithControl(
+        normalizeSlackCommandControl({ connectionId: connection.id, command }),
+        respond,
+      )
+    })
+
+    for (const actionId of [
+      CONVERSATION_BRIDGE_STATUS_REFRESH_ACTION,
+      CONVERSATION_BRIDGE_CHANNEL_UNBIND_ACTION,
+      CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION,
+      CONVERSATION_BRIDGE_SESSION_MODEL_SELECT_ACTION,
+    ]) {
+      app.action(actionId, async ({ body, ack, respond }) => {
+        await ack()
+        await respondWithControl(
+          normalizeSlackActionControl({ connectionId: connection.id, body }),
+          respond,
+        )
+      })
+    }
+
     app.event('app_mention', async ({ body }) => handleEnvelope(body))
     app.event('message', async ({ body }) => handleEnvelope(body))
 
@@ -324,7 +621,7 @@ export function createSlackConversationAdapter(
       realtime: 'socket',
       channelBinding: true,
       threadBinding: true,
-      interactiveControls: false,
+      interactiveControls: true,
     },
     createRuntime: ctx => new SlackConversationBridgeRuntime(ctx, createApp),
   }

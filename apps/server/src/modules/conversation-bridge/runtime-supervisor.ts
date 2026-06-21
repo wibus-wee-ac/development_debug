@@ -93,6 +93,10 @@ function createHost(): ConversationBridgeHost {
       const service = await import('./service')
       await service.handleInboundMessage(event)
     },
+    async handleControl(input) {
+      const service = await import('./service')
+      return await service.handleControl(input)
+    },
     reportConnectionHealth(input) {
       void import('./service')
         .then(service => service.updateConnectionHealth(input))

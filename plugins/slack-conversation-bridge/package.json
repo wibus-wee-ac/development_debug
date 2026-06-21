@@ -3,11 +3,11 @@
   "type": "module",
   "version": "0.0.1",
   "private": true,
-  "description": "Slack conversation adapter for the Cradle server-owned conversation bridge",
+  "description": "Slack Socket Mode adapter and controls for the Cradle server-owned conversation bridge",
   "cradle": {
     "apiVersion": "1",
     "displayName": "Slack Conversation Bridge",
-    "description": "Connects Slack Socket Mode messages to Cradle conversation bridge sessions",
+    "description": "Connects Slack Socket Mode messages and /cradle controls to Cradle conversation bridge sessions",
     "server": "dist/server.mjs",
     "deployments": ["desktop"],
     "contributes": {

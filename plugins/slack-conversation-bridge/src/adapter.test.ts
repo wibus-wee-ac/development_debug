@@ -1,4 +1,7 @@
 import type { ConversationBridgeHost } from '@cradle/plugin-sdk/server'
+import {
+  CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION,
+} from '@cradle/plugin-sdk/server'
 import { describe, expect, it, vi } from 'vitest'
 
 import {
@@ -12,9 +15,13 @@ function createFakeApp(): {
   app: SlackAppLike
   posted: Array<{ channel: string, thread_ts: string, text: string, blocks?: unknown[] }>
   handlers: Record<string, (input: { body: any }) => Promise<void>>
+  commands: Record<string, Parameters<SlackAppLike['command']>[1]>
+  actions: Record<string, Parameters<SlackAppLike['action']>[1]>
 } {
   const posted: Array<{ channel: string, thread_ts: string, text: string, blocks?: unknown[] }> = []
   const handlers: Record<string, (input: { body: any }) => Promise<void>> = {}
+  const commands: Record<string, Parameters<SlackAppLike['command']>[1]> = {}
+  const actions: Record<string, Parameters<SlackAppLike['action']>[1]> = {}
   const app: SlackAppLike = {
     client: {
       auth: {
@@ -33,10 +40,16 @@ function createFakeApp(): {
     event: (name, handler) => {
       handlers[name] = handler
     },
+    command: (name, handler) => {
+      commands[name] = handler
+    },
+    action: (actionId, handler) => {
+      actions[actionId] = handler
+    },
     start: async () => undefined,
     stop: async () => undefined,
   }
-  return { app, posted, handlers }
+  return { app, posted, handlers, commands, actions }
 }
 
 describe('Slack conversation bridge adapter', () => {
@@ -88,9 +101,30 @@ describe('Slack conversation bridge adapter', () => {
       return fake.app
     }
     const inbound = vi.fn()
+    const control = vi.fn(async () => ({
+      text: 'Control response',
+      visibility: 'ephemeral' as const,
+      blocks: [{
+        type: 'section' as const,
+        text: 'Choose a runtime',
+      }, {
+        type: 'actions' as const,
+        elements: [{
+          type: 'static_select' as const,
+          actionId: CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION,
+          placeholder: 'Choose Cradle runtime',
+          options: [{
+            label: 'Standard: OpenAI',
+            description: 'openai-compatible',
+            value: 'provider-target:standard:target-1',
+          }],
+        }],
+      }],
+    }))
     const health = vi.fn()
     const host: ConversationBridgeHost = {
       handleInboundMessage: inbound,
+      handleControl: control,
       reportConnectionHealth: health,
     }
     const runtime = new SlackConversationBridgeRuntime({
@@ -157,6 +191,102 @@ describe('Slack conversation bridge adapter', () => {
     expect(health).toHaveBeenCalledWith(expect.objectContaining({
       connectionId: 'connection-1',
       status: 'running',
+    }))
+  })
+
+  it('acks Slack slash commands and actions before responding with host control output', async () => {
+    const fake = createFakeApp()
+    const createApp: SlackAppFactory = () => fake.app
+    const control = vi.fn(async () => ({
+      text: 'Bound this external channel',
+      visibility: 'in_channel' as const,
+      blocks: [{
+        type: 'section' as const,
+        text: 'Bound.',
+      }],
+    }))
+    const host: ConversationBridgeHost = {
+      handleInboundMessage: vi.fn(),
+      handleControl: control,
+      reportConnectionHealth: vi.fn(),
+    }
+    const runtime = new SlackConversationBridgeRuntime({
+      logger: {
+        info: vi.fn(),
+        warn: vi.fn(),
+        error: vi.fn(),
+        debug: vi.fn(),
+      },
+      sharedConfig: new Map(),
+      signal: new AbortController().signal,
+    }, createApp)
+
+    await runtime.start({
+      id: 'connection-1',
+      platform: 'slack',
+      displayName: 'Test Slack',
+      config: {},
+      secrets: {
+        botToken: 'xoxb-token',
+        appToken: 'xapp-token',
+        signingSecret: 'signing-secret',
+      },
+    }, host)
+
+    const ack = vi.fn(async () => undefined)
+    const responses: unknown[] = []
+    const respond = vi.fn(async message => {
+      responses.push(message)
+    })
+
+    await fake.commands['/cradle']?.({
+      command: {
+        team_id: 'T1',
+        channel_id: 'C1',
+        user_id: 'U1',
+        command: '/cradle',
+        text: 'bind workspace workspace-1',
+      },
+      ack,
+      respond,
+    })
+
+    expect(ack).toHaveBeenCalledTimes(1)
+    expect(control).toHaveBeenCalledWith(expect.objectContaining({
+      connectionId: 'connection-1',
+      externalWorkspaceId: 'T1',
+      externalChannelId: 'C1',
+      externalActorId: 'U1',
+      kind: 'command',
+      text: 'bind workspace workspace-1',
+    }))
+    expect(responses.at(-1)).toEqual(expect.objectContaining({
+      text: 'Bound this external channel',
+      response_type: 'in_channel',
+      blocks: expect.arrayContaining([
+        expect.objectContaining({ type: 'section' }),
+      ]),
+    }))
+
+    await fake.actions[CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION]?.({
+      body: {
+        team: { id: 'T1' },
+        channel: { id: 'C1' },
+        user: { id: 'U1' },
+        actions: [{
+          action_id: CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION,
+          selected_option: { value: 'provider-target:standard:target-1' },
+        }],
+      },
+      ack,
+      respond,
+    })
+
+    expect(ack).toHaveBeenCalledTimes(2)
+    expect(control).toHaveBeenLastCalledWith(expect.objectContaining({
+      kind: 'action',
+      actionId: CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION,
+      selectedValue: 'provider-target:standard:target-1',
     }))
   })
 })

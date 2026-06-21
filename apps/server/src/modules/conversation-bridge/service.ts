@@ -12,7 +12,18 @@ import {
   type ConversationBridgeDeliveryAttempt,
   type ConversationBridgeThreadBinding,
 } from '@cradle/db'
-import type { NormalizedConversationInboundMessage } from '@cradle/plugin-sdk/server'
+import {
+  CONVERSATION_BRIDGE_CHANNEL_UNBIND_ACTION,
+  CONVERSATION_BRIDGE_SESSION_MODEL_SELECT_ACTION,
+  CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION,
+  CONVERSATION_BRIDGE_STATUS_REFRESH_ACTION,
+  type ConversationBridgeControlBlock,
+  type ConversationBridgeControlElement,
+  type ConversationBridgeControlOption,
+  type ConversationBridgeControlResponse,
+  type NormalizedConversationControl,
+  type NormalizedConversationInboundMessage,
+} from '@cradle/plugin-sdk/server'
 import { and, desc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
@@ -21,10 +32,15 @@ import { parseJsonObjectOrEmpty } from '../../helpers/json-record'
 import { currentUnixSeconds } from '../../helpers/time'
 import { db } from '../../infra'
 import { listConversationBridgeAdapters } from '../../plugins/conversation-adapter-registry'
+import * as Agents from '../agent-identity/service'
+import { listRuntimeCatalog } from '../chat-runtime/chat-runtime-provider-registry'
 import * as ChatRuntime from '../chat-runtime/service'
 import { extractMessageText, parseStoredMessageSnapshot } from '../chat-runtime/ui-message'
+import { getCachedModelsForTarget } from '../provider-catalog/model-cache'
 import type { RuntimeKind } from '../provider-contracts/types'
+import * as ProviderTargets from '../provider-targets/service'
 import * as Session from '../session/service'
+import * as Workspace from '../workspace/service'
 import { deliverBridgeMessage } from './runtime-supervisor'
 
 const JsonRecordSchema = z.record(z.string(), z.unknown())
@@ -88,6 +104,31 @@ export interface BindChannelInput {
   metadata?: Record<string, unknown>
 }
 
+interface SessionTargetSummary {
+  kind: 'agent' | 'provider-target'
+  id: string
+  label: string
+  description: string | null
+  runtimeKind: string | null
+  runtimeLabel?: string | null
+  providerTargetId: string | null
+  modelId: string | null
+}
+
+interface ProviderModelSummary {
+  id: string
+  label: string
+}
+
+interface StatusConversation {
+  externalThreadId: string
+  sessionId: string
+  sessionTitle: string | null
+}
+
+const CONTROL_OPTION_LIMIT = 100
+const DEFAULT_MODEL_VALUE = '__cradle_default_model__'
+
 function now(): number {
   return currentUnixSeconds()
 }
@@ -140,6 +181,450 @@ function titleFromText(text: string): string {
 function buildProvenanceText(event: NormalizedConversationInboundMessage): string {
   const actor = event.externalActorId ? `External actor: ${event.externalActorId}\n` : ''
   return `${actor}External channel: ${event.externalChannelId}\nExternal thread: ${event.externalThreadId}\n\n${event.text}`
+}
+
+function parseControlCommand(text: string | undefined): string[] {
+  return (text ?? '').trim().split(/\s+/).filter(Boolean)
+}
+
+function escapePresentationText(text: string): string {
+  return text
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+}
+
+function truncatePresentationText(text: string, maxLength: number): string {
+  return text.length > maxLength ? `${text.slice(0, maxLength - 3)}...` : text
+}
+
+function shortId(id: string): string {
+  return id.length > 16 ? `${id.slice(0, 8)}...${id.slice(-4)}` : id
+}
+
+function dateFromExternalThreadId(externalThreadId: string): string {
+  const seconds = Number(externalThreadId.split('.')[0])
+  if (!Number.isFinite(seconds) || seconds <= 0) {
+    return 'an earlier external conversation'
+  }
+  return new Date(seconds * 1000).toLocaleString('en-US')
+}
+
+function headerBlock(text: string): ConversationBridgeControlBlock {
+  return { type: 'header', text }
+}
+
+function sectionBlock(text: string, accessory?: ConversationBridgeControlElement): ConversationBridgeControlBlock {
+  return accessory ? { type: 'section', text, accessory } : { type: 'section', text }
+}
+
+function contextBlock(text: string): ConversationBridgeControlBlock {
+  return { type: 'context', text }
+}
+
+function dividerBlock(): ConversationBridgeControlBlock {
+  return { type: 'divider' }
+}
+
+function actionsBlock(elements: ConversationBridgeControlElement[]): ConversationBridgeControlBlock {
+  return { type: 'actions', elements }
+}
+
+function supportsChatSurface(runtime: ReturnType<typeof listRuntimeCatalog>[number]): boolean {
+  return runtime.surfaces?.includes('chat') ?? true
+}
+
+function listSessionTargets(): SessionTargetSummary[] {
+  const agentTargets = Agents.list({ enabled: true })
+    .filter(agent => agent.runtimeKind !== 'cli-tui' && Boolean(agent.providerTargetId))
+    .map(agent => ({
+      kind: 'agent' as const,
+      id: agent.id,
+      label: agent.name,
+      description: agent.description,
+      runtimeKind: agent.runtimeKind,
+      runtimeLabel: null,
+      providerTargetId: agent.providerTargetId,
+      modelId: agent.modelId,
+    }))
+
+  const runtimes = listRuntimeCatalog().filter(runtime =>
+    runtime.runtimeKind !== 'cli-tui'
+    && supportsChatSurface(runtime)
+    && runtime.providerKinds.length > 0)
+  const providerRuntimeTargets = ProviderTargets.listProviderTargets()
+    .filter(target => target.enabled)
+    .flatMap(target => runtimes
+      .filter(runtime => runtime.providerKinds.includes(target.providerKind))
+      .map(runtime => ({
+        kind: 'provider-target' as const,
+        id: target.id,
+        label: target.displayName,
+        description: target.providerKind,
+        runtimeKind: runtime.runtimeKind,
+        runtimeLabel: runtime.label,
+        providerTargetId: target.id,
+        modelId: null,
+      })))
+
+  return [...agentTargets, ...providerRuntimeTargets]
+}
+
+function listProviderTargetModels(providerTargetId: string): ProviderModelSummary[] {
+  const target = ProviderTargets.getProviderTarget(providerTargetId)
+  if (!target) {
+    return []
+  }
+  const cached = getCachedModelsForTarget({ id: target.id, kind: target.kind })
+  return (cached?.models ?? []).map(model => ({
+    id: model.id,
+    label: model.label,
+  }))
+}
+
+function sessionTargetValue(target: Pick<SessionTargetSummary, 'kind' | 'id' | 'runtimeKind'>): string {
+  if (target.kind === 'provider-target') {
+    return `${target.kind}:${target.runtimeKind ?? 'standard'}:${target.id}`
+  }
+  return `${target.kind}:${target.id}`
+}
+
+function parseSessionTargetValue(value: string): {
+  kind: SessionTargetSummary['kind']
+  id: string
+  runtimeKind: string | null
+} | null {
+  if (value.startsWith('agent:')) {
+    const id = value.slice('agent:'.length)
+    return id ? { kind: 'agent', id, runtimeKind: null } : null
+  }
+
+  if (!value.startsWith('provider-target:')) {
+    return null
+  }
+
+  const remainder = value.slice('provider-target:'.length)
+  const separatorIndex = remainder.indexOf(':')
+  const runtimeKind = separatorIndex > 0 ? remainder.slice(0, separatorIndex) : ''
+  const id = remainder.slice(separatorIndex + 1)
+  if (!runtimeKind || !id) {
+    return null
+  }
+
+  return { kind: 'provider-target', id, runtimeKind }
+}
+
+function sessionModelValue(modelId: string | null): string {
+  return modelId ?? DEFAULT_MODEL_VALUE
+}
+
+function parseSessionModelValue(value: string): string | null {
+  return value === DEFAULT_MODEL_VALUE ? null : value
+}
+
+function selectedTargetForBinding(
+  binding: ConversationBridgeChannelBindingView | null,
+  targets: SessionTargetSummary[],
+): SessionTargetSummary | null {
+  if (!binding) {
+    return null
+  }
+  if (binding.sessionAgentId) {
+    return targets.find(target => target.kind === 'agent' && target.id === binding.sessionAgentId) ?? null
+  }
+  if (binding.sessionProviderTargetId) {
+    const runtimeKind = binding.sessionRuntimeKind ?? 'standard'
+    return targets.find(target =>
+      target.kind === 'provider-target'
+      && target.id === binding.sessionProviderTargetId
+      && (target.runtimeKind ?? 'standard') === runtimeKind) ?? null
+  }
+  return null
+}
+
+function runtimeLabelForTarget(target: SessionTargetSummary): string {
+  if (target.runtimeLabel) {
+    return target.runtimeLabel
+  }
+  if (target.runtimeKind === 'standard' || !target.runtimeKind) {
+    return 'Standard'
+  }
+  return target.runtimeKind
+}
+
+function sessionTargetLabel(target: SessionTargetSummary): string {
+  return target.kind === 'agent'
+    ? `Agent: ${target.label}`
+    : `${runtimeLabelForTarget(target)}: ${target.label}`
+}
+
+function sessionTargetDescription(target: SessionTargetSummary): string {
+  if (target.kind === 'agent') {
+    return [target.runtimeKind, target.modelId].filter(Boolean).join(' - ') || 'Agent default runtime'
+  }
+  return target.description ?? 'Provider target'
+}
+
+function sessionTargetOption(target: SessionTargetSummary): ConversationBridgeControlOption {
+  return {
+    label: truncatePresentationText(sessionTargetLabel(target), 75),
+    description: truncatePresentationText(sessionTargetDescription(target), 75),
+    value: sessionTargetValue(target),
+  }
+}
+
+function sessionModelOption(model: ProviderModelSummary | null): ConversationBridgeControlOption {
+  if (!model) {
+    return {
+      label: 'Use default model',
+      description: 'Let the selected agent or provider choose',
+      value: DEFAULT_MODEL_VALUE,
+    }
+  }
+  return {
+    label: truncatePresentationText(model.label || model.id, 75),
+    description: truncatePresentationText(model.id, 75),
+    value: sessionModelValue(model.id),
+  }
+}
+
+function buildSessionModelSelectBlocks(input: {
+  binding: ConversationBridgeChannelBindingView | null
+  models: ProviderModelSummary[]
+  prompt: string
+}): ConversationBridgeControlBlock[] {
+  const options = [
+    sessionModelOption(null),
+    ...input.models.slice(0, CONTROL_OPTION_LIMIT - 1).map(sessionModelOption),
+  ]
+  const selectedModel = input.binding?.sessionModelId
+    ? input.models.find(model => model.id === input.binding?.sessionModelId) ?? null
+    : null
+  const initialOption = selectedModel ? sessionModelOption(selectedModel) : sessionModelOption(null)
+  return [
+    sectionBlock(input.models.length
+      ? input.prompt
+      : `${input.prompt}\n\nNo cached models are available for the selected runtime yet.`),
+    actionsBlock([{
+      type: 'static_select',
+      actionId: CONVERSATION_BRIDGE_SESSION_MODEL_SELECT_ACTION,
+      placeholder: 'Choose model',
+      options,
+      initialOption,
+    }]),
+  ]
+}
+
+function buildSessionTargetSelectBlocks(input: {
+  binding: ConversationBridgeChannelBindingView | null
+  targets: SessionTargetSummary[]
+  models?: ProviderModelSummary[]
+  prompt: string
+}): ConversationBridgeControlBlock[] {
+  const options = input.targets.slice(0, CONTROL_OPTION_LIMIT).map(sessionTargetOption)
+  if (!options.length) {
+    return [
+      sectionBlock(`${input.prompt}\n\nNo enabled Cradle agents or provider targets are available.`),
+    ]
+  }
+
+  const selected = selectedTargetForBinding(input.binding, input.targets)
+  const blocks: ConversationBridgeControlBlock[] = [
+    sectionBlock(input.prompt),
+    actionsBlock([{
+      type: 'static_select',
+      actionId: CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION,
+      placeholder: 'Choose Cradle runtime',
+      options,
+      ...(selected ? { initialOption: sessionTargetOption(selected) } : {}),
+    }]),
+  ]
+  if (selected) {
+    blocks.push(...buildSessionModelSelectBlocks({
+      binding: input.binding,
+      models: input.models ?? [],
+      prompt: '*Default model for new external threads*',
+    }))
+  }
+  return blocks
+}
+
+function describeSessionTarget(binding: ConversationBridgeChannelBindingView | null, targets: SessionTargetSummary[]): string {
+  const selected = selectedTargetForBinding(binding, targets)
+  if (selected) {
+    return escapePresentationText(sessionTargetLabel(selected))
+  }
+  if (binding?.sessionAgentId) {
+    return `Agent: \`${escapePresentationText(binding.sessionAgentId)}\``
+  }
+  if (binding?.sessionProviderTargetId) {
+    return `${escapePresentationText(binding.sessionRuntimeKind ?? 'standard')}: \`${escapePresentationText(binding.sessionProviderTargetId)}\``
+  }
+  return 'Not selected'
+}
+
+function describeSessionModel(binding: ConversationBridgeChannelBindingView | null, models: ProviderModelSummary[]): string {
+  if (!binding?.sessionModelId) {
+    return 'Default'
+  }
+  const model = models.find(candidate => candidate.id === binding.sessionModelId)
+  return escapePresentationText(model?.label || binding.sessionModelId)
+}
+
+function listRecentThreadBindingsForChannel(input: {
+  connectionId: string
+  externalWorkspaceId: string
+  externalChannelId: string
+  limit: number
+}): ConversationBridgeThreadBindingView[] {
+  return db().select().from(conversationBridgeThreadBindings)
+    .where(and(
+      eq(conversationBridgeThreadBindings.connectionId, input.connectionId),
+      eq(conversationBridgeThreadBindings.externalWorkspaceId, input.externalWorkspaceId),
+      eq(conversationBridgeThreadBindings.externalChannelId, input.externalChannelId),
+    ))
+    .orderBy(desc(conversationBridgeThreadBindings.updatedAt))
+    .limit(input.limit)
+    .all()
+    .map(toThreadBindingView)
+}
+
+function resolveStatusConversations(threads: ConversationBridgeThreadBindingView[]): StatusConversation[] {
+  return threads.map(thread => ({
+    externalThreadId: thread.externalThreadId,
+    sessionId: thread.sessionId,
+    sessionTitle: Session.get(thread.sessionId)?.title ?? null,
+  }))
+}
+
+function listModelsForBinding(
+  binding: ConversationBridgeChannelBindingView | null,
+  targets: SessionTargetSummary[],
+): ProviderModelSummary[] {
+  const selected = selectedTargetForBinding(binding, targets)
+  return selected?.providerTargetId ? listProviderTargetModels(selected.providerTargetId) : []
+}
+
+function buildStatusResponse(input: {
+  connectionId: string
+  externalWorkspaceId: string
+  externalChannelId: string
+  binding: ConversationBridgeChannelBindingView | null
+  conversations: StatusConversation[]
+  sessionTargets: SessionTargetSummary[]
+  models: ProviderModelSummary[]
+  replaceOriginal?: boolean
+}): ConversationBridgeControlResponse {
+  const bindingText = input.binding
+    ? `This external channel is connected to Cradle workspace ${input.binding.cradleWorkspaceId}.`
+    : 'This external channel is not connected to a Cradle workspace.'
+  const threadText = input.conversations.length
+    ? input.conversations
+      .map(conversation => `- ${conversation.sessionTitle ?? 'Untitled Cradle session'} started from an external conversation on ${dateFromExternalThreadId(conversation.externalThreadId)}.`)
+      .join('\n')
+    : 'No external conversations have been connected to Cradle yet.'
+  const sessionTargetText = describeSessionTarget(input.binding, input.sessionTargets)
+  const sessionModelText = describeSessionModel(input.binding, input.models)
+  const blocks: ConversationBridgeControlBlock[] = [
+    headerBlock('Cradle Conversation Bridge'),
+    sectionBlock(input.binding
+      ? `*Connected.* New external threads in this channel can create Cradle sessions in *${escapePresentationText(input.binding.cradleWorkspaceId)}*. Replies in already-connected threads continue the matching Cradle session.`
+      : '*Not connected yet.* Bind this channel to a Cradle workspace before starting new Cradle-backed conversations.'),
+    contextBlock(input.binding
+      ? `Workspace: \`${escapePresentationText(input.binding.cradleWorkspaceId)}\` | Runtime: ${sessionTargetText} | Model: ${sessionModelText}`
+      : 'Run `/cradle bind workspace <workspace-id>` to connect this channel.'),
+    dividerBlock(),
+  ]
+
+  if (input.conversations.length) {
+    blocks.push(sectionBlock('*Recent connected conversations*'))
+    for (const conversation of input.conversations) {
+      const title = conversation.sessionTitle?.trim() || 'Untitled Cradle session'
+      blocks.push(sectionBlock(
+        `*${escapePresentationText(title)}*\nStarted from an external conversation on ${dateFromExternalThreadId(conversation.externalThreadId)}.`,
+        {
+          type: 'button',
+          text: 'View details',
+          actionId: CONVERSATION_BRIDGE_STATUS_REFRESH_ACTION,
+          value: conversation.sessionId,
+        },
+      ))
+      blocks.push(contextBlock(
+        `External thread \`${escapePresentationText(conversation.externalThreadId)}\` · Cradle session \`${escapePresentationText(shortId(conversation.sessionId))}\``,
+      ))
+    }
+  }
+  else {
+    blocks.push(sectionBlock('No external conversations have been connected to Cradle yet. Mention the adapter in this channel to start the first one after the channel is bound.'))
+  }
+
+  if (input.binding) {
+    blocks.push(dividerBlock())
+    blocks.push(...buildSessionTargetSelectBlocks({
+      binding: input.binding,
+      targets: input.sessionTargets,
+      models: input.models,
+      prompt: '*Default runtime for new external threads*',
+    }))
+  }
+
+  blocks.push(
+    dividerBlock(),
+    actionsBlock([
+      {
+        type: 'button',
+        text: 'Refresh status',
+        actionId: CONVERSATION_BRIDGE_STATUS_REFRESH_ACTION,
+        value: input.externalChannelId,
+      },
+      ...(input.binding
+        ? [{
+            type: 'button' as const,
+            text: 'Disconnect channel',
+            actionId: CONVERSATION_BRIDGE_CHANNEL_UNBIND_ACTION,
+            value: input.externalChannelId,
+            style: 'danger' as const,
+            confirm: {
+              title: 'Disconnect channel?',
+              text: 'New external threads in this channel will stop creating Cradle sessions until the channel is connected again.',
+              confirm: 'Disconnect',
+              deny: 'Cancel',
+            },
+          }]
+        : []),
+    ]),
+  )
+
+  return {
+    text: `${bindingText}\nDefault runtime: ${sessionTargetText}\nDefault model: ${sessionModelText}\n\nRecent connected conversations:\n${threadText}`,
+    blocks,
+    visibility: 'ephemeral',
+    replaceOriginal: input.replaceOriginal,
+  }
+}
+
+function statusResponseForChannel(input: {
+  connectionId: string
+  externalWorkspaceId: string
+  externalChannelId: string
+  replaceOriginal?: boolean
+}): ConversationBridgeControlResponse {
+  const binding = getChannelBinding(input.connectionId, input.externalWorkspaceId, input.externalChannelId)
+  const threads = listRecentThreadBindingsForChannel({
+    connectionId: input.connectionId,
+    externalWorkspaceId: input.externalWorkspaceId,
+    externalChannelId: input.externalChannelId,
+    limit: 5,
+  })
+  const sessionTargets = listSessionTargets()
+  const models = listModelsForBinding(binding, sessionTargets)
+  return buildStatusResponse({
+    ...input,
+    binding,
+    conversations: resolveStatusConversations(threads),
+    sessionTargets,
+    models,
+  })
 }
 
 export function listAdapters(): ConversationBridgeAdapterView[] {
@@ -271,6 +756,172 @@ export function unbindChannel(connectionId: string, externalWorkspaceId: string,
     eq(conversationBridgeChannelBindings.externalWorkspaceId, externalWorkspaceId),
     eq(conversationBridgeChannelBindings.externalChannelId, externalChannelId),
   )).run()
+}
+
+function ephemeralControlResponse(text: string, replaceOriginal?: boolean): ConversationBridgeControlResponse {
+  return {
+    text,
+    visibility: 'ephemeral',
+    replaceOriginal,
+  }
+}
+
+function bindExistingChannelWithDefaults(input: {
+  binding: ConversationBridgeChannelBindingView
+  sessionAgentId?: string | null
+  sessionProviderTargetId?: string | null
+  sessionRuntimeKind?: string | null
+  sessionModelId?: string | null
+  actorId?: string | null
+}): ConversationBridgeChannelBindingView {
+  return bindChannel({
+    connectionId: input.binding.connectionId,
+    externalWorkspaceId: input.binding.externalWorkspaceId,
+    externalChannelId: input.binding.externalChannelId,
+    cradleWorkspaceId: input.binding.cradleWorkspaceId,
+    sessionAgentId: input.sessionAgentId,
+    sessionProviderTargetId: input.sessionProviderTargetId,
+    sessionRuntimeKind: input.sessionRuntimeKind,
+    sessionModelId: input.sessionModelId,
+    boundByExternalActorId: input.actorId ?? input.binding.boundByExternalActorId,
+    metadata: input.binding.metadata,
+  })
+}
+
+async function handleCommandControl(input: NormalizedConversationControl): Promise<ConversationBridgeControlResponse> {
+  const [action, subject, value] = parseControlCommand(input.text)
+
+  if (action === 'bind' && subject === 'workspace' && value) {
+    const workspace = Workspace.get(value)
+    if (!workspace) {
+      return ephemeralControlResponse(`Workspace ${value} was not found in Cradle.`)
+    }
+    const binding = bindChannel({
+      connectionId: input.connectionId,
+      externalWorkspaceId: input.externalWorkspaceId,
+      externalChannelId: input.externalChannelId,
+      cradleWorkspaceId: workspace.id,
+      boundByExternalActorId: input.externalActorId,
+      metadata: { source: 'conversation-bridge-control' },
+    })
+    const sessionTargets = listSessionTargets()
+    const models = listModelsForBinding(binding, sessionTargets)
+    return {
+      text: `Bound this external channel to Cradle workspace ${workspace.id}. Choose the default Cradle runtime for new external threads.`,
+      blocks: buildSessionTargetSelectBlocks({
+        binding,
+        targets: sessionTargets,
+        models,
+        prompt: `Bound this external channel to Cradle workspace \`${escapePresentationText(workspace.id)}\`. Choose the default Cradle runtime for new external threads.`,
+      }),
+      visibility: 'in_channel',
+    }
+  }
+
+  if (action === 'unbind') {
+    unbindChannel(input.connectionId, input.externalWorkspaceId, input.externalChannelId)
+    return {
+      text: 'Removed the Cradle workspace binding for this channel.',
+      visibility: 'in_channel',
+    }
+  }
+
+  if (action === 'status' || !action) {
+    return statusResponseForChannel(input)
+  }
+
+  return ephemeralControlResponse('Usage: /cradle bind workspace <workspace-id>, /cradle unbind, or /cradle status')
+}
+
+async function handleSessionTargetSelectControl(input: NormalizedConversationControl): Promise<ConversationBridgeControlResponse> {
+  const parsed = input.selectedValue ? parseSessionTargetValue(input.selectedValue) : null
+  if (!parsed) {
+    return ephemeralControlResponse('Selected Cradle runtime was invalid.')
+  }
+
+  const binding = getChannelBinding(input.connectionId, input.externalWorkspaceId, input.externalChannelId)
+  if (!binding) {
+    return ephemeralControlResponse('Bind this channel to a Cradle workspace before choosing a runtime.')
+  }
+
+  const sessionTargets = listSessionTargets()
+  const target = sessionTargets.find(candidate =>
+    candidate.kind === parsed.kind
+    && candidate.id === parsed.id
+    && (candidate.kind === 'agent' || (candidate.runtimeKind ?? 'standard') === parsed.runtimeKind))
+  if (!target) {
+    return ephemeralControlResponse('Selected Cradle runtime is no longer available.')
+  }
+
+  bindExistingChannelWithDefaults({
+    binding,
+    sessionAgentId: target.kind === 'agent' ? target.id : null,
+    sessionProviderTargetId: target.kind === 'provider-target' ? target.id : null,
+    sessionRuntimeKind: target.kind === 'provider-target' ? target.runtimeKind ?? 'standard' : null,
+    sessionModelId: null,
+    actorId: input.externalActorId,
+  })
+  return statusResponseForChannel({ ...input, replaceOriginal: true })
+}
+
+async function handleSessionModelSelectControl(input: NormalizedConversationControl): Promise<ConversationBridgeControlResponse> {
+  if (!input.selectedValue) {
+    return ephemeralControlResponse('Selected Cradle model was invalid.')
+  }
+  const binding = getChannelBinding(input.connectionId, input.externalWorkspaceId, input.externalChannelId)
+  if (!binding) {
+    return ephemeralControlResponse('Bind this channel to a Cradle workspace before choosing a model.')
+  }
+
+  const sessionTargets = listSessionTargets()
+  const selectedTarget = selectedTargetForBinding(binding, sessionTargets)
+  if (!selectedTarget?.providerTargetId) {
+    return ephemeralControlResponse('Choose a Cradle runtime before choosing a model.')
+  }
+
+  const modelId = parseSessionModelValue(input.selectedValue)
+  if (modelId) {
+    const models = listProviderTargetModels(selectedTarget.providerTargetId)
+    if (!models.some(model => model.id === modelId)) {
+      return ephemeralControlResponse('Selected Cradle model is no longer available.')
+    }
+  }
+
+  bindExistingChannelWithDefaults({
+    binding,
+    sessionAgentId: binding.sessionAgentId,
+    sessionProviderTargetId: binding.sessionProviderTargetId,
+    sessionRuntimeKind: binding.sessionRuntimeKind,
+    sessionModelId: modelId,
+    actorId: input.externalActorId,
+  })
+  return statusResponseForChannel({ ...input, replaceOriginal: true })
+}
+
+async function handleActionControl(input: NormalizedConversationControl): Promise<ConversationBridgeControlResponse> {
+  switch (input.actionId) {
+    case CONVERSATION_BRIDGE_STATUS_REFRESH_ACTION:
+      return statusResponseForChannel({ ...input, replaceOriginal: true })
+    case CONVERSATION_BRIDGE_CHANNEL_UNBIND_ACTION:
+      unbindChannel(input.connectionId, input.externalWorkspaceId, input.externalChannelId)
+      return statusResponseForChannel({ ...input, replaceOriginal: true })
+    case CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION:
+      return await handleSessionTargetSelectControl(input)
+    case CONVERSATION_BRIDGE_SESSION_MODEL_SELECT_ACTION:
+      return await handleSessionModelSelectControl(input)
+    default:
+      return ephemeralControlResponse('Selected Cradle action was invalid.')
+  }
+}
+
+export async function handleControl(input: NormalizedConversationControl): Promise<ConversationBridgeControlResponse> {
+  if (!getConnection(input.connectionId)) {
+    return ephemeralControlResponse('Conversation bridge connection was not found.')
+  }
+  if (input.kind === 'command') {
+    return await handleCommandControl(input)
+  }
+  return await handleActionControl(input)
 }
 
 export function listRecentThreadBindings(connectionId: string, limit = 10): ConversationBridgeThreadBindingView[] {

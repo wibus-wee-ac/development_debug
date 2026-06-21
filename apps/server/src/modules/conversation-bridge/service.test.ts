@@ -3,10 +3,12 @@ import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
 import {
+  conversationBridgeChannelBindings,
   conversationBridgeDeliveryAttempts,
   conversationBridgeInboundEvents,
   conversationBridgeThreadBindings,
   messages,
+  providerTargetModelCache,
   providerTargets,
   sessions,
   workspaces,
@@ -71,6 +73,19 @@ function seedCradleRuntimeTarget(): void {
     customModelsJson: '[]',
     createdAt: timestamp,
     updatedAt: timestamp,
+  }).run()
+}
+
+function seedProviderModelCache(): void {
+  db().insert(providerTargetModelCache).values({
+    providerTargetId: 'target-1',
+    modelsJson: JSON.stringify([{
+      id: 'gpt-5',
+      label: 'GPT-5',
+      providerKind: 'openai-compatible',
+      capabilities: {},
+    }]),
+    fetchedAt: Math.floor(Date.now() / 1000),
   }).run()
 }
 
@@ -166,6 +181,118 @@ describe('conversation bridge service', () => {
     }))
     expect(db().select().from(conversationBridgeThreadBindings).all()).toHaveLength(0)
     expect(deliveredMessages).toHaveLength(0)
+  })
+
+  it('handles integrated slash controls for bind, status, runtime selection, model selection, and unbind', async () => {
+    seedCradleRuntimeTarget()
+    seedProviderModelCache()
+    const connection = ConversationBridge.createConnection({
+      platform: 'test',
+      adapterOwner: '@cradle/test-conversation-adapter',
+      adapterId: 'fake',
+      displayName: 'Fake',
+      enabled: true,
+    })
+
+    const bindResponse = await ConversationBridge.handleControl({
+      connectionId: connection.id,
+      externalWorkspaceId: 'external-workspace-1',
+      externalChannelId: 'external-channel-1',
+      externalActorId: 'external-user-1',
+      kind: 'command',
+      command: '/cradle',
+      text: 'bind workspace workspace-1',
+    })
+
+    expect(bindResponse).toMatchObject({
+      visibility: 'in_channel',
+      text: expect.stringContaining('workspace-1'),
+    })
+    expect(db().select().from(conversationBridgeChannelBindings).all()).toEqual([
+      expect.objectContaining({
+        connectionId: connection.id,
+        externalWorkspaceId: 'external-workspace-1',
+        externalChannelId: 'external-channel-1',
+        cradleWorkspaceId: 'workspace-1',
+        boundByExternalActorId: 'external-user-1',
+        sessionProviderTargetId: null,
+      }),
+    ])
+
+    const runtimeResponse = await ConversationBridge.handleControl({
+      connectionId: connection.id,
+      externalWorkspaceId: 'external-workspace-1',
+      externalChannelId: 'external-channel-1',
+      externalActorId: 'external-user-1',
+      kind: 'action',
+      actionId: 'cradle_session_target_select',
+      selectedValue: 'provider-target:standard:target-1',
+    })
+
+    expect(runtimeResponse).toMatchObject({
+      visibility: 'ephemeral',
+      replaceOriginal: true,
+      text: expect.stringContaining('workspace-1'),
+    })
+    expect(db().select().from(conversationBridgeChannelBindings).all()).toEqual([
+      expect.objectContaining({
+        sessionAgentId: null,
+        sessionProviderTargetId: 'target-1',
+        sessionRuntimeKind: 'standard',
+        sessionModelId: null,
+      }),
+    ])
+
+    const modelResponse = await ConversationBridge.handleControl({
+      connectionId: connection.id,
+      externalWorkspaceId: 'external-workspace-1',
+      externalChannelId: 'external-channel-1',
+      externalActorId: 'external-user-1',
+      kind: 'action',
+      actionId: 'cradle_session_model_select',
+      selectedValue: 'gpt-5',
+    })
+    expect(modelResponse.text).toContain('GPT-5')
+    expect(db().select().from(conversationBridgeChannelBindings).all()).toEqual([
+      expect.objectContaining({
+        sessionProviderTargetId: 'target-1',
+        sessionRuntimeKind: 'standard',
+        sessionModelId: 'gpt-5',
+      }),
+    ])
+
+    const statusResponse = await ConversationBridge.handleControl({
+      connectionId: connection.id,
+      externalWorkspaceId: 'external-workspace-1',
+      externalChannelId: 'external-channel-1',
+      externalActorId: 'external-user-1',
+      kind: 'command',
+      command: '/cradle',
+      text: 'status',
+    })
+    expect(statusResponse).toMatchObject({
+      visibility: 'ephemeral',
+      text: expect.stringContaining('workspace-1'),
+    })
+    expect(statusResponse.blocks).toEqual(expect.arrayContaining([
+      expect.objectContaining({ type: 'header' }),
+      expect.objectContaining({ type: 'actions' }),
+    ]))
+
+    const unbindResponse = await ConversationBridge.handleControl({
+      connectionId: connection.id,
+      externalWorkspaceId: 'external-workspace-1',
+      externalChannelId: 'external-channel-1',
+      externalActorId: 'external-user-1',
+      kind: 'command',
+      command: '/cradle',
+      text: 'unbind',
+    })
+    expect(unbindResponse).toMatchObject({
+      visibility: 'in_channel',
+      text: 'Removed the Cradle workspace binding for this channel.',
+    })
+    expect(db().select().from(conversationBridgeChannelBindings).all()).toHaveLength(0)
   })
 
   it('creates one session/thread binding for a bound channel and ignores duplicate events', async () => {
