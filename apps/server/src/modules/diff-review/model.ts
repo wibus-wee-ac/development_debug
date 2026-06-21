@@ -220,7 +220,7 @@ const commitPlan = t.Object({
   reviewId: t.String(),
   revisionId: t.String(),
   actorId: t.String(),
-  strategy: t.Union([t.Literal('single'), t.Literal('rule-based-groups'), t.Literal('manual')]),
+  strategy: t.Literal('manual'),
   status: t.Union([t.Literal('draft'), t.Literal('accepted'), t.Literal('applied'), t.Literal('abandoned')]),
   groups: t.Array(t.Object({
     id: t.String(),
@@ -363,14 +363,11 @@ export const DiffReviewModel = {
   startAgentFixBody: t.Object({
     agentId: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
     providerTargetId: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
+    runtimeKind: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
     modelId: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
   }, { additionalProperties: false }),
 
   cancelAgentFixBody: t.Object({}, { additionalProperties: false }),
-
-  createCommitPlanBody: t.Object({
-    strategy: t.Optional(t.Union([t.Literal('single'), t.Literal('rule-based-groups')])),
-  }, { additionalProperties: false }),
 
   updateCommitPlanBody: t.Object({
     groups: t.Optional(t.Array(commitPlanGroupInput)),

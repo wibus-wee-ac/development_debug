@@ -3,7 +3,6 @@ import {
   ArrowLeftLine as ArrowLeftIcon,
   CheckLine as CheckIcon,
   GitCommitLine as GitCommitVerticalIcon,
-  ListCheckLine as ListChecksIcon,
   LoadingLine as Loader2Icon,
   PencilLine as PencilIcon,
   CloseLine as XIcon
@@ -12,9 +11,9 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Textarea } from '~/components/ui/textarea'
-import { ProviderModelSelector, useComposerState } from '~/features/composer-toolbar'
+import { ProviderModelSelector, RuntimeSelector, useComposerState } from '~/features/composer-toolbar'
+import type { RuntimeKindOption } from '~/features/composer-toolbar/constants'
 import { cn } from '~/lib/cn'
-import { openChatSession } from '~/navigation/navigation-commands'
 
 import { navigateToReview } from './shared/navigation'
 import type {
@@ -34,6 +33,10 @@ interface CommitPlanPageProps {
 }
 
 const PLAN_STATUSES: EditableCommitPlanStatus[] = ['draft', 'accepted', 'abandoned']
+const COMMIT_PLAN_RUNTIME_OPTIONS: RuntimeKindOption[] = [
+  { value: 'codex' },
+  { value: 'claude-agent' },
+]
 
 const STATUS_TONE: Record<ReviewCommitPlan['status'], string> = {
   draft: 'text-muted-foreground',
@@ -46,7 +49,6 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
   const {
     review,
     isLoading,
-    commitPlanMutation,
     commitPlanUpdateMutation,
     commitPlanApplyMutation,
     createAgentFixMutation,
@@ -56,6 +58,11 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
 
   const files = useMemo(() => review?.files ?? [], [review?.files])
   const plan = review?.commitPlans[0] ?? null
+  const runtimeKind = composer.selection.runtimeKind
+  const profileId = composer.selection.profileId
+  const modelId = composer.selection.modelId
+  const latestCommitPlanningFix = latestCommitAgentFix(review)
+  const commitPlanningActive = latestCommitPlanningFix?.status === 'pending' || latestCommitPlanningFix?.status === 'running'
 
   const fileById = useMemo(() => new Map(files.map(file => [file.id, file])), [files])
   const [editing, setEditing] = useState(false)
@@ -71,7 +78,8 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
   }, [plan])
 
   const editable = plan != null && plan.status !== 'applied'
-  const commitPlanningBusy = createAgentFixMutation.isPending || startAgentFixMutation.isPending
+  const commitPlanningBusy = createAgentFixMutation.isPending || startAgentFixMutation.isPending || commitPlanningActive
+  const canPlanInChat = profileId != null && isCommitPlanRuntime(runtimeKind)
 
   const resetDrafts = () => {
     if (!plan) {
@@ -147,29 +155,43 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
               Ask the selected model to plan commits
             </div>
             <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">
-              The selected provider and model read this review, propose commit groups, and keep the planning traceable in chat.
+              The selected runtime, provider, and model read this review, propose commit groups, and keep the planning traceable in chat.
             </p>
-            <ProviderModelSelector
-              profiles={composer.profiles}
-              selectedProfileId={composer.selection.profileId}
-              selectedModelId={composer.selection.modelId}
-              models={composer.models}
-              modelsByProfileId={composer.modelsByProfileId}
-              loadingProfileIds={composer.loadingProfileIds}
-              thinkingEffort={composer.selection.thinkingEffort}
-              isLoadingModels={composer.isLoadingModels}
-              requestProfileModels={composer.requestProfileModels}
-              onSelectProfile={composer.setProfileId}
-              onSelectModel={composer.setModelId}
-              onSelectThinkingEffort={composer.setThinkingEffort}
-            />
+            <div className="space-y-3">
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-medium text-muted-foreground">Tool runtime</p>
+                <RuntimeSelector
+                  value={runtimeKind}
+                  onChange={composer.setRuntimeKind}
+                  options={COMMIT_PLAN_RUNTIME_OPTIONS}
+                  disabled={commitPlanningBusy}
+                />
+              </div>
+              <div className="space-y-1.5">
+                <p className="text-[11px] font-medium text-muted-foreground">Provider & model</p>
+                <ProviderModelSelector
+                  profiles={composer.profiles}
+                  selectedProfileId={profileId}
+                  selectedModelId={modelId}
+                  models={composer.models}
+                  modelsByProfileId={composer.modelsByProfileId}
+                  loadingProfileIds={composer.loadingProfileIds}
+                  thinkingEffort={composer.selection.thinkingEffort}
+                  isLoadingModels={composer.isLoadingModels}
+                  requestProfileModels={composer.requestProfileModels}
+                  onSelectProfile={composer.setProfileId}
+                  onSelectModel={composer.setModelId}
+                  onSelectThinkingEffort={composer.setThinkingEffort}
+                />
+              </div>
+            </div>
             <Button
               type="button"
               size="sm"
               className="mt-3 w-full text-xs"
-              disabled={commitPlanningBusy || files.length === 0 || !composer.selection.profileId}
+              disabled={commitPlanningBusy || files.length === 0 || !canPlanInChat}
               onClick={async () => {
-                if (!review || !composer.selection.profileId) {
+                if (!review || !profileId || !isCommitPlanRuntime(runtimeKind)) {
                   return
                 }
                 const beforeIds = new Set(review.agentFixes.map(fix => fix.id))
@@ -181,60 +203,20 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
                 if (!created) {
                   return
                 }
-                const startedReview = await startAgentFixMutation.mutateAsync({
+                await startAgentFixMutation.mutateAsync({
                   agentFixId: created.id,
-                  providerTargetId: composer.selection.profileId,
-                  modelId: composer.selection.modelId,
+                  providerTargetId: profileId,
+                  runtimeKind,
+                  modelId,
                 })
-                const started = startedReview.agentFixes.find(fix => fix.id === created.id)
-                if (started?.sessionId) {
-                  openChatSession(started.sessionId)
-                }
               }}
             >
               {commitPlanningBusy ? <Loader2Icon className="size-3.5 animate-spin" /> : <GitCommitVerticalIcon className="size-3.5" />}
-              Plan in chat
+              {commitPlanningBusy ? 'Planning...' : 'Plan in chat'}
             </Button>
-          </div>
-
-          <div className="rounded-lg border border-border bg-background p-3">
-            <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-foreground">
-              <ListChecksIcon className="size-3.5 !text-muted-foreground/70" />
-              Fallback plan
-            </div>
-            <p className="mb-2 text-[11px] leading-relaxed text-muted-foreground">
-              Group the
-{' '}
-{files.length}
-{' '}
-changed file
-{files.length === 1 ? '' : 's'}
-{' '}
-into logical commits, or squash everything into a single commit.
-            </p>
-            <div className="grid grid-cols-2 gap-2">
-              <Button
-                type="button"
-                variant="default"
-                size="sm"
-                className="text-xs"
-                onClick={() => commitPlanMutation.mutate('rule-based-groups')}
-                disabled={commitPlanMutation.isPending || files.length === 0}
-              >
-                {commitPlanMutation.isPending ? <Loader2Icon className="size-3.5 animate-spin" /> : null}
-                Grouped commits
-              </Button>
-              <Button
-                type="button"
-                variant="outline"
-                size="sm"
-                className="text-xs"
-                onClick={() => commitPlanMutation.mutate('single')}
-                disabled={commitPlanMutation.isPending || files.length === 0}
-              >
-                Single commit
-              </Button>
-            </div>
+            {latestCommitPlanningFix && (commitPlanningActive || latestCommitPlanningFix.status === 'failed') && (
+              <CommitPlanningStatusPanel fix={latestCommitPlanningFix} />
+            )}
           </div>
 
           {plan
@@ -244,7 +226,7 @@ into logical commits, or squash everything into a single commit.
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="text-xs font-medium text-foreground">
-                          {plan.strategy === 'rule-based-groups' ? 'Grouped' : plan.strategy === 'single' ? 'Single' : 'Manual'}
+                          Manual
                         </div>
                         {editing
                           ? (
@@ -363,7 +345,7 @@ into logical commits, or squash everything into a single commit.
               )
             : (
                 <div className="rounded-lg border border-dashed border-border p-6 text-center">
-                  <p className="text-xs text-muted-foreground">No commit plan yet. Generate one above.</p>
+                  <p className="text-xs text-muted-foreground">No commit plan yet. Plan one in chat above.</p>
                 </div>
               )}
         </div>
@@ -373,9 +355,54 @@ into logical commits, or squash everything into a single commit.
 }
 
 function latestAgentFix(review: CradleDiffReview, beforeIds: Set<string>): ReviewAgentFix | null {
-  return review.agentFixes
-    .filter(fix => !beforeIds.has(fix.id))
-    .sort((left, right) => right.createdAt - left.createdAt)[0] ?? null
+  let latest: ReviewAgentFix | null = null
+  for (const fix of review.agentFixes) {
+    if (beforeIds.has(fix.id)) {
+      continue
+    }
+    if (!latest || fix.createdAt > latest.createdAt) {
+      latest = fix
+    }
+  }
+  return latest
+}
+
+function latestCommitAgentFix(review: CradleDiffReview | null | undefined): ReviewAgentFix | null {
+  let latest: ReviewAgentFix | null = null
+  for (const fix of review?.agentFixes ?? []) {
+    if (fix.expectedOutput !== 'commit') {
+      continue
+    }
+    if (!latest || fix.createdAt > latest.createdAt) {
+      latest = fix
+    }
+  }
+  return latest
+}
+
+function isCommitPlanRuntime(kind: string): kind is 'codex' | 'claude-agent' {
+  return kind === 'codex' || kind === 'claude-agent'
+}
+
+function CommitPlanningStatusPanel({ fix }: { fix: ReviewAgentFix }) {
+  const running = fix.status === 'pending' || fix.status === 'running'
+  return (
+    <div className={cn(
+      'mt-3 rounded-lg border px-3 py-2 text-[11px] leading-relaxed',
+      running
+        ? 'border-sky-500/20 bg-sky-500/10 text-sky-700 dark:text-sky-300'
+        : 'border-red-500/20 bg-red-500/10 text-red-600 dark:text-red-400',
+    )}
+    >
+      <div className="flex items-center gap-2 font-medium">
+        {running && <Loader2Icon className="size-3.5 animate-spin" />}
+        <span>{running ? 'Planning commit sequence...' : 'Commit planning failed'}</span>
+      </div>
+      {fix.errorMessage && (
+        <p className="mt-1 text-current/80">{fix.errorMessage}</p>
+      )}
+    </div>
+  )
 }
 
 function CommitGroup({

@@ -331,6 +331,7 @@ export const diffReview = new Elysia({
     const input = body as {
       agentId?: string | null
       providerTargetId?: string | null
+      runtimeKind?: string | null
       modelId?: string | null
     }
     return await DiffReview.startAgentFix({
@@ -339,6 +340,7 @@ export const diffReview = new Elysia({
       agentFixId: params.agentFixId,
       agentId: input.agentId,
       providerTargetId: input.providerTargetId,
+      runtimeKind: input.runtimeKind,
       modelId: input.modelId,
     })
   }, {
@@ -389,6 +391,7 @@ export const diffReview = new Elysia({
     const input = body as {
       agentId?: string | null
       providerTargetId?: string | null
+      runtimeKind?: string | null
       modelId?: string | null
     }
     return await DiffReview.rerunAgentFix({
@@ -397,6 +400,7 @@ export const diffReview = new Elysia({
       agentFixId: params.agentFixId,
       agentId: input.agentId,
       providerTargetId: input.providerTargetId,
+      runtimeKind: input.runtimeKind,
       modelId: input.modelId,
     })
   }, {
@@ -424,24 +428,6 @@ export const diffReview = new Elysia({
       },
     },
     params: DiffReviewModel.agentFixParams,
-    response: { 200: DiffReviewModel.review },
-  })
-  .post('/:id/diff-reviews/:reviewId/commit-plan', ({ params, body }) => {
-    const input = body as { strategy?: 'single' | 'rule-based-groups' }
-    return DiffReview.createCommitPlan({
-      workspaceId: params.id,
-      reviewId: params.reviewId,
-      strategy: input.strategy,
-    })
-  }, {
-    detail: {
-      'summary': 'Create diff review commit plan',
-      'x-cradle-cli': {
-        command: ['workspace', 'diffs', 'commit-plan', 'create'],
-      },
-    },
-    params: DiffReviewModel.reviewParams,
-    body: DiffReviewModel.createCommitPlanBody,
     response: { 200: DiffReviewModel.review },
   })
   .put('/:id/diff-reviews/:reviewId/commit-plans/:commitPlanId', ({ params, body }) => {

@@ -183,7 +183,7 @@ export interface ReviewCommitPlanView {
   reviewId: string
   revisionId: string
   actorId: string
-  strategy: 'single' | 'rule-based-groups' | 'manual'
+  strategy: 'manual'
   status: 'draft' | 'accepted' | 'applied' | 'abandoned'
   groups: ReviewCommitPlanGroupView[]
   rationale: string

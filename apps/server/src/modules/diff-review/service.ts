@@ -44,11 +44,12 @@ import type { ChatRuntimeSettings, RuntimeProviderTargetProfile } from '../chat-
 import * as ChatRuntime from '../chat-runtime/service'
 import * as Git from '../git/service'
 import * as ModelRegistry from '../model-registry/service'
+import type { RuntimeKind } from '../provider-contracts/types'
 import * as Session from '../session/service'
 import { resolveProviderTarget } from '../provider-targets/service'
 import { buildAgentFixArtifact } from './agent-fix-artifacts'
 import { isRangeAnchorInput, normalizeAnchor, remapAnchorToRevision, toAnchorView } from './anchors'
-import { buildCommitPlanGroups, commitGroupsForPlan, normalizeCommitPlanGroups } from './commit-plans'
+import { commitGroupsForPlan, normalizeCommitPlanGroups } from './commit-plans'
 import { isGeneratedReviewFile, parsePatchFileSummaries } from './patch'
 import type {
   BranchCompareBinding,
@@ -238,7 +239,7 @@ function toCommitPlanView(row: DiffReviewCommitPlan): ReviewCommitPlanView {
     reviewId: row.reviewId,
     revisionId: row.revisionId,
     actorId: row.actorId,
-    strategy: row.strategy,
+    strategy: 'manual',
     status: row.status,
     groups: Array.isArray(parsed) ? parsed as ReviewCommitPlanGroupView[] : [],
     rationale: row.rationale,
@@ -450,7 +451,10 @@ function buildReviewView(
     .all()
     .map(toAgentFixView)
   const commitPlans = db().select().from(diffReviewCommitPlans)
-    .where(eq(diffReviewCommitPlans.reviewId, review.id))
+    .where(and(
+      eq(diffReviewCommitPlans.reviewId, review.id),
+      eq(diffReviewCommitPlans.strategy, 'manual'),
+    ))
     .orderBy(desc(diffReviewCommitPlans.createdAt))
     .all()
     .map(toCommitPlanView)
@@ -1006,6 +1010,7 @@ function getCommitPlanForReview(reviewId: string, commitPlanId: string): DiffRev
   const plan = db().select().from(diffReviewCommitPlans).where(and(
     eq(diffReviewCommitPlans.id, commitPlanId),
     eq(diffReviewCommitPlans.reviewId, reviewId),
+    eq(diffReviewCommitPlans.strategy, 'manual'),
   )).get()
   if (!plan) {
     throw new AppError({
@@ -2385,6 +2390,7 @@ export async function startAgentFix(input: {
   agentFixId: string
   agentId?: string | null
   providerTargetId?: string | null
+  runtimeKind?: RuntimeKind | null
   modelId?: string | null
   userId?: string
 }): Promise<DiffReviewView> {
@@ -2397,6 +2403,7 @@ async function startAgentFixRun(input: {
   agentFixId: string
   agentId?: string | null
   providerTargetId?: string | null
+  runtimeKind?: RuntimeKind | null
   modelId?: string | null
   userId?: string
 }, options: { rerun: boolean }): Promise<DiffReviewView> {
@@ -2417,14 +2424,23 @@ async function startAgentFixRun(input: {
     })
   }
 
-  const agentId = input.agentId?.trim() || agentFix.profileId || undefined
   const providerTargetId = input.providerTargetId?.trim() || undefined
+  const agentId = input.agentId?.trim() || (providerTargetId ? undefined : agentFix.profileId) || undefined
+  const runtimeKind = input.runtimeKind?.trim() || undefined
   if (!agentId && !providerTargetId) {
     throw new AppError({
       code: 'diff_review_agent_fix_target_missing',
       status: 400,
       message: 'Starting a diff review agent fix requires an agentId or providerTargetId',
       details: { reviewId: review.id, agentFixId: agentFix.id },
+    })
+  }
+  if (providerTargetId && !runtimeKind) {
+    throw new AppError({
+      code: 'diff_review_agent_fix_runtime_missing',
+      status: 400,
+      message: 'Starting a provider-backed diff review agent fix requires runtimeKind',
+      details: { reviewId: review.id, agentFixId: agentFix.id, providerTargetId },
     })
   }
 
@@ -2451,6 +2467,7 @@ async function startAgentFixRun(input: {
       origin: 'cradle-review',
       agentId,
       providerTargetId,
+      runtimeKind,
       modelId: input.modelId ?? agentRow?.modelId ?? null,
       runtimeSettings: { accessMode: 'full-access' },
     })
@@ -2485,6 +2502,7 @@ async function startAgentFixRun(input: {
         runId: run.runId,
         status: 'running',
         rerun: options.rerun,
+        runtimeKind,
       },
       createdAt: now,
     })
@@ -2514,6 +2532,7 @@ export async function rerunAgentFix(input: {
   agentFixId: string
   agentId?: string | null
   providerTargetId?: string | null
+  runtimeKind?: RuntimeKind | null
   modelId?: string | null
   userId?: string
 }): Promise<DiffReviewView> {
@@ -2636,47 +2655,6 @@ export async function deleteAgentFix(input: {
     createdAt: now,
   })
   return loadReviewView(getReviewRow(input.workspaceId, input.reviewId), { userId: input.userId })
-}
-
-export function createCommitPlan(input: {
-  workspaceId: string
-  reviewId: string
-  strategy?: 'single' | 'rule-based-groups'
-  userId?: string
-}): DiffReviewView {
-  const review = getReviewRow(input.workspaceId, input.reviewId)
-  const revision = getCurrentRevision(review)
-  const userId = input.userId ?? LOCAL_USER_ID
-  const strategy = input.strategy ?? 'rule-based-groups'
-  const files = db().select().from(diffReviewFiles)
-    .where(eq(diffReviewFiles.revisionId, revision.id))
-    .orderBy(asc(diffReviewFiles.path))
-    .all()
-  const groups = buildCommitPlanGroups(review, files, strategy)
-  const now = currentUnixSeconds()
-  const plan = db().insert(diffReviewCommitPlans).values({
-    id: randomUUID(),
-    reviewId: review.id,
-    revisionId: revision.id,
-    actorId: userId,
-    strategy,
-    status: 'draft',
-    groupsJson: jsonStringify(groups),
-    rationale: strategy === 'single'
-      ? 'A single commit keeps all working tree changes together.'
-      : 'The plan is rule-based and ordered so foundational schema/config changes land before implementation, tests, docs, and generated artifacts.',
-    createdAt: now,
-    updatedAt: now,
-  }).returning().get()
-  recordEvent({
-    reviewId: review.id,
-    eventKind: 'commit_plan_created',
-    actorKind: 'user',
-    actorId: userId,
-    payload: { commitPlanId: plan.id, strategy, groupCount: groups.length },
-    createdAt: now,
-  })
-  return loadReviewView(review, { userId })
 }
 
 export function updateCommitPlan(input: {

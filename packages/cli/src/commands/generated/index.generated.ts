@@ -214,13 +214,13 @@ import { register as registerWorkspaceDelete } from './workspace/delete'
 import { register as registerWorkspaceDiffsAgentFixArtifact } from './workspace/diffs/agent-fix/artifact'
 import { register as registerWorkspaceDiffsAgentFixCancel } from './workspace/diffs/agent-fix/cancel'
 import { register as registerWorkspaceDiffsAgentFixCreate } from './workspace/diffs/agent-fix/create'
+import { register as registerWorkspaceDiffsAgentFixDelete } from './workspace/diffs/agent-fix/delete'
 import { register as registerWorkspaceDiffsAgentFixRerun } from './workspace/diffs/agent-fix/rerun'
 import { register as registerWorkspaceDiffsAgentFixStart } from './workspace/diffs/agent-fix/start'
 import { register as registerWorkspaceDiffsBranchCompare } from './workspace/diffs/branch-compare'
 import { register as registerWorkspaceDiffsClose } from './workspace/diffs/close'
 import { register as registerWorkspaceDiffsCommit } from './workspace/diffs/commit'
 import { register as registerWorkspaceDiffsCommitPlanApply } from './workspace/diffs/commit-plan/apply'
-import { register as registerWorkspaceDiffsCommitPlanCreate } from './workspace/diffs/commit-plan/create'
 import { register as registerWorkspaceDiffsCommitPlanUpdate } from './workspace/diffs/commit-plan/update'
 import { register as registerWorkspaceDiffsFileViewed } from './workspace/diffs/file/viewed'
 import { register as registerWorkspaceDiffsGet } from './workspace/diffs/get'
@@ -473,13 +473,13 @@ export function registerGeneratedCommands(program: Command): void {
   registerWorkspaceDiffsAgentFixArtifact(program)
   registerWorkspaceDiffsAgentFixCancel(program)
   registerWorkspaceDiffsAgentFixCreate(program)
+  registerWorkspaceDiffsAgentFixDelete(program)
   registerWorkspaceDiffsAgentFixRerun(program)
   registerWorkspaceDiffsAgentFixStart(program)
   registerWorkspaceDiffsBranchCompare(program)
   registerWorkspaceDiffsClose(program)
   registerWorkspaceDiffsCommit(program)
   registerWorkspaceDiffsCommitPlanApply(program)
-  registerWorkspaceDiffsCommitPlanCreate(program)
   registerWorkspaceDiffsCommitPlanUpdate(program)
   registerWorkspaceDiffsFileViewed(program)
   registerWorkspaceDiffsGet(program)

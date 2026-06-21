@@ -1,4 +1,4 @@
-import type { DiffReview, DiffReviewFile } from '@cradle/db'
+import type { DiffReviewFile } from '@cradle/db'
 import { diffReviewFiles } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 
@@ -6,104 +6,6 @@ import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
 import type { GitCommitFileGroupInput } from '../git/service'
 import type { ReviewCommitPlanGroupInput, ReviewCommitPlanGroupView } from './types'
-
-type CommitGroupKind = 'schema' | 'implementation' | 'tests' | 'docs' | 'generated'
-
-function commitGroupKind(file: DiffReviewFile): CommitGroupKind {
-  const path = file.path.toLowerCase()
-  if (file.isGenerated) {
-    return 'generated'
-  }
-  if (path.includes('test') || path.includes('spec')) {
-    return 'tests'
-  }
-  if (path.endsWith('.md') || path.includes('/docs/')) {
-    return 'docs'
-  }
-  if (path.includes('schema') || path.endsWith('.sql') || path.includes('config') || path.includes('migration')) {
-    return 'schema'
-  }
-  return 'implementation'
-}
-
-function commitGroupTitle(kind: CommitGroupKind): string {
-  if (kind === 'schema') {
-    return 'Schema and configuration'
-  }
-  if (kind === 'implementation') {
-    return 'Implementation'
-  }
-  if (kind === 'tests') {
-    return 'Tests'
-  }
-  if (kind === 'docs') {
-    return 'Documentation'
-  }
-  return 'Generated artifacts'
-}
-
-function commitMessage(kind: CommitGroupKind, review: DiffReview): string {
-  if (kind === 'schema') {
-    return 'diff-review: update persistence schema'
-  }
-  if (kind === 'implementation') {
-    return `diff-review: implement ${review.sourceKind} review flow`
-  }
-  if (kind === 'tests') {
-    return 'diff-review: cover review lifecycle'
-  }
-  if (kind === 'docs') {
-    return 'docs: update Cradle Diffs coverage'
-  }
-  return 'chore: regenerate diff review artifacts'
-}
-
-export function buildCommitPlanGroups(
-  review: DiffReview,
-  files: DiffReviewFile[],
-  strategy: 'single' | 'rule-based-groups',
-): ReviewCommitPlanGroupView[] {
-  if (strategy === 'single' || files.length <= 1) {
-    return [{
-      id: 'commit:all',
-      title: 'All changes',
-      message: `diff-review: ${review.title.toLowerCase()}`,
-      rationale: 'All changed files are placed in one commit because the user requested a single-commit strategy or the revision has only one changed file.',
-      fileIds: files.map(file => file.id),
-      paths: files.map(file => file.path),
-      dependsOn: [],
-    }]
-  }
-
-  const order: CommitGroupKind[] = ['schema', 'implementation', 'tests', 'docs', 'generated']
-  const filesByKind = new Map<CommitGroupKind, DiffReviewFile[]>()
-  for (const file of files) {
-    const kind = commitGroupKind(file)
-    const current = filesByKind.get(kind) ?? []
-    current.push(file)
-    filesByKind.set(kind, current)
-  }
-
-  const groups: ReviewCommitPlanGroupView[] = []
-  for (const kind of order) {
-    const groupedFiles = filesByKind.get(kind)
-    if (!groupedFiles || groupedFiles.length === 0) {
-      continue
-    }
-    const previousGroup = groups.at(-1)
-    groups.push({
-      id: `commit:${kind}`,
-      title: commitGroupTitle(kind),
-      message: commitMessage(kind, review),
-      rationale: `Files are grouped as ${commitGroupTitle(kind).toLowerCase()} based on path and status. This keeps reviewable commits ordered from data/config foundations through implementation, validation, documentation, and generated output.`,
-      fileIds: groupedFiles.map(file => file.id),
-      paths: groupedFiles.map(file => file.path),
-      dependsOn: previousGroup ? [previousGroup.id] : [],
-    })
-  }
-
-  return groups
-}
 
 export function normalizeCommitPlanGroups(
   revisionId: string,

@@ -11,7 +11,7 @@ The diff-review module owns Cradle Diffs review records, local worktree, branch-
 - **service.ts**: Business logic for source adapters, refreshing review sources, comments, submissions, change walkthrough generation, agent fixes, commit plans, and event recording.
 - **anchors.ts**: Diff range anchor normalization and revision remapping helpers.
 - **patch.ts**: Patch parsing, file summary extraction, generated-file detection, and line hashing.
-- **commit-plans.ts**: Commit plan grouping and normalization helpers.
+- **commit-plans.ts**: Commit plan normalization and commit-application helpers.
 - **agent-fix-artifacts.ts**: Agent fix artifact projection from completed chat runs.
 - **types.ts**: Module view and input types.
 - **utils.ts**: JSON, hashing, and title helpers.

@@ -1833,6 +1833,7 @@ export const zPostWorkspacesByIdDiffReviewsByReviewIdAgentFixesPath = z.object({
 export const zPostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStartBody = z.object({
     agentId: z.string().min(1).nullish(),
     providerTargetId: z.string().min(1).nullish(),
+    runtimeKind: z.string().min(1).nullish(),
     modelId: z.string().min(1).nullish()
 });
 
@@ -1859,6 +1860,7 @@ export const zPostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCance
 export const zPostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerunBody = z.object({
     agentId: z.string().min(1).nullish(),
     providerTargetId: z.string().min(1).nullish(),
+    runtimeKind: z.string().min(1).nullish(),
     modelId: z.string().min(1).nullish()
 });
 
@@ -1872,15 +1874,6 @@ export const zDeleteWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdPat
     id: z.string().min(1),
     reviewId: z.string().min(1),
     agentFixId: z.string().min(1)
-});
-
-export const zPostWorkspacesByIdDiffReviewsByReviewIdCommitPlanBody = z.object({
-    strategy: z.enum(['single', 'rule-based-groups']).optional()
-});
-
-export const zPostWorkspacesByIdDiffReviewsByReviewIdCommitPlanPath = z.object({
-    id: z.string().min(1),
-    reviewId: z.string().min(1)
 });
 
 export const zPutWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdBody = z.object({

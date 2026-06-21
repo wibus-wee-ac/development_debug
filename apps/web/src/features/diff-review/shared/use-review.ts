@@ -8,7 +8,6 @@ import {
   postWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerun,
   postWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStart,
   postWorkspacesByIdDiffReviewsByReviewIdClose,
-  postWorkspacesByIdDiffReviewsByReviewIdCommitPlan,
   postWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdApply,
   postWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewed,
   postWorkspacesByIdDiffReviewsByReviewIdGuideCancel,
@@ -22,6 +21,7 @@ import {
   putWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanId,
   putWorkspacesByIdDiffReviewsPreferences,
 } from '~/api-gen/sdk.gen'
+import type { RuntimeKind } from '~/features/agent-runtime/types'
 import { queryRefreshPolicies } from '~/lib/query-refresh-policy'
 
 import { reviewListQueryKey, reviewQueryKey } from './diff-items'
@@ -80,7 +80,9 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
     ...queryRefreshPolicies.active,
     refetchInterval: (query) => {
       const review = query.state.data as CradleDiffReview | undefined
-      return review?.guide.status === 'pending' || review?.guide.status === 'running'
+      const guideActive = review?.guide.status === 'pending' || review?.guide.status === 'running'
+      const agentFixActive = review?.agentFixes.some(fix => fix.status === 'running') ?? false
+      return guideActive || agentFixActive
         ? 1_500
         : queryRefreshPolicies.active.refetchInterval
     },
@@ -240,25 +242,6 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
     },
   })
 
-  const commitPlanMutation = useMutation({
-    mutationFn: async (strategy: 'single' | 'rule-based-groups') => {
-      const review = reviewQuery.data
-      if (!review) {
-        throw new Error('Review not loaded')
-      }
-      const { data } = await postWorkspacesByIdDiffReviewsByReviewIdCommitPlan({
-        path: { id: workspaceId, reviewId: review.id },
-        body: { strategy },
-        throwOnError: true,
-      })
-      return data
-    },
-    onSuccess: (data) => {
-      applyReview(data)
-      invalidateList()
-    },
-  })
-
   const commitPlanUpdateMutation = useMutation({
     mutationFn: async (input: {
       planId: string
@@ -350,6 +333,7 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
       agentFixId: string
       agentId?: string | null
       providerTargetId?: string | null
+      runtimeKind?: RuntimeKind | null
       modelId?: string | null
     }) => {
       const review = reviewQuery.data
@@ -361,6 +345,7 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
         body: {
           agentId: input.agentId ?? null,
           providerTargetId: input.providerTargetId ?? null,
+          runtimeKind: input.runtimeKind ?? null,
           modelId: input.modelId ?? null,
         },
         throwOnError: true,
@@ -397,6 +382,7 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
       agentFixId: string
       agentId?: string | null
       providerTargetId?: string | null
+      runtimeKind?: RuntimeKind | null
       modelId?: string | null
     }) => {
       const review = reviewQuery.data
@@ -408,6 +394,7 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
         body: {
           agentId: input.agentId ?? null,
           providerTargetId: input.providerTargetId ?? null,
+          runtimeKind: input.runtimeKind ?? null,
           modelId: input.modelId ?? null,
         },
         throwOnError: true,
@@ -497,7 +484,6 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
     submitMutation,
     closeReviewMutation,
     preferenceMutation,
-    commitPlanMutation,
     commitPlanUpdateMutation,
     commitPlanApplyMutation,
     createAgentFixMutation,

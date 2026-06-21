@@ -15,29 +15,24 @@ const spec = {
       "required": true,
       "target": "path.reviewId",
       "type": "string"
+    },
+    {
+      "name": "agentFixId",
+      "required": true,
+      "target": "path.agentFixId",
+      "type": "string"
     }
   ],
   "command": [
     "workspace",
     "diffs",
-    "commit-plan",
-    "create"
+    "agent-fix",
+    "delete"
   ],
-  "description": "Create diff review commit plan",
-  "flags": [
-    {
-      "name": "strategy",
-      "required": false,
-      "target": "body.strategy",
-      "type": "string",
-      "values": [
-        "single",
-        "rule-based-groups"
-      ]
-    }
-  ],
-  "method": "post",
-  "path": "/workspaces/{id}/diff-reviews/{reviewId}/commit-plan"
+  "description": "Delete diff review agent fix work order",
+  "flags": [],
+  "method": "delete",
+  "path": "/workspaces/{id}/diff-reviews/{reviewId}/agent-fixes/{agentFixId}"
 } satisfies CliOperationSpec
 
 export function register(program: Command): void {

@@ -44,6 +44,12 @@ const spec = {
       "type": "string"
     },
     {
+      "name": "runtimeKind",
+      "required": false,
+      "target": "body.runtimeKind",
+      "type": "string"
+    },
+    {
       "name": "modelId",
       "required": false,
       "target": "body.modelId",

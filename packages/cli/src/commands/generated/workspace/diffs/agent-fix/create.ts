@@ -44,9 +44,9 @@ const spec = {
       "type": "string"
     },
     {
-      "name": "profileId",
+      "name": "agentId",
       "required": false,
-      "target": "body.profileId",
+      "target": "body.agentId",
       "type": "string"
     },
     {

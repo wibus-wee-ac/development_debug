@@ -372,7 +372,7 @@ export const diffReviewCommitPlans = sqliteTable('diff_review_commit_plans', {
     .references(() => diffReviewRevisions.id, { onDelete: 'cascade' }),
   actorId: text('actor_id').notNull(),
   strategy: text('strategy', {
-    enum: ['single', 'rule-based-groups', 'manual'],
+    enum: ['manual'],
   }).notNull(),
   status: text('status', {
     enum: ['draft', 'accepted', 'applied', 'abandoned'],
