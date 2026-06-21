@@ -10,6 +10,7 @@ import {
 import { AnimatePresence, motion } from 'motion/react'
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
+import { TooltipProvider } from '~/components/ui/tooltip'
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
@@ -156,9 +157,10 @@ export function ConfigTab({ ctx }: ConfigTabProps) {
 
   return (
     <ScrollArea className="h-full" viewportClassName="max-h-full">
+      <TooltipProvider>
       <div className="mx-auto flex max-w-2xl flex-col gap-2 p-6">
         {/* Status section */}
-        <SettingsSectionHeader title="Status" description="Current plugin configuration and secret availability." />
+        <SettingsSectionHeader title="Nowledge Mem for Cradle" description="Official Cradle plugin for connecting agents to Nowledge Mem." />
         <SettingsRow
           label="Plugin"
           description={config.enabled ? 'Enabled — MCP registration runs on next sync.' : 'Disabled — server routes stay configured, but upstream work is skipped.'}
@@ -309,6 +311,7 @@ export function ConfigTab({ ctx }: ConfigTabProps) {
           </div>
         </div>
       </div>
+      </TooltipProvider>
     </ScrollArea>
   )
 }

@@ -23,6 +23,9 @@ export interface ServerPluginContext {
   /** Chat/Jarvis runtime provider registrations */
   runtimes: ServerPluginRuntimeRegistry
 
+  /** External conversation platform adapters such as Slack or Discord */
+  conversation: ServerPluginConversationRegistries
+
   /** Disposables that the host releases when this plugin layer deactivates */
   subscriptions: Disposable[]
 
@@ -145,6 +148,11 @@ export interface ServerPluginIssueRegistries {
   externalSources: ExternalIssueSourceRegistry
 }
 
+export interface ServerPluginConversationRegistries {
+  /** Platform adapters that translate external conversations into Cradle session messages */
+  adapters: ConversationBridgeAdapterRegistry
+}
+
 export type ChatRuntimeSurface = 'chat' | 'jarvis'
 
 export interface ChatRuntimeContributionMetadata {
@@ -160,6 +168,88 @@ export interface ChatRuntimeContributionMetadata {
 export interface ServerPluginRuntimeRegistry {
   /** Register a Chat Runtime provider. The runtime must declare runtimeKind, metadata, static capabilities, and the four core ChatRuntime methods. */
   register: (runtime: unknown, metadata: ChatRuntimeContributionMetadata) => Disposable
+}
+
+export interface ConversationBridgeAdapterRegistry {
+  register: (adapter: ConversationBridgeAdapterRegistration) => Disposable
+}
+
+export interface ConversationBridgeAdapterRegistration {
+  id: string
+  platform: string
+  label: string
+  description?: string
+  capabilities?: ConversationBridgeAdapterCapabilities
+  createRuntime: (ctx: ConversationBridgeAdapterRuntimeContext) => ConversationBridgeAdapterRuntime
+}
+
+export interface ConversationBridgeAdapterCapabilities {
+  realtime?: 'socket' | 'webhook'
+  channelBinding?: boolean
+  threadBinding?: boolean
+  interactiveControls?: boolean
+}
+
+export interface ConversationBridgeAdapterRuntimeContext {
+  logger: Logger
+  sharedConfig: ReadonlyMap<string, string>
+  signal: AbortSignal
+}
+
+export interface ConversationBridgeAdapterRuntime {
+  start: (
+    connection: ConversationBridgeConnectionRuntimeConfig,
+    host: ConversationBridgeHost,
+  ) => Promise<void>
+  stop: (connectionId: string) => Promise<void>
+  sendMessage: (input: ConversationBridgeDeliveryInput) => Promise<ConversationBridgeDeliveryResult>
+}
+
+export interface ConversationBridgeConnectionRuntimeConfig {
+  id: string
+  platform: string
+  displayName: string
+  config: Record<string, unknown>
+  secrets: Record<string, string>
+}
+
+export interface ConversationBridgeHost {
+  handleInboundMessage: (event: NormalizedConversationInboundMessage) => Promise<void>
+  reportConnectionHealth: (input: ConversationBridgeConnectionHealth) => void
+}
+
+export interface NormalizedConversationInboundMessage {
+  connectionId: string
+  externalEventId: string
+  externalWorkspaceId: string
+  externalChannelId: string
+  externalThreadId: string
+  externalMessageId: string
+  externalActorId: string | null
+  text: string
+  mentionedAdapter: boolean
+  eventType: string
+  payload?: Record<string, unknown>
+}
+
+export interface ConversationBridgeDeliveryInput {
+  connectionId: string
+  externalWorkspaceId: string
+  externalChannelId: string
+  externalThreadId: string
+  text: string
+  payload?: Record<string, unknown>
+}
+
+export interface ConversationBridgeDeliveryResult {
+  externalMessageId: string | null
+  payload?: Record<string, unknown>
+}
+
+export interface ConversationBridgeConnectionHealth {
+  connectionId: string
+  status: 'starting' | 'running' | 'stopped' | 'error'
+  message?: string | null
 }
 
 export interface ExternalProviderSourceRegistry {

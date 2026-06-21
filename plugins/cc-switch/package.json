@@ -7,6 +7,7 @@
     "apiVersion": "1",
     "displayName": "CC Switch",
     "description": "Mirrors CC Switch providers through Cradle external provider sources",
+    "icon": "assets/icon.png",
     "server": "dist/server.mjs",
     "deployments": ["desktop"],
     "contributes": {

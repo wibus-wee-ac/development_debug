@@ -7,7 +7,8 @@ export const zPutPreferencesAppBody = z.object({
         multiWorkspacePoc: z.boolean().default(false),
         localAuthForDangerousActions: z.boolean().optional().default(false),
         continueBlockedCodexGoals: z.boolean().optional().default(false),
-        blockCodexAppServerLogInserts: z.boolean().optional().default(false)
+        blockCodexAppServerLogInserts: z.boolean().optional().default(false),
+        nativeProviderSkillProjection: z.boolean().optional().default(false)
     })
 });
 
@@ -879,6 +880,65 @@ export const zGetAutomationsByIdArtifactsByArtifactIdPath = z.object({
     artifactId: z.string().min(1)
 });
 
+export const zGetCronJobsQuery = z.object({
+    workspaceId: z.string().min(1).optional(),
+    enabled: z.boolean().optional()
+});
+
+export const zPostCronJobsBody = z.object({
+    id: z.string().min(1),
+    workspaceId: z.string().min(1).nullish(),
+    title: z.string().min(1),
+    description: z.string().optional(),
+    enabled: z.boolean().optional(),
+    scheduleKind: z.string(),
+    scheduleConfig: z.string().min(1),
+    timezone: z.string().min(1),
+    prompt: z.string().min(1),
+    providerTargetId: z.string().min(1).optional(),
+    modelId: z.string().min(1).optional()
+});
+
+export const zDeleteCronJobsByIdPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zGetCronJobsByIdPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zPutCronJobsByIdBody = z.object({
+    title: z.string().min(1).optional(),
+    description: z.string().optional(),
+    enabled: z.boolean().optional(),
+    scheduleKind: z.string().optional(),
+    scheduleConfig: z.string().min(1).optional(),
+    timezone: z.string().min(1).optional(),
+    prompt: z.string().min(1).optional(),
+    providerTargetId: z.string().min(1).optional(),
+    modelId: z.string().min(1).optional()
+});
+
+export const zPutCronJobsByIdPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zGetCronRunsQuery = z.object({
+    jobId: z.string().min(1)
+});
+
+export const zDeleteAssetsByIdPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zGetAssetsByIdPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zGetAssetsByIdContentPath = z.object({
+    id: z.string().min(1)
+});
+
 export const zGetSessionsQuery = z.object({
     workspaceId: z.string().min(1).optional(),
     origin: z.string().min(1).optional(),
@@ -1635,6 +1695,11 @@ export const zPostWorkspacesByIdDiffReviewsByReviewIdRefreshPath = z.object({
     reviewId: z.string().min(1)
 });
 
+export const zPostWorkspacesByIdDiffReviewsByReviewIdClosePath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1)
+});
+
 export const zPostWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewedBody = z.object({
     viewed: z.boolean()
 });
@@ -1943,7 +2008,7 @@ export const zPostChatSessionsBySessionIdResponseBody = z.object({
         metadata: z.unknown().optional()
     })).optional(),
     providerTargetId: z.string().optional(),
-    modelId: z.string().optional(),
+    modelId: z.string().nullish(),
     thinkingEffort: z.enum([
         'low',
         'medium',
@@ -1974,7 +2039,7 @@ export const zPostChatSessionsBySessionIdTitleRegeneratePath = z.object({
 
 export const zPostChatSessionsBySessionIdSideChatBody = z.object({
     providerTargetId: z.string().optional(),
-    modelId: z.string().optional()
+    modelId: z.string().nullish()
 });
 
 export const zPostChatSessionsBySessionIdSideChatPath = z.object({
@@ -2069,7 +2134,7 @@ export const zPostChatSideConversationsBySideConversationIdResponseBody = z.obje
         metadata: z.unknown().optional()
     })).optional(),
     providerTargetId: z.string().optional(),
-    modelId: z.string().optional(),
+    modelId: z.string().nullish(),
     thinkingEffort: z.enum([
         'low',
         'medium',
@@ -2147,7 +2212,7 @@ export const zPostChatSessionsBySessionIdQueueBody = z.object({
             position: z.number().gte(0).optional()
         })])).optional(),
     providerTargetId: z.string().optional(),
-    modelId: z.string().optional(),
+    modelId: z.string().nullish(),
     thinkingEffort: z.enum([
         'low',
         'medium',
@@ -2390,6 +2455,85 @@ export const zPatchChatSessionsBySessionIdRuntimeSettingsBody = z.object({
 
 export const zPatchChatSessionsBySessionIdRuntimeSettingsPath = z.object({
     sessionId: z.string().min(1)
+});
+
+export const zPostConversationBridgeConnectionsBody = z.object({
+    platform: z.string().min(1),
+    adapterOwner: z.string().min(1),
+    adapterId: z.string().min(1),
+    displayName: z.string().min(1),
+    enabled: z.boolean().optional(),
+    secretRefs: z.record(z.string(), z.unknown()).optional(),
+    config: z.record(z.string(), z.unknown()).optional()
+});
+
+export const zDeleteConversationBridgeConnectionsByIdPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zGetConversationBridgeConnectionsByIdPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zPatchConversationBridgeConnectionsByIdBody = z.object({
+    displayName: z.string().min(1).optional(),
+    enabled: z.boolean().optional(),
+    secretRefs: z.record(z.string(), z.unknown()).optional(),
+    config: z.record(z.string(), z.unknown()).optional()
+});
+
+export const zPatchConversationBridgeConnectionsByIdPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zPostConversationBridgeConnectionsByIdStartPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zPostConversationBridgeConnectionsByIdStopPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zGetConversationBridgeConnectionsByIdChannelBindingsPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zDeleteConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBindingPath = z.object({
+    id: z.string().min(1),
+    externalWorkspaceId: z.string().min(1),
+    externalChannelId: z.string().min(1)
+});
+
+export const zPutConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBindingBody = z.object({
+    cradleWorkspaceId: z.string().min(1),
+    sessionAgentId: z.string().nullish(),
+    sessionProviderTargetId: z.string().nullish(),
+    sessionRuntimeKind: z.string().nullish(),
+    sessionModelId: z.string().nullish(),
+    boundByExternalActorId: z.string().nullish(),
+    metadata: z.record(z.string(), z.unknown()).optional()
+});
+
+export const zPutConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBindingPath = z.object({
+    id: z.string().min(1),
+    externalWorkspaceId: z.string().min(1),
+    externalChannelId: z.string().min(1)
+});
+
+export const zGetConversationBridgeConnectionsByIdThreadsPath = z.object({
+    id: z.string().min(1)
+});
+
+export const zGetConversationBridgeConnectionsByIdThreadsQuery = z.object({
+    limit: z.number().gte(1).lte(100).optional()
+});
+
+export const zGetConversationBridgeDeliveryAttemptsRetryableQuery = z.object({
+    limit: z.number().gte(1).lte(100).optional()
+});
+
+export const zPostConversationBridgeDeliveryAttemptsRetryQuery = z.object({
+    limit: z.number().gte(1).lte(100).optional()
 });
 
 export const zPutChronicleConfigBody = z.object({
@@ -2723,6 +2867,26 @@ export const zPostChronicleAccessibilityEventsBody = z.object({
 
 export const zGetChronicleActivitySegmentsQuery = z.object({
     limit: z.number().optional().default(20)
+});
+
+export const zGetChronicleActivitySessionsQuery = z.object({
+    limit: z.number().optional().default(20)
+});
+
+export const zGetChronicleActivitySessionsBySessionIdPath = z.object({
+    sessionId: z.string().min(1)
+});
+
+export const zGetChronicleActivitySessionsBySessionIdSnapshotsPath = z.object({
+    sessionId: z.string().min(1)
+});
+
+export const zGetChronicleActivitySnapshotsBySnapshotIdPath = z.object({
+    snapshotId: z.string().min(1)
+});
+
+export const zGetChronicleActivitySnapshotsBySnapshotIdOcrPath = z.object({
+    snapshotId: z.string().min(1)
 });
 
 export const zGetChronicleActivitySegmentsBySegmentIdPath = z.object({
@@ -3111,6 +3275,10 @@ export const zPostIssueAgentSessionsByAgentSessionIdRerunPath = z.object({
 
 export const zDeleteIssueAgentSessionsByAgentSessionIdPath = z.object({
     agentSessionId: z.string()
+});
+
+export const zGetApiPluginsDepsByFileNamePath = z.object({
+    fileName: z.string()
 });
 
 export const zAllApiPluginsByRouteSegmentPath = z.object({

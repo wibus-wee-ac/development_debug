@@ -324,6 +324,8 @@ export function activate(ctx: ServerPluginContext): void {
 }
 ```
 
+`skillFile` should point at the real packaged `SKILL.md` that ships with the plugin. Cradle projects the full containing skill package directory into known runtime-native skill roots under a reserved path such as `cradle/plugin-browser-automation`. Agent-scoped runtime homes receive this projection automatically. Provider-specific global roots like `~/.codex/skills` or `~/.claude/skills` receive it only when the app feature flag `nativeProviderSkillProjection` is enabled for no-agent provider starts. Bundled `references/`, `scripts/`, and `assets/` remain available to agents that load skills from the filesystem. The projection is removed when the plugin registration is disposed or the plugin is disabled.
+
 ### `ctx.providers.externalSources.register(source)` — External Provider Source
 
 插件可以提供外部 provider 数据源。这个能力只返回标准化数据，不允许插件渲染 Provider settings UI，也不允许插件直接写 Cradle 的 `provider_targets` 或 `agent_credentials`。Cradle host 会读取 snapshot、加密 credential、投影 provider target、处理 missing/stale 状态，并用固定 Provider UI 展示。

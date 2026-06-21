@@ -55,6 +55,7 @@ export type GetPreferencesAppResponses = {
             localAuthForDangerousActions?: boolean;
             continueBlockedCodexGoals?: boolean;
             blockCodexAppServerLogInserts?: boolean;
+            nativeProviderSkillProjection?: boolean;
         };
     };
 };
@@ -68,6 +69,7 @@ export type PutPreferencesAppData = {
             localAuthForDangerousActions?: boolean;
             continueBlockedCodexGoals?: boolean;
             blockCodexAppServerLogInserts?: boolean;
+            nativeProviderSkillProjection?: boolean;
         };
     };
     path?: never;
@@ -4126,6 +4128,242 @@ export type GetAutomationsByIdArtifactsByArtifactIdResponses = {
 };
 
 export type GetAutomationsByIdArtifactsByArtifactIdResponse = GetAutomationsByIdArtifactsByArtifactIdResponses[keyof GetAutomationsByIdArtifactsByArtifactIdResponses];
+
+export type GetCronJobsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        workspaceId?: string;
+        enabled?: boolean;
+    };
+    url: '/cron/jobs';
+};
+
+export type PostCronJobsData = {
+    body: {
+        id: string;
+        workspaceId?: string | null;
+        title: string;
+        description?: string;
+        enabled?: boolean;
+        scheduleKind: string;
+        scheduleConfig: string;
+        timezone: string;
+        prompt: string;
+        providerTargetId?: string;
+        modelId?: string;
+    };
+    path?: never;
+    query?: never;
+    url: '/cron/jobs';
+};
+
+export type DeleteCronJobsByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/cron/jobs/{id}';
+};
+
+export type DeleteCronJobsByIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type DeleteCronJobsByIdResponse = DeleteCronJobsByIdResponses[keyof DeleteCronJobsByIdResponses];
+
+export type GetCronJobsByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/cron/jobs/{id}';
+};
+
+export type PutCronJobsByIdData = {
+    body: {
+        title?: string;
+        description?: string;
+        enabled?: boolean;
+        scheduleKind?: string;
+        scheduleConfig?: string;
+        timezone?: string;
+        prompt?: string;
+        providerTargetId?: string;
+        modelId?: string;
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/cron/jobs/{id}';
+};
+
+export type GetCronRunsData = {
+    body?: never;
+    path?: never;
+    query: {
+        jobId: string;
+    };
+    url: '/cron/runs';
+};
+
+export type GetCronRunsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        automationDefinitionId: string;
+        workspaceId: string | null;
+        triggerType: 'manual' | 'scheduled';
+        occurrenceKey: string | null;
+        status: 'queued' | 'running' | 'complete' | 'failed' | 'cancelled';
+        triggerSnapshot: {
+            type: string;
+            rrule: string;
+            timezone: string;
+            misfirePolicy?: 'skip' | 'run_latest';
+        };
+        recipeSnapshot: {
+            kind: string;
+            prompt: string;
+            inputs: Array<{
+                type: string;
+                path: string;
+            } | {
+                type: string;
+                name: string;
+                content: string;
+            } | {
+                type: string;
+                name: string;
+                content: string;
+            } | {
+                type: string;
+                url: string;
+            }>;
+            artifactRequests: Array<{
+                kind: 'markdown' | 'text' | 'json' | 'file_ref';
+                name: string;
+                description?: string;
+            }>;
+            agentId?: string;
+            providerTargetId?: string;
+            runtimeKind?: string;
+            modelId?: string;
+            thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+        };
+        chatSessionId: string | null;
+        backendRunId: string | null;
+        artifactCount: number;
+        errorText: string | null;
+        scheduledFor: number | null;
+        claimedAt: number | null;
+        startedAt: number | null;
+        finishedAt: number | null;
+        createdAt: number;
+        updatedAt: number;
+    }>;
+};
+
+export type GetCronRunsResponse = GetCronRunsResponses[keyof GetCronRunsResponses];
+
+export type PostAssetsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/assets/';
+};
+
+export type PostAssetsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string | null;
+        filename: string;
+        mediaType: string;
+        byteSize: number;
+        width: number | null;
+        height: number | null;
+        sha256: string;
+        storagePath: string;
+        url: string;
+        markdownUrl: string;
+        createdAt: number;
+    };
+};
+
+export type PostAssetsResponse = PostAssetsResponses[keyof PostAssetsResponses];
+
+export type DeleteAssetsByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/assets/{id}';
+};
+
+export type DeleteAssetsByIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type DeleteAssetsByIdResponse = DeleteAssetsByIdResponses[keyof DeleteAssetsByIdResponses];
+
+export type GetAssetsByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/assets/{id}';
+};
+
+export type GetAssetsByIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string | null;
+        filename: string;
+        mediaType: string;
+        byteSize: number;
+        width: number | null;
+        height: number | null;
+        sha256: string;
+        storagePath: string;
+        url: string;
+        markdownUrl: string;
+        createdAt: number;
+    };
+};
+
+export type GetAssetsByIdResponse = GetAssetsByIdResponses[keyof GetAssetsByIdResponses];
+
+export type GetAssetsByIdContentData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/assets/{id}/content';
+};
 
 export type GetSessionsData = {
     body?: never;
@@ -8516,6 +8754,223 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdRefreshResponses = {
 
 export type PostWorkspacesByIdDiffReviewsByReviewIdRefreshResponse = PostWorkspacesByIdDiffReviewsByReviewIdRefreshResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdRefreshResponses];
 
+export type PostWorkspacesByIdDiffReviewsByReviewIdCloseData = {
+    body?: never;
+    path: {
+        id: string;
+        reviewId: string;
+    };
+    query?: never;
+    url: '/workspaces/{id}/diff-reviews/{reviewId}/close';
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdCloseResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string;
+        sourceId: string | null;
+        repositoryPath: string;
+        sourceKind: 'local-working-tree' | 'local-branch-compare' | 'local-commit' | 'agent-change-set' | 'github-pull-request' | 'external-import';
+        title: string;
+        status: 'open' | 'merged' | 'closed' | 'abandoned';
+        reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented';
+        currentRevisionId: string | null;
+        createdAt: number;
+        updatedAt: number;
+        currentRevision: {
+            id: string;
+            reviewId: string;
+            sourceVersion: string;
+            patchHash: string;
+            fileCount: number;
+            additions: number;
+            deletions: number;
+            generatedAt: number;
+            patch: string;
+        } | null;
+        files: Array<{
+            id: string;
+            revisionId: string;
+            path: string;
+            previousPath: string | null;
+            status: 'added' | 'modified' | 'deleted' | 'renamed' | 'untracked';
+            additions: number;
+            deletions: number;
+            isGenerated: boolean;
+            isBinary: boolean;
+            isViewed: boolean;
+        }>;
+        threads: Array<{
+            id: string;
+            reviewId: string;
+            originalRevisionId: string;
+            currentRevisionId: string | null;
+            fileId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            state: 'open' | 'resolved' | 'stale';
+            createdBy: string;
+            createdAt: number;
+            updatedAt: number;
+            resolvedBy: string | null;
+            resolvedAt: number | null;
+            comments: Array<{
+                id: string;
+                threadId: string;
+                authorKind: 'user' | 'agent' | 'external';
+                authorId: string;
+                bodyMarkdown: string;
+                externalUrl: string | null;
+                createdAt: number;
+                updatedAt: number;
+            }>;
+            reactions: Array<{
+                id: string;
+                threadId: string;
+                userId: string;
+                reaction: string;
+                createdAt: number;
+            }>;
+        }>;
+        submissions: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            decision: 'approve' | 'request-changes' | 'comment';
+            bodyMarkdown: string | null;
+            submittedAt: number;
+            sourceSyncState: 'local-only' | 'pending' | 'synced' | 'failed';
+        }>;
+        events: Array<{
+            id: string;
+            reviewId: string;
+            eventKind: string;
+            actorKind: 'user' | 'agent' | 'external' | 'system';
+            actorId: string | null;
+            payload: unknown;
+            createdAt: number;
+        }>;
+        preferences: {
+            id: string;
+            workspaceId: string;
+            userId: string;
+            diffStyle: 'split' | 'unified';
+            codeTheme: string;
+            fontSize: number;
+            lineHeight: number;
+            hideWhitespaceOnly: boolean;
+            structuralHighlighting: boolean;
+            collapseGeneratedFiles: boolean;
+            notificationMode: 'all-activity' | 'all-activity-by-people' | 'reviews-and-comments' | 'reviews-and-comments-by-people' | 'none';
+            createdAt: number;
+            updatedAt: number;
+        };
+        guide: {
+            revisionId: string | null;
+            status: string | null;
+            providerTargetId: string | null;
+            runtimeKind: string | null;
+            modelId: string | null;
+            sessionId: string | null;
+            runId: string | null;
+            errorMessage: string | null;
+            createdAt: number | null;
+            updatedAt: number | null;
+            title: string | null;
+            steps: Array<{
+                id: string;
+                title: string;
+                rationale: string;
+                fileIds: Array<string>;
+                threadIds: Array<string>;
+                anchors: Array<{
+                    revisionId: string;
+                    fileId: string;
+                    path: string;
+                    side: 'base' | 'head';
+                    startLine: number;
+                    endLine: number;
+                    startColumn?: number;
+                    endColumn?: number;
+                    hunkHeader: string;
+                    lineHash: string;
+                    contextBeforeHash?: string;
+                    contextAfterHash?: string;
+                }>;
+                order: number;
+            }>;
+        };
+        agentFixes: Array<{
+            id: string;
+            reviewId: string;
+            threadId: string | null;
+            anchor: {
+                revisionId: string;
+                fileId: string;
+                path: string;
+                side: 'base' | 'head';
+                startLine: number;
+                endLine: number;
+                startColumn?: number;
+                endColumn?: number;
+                hunkHeader: string;
+                lineHash: string;
+                contextBeforeHash?: string;
+                contextAfterHash?: string;
+            } | null;
+            instruction: string;
+            profileId: string | null;
+            expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact';
+            status: 'pending' | 'running' | 'completed' | 'failed' | 'cancelled';
+            sessionId: string | null;
+            runId: string | null;
+            artifactId: string | null;
+            resultRevisionId: string | null;
+            errorMessage: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+        commitPlans: Array<{
+            id: string;
+            reviewId: string;
+            revisionId: string;
+            actorId: string;
+            strategy: 'single' | 'rule-based-groups' | 'manual';
+            status: 'draft' | 'accepted' | 'applied' | 'abandoned';
+            groups: Array<{
+                id: string;
+                title: string;
+                message: string;
+                rationale: string;
+                fileIds: Array<string>;
+                paths: Array<string>;
+                dependsOn: Array<string>;
+            }>;
+            rationale: string;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type PostWorkspacesByIdDiffReviewsByReviewIdCloseResponse = PostWorkspacesByIdDiffReviewsByReviewIdCloseResponses[keyof PostWorkspacesByIdDiffReviewsByReviewIdCloseResponses];
+
 export type PostWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewedData = {
     body: {
         viewed: boolean;
@@ -12193,7 +12648,7 @@ export type PostChatSessionsBySessionIdResponseData = {
             [key: string]: unknown;
         }>;
         providerTargetId?: string;
-        modelId?: string;
+        modelId?: string | null;
         thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         runtimeSettings?: {
             accessMode?: 'approval-required' | 'full-access';
@@ -12309,7 +12764,7 @@ export type PostChatSessionsBySessionIdTitleRegenerateResponse = PostChatSession
 export type PostChatSessionsBySessionIdSideChatData = {
     body: {
         providerTargetId?: string;
-        modelId?: string;
+        modelId?: string | null;
     };
     path: {
         sessionId: string;
@@ -12459,7 +12914,7 @@ export type PostChatSideConversationsBySideConversationIdResponseData = {
             [key: string]: unknown;
         }>;
         providerTargetId?: string;
-        modelId?: string;
+        modelId?: string | null;
         thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         runtimeSettings?: {
             accessMode?: 'approval-required' | 'full-access';
@@ -12681,7 +13136,7 @@ export type PostChatSessionsBySessionIdQueueData = {
             position?: number;
         }>;
         providerTargetId?: string;
-        modelId?: string;
+        modelId?: string | null;
         thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
         runtimeSettings?: {
             accessMode?: 'approval-required' | 'full-access';
@@ -14274,6 +14729,492 @@ export type PatchChatSessionsBySessionIdRuntimeSettingsResponses = {
 
 export type PatchChatSessionsBySessionIdRuntimeSettingsResponse = PatchChatSessionsBySessionIdRuntimeSettingsResponses[keyof PatchChatSessionsBySessionIdRuntimeSettingsResponses];
 
+export type GetConversationBridgeAdaptersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/conversation-bridge/adapters';
+};
+
+export type GetConversationBridgeAdaptersResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        key: string;
+        owner: string;
+        id: string;
+        platform: string;
+        label: string;
+        description: string | null;
+        capabilities: {
+            [key: string]: unknown;
+        };
+        registeredAt: number;
+    }>;
+};
+
+export type GetConversationBridgeAdaptersResponse = GetConversationBridgeAdaptersResponses[keyof GetConversationBridgeAdaptersResponses];
+
+export type GetConversationBridgeConnectionsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/conversation-bridge/connections';
+};
+
+export type GetConversationBridgeConnectionsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        platform: string;
+        adapterOwner: string;
+        adapterId: string;
+        displayName: string;
+        enabled: boolean;
+        secretRefs: {
+            [key: string]: unknown;
+        };
+        config: {
+            [key: string]: unknown;
+        };
+        healthStatus: 'unknown' | 'starting' | 'running' | 'stopped' | 'error';
+        healthMessage: string | null;
+        lastStartedAt: number | null;
+        lastStoppedAt: number | null;
+        lastErrorAt: number | null;
+        createdAt: number;
+        updatedAt: number;
+    }>;
+};
+
+export type GetConversationBridgeConnectionsResponse = GetConversationBridgeConnectionsResponses[keyof GetConversationBridgeConnectionsResponses];
+
+export type PostConversationBridgeConnectionsData = {
+    body: {
+        platform: string;
+        adapterOwner: string;
+        adapterId: string;
+        displayName: string;
+        enabled?: boolean;
+        secretRefs?: {
+            [key: string]: unknown;
+        };
+        config?: {
+            [key: string]: unknown;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/conversation-bridge/connections';
+};
+
+export type PostConversationBridgeConnectionsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        platform: string;
+        adapterOwner: string;
+        adapterId: string;
+        displayName: string;
+        enabled: boolean;
+        secretRefs: {
+            [key: string]: unknown;
+        };
+        config: {
+            [key: string]: unknown;
+        };
+        healthStatus: 'unknown' | 'starting' | 'running' | 'stopped' | 'error';
+        healthMessage: string | null;
+        lastStartedAt: number | null;
+        lastStoppedAt: number | null;
+        lastErrorAt: number | null;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PostConversationBridgeConnectionsResponse = PostConversationBridgeConnectionsResponses[keyof PostConversationBridgeConnectionsResponses];
+
+export type DeleteConversationBridgeConnectionsByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/conversation-bridge/connections/{id}';
+};
+
+export type DeleteConversationBridgeConnectionsByIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type DeleteConversationBridgeConnectionsByIdResponse = DeleteConversationBridgeConnectionsByIdResponses[keyof DeleteConversationBridgeConnectionsByIdResponses];
+
+export type GetConversationBridgeConnectionsByIdData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/conversation-bridge/connections/{id}';
+};
+
+export type GetConversationBridgeConnectionsByIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        platform: string;
+        adapterOwner: string;
+        adapterId: string;
+        displayName: string;
+        enabled: boolean;
+        secretRefs: {
+            [key: string]: unknown;
+        };
+        config: {
+            [key: string]: unknown;
+        };
+        healthStatus: 'unknown' | 'starting' | 'running' | 'stopped' | 'error';
+        healthMessage: string | null;
+        lastStartedAt: number | null;
+        lastStoppedAt: number | null;
+        lastErrorAt: number | null;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type GetConversationBridgeConnectionsByIdResponse = GetConversationBridgeConnectionsByIdResponses[keyof GetConversationBridgeConnectionsByIdResponses];
+
+export type PatchConversationBridgeConnectionsByIdData = {
+    body: {
+        displayName?: string;
+        enabled?: boolean;
+        secretRefs?: {
+            [key: string]: unknown;
+        };
+        config?: {
+            [key: string]: unknown;
+        };
+    };
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/conversation-bridge/connections/{id}';
+};
+
+export type PatchConversationBridgeConnectionsByIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        platform: string;
+        adapterOwner: string;
+        adapterId: string;
+        displayName: string;
+        enabled: boolean;
+        secretRefs: {
+            [key: string]: unknown;
+        };
+        config: {
+            [key: string]: unknown;
+        };
+        healthStatus: 'unknown' | 'starting' | 'running' | 'stopped' | 'error';
+        healthMessage: string | null;
+        lastStartedAt: number | null;
+        lastStoppedAt: number | null;
+        lastErrorAt: number | null;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PatchConversationBridgeConnectionsByIdResponse = PatchConversationBridgeConnectionsByIdResponses[keyof PatchConversationBridgeConnectionsByIdResponses];
+
+export type PostConversationBridgeConnectionsByIdStartData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/conversation-bridge/connections/{id}/start';
+};
+
+export type PostConversationBridgeConnectionsByIdStartResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        platform: string;
+        adapterOwner: string;
+        adapterId: string;
+        displayName: string;
+        enabled: boolean;
+        secretRefs: {
+            [key: string]: unknown;
+        };
+        config: {
+            [key: string]: unknown;
+        };
+        healthStatus: 'unknown' | 'starting' | 'running' | 'stopped' | 'error';
+        healthMessage: string | null;
+        lastStartedAt: number | null;
+        lastStoppedAt: number | null;
+        lastErrorAt: number | null;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PostConversationBridgeConnectionsByIdStartResponse = PostConversationBridgeConnectionsByIdStartResponses[keyof PostConversationBridgeConnectionsByIdStartResponses];
+
+export type PostConversationBridgeConnectionsByIdStopData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/conversation-bridge/connections/{id}/stop';
+};
+
+export type PostConversationBridgeConnectionsByIdStopResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        platform: string;
+        adapterOwner: string;
+        adapterId: string;
+        displayName: string;
+        enabled: boolean;
+        secretRefs: {
+            [key: string]: unknown;
+        };
+        config: {
+            [key: string]: unknown;
+        };
+        healthStatus: 'unknown' | 'starting' | 'running' | 'stopped' | 'error';
+        healthMessage: string | null;
+        lastStartedAt: number | null;
+        lastStoppedAt: number | null;
+        lastErrorAt: number | null;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PostConversationBridgeConnectionsByIdStopResponse = PostConversationBridgeConnectionsByIdStopResponses[keyof PostConversationBridgeConnectionsByIdStopResponses];
+
+export type GetConversationBridgeConnectionsByIdChannelBindingsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: never;
+    url: '/conversation-bridge/connections/{id}/channel-bindings';
+};
+
+export type GetConversationBridgeConnectionsByIdChannelBindingsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        connectionId: string;
+        externalWorkspaceId: string;
+        externalChannelId: string;
+        cradleWorkspaceId: string;
+        sessionAgentId: string | null;
+        sessionProviderTargetId: string | null;
+        sessionRuntimeKind: string | null;
+        sessionModelId: string | null;
+        boundByExternalActorId: string | null;
+        metadata: {
+            [key: string]: unknown;
+        };
+        createdAt: number;
+        updatedAt: number;
+    }>;
+};
+
+export type GetConversationBridgeConnectionsByIdChannelBindingsResponse = GetConversationBridgeConnectionsByIdChannelBindingsResponses[keyof GetConversationBridgeConnectionsByIdChannelBindingsResponses];
+
+export type DeleteConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBindingData = {
+    body?: never;
+    path: {
+        id: string;
+        externalWorkspaceId: string;
+        externalChannelId: string;
+    };
+    query?: never;
+    url: '/conversation-bridge/connections/{id}/workspaces/{externalWorkspaceId}/channels/{externalChannelId}/binding';
+};
+
+export type DeleteConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBindingResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type DeleteConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBindingResponse = DeleteConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBindingResponses[keyof DeleteConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBindingResponses];
+
+export type PutConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBindingData = {
+    body: {
+        cradleWorkspaceId: string;
+        sessionAgentId?: string | null;
+        sessionProviderTargetId?: string | null;
+        sessionRuntimeKind?: string | null;
+        sessionModelId?: string | null;
+        boundByExternalActorId?: string | null;
+        metadata?: {
+            [key: string]: unknown;
+        };
+    };
+    path: {
+        id: string;
+        externalWorkspaceId: string;
+        externalChannelId: string;
+    };
+    query?: never;
+    url: '/conversation-bridge/connections/{id}/workspaces/{externalWorkspaceId}/channels/{externalChannelId}/binding';
+};
+
+export type PutConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBindingResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        connectionId: string;
+        externalWorkspaceId: string;
+        externalChannelId: string;
+        cradleWorkspaceId: string;
+        sessionAgentId: string | null;
+        sessionProviderTargetId: string | null;
+        sessionRuntimeKind: string | null;
+        sessionModelId: string | null;
+        boundByExternalActorId: string | null;
+        metadata: {
+            [key: string]: unknown;
+        };
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PutConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBindingResponse = PutConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBindingResponses[keyof PutConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBindingResponses];
+
+export type GetConversationBridgeConnectionsByIdThreadsData = {
+    body?: never;
+    path: {
+        id: string;
+    };
+    query?: {
+        limit?: number;
+    };
+    url: '/conversation-bridge/connections/{id}/threads';
+};
+
+export type GetConversationBridgeConnectionsByIdThreadsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        connectionId: string;
+        externalWorkspaceId: string;
+        externalChannelId: string;
+        externalThreadId: string;
+        sessionId: string;
+        cradleWorkspaceId: string | null;
+        createdByExternalActorId: string | null;
+        metadata: {
+            [key: string]: unknown;
+        };
+        createdAt: number;
+        updatedAt: number;
+    }>;
+};
+
+export type GetConversationBridgeConnectionsByIdThreadsResponse = GetConversationBridgeConnectionsByIdThreadsResponses[keyof GetConversationBridgeConnectionsByIdThreadsResponses];
+
+export type GetConversationBridgeDeliveryAttemptsRetryableData = {
+    body?: never;
+    path?: never;
+    query?: {
+        limit?: number;
+    };
+    url: '/conversation-bridge/delivery-attempts/retryable';
+};
+
+export type GetConversationBridgeDeliveryAttemptsRetryableResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        connectionId: string;
+        externalWorkspaceId: string;
+        externalChannelId: string;
+        externalThreadId: string;
+        sessionId: string;
+        cradleMessageId: string | null;
+        runId: string | null;
+        payload: {
+            [key: string]: unknown;
+        };
+        status: 'pending' | 'delivered' | 'failed';
+        attemptCount: number;
+        externalMessageId: string | null;
+        errorText: string | null;
+        createdAt: number;
+        updatedAt: number;
+    }>;
+};
+
+export type GetConversationBridgeDeliveryAttemptsRetryableResponse = GetConversationBridgeDeliveryAttemptsRetryableResponses[keyof GetConversationBridgeDeliveryAttemptsRetryableResponses];
+
+export type PostConversationBridgeDeliveryAttemptsRetryData = {
+    body?: never;
+    path?: never;
+    query?: {
+        limit?: number;
+    };
+    url: '/conversation-bridge/delivery-attempts/retry';
+};
+
+export type PostConversationBridgeDeliveryAttemptsRetryResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        attempted: number;
+        delivered: number;
+        failed: number;
+    };
+};
+
+export type PostConversationBridgeDeliveryAttemptsRetryResponse = PostConversationBridgeDeliveryAttemptsRetryResponses[keyof PostConversationBridgeDeliveryAttemptsRetryResponses];
+
 export type GetChronicleConfigData = {
     body?: never;
     path?: never;
@@ -15500,6 +16441,209 @@ export type GetChronicleActivitySegmentsResponses = {
 
 export type GetChronicleActivitySegmentsResponse = GetChronicleActivitySegmentsResponses[keyof GetChronicleActivitySegmentsResponses];
 
+export type GetChronicleActivitySessionsData = {
+    body?: never;
+    path?: never;
+    query?: {
+        limit?: number;
+    };
+    url: '/chronicle/activity-sessions';
+};
+
+export type GetChronicleActivitySessionsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        workspaceId: string | null;
+        startedAt: string;
+        startedAtUnix: number;
+        endedAt: string | null;
+        endedAtUnix: number | null;
+        durationSeconds: number | null;
+        frontApp: string | null;
+        title: string | null;
+        segmentCount: number;
+        snapshotCount: number;
+        messageCount: number;
+        audioTranscriptCount: number;
+        audioRawSegmentCount: number;
+        accessibilitySnapshotCount: number;
+        isMeeting: boolean;
+        meetingTitle: string | null;
+        metadata: {
+            [key: string]: unknown;
+        };
+    }>;
+};
+
+export type GetChronicleActivitySessionsResponse = GetChronicleActivitySessionsResponses[keyof GetChronicleActivitySessionsResponses];
+
+export type GetChronicleActivitySessionsBySessionIdData = {
+    body?: never;
+    path: {
+        sessionId: string;
+    };
+    query?: never;
+    url: '/chronicle/activity-sessions/{sessionId}';
+};
+
+export type GetChronicleActivitySessionsBySessionIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        workspaceId: string | null;
+        startedAt: string;
+        startedAtUnix: number;
+        endedAt: string | null;
+        endedAtUnix: number | null;
+        durationSeconds: number | null;
+        frontApp: string | null;
+        title: string | null;
+        segmentCount: number;
+        snapshotCount: number;
+        messageCount: number;
+        audioTranscriptCount: number;
+        audioRawSegmentCount: number;
+        accessibilitySnapshotCount: number;
+        isMeeting: boolean;
+        meetingTitle: string | null;
+        metadata: {
+            [key: string]: unknown;
+        };
+        segments: Array<{
+            id: string;
+            sessionId: string;
+            startedAt: string;
+            startedAtUnix: number;
+            endedAt: string;
+            endedAtUnix: number;
+            durationSeconds: number;
+            segmentType: 'work' | 'meeting' | 'browsing' | 'chat' | 'audio' | 'idle' | 'unknown';
+            frontApp: string | null;
+            title: string | null;
+            summary: string | null;
+            sourceCounts: {
+                [key: string]: unknown;
+            };
+            sourceRefs: {
+                [key: string]: unknown;
+            };
+            pipelineStatus: 'collecting' | 'triaged' | 'summarized' | 'crystallized' | 'error';
+            isCrystallized: boolean;
+            metadata: {
+                [key: string]: unknown;
+            };
+        }>;
+    };
+};
+
+export type GetChronicleActivitySessionsBySessionIdResponse = GetChronicleActivitySessionsBySessionIdResponses[keyof GetChronicleActivitySessionsBySessionIdResponses];
+
+export type GetChronicleActivitySessionsBySessionIdSnapshotsData = {
+    body?: never;
+    path: {
+        sessionId: string;
+    };
+    query?: never;
+    url: '/chronicle/activity-sessions/{sessionId}/snapshots';
+};
+
+export type GetChronicleActivitySessionsBySessionIdSnapshotsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        sourceId: string;
+        workspaceId: string | null;
+        capturedAt: string;
+        capturedAtUnix: number;
+        displayId: number;
+        segmentDir: string;
+        framePath: string;
+        artifactPath: string | null;
+        ocrText: string | null;
+        appBundleId: string | null;
+        windowTitle: string | null;
+        metadata: {
+            [key: string]: unknown;
+        };
+        createdAt: string;
+        createdAtUnix: number;
+        updatedAt: string;
+        updatedAtUnix: number;
+    }>;
+};
+
+export type GetChronicleActivitySessionsBySessionIdSnapshotsResponse = GetChronicleActivitySessionsBySessionIdSnapshotsResponses[keyof GetChronicleActivitySessionsBySessionIdSnapshotsResponses];
+
+export type GetChronicleActivitySnapshotsBySnapshotIdData = {
+    body?: never;
+    path: {
+        snapshotId: string;
+    };
+    query?: never;
+    url: '/chronicle/activity-snapshots/{snapshotId}';
+};
+
+export type GetChronicleActivitySnapshotsBySnapshotIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        sourceId: string;
+        workspaceId: string | null;
+        capturedAt: string;
+        capturedAtUnix: number;
+        displayId: number;
+        segmentDir: string;
+        framePath: string;
+        artifactPath: string | null;
+        ocrText: string | null;
+        appBundleId: string | null;
+        windowTitle: string | null;
+        metadata: {
+            [key: string]: unknown;
+        };
+        createdAt: string;
+        createdAtUnix: number;
+        updatedAt: string;
+        updatedAtUnix: number;
+    };
+};
+
+export type GetChronicleActivitySnapshotsBySnapshotIdResponse = GetChronicleActivitySnapshotsBySnapshotIdResponses[keyof GetChronicleActivitySnapshotsBySnapshotIdResponses];
+
+export type GetChronicleActivitySnapshotsBySnapshotIdOcrData = {
+    body?: never;
+    path: {
+        snapshotId: string;
+    };
+    query?: never;
+    url: '/chronicle/activity-snapshots/{snapshotId}/ocr';
+};
+
+export type GetChronicleActivitySnapshotsBySnapshotIdOcrResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        snapshotId: string;
+        sourceId: string;
+        ocrText: string | null;
+        ocrPath: string | null;
+        capturedAt: string;
+        capturedAtUnix: number;
+    };
+};
+
+export type GetChronicleActivitySnapshotsBySnapshotIdOcrResponse = GetChronicleActivitySnapshotsBySnapshotIdOcrResponses[keyof GetChronicleActivitySnapshotsBySnapshotIdOcrResponses];
+
 export type GetChronicleActivitySegmentsBySegmentIdData = {
     body?: never;
     path: {
@@ -15842,6 +16986,156 @@ export type PostChronicleActivityPipelineTickResponses = {
 };
 
 export type PostChronicleActivityPipelineTickResponse = PostChronicleActivityPipelineTickResponses[keyof PostChronicleActivityPipelineTickResponses];
+
+export type GetChronicleActivityMonitorStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/chronicle/activity-monitor/status';
+};
+
+export type GetChronicleActivityMonitorStatusResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        enabled: boolean;
+        available: boolean;
+        running: boolean;
+        pid: number | null;
+        monitorStatus: 'disabled' | 'running' | 'unavailable';
+        captureStatus: 'idle' | 'capturing' | 'error';
+        pipelineStatus: 'disabled' | 'running' | 'idle';
+        audioStatus: 'disabled' | 'armed' | 'unavailable';
+        lastCaptureAt: string | null;
+        lastCaptureAtUnix: number | null;
+        lastActivityAt: string | null;
+        lastActivityAtUnix: number | null;
+        lastPipelineRunAt: string | null;
+        lastPipelineRunAtUnix: number | null;
+        lastErrorAt: string | null;
+        lastErrorAtUnix: number | null;
+        lastError: string | null;
+        totals: {
+            snapshots: number;
+            activitySessions: number;
+            activitySegments: number;
+            pipelineRuns: number;
+            accessibilitySnapshots: number;
+            accessibilityEvents: number;
+            audioTranscripts: number;
+            audioRawSegments: number;
+            memories: number;
+            messages: number;
+        };
+        config: {
+            activityPipelineEnabled: boolean;
+            activityPipelineIntervalMs: number;
+            activityPipelineBatchSize: number;
+            audioCaptureEnabled: boolean;
+            audioSource: 'microphone' | 'system' | 'mixed';
+            closedEyesDiscardEnabled: boolean;
+            closedEyesMode: 'auto' | 'always-record' | 'always-pause';
+        };
+    };
+};
+
+export type GetChronicleActivityMonitorStatusResponse = GetChronicleActivityMonitorStatusResponses[keyof GetChronicleActivityMonitorStatusResponses];
+
+export type GetChronicleActivityStorageStatsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/chronicle/activity-storage/stats';
+};
+
+export type GetChronicleActivityStorageStatsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        storageRoot: string;
+        modelsRoot: string;
+        storage: {
+            exists: boolean;
+            fileCount: number;
+            directoryCount: number;
+            totalBytes: number;
+        };
+        models: {
+            exists: boolean;
+            fileCount: number;
+            directoryCount: number;
+            totalBytes: number;
+        };
+        database: {
+            snapshots: number;
+            activitySessions: number;
+            activitySegments: number;
+            memories: number;
+            memoryChunks: number;
+            knowledgeCards: number;
+            pipelineRuns: number;
+            dreamRuns: number;
+            accessibilitySnapshots: number;
+            accessibilityEvents: number;
+            audioTranscripts: number;
+            audioRawSegments: number;
+            messages: number;
+            modelResources: number;
+        };
+    };
+};
+
+export type GetChronicleActivityStorageStatsResponse = GetChronicleActivityStorageStatsResponses[keyof GetChronicleActivityStorageStatsResponses];
+
+export type GetChronicleMemoryStatusData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/chronicle/memory/status';
+};
+
+export type GetChronicleMemoryStatusResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        available: boolean;
+        totalMemories: number;
+        totalChunks: number;
+        totalKeywords: number;
+        totalEmbeddings: number;
+        totalKnowledgeCards: number;
+        totalKnowledgeVersions: number;
+        totalActivitySegments: number;
+        pendingActivitySegments: number;
+        crystallizedActivitySegments: number;
+        totalPipelineRuns: number;
+        lastMemoryAt: string | null;
+        lastMemoryAtUnix: number | null;
+        lastKnowledgeCardAt: string | null;
+        lastKnowledgeCardAtUnix: number | null;
+        lastPipelineRunAt: string | null;
+        lastPipelineRunAtUnix: number | null;
+        searchIndex: {
+            chunkCount: number;
+            keywordCount: number;
+            embeddingCount: number;
+            embeddingReadyCount: number;
+            embeddingPendingCount: number;
+            embeddingErrorCount: number;
+        };
+        pipeline: {
+            activityPipelineEnabled: boolean;
+            activityPipelineRunning: boolean;
+            dreamSchedulerEnabled: boolean;
+            dreamSchedulerRunning: boolean;
+        };
+    };
+};
+
+export type GetChronicleMemoryStatusResponse = GetChronicleMemoryStatusResponses[keyof GetChronicleMemoryStatusResponses];
 
 export type GetChroniclePipelineRunsData = {
     body?: never;
@@ -17637,6 +18931,15 @@ export type GetApiPluginsData = {
     path?: never;
     query?: never;
     url: '/api/plugins/';
+};
+
+export type GetApiPluginsDepsByFileNameData = {
+    body?: never;
+    path: {
+        fileName: string;
+    };
+    query?: never;
+    url: '/api/plugins/-/deps/{fileName}';
 };
 
 export type AllApiPluginsByRouteSegmentData = {
