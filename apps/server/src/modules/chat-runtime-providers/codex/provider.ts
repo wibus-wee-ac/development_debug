@@ -550,13 +550,19 @@ export class CodexProvider implements ChatRuntime {
   async invokeProviderNativeAppServer(
     input: ProviderNativeAppServerInvokeInput,
   ): Promise<ProviderNativeAppServerInvokeResponse> {
-    const response = await this.createAppServerBridge().invoke(input)
+    const response = await this.createAppServerBridge().invoke({
+      ...input,
+      modelId: input.modelId ?? undefined,
+    })
     syncCodexProviderNativeAppServerSnapshot(input, response.result)
     return response
   }
 
   openProviderNativeAppServerStream(input: ProviderNativeAppServerStreamInput): ReadableStream<Uint8Array> {
-    return this.createAppServerBridge().openEventStream(input)
+    return this.createAppServerBridge().openEventStream({
+      ...input,
+      modelId: input.modelId ?? undefined,
+    })
   }
 
   async getUiSlotStates(input: GetUiSlotStatesInput): Promise<RuntimeUiSlotState[]> {

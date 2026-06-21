@@ -49,6 +49,7 @@ class FakeCodexAppServerClient {
     cpuPercent: number | null
     rssKb: bigint | null
   }> = []
+
   backgroundTerminalTerminateResult = true
   terminatedBackgroundProcesses: string[] = []
   hangingMethods = new Set<string>()
@@ -3925,8 +3926,15 @@ describe('codexProvider app-server integration', () => {
             output: JSON.stringify({
               server: 'github',
               tool: 'search',
+              status: 'completed',
+              pluginId: null,
+              durationMs: 12,
+              durationSeconds: 0.012,
+              error: null,
               result: { content: [], structuredContent: { total: 1 }, _meta: null },
               content: [],
+              structuredContent: { total: 1 },
+              _meta: null,
             }),
             metadata: { turn_id: 'previous-turn-1' },
           },
@@ -6017,6 +6025,23 @@ describe('codexProvider app-server integration', () => {
   it('emits Codex app-server tools as structured outputs', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
+    const fileDiff = [
+      '--- a/src/app.ts',
+      '+++ b/src/app.ts',
+      '@@ -1 +1 @@',
+      '-old',
+      '+new',
+    ].join('\n')
+    const fileChanges = [{
+      path: 'src/app.ts',
+      kind: { type: 'update', move_path: null },
+      diff: fileDiff,
+    }]
+    const fileChangePatch = {
+      filenames: ['src/app.ts'],
+      gitDiff: { additions: 1, deletions: 1, patch: fileDiff },
+      structuredPatch: [{ lines: fileDiff.split('\n') }],
+    }
     const stream = provider.streamTurn({
       runId: 'run-codex-tools',
       runtimeSession: createRuntimeSession(),
@@ -6030,7 +6055,16 @@ describe('codexProvider app-server integration', () => {
       params: {
         threadId: 'codex-thread-1',
         turnId: 'codex-turn-1',
-        item: { id: 'file-1', type: 'fileChange', changes: [{ path: 'src/app.ts' }] },
+        item: { id: 'file-1', type: 'fileChange', changes: fileChanges },
+      },
+    })
+    client.pushNotification({
+      method: 'item/fileChange/patchUpdated',
+      params: {
+        threadId: 'codex-thread-1',
+        turnId: 'codex-turn-1',
+        itemId: 'file-1',
+        changes: fileChanges,
       },
     })
     client.pushNotification({
@@ -6038,7 +6072,7 @@ describe('codexProvider app-server integration', () => {
       params: {
         threadId: 'codex-thread-1',
         turnId: 'codex-turn-1',
-        item: { id: 'file-1', type: 'fileChange', changes: [{ path: 'src/app.ts' }], status: 'completed' },
+        item: { id: 'file-1', type: 'fileChange', changes: fileChanges, status: 'completed' },
       },
     })
     client.pushNotification({
@@ -6089,7 +6123,8 @@ describe('codexProvider app-server integration', () => {
     expect(chunks).toEqual([
       { type: 'tool-input-start', toolCallId: 'file-1', toolName: 'file_change' },
       { type: 'tool-input-available', toolCallId: 'file-1', toolName: 'file_change', input: codexInput('file_change', { filenames: ['src/app.ts'], status: 'started', type: 'fileChange' }) },
-      { type: 'tool-output-available', toolCallId: 'file-1', output: codexOutput('file_change', { filenames: ['src/app.ts'], status: 'started', type: 'fileChange' }, { filenames: ['src/app.ts'], status: 'completed', type: 'fileChange' }) },
+      { type: 'tool-output-available', toolCallId: 'file-1', preliminary: true, output: { type: 'cradle.codex.file-change.patch-updated.v1', ...fileChangePatch, changes: fileChanges } },
+      { type: 'tool-output-available', toolCallId: 'file-1', output: codexOutput('file_change', { filenames: ['src/app.ts'], status: 'started', type: 'fileChange' }, { ...fileChangePatch, changes: fileChanges, status: 'completed', type: 'fileChange' }) },
       { type: 'tool-input-start', toolCallId: 'mcp-1', toolName: 'github_search' },
       { type: 'tool-input-available', toolCallId: 'mcp-1', toolName: 'github_search', input: codexInput('github/search', { query: 'cradle' }) },
       { type: 'tool-output-available', toolCallId: 'mcp-1', output: codexOutput('github/search', { query: 'cradle' }, { server: 'github', tool: 'search', result: { content: [{ type: 'text', text: 'ok' }] }, content: [{ type: 'text', text: 'ok' }] }) },

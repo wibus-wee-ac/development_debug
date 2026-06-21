@@ -7,8 +7,8 @@ import type { ThreadItem } from '../app-server-protocol/v2/ThreadItem'
 import type { Turn } from '../app-server-protocol/v2/Turn'
 import type { UserInput } from '../app-server-protocol/v2/UserInput'
 import { CODEX_RUNTIME_KIND } from '../metadata'
-import { normalizeTokenUsageBreakdown, readCodexCompactSnapshot, readCodexProviderSnapshot } from './state-projector'
 import type { CodexProviderSnapshot } from '../types'
+import { normalizeTokenUsageBreakdown, readCodexCompactSnapshot, readCodexProviderSnapshot } from './state-projector'
 
 interface MutableSection {
   kind: string
@@ -216,6 +216,18 @@ function appendThreadItem(
         metadata: { turnId: turn.id, itemId: item.id, tool: item.tool, receiverThreadIds: item.receiverThreadIds },
       })
       return
+    case 'subAgentActivity':
+      appendSectionItem(sections, 'agents', 'Agents', {
+        kind: 'sub-agent-activity',
+        label: item.agentPath,
+        tokenCount: estimateJsonTokens({
+          kind: item.kind,
+          agentThreadId: item.agentThreadId,
+          agentPath: item.agentPath,
+        }),
+        metadata: { turnId: turn.id, itemId: item.id, kind: item.kind, agentThreadId: item.agentThreadId },
+      })
+      return
     case 'fileChange':
       appendSectionItem(sections, 'files', 'Files', {
         kind: 'file-change',
@@ -230,6 +242,14 @@ function appendThreadItem(
         label: item.query,
         tokenCount: estimateTextTokens(item.query) + estimateJsonTokens(item.action),
         metadata: { turnId: turn.id, itemId: item.id, tool: 'webSearch' },
+      })
+      return
+    case 'sleep':
+      appendSectionItem(sections, 'tools', 'Tools', {
+        kind: 'sleep',
+        label: `Sleep ${item.durationMs}ms`,
+        tokenCount: estimateTextTokens(String(item.durationMs)),
+        metadata: { turnId: turn.id, itemId: item.id, durationMs: item.durationMs },
       })
       return
     case 'imageView':
@@ -388,7 +408,7 @@ function estimateTextTokens(text: string): number {
   let asciiChars = 0
   let cjkChars = 0
   for (const char of text) {
-    if (/[\u3400-\u9fff\uf900-\ufaff]/.test(char)) {
+    if (/[\u3400-\u9FFF\uF900-\uFAFF]/.test(char)) {
       cjkChars += 1
     }
     else {

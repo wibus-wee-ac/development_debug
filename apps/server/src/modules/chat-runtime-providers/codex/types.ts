@@ -364,6 +364,9 @@ export interface CodexThreadItem {
   prompt?: string | null
   model?: string | null
   reasoningEffort?: string | null
+  kind?: string
+  agentThreadId?: string
+  agentPath?: string
   agentsStates?: Record<string, { status?: string | null, message?: string | null } | undefined>
   error?: { message?: string } | string | null
   result?: unknown

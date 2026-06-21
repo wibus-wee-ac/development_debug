@@ -8,14 +8,15 @@ import type { UIMessageChunk } from 'ai'
 
 import type { BoundedTextCollector } from '../../bounded-text-collector'
 import { createBoundedTextCollector } from '../../bounded-text-collector'
-import type { ResponseItem as CodexResponseItem } from '../app-server-protocol/ResponseItem'
 import { isCodexAppServerToolApprovalRequest } from '../app-server/server-request-methods'
+import type { ResponseItem as CodexResponseItem } from '../app-server-protocol/ResponseItem'
 import type { CodexAppServerItem } from '../tools/mapper'
 import {
   buildCodexServerRequestToolInput,
   buildCodexServerRequestToolOutput,
   buildCodexToolInput,
   buildCodexToolOutput,
+  projectCodexFileChangePatch,
   readCodexToolError,
   readCodexToolName,
 } from '../tools/mapper'
@@ -187,10 +188,14 @@ function mapStartedItem(rawParams: unknown, state: CodexAppServerMapperState): U
     case 'mcpToolCall':
     case 'dynamicToolCall':
     case 'collabAgentToolCall':
+    case 'subAgentActivity':
     case 'webSearch':
+    case 'sleep':
     case 'plan':
     case 'imageView':
     case 'imageGeneration':
+    case 'enteredReviewMode':
+    case 'exitedReviewMode':
     case 'contextCompaction':
       return mapStartedToolItem(item, state)
     default:
@@ -235,10 +240,14 @@ function mapCompletedItem(rawParams: unknown, state: CodexAppServerMapperState):
     case 'mcpToolCall':
     case 'dynamicToolCall':
     case 'collabAgentToolCall':
+    case 'subAgentActivity':
     case 'webSearch':
+    case 'sleep':
     case 'plan':
     case 'imageView':
     case 'imageGeneration':
+    case 'enteredReviewMode':
+    case 'exitedReviewMode':
     case 'contextCompaction':
       recordCompletedPlan(item, params.turnId, state)
       return mapCompletedToolItem(item, state)
@@ -510,18 +519,22 @@ function startToolItemForOutOfOrderDelta(
 }
 
 function mapFileChangePatchUpdated(rawParams: unknown): UIMessageChunk[] {
-  const params = rawParams as { itemId?: string, changes?: Array<{ path?: string }> }
+  const params = rawParams as {
+    itemId?: string
+    changes?: Array<{ path: string, diff?: string | null, kind?: unknown }>
+  }
   if (!params.itemId) {
     return []
   }
+  const changes = params.changes ?? []
   return [{
     type: 'tool-output-available',
     toolCallId: params.itemId,
     preliminary: true,
     output: {
       type: 'cradle.codex.file-change.patch-updated.v1',
-      filenames: params.changes?.map(change => change.path).filter(Boolean) ?? [],
-      changes: params.changes ?? [],
+      ...projectCodexFileChangePatch(changes),
+      changes,
     },
   }]
 }

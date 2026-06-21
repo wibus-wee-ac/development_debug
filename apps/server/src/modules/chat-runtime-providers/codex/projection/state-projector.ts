@@ -24,6 +24,7 @@ import {
   readWorkspaceProviderStateSnapshot,
 } from '../../provider-state-snapshot'
 import type { CodexAppServerMessage } from '../app-server/client'
+import { isCodexAppServerToolApprovalRequest } from '../app-server/server-request-methods'
 import type { Turn } from '../app-server-protocol/v2/Turn'
 import { isRetryableCodexAppServerError } from '../turn/stream-diagnostics'
 import type {
@@ -67,7 +68,6 @@ import type {
   TurnPlanUpdatedNotificationParams,
   WarningNotificationParams,
 } from '../types'
-import { isCodexAppServerToolApprovalRequest } from '../app-server/server-request-methods'
 
 export interface CodexNativeHistorySnapshot {
   threadId: string
@@ -1335,8 +1335,12 @@ function isToolActivityItem(type: string): boolean {
     || type === 'mcpToolCall'
     || type === 'dynamicToolCall'
     || type === 'collabAgentToolCall'
+    || type === 'subAgentActivity'
     || type === 'webSearch'
+    || type === 'sleep'
     || type === 'imageGeneration'
+    || type === 'enteredReviewMode'
+    || type === 'exitedReviewMode'
     || type === 'contextCompaction'
 }
 
@@ -1362,12 +1366,20 @@ function readToolActivityLabel(item: CodexThreadItem): string {
       return item.tool ?? 'Tool'
     case 'collabAgentToolCall':
       return item.tool ?? 'Agent'
+    case 'subAgentActivity':
+      return [item.kind, item.agentPath].filter(Boolean).join(' ') || 'Subagent activity'
     case 'webSearch':
       return item.query ?? 'Web search'
+    case 'sleep':
+      return item.durationMs === null || item.durationMs === undefined ? 'Sleep' : `Sleep ${item.durationMs}ms`
     case 'plan':
       return item.text ?? 'Plan'
     case 'imageGeneration':
       return 'Image generation'
+    case 'enteredReviewMode':
+      return 'Entered review mode'
+    case 'exitedReviewMode':
+      return 'Exited review mode'
     case 'contextCompaction':
       return 'Context compaction'
     default:
