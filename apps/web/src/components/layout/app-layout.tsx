@@ -28,6 +28,7 @@ import {
 } from '~/components/layout/layout-motion'
 import { ResizeHandle } from '~/components/layout/resize-handle'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
+import { Skeleton } from '~/components/ui/skeleton'
 import { useJarvisUiStore } from '~/features/system-agent/jarvis-ui-store'
 import { useGlobalEventListeners } from '~/hooks/use-global-event-listeners'
 import { useShortcut } from '~/hooks/use-shortcut'
@@ -54,10 +55,12 @@ const LazyBrowserPanel = lazy(() =>
     default: module.BrowserPanel,
   })))
 
-const LazyRightAside = lazy(() =>
+const loadRightAside = () =>
   import('~/components/layout/right-aside').then(module => ({
     default: module.RightAside,
-  })))
+  }))
+
+const LazyRightAside = lazy(loadRightAside)
 
 const MemoizedRightAside = memo(LazyRightAside)
 MemoizedRightAside.displayName = 'MemoizedRightAside'
@@ -520,13 +523,14 @@ function RetainedRightAsides({
     <>
       {descriptors.map((descriptor) => {
         const asideVisible = visible && descriptor.ownerId === ownerId
+        const currentOwnerMounted = descriptor.ownerId === ownerId
         return (
           <Activity
             key={descriptor.ownerId}
-            mode={asideVisible ? 'visible' : 'hidden'}
+            mode={currentOwnerMounted ? 'visible' : 'hidden'}
             name={`right-aside:${descriptor.ownerId}`}
           >
-            <Suspense fallback={null}>
+            <Suspense fallback={<RightAsideFallback />}>
               <MemoizedRightAside
                 ownerId={descriptor.ownerId}
                 visible={asideVisible}
@@ -540,6 +544,29 @@ function RetainedRightAsides({
         )
       })}
     </>
+  )
+}
+
+function RightAsideFallback() {
+  return (
+    <div
+      className="flex h-full flex-1 flex-col overflow-hidden"
+      data-testid="right-aside-fallback"
+    >
+      <div className="flex shrink-0 justify-center border-b border-border px-2 py-1.5">
+        <div className="flex items-center gap-2">
+          <Skeleton className="h-7 w-20 rounded-md" />
+          <Skeleton className="size-7 rounded-md" />
+          <Skeleton className="size-7 rounded-md" />
+        </div>
+      </div>
+      <div className="flex flex-1 flex-col gap-2 p-3">
+        <Skeleton className="h-7 w-2/3 rounded-md" />
+        <Skeleton className="h-5 w-full rounded" />
+        <Skeleton className="h-5 w-5/6 rounded" />
+        <Skeleton className="h-5 w-3/4 rounded" />
+      </div>
+    </div>
   )
 }
 
@@ -1082,6 +1109,13 @@ const AppRightAside = memo(
       const controls = asideMotionWidth.animateSize(nextWidth, SPRING)
       void controls.finished.catch(() => undefined)
     }, [asideMotionWidth, asideVisible, asideWidth, enabled])
+
+    useEffect(() => {
+      if (!enabled || !ownerId) {
+        return
+      }
+      void loadRightAside()
+    }, [enabled, ownerId])
 
     return (
       <>
