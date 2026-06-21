@@ -118,6 +118,7 @@ export class CodexAppServerClient {
       clientInfo,
       capabilities: { experimentalApi: true },
     })
+    syncCodexAppServerLogInsertBlockerFromFeatureFlag()
   }
 
   private async readClientInfo(): Promise<ClientInfo> {

@@ -2,7 +2,7 @@ import { EventEmitter } from 'node:events'
 import { join } from 'node:path'
 import { PassThrough, Readable, Writable } from 'node:stream'
 
-import { describe, expect, it, vi } from 'vitest'
+import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import {
   buildCradleCodexAppServerEnv,
@@ -14,10 +14,19 @@ import {
 } from './client'
 
 const spawnMock = vi.hoisted(() => vi.fn())
+const syncLogInsertBlockerMock = vi.hoisted(() => vi.fn())
 
 vi.mock('node:child_process', () => ({
   spawn: spawnMock,
 }))
+
+vi.mock('./log-insert-blocker', () => ({
+  syncCodexAppServerLogInsertBlockerFromFeatureFlag: syncLogInsertBlockerMock,
+}))
+
+beforeEach(() => {
+  vi.clearAllMocks()
+})
 
 function createCodexVersionProcess(output: string) {
   const stdout = new PassThrough()
@@ -216,6 +225,7 @@ describe('codexAppServerClient', () => {
 
     await client.initialize()
 
+    expect(syncLogInsertBlockerMock).toHaveBeenCalledTimes(2)
     expect(JSON.parse(writtenLine.trim())).toEqual({
       id: 1,
       method: 'initialize',
