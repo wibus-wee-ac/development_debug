@@ -29,6 +29,7 @@ export const PreferencesModel = {
       localAuthForDangerousActions: t.Optional(t.Boolean({ default: false })),
       continueBlockedCodexGoals: t.Optional(t.Boolean({ default: false })),
       blockCodexAppServerLogInserts: t.Optional(t.Boolean({ default: false })),
+      nativeProviderSkillProjection: t.Optional(t.Boolean({ default: false })),
     }, { additionalProperties: false }),
   }, { additionalProperties: false }),
   chatPreferences: t.Object({
@@ -112,11 +113,13 @@ export const AppPreferencesJsonSchema = z.union([
     localAuthForDangerousActions: z.boolean().default(false),
     continueBlockedCodexGoals: z.boolean().default(false),
     blockCodexAppServerLogInserts: z.boolean().default(false),
+    nativeProviderSkillProjection: z.boolean().default(false),
   }).default({
     multiWorkspacePoc: false,
     localAuthForDangerousActions: false,
     continueBlockedCodexGoals: false,
     blockCodexAppServerLogInserts: false,
+    nativeProviderSkillProjection: false,
   }),
 }).default({
   featureFlags: {
@@ -124,6 +127,7 @@ export const AppPreferencesJsonSchema = z.union([
     localAuthForDangerousActions: false,
     continueBlockedCodexGoals: false,
     blockCodexAppServerLogInserts: false,
+    nativeProviderSkillProjection: false,
   },
 }))
 

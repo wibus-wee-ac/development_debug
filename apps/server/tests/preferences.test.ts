@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -10,6 +10,12 @@ import { shutdownInfra } from '../src/infra'
 import { setCodexChatgptCredentialLoginFetchForTests } from '../src/modules/chat-runtime-providers/codex/app-server/account-service'
 import { setCodexChatgptModelListClientFactoryForTests } from '../src/modules/chat-runtime-providers/codex/app-server/model-list'
 import { readSecret, saveSecret } from '../src/modules/secrets/service'
+import {
+  createClaudeGlobalNativeSkillProjectionTarget,
+  createCodexGlobalNativeSkillProjectionTarget,
+  projectNativeSkill,
+  resetNativeSkillProjectionTargets,
+} from '../src/modules/skills/native-skill-projection'
 
 function makeTempDir(prefix: string): string {
   return mkdtempSync(join(tmpdir(), prefix))
@@ -37,6 +43,7 @@ describe('preferences capability', () => {
           localAuthForDangerousActions: false,
           continueBlockedCodexGoals: false,
           blockCodexAppServerLogInserts: false,
+          nativeProviderSkillProjection: false,
         },
       })
 
@@ -62,6 +69,7 @@ describe('preferences capability', () => {
           localAuthForDangerousActions: true,
           continueBlockedCodexGoals: false,
           blockCodexAppServerLogInserts: false,
+          nativeProviderSkillProjection: false,
         },
       })
 
@@ -73,6 +81,7 @@ describe('preferences capability', () => {
           localAuthForDangerousActions: true,
           continueBlockedCodexGoals: false,
           blockCodexAppServerLogInserts: false,
+          nativeProviderSkillProjection: false,
         },
       })
     }
@@ -84,6 +93,74 @@ describe('preferences capability', () => {
       }
       else {
         process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+    }
+  })
+
+  it('removes provider-native skill projections when the app feature flag is disabled', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousHome = process.env.HOME
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.HOME = dataDir
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      const skillDir = join(dataDir, 'source-skill')
+      mkdirSync(skillDir, { recursive: true })
+      writeFileSync(join(skillDir, 'SKILL.md'), [
+        '---',
+        'name: native-cleanup-demo',
+        'description: Native cleanup demo',
+        '---',
+        '',
+        '# Native Cleanup Demo',
+      ].join('\n'))
+
+      const source = {
+        sourceKind: 'plugin' as const,
+        skillName: 'native-cleanup-demo',
+        skillFile: join(skillDir, 'SKILL.md'),
+      }
+      const codexProjection = projectNativeSkill(createCodexGlobalNativeSkillProjectionTarget(dataDir), source)
+      const claudeProjection = projectNativeSkill(createClaudeGlobalNativeSkillProjectionTarget(dataDir), source)
+      expect(existsSync(codexProjection)).toBe(true)
+      expect(existsSync(claudeProjection)).toBe(true)
+
+      app = await createServerApp()
+      const disableRes = await app.handle(new Request('http://localhost/preferences/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          featureFlags: {
+            multiWorkspacePoc: false,
+            localAuthForDangerousActions: false,
+            continueBlockedCodexGoals: false,
+            blockCodexAppServerLogInserts: false,
+            nativeProviderSkillProjection: false,
+          },
+        }),
+      }))
+
+      expect(disableRes.status).toBe(200)
+      expect(existsSync(codexProjection)).toBe(false)
+      expect(existsSync(claudeProjection)).toBe(false)
+    }
+    finally {
+      resetNativeSkillProjectionTargets()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousHome === undefined) {
+        delete process.env.HOME
+      }
+      else {
+        process.env.HOME = previousHome
       }
     }
   })
@@ -118,7 +195,7 @@ describe('preferences capability', () => {
       enabledDb.prepare('INSERT INTO logs (message) VALUES (?)').run('blocked')
       expect(enabledDb.prepare('SELECT count(*) AS count FROM logs').get()).toEqual({ count: 0 })
       expect(enabledDb.prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'block_log_inserts'",
+        'SELECT name FROM sqlite_master WHERE type = \'trigger\' AND name = \'block_log_inserts\'',
       ).get()).toEqual({ name: 'block_log_inserts' })
       enabledDb.close()
 
@@ -138,7 +215,7 @@ describe('preferences capability', () => {
       disabledDb.prepare('INSERT INTO logs (message) VALUES (?)').run('allowed')
       expect(disabledDb.prepare('SELECT count(*) AS count FROM logs').get()).toEqual({ count: 1 })
       expect(disabledDb.prepare(
-        "SELECT name FROM sqlite_master WHERE type = 'trigger' AND name = 'block_log_inserts'",
+        'SELECT name FROM sqlite_master WHERE type = \'trigger\' AND name = \'block_log_inserts\'',
       ).get()).toBeUndefined()
       disabledDb.close()
     }

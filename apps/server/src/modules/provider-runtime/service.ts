@@ -34,7 +34,7 @@ export interface ProviderRuntimeSessionRequest {
   profile: RuntimeProviderTargetProfile
   workspacePath: string
   agentId?: string | null
-  modelId?: string
+  modelId?: string | null
 }
 
 export interface ProviderRuntimeSessionResolution {
@@ -54,13 +54,15 @@ function readSnapshotModelId(providerStateSnapshot: string | null | undefined): 
 }
 
 function readRequestedModelId(input: {
-  modelId?: string
+  modelId?: string | null
   liveModelId?: string | null
   binding?: BackendSessionBinding
   runtimeSession?: RuntimeSession
 }): string | null {
-  return input.modelId
-    ?? input.liveModelId
+  if (input.modelId !== undefined) {
+    return input.modelId
+  }
+  return input.liveModelId
     ?? input.binding?.requestedModelId
     ?? readSnapshotModelId(input.runtimeSession?.providerStateSnapshot ?? input.binding?.backendStateSnapshot)
     ?? null
