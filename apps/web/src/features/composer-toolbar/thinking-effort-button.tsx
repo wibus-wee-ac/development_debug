@@ -24,7 +24,7 @@ function clampIndex(index: number, length: number): number {
 
 export function ThinkingEffortButton({
   thinkingEffort,
-  thinkingOptions,
+  thinkingOptions = [],
   onSelect,
   occludeNativeBrowserSurface,
 }: {
@@ -203,12 +203,11 @@ export function ThinkingEffortButton({
   return (
     <m.button
       {...surfaceProps}
-      layout
       initial={false}
       animate={{ scale: mode === 'dragging' ? 1.02 : 1 }}
       transition={transition}
       type="button"
-      data-testid="claude-agent-thinking-effort-trigger"
+      data-testid="composer-thinking-effort-trigger"
       data-thinking-effort={active?.value ?? ''}
       data-mode={mode}
       disabled={isDisabled}
@@ -220,8 +219,7 @@ export function ThinkingEffortButton({
       aria-label={`Thinking effort: ${activeLabel}. Click to cycle or long-press and drag to adjust.`}
       title={`Thinking effort: ${activeLabel}`}
       className={cn(
-        'inline-flex h-6 shrink-0 select-none items-center rounded-[min(var(--radius-md),10px)] px-1.5 text-xs outline-none transition-[gap,color,background-color]',
-        mode === 'dragging' ? 'gap-1.5' : 'gap-0.5',
+        'inline-flex h-6 shrink-0 select-none items-center rounded-[min(var(--radius-md),10px)] px-1.5 text-xs outline-none transition-colors',
         'bg-foreground/[0.055] text-muted-foreground transition-colors',
         'hover:bg-foreground/[0.08] hover:text-foreground',
         'focus-visible:ring-2 focus-visible:ring-primary/35',
@@ -247,15 +245,15 @@ export function ThinkingEffortButton({
         ))}
       </span>
       <m.span
-        layout
         aria-hidden="true"
+        initial={false}
         className="relative inline-flex h-4 shrink-0 items-center overflow-hidden rounded-[6px] bg-foreground/[0.07] p-0.5"
         animate={{
           opacity: mode === 'dragging' ? 1 : 0,
-          scaleX: mode === 'dragging' ? 1 : 0.92,
           width: mode === 'dragging' ? stripWidth : 0,
+          marginLeft: mode === 'dragging' ? 3 : 0,
+          marginRight: mode === 'dragging' ? 3 : 0,
         }}
-        style={{ originX: 0 }}
         transition={transition}
       >
         {!isDisabled && (
@@ -290,7 +288,7 @@ export function ThinkingEffortButton({
           )
         })}
       </m.span>
-      <span className="relative inline-flex h-4 min-w-[3ch] shrink-0 items-center overflow-hidden whitespace-nowrap text-[11px] font-medium text-muted-foreground/80">
+      <span className="relative inline-flex mt-0.5 min-w-[3ch] shrink-0 items-center overflow-hidden whitespace-nowrap text-[11px] font-medium text-muted-foreground/80">
         {mode === 'dragging'
           ? activeLabel
           : (

@@ -6,6 +6,7 @@ import type { ClaudeAgentModelAliasesSlot } from '~/features/chat/runtime/claude
 
 import { AgentSelector } from './agent-selector'
 import { ChatAgentIdentity } from './chat-agent-identity'
+import { filterThinkingOptionsForModel } from './constants'
 import { ProviderModelSelector, useProviderThinkingOptions } from './provider-model-selector'
 import { RuntimeSelector } from './runtime-selector'
 import { ThinkingEffortButton } from './thinking-effort-button'
@@ -65,10 +66,14 @@ export function ComposerToolbar({ context, state, claudeModelAliases }: Composer
     setRuntimeKind(kind)
   }
 
-  const isClaudeAgent = selection.targetMode === 'provider'
+  const thinkingOptions = useProviderThinkingOptions()
+  const thinkingControlOptions = selection.runtimeKind === 'claude-agent'
+    ? thinkingOptions
+    : filterThinkingOptionsForModel(state.effectiveModel, thinkingOptions)
+  const showThinkingControl = selection.runtimeKind !== 'cli-tui' && thinkingControlOptions.length > 0
+  const showClaudeModelAliases = selection.targetMode === 'provider'
     && selection.runtimeKind === 'claude-agent'
     && !!claudeModelAliases
-  const thinkingOptions = useProviderThinkingOptions()
 
   const runtimeControl = (
     <RuntimeSelector
@@ -102,8 +107,8 @@ export function ComposerToolbar({ context, state, claudeModelAliases }: Composer
           loadingProfileIds={loadingProfileIds}
           thinkingEffort={selection.thinkingEffort}
           isLoadingModels={isLoadingModels}
-          showThinkingInModelMenu={!isClaudeAgent}
-          claudeModelAliases={isClaudeAgent ? claudeModelAliases : null}
+          showThinkingInModelMenu={false}
+          claudeModelAliases={showClaudeModelAliases ? claudeModelAliases : null}
           requestProfileModels={requestProfileModels}
           onSelectProfile={setProfileId}
           onSelectModel={setModelId}
@@ -111,11 +116,11 @@ export function ComposerToolbar({ context, state, claudeModelAliases }: Composer
         />
       )
     : null
-  const thinkingControl = isClaudeAgent
+  const thinkingControl = showThinkingControl
     ? (
         <ThinkingEffortButton
           thinkingEffort={selection.thinkingEffort}
-          thinkingOptions={thinkingOptions}
+          thinkingOptions={thinkingControlOptions}
           onSelect={setThinkingEffort}
           occludeNativeBrowserSurface
         />
