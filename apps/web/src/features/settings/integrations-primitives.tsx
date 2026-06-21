@@ -25,6 +25,7 @@ export const queryKeys = {
   connections: ['conversation-bridge', 'connections'] as const,
   connection: (id: string) => ['conversation-bridge', 'connections', id] as const,
   channelBindings: (id: string) => ['conversation-bridge', 'connections', id, 'channel-bindings'] as const,
+  runtimeTargets: ['conversation-bridge', 'runtime-targets'] as const,
   threads: (id: string) => ['conversation-bridge', 'connections', id, 'threads'] as const,
   retryableDeliveries: ['conversation-bridge', 'delivery-attempts', 'retryable'] as const,
   secrets: ['secrets'] as const,

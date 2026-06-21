@@ -583,12 +583,12 @@ export function AwaitSettings() {
       description={t('await.page.description')}
       data-testid="await-settings"
     >
+      <AwaitGuide />
       <div className="flex flex-col gap-3">
         {workspaces.map(w => (
           <WorkspaceBypassSection key={w.id} workspace={w} />
         ))}
       </div>
-      <AwaitGuide />
     </SettingsPage>
   )
 }

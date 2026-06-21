@@ -26,11 +26,14 @@ import { useTranslation } from 'react-i18next'
 import {
   deleteConversationBridgeConnectionsById,
   deleteConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBinding,
+  getAgents,
+  getChatRuntimes,
   getConversationBridgeAdapters,
   getConversationBridgeConnections,
   getConversationBridgeConnectionsByIdChannelBindings,
   getConversationBridgeConnectionsByIdThreads,
   getConversationBridgeDeliveryAttemptsRetryable,
+  getProviderTargets,
   getSecrets,
   patchConversationBridgeConnectionsById,
   postConversationBridgeConnectionsByIdStart,
@@ -652,7 +655,7 @@ function ConnectionDetail({
     <div className="flex h-full flex-col overflow-y-auto">
       <Tabs defaultValue="config" className="flex-1">
         {/* Sticky identity + action bar */}
-        <div className="sticky top-0 z-10 border-b border-border/60 bg-background px-5 pt-4">
+        <div className="sticky top-0 z-10 border-b border-border/60 bg-background px-5 pt-4 pb-3">
           <div className="flex items-center justify-between gap-3">
             <div className="flex min-w-0 items-center gap-3">
               <PlatformGlyph platform={connection.platform} label={connection.displayName} size="sm" />
@@ -1193,12 +1196,72 @@ function AddChannelBindingDialog({
   const [externalWorkspaceId, setExternalWorkspaceId] = useState('')
   const [externalChannelId, setExternalChannelId] = useState('')
   const [cradleWorkspaceId, setCradleWorkspaceId] = useState('')
+  const [runtimeTargetValue, setRuntimeTargetValue] = useState('')
+
+  const runtimeTargetsQuery = useQuery({
+    queryKey: queryKeys.runtimeTargets,
+    enabled: open,
+    queryFn: async () => {
+      const [agentsResult, providerTargetsResult, runtimesResult] = await Promise.all([
+        getAgents(),
+        getProviderTargets(),
+        getChatRuntimes(),
+      ])
+      if (agentsResult.error) { throw new Error(String(agentsResult.error)) }
+      if (providerTargetsResult.error) { throw new Error(String(providerTargetsResult.error)) }
+      if (runtimesResult.error) { throw new Error(String(runtimesResult.error)) }
+      return {
+        agents: agentsResult.data ?? [],
+        providerTargets: providerTargetsResult.data ?? [],
+        runtimes: runtimesResult.data?.items ?? [],
+      }
+    },
+  })
+
+  const runtimeTargetOptions = useMemo(() => {
+    const agents = runtimeTargetsQuery.data?.agents ?? []
+    const providerTargets = runtimeTargetsQuery.data?.providerTargets ?? []
+    const chatRuntimes = (runtimeTargetsQuery.data?.runtimes ?? [])
+      .filter(runtime => runtime.runtimeKind !== 'cli-tui')
+      .filter(runtime => runtime.surfaces?.includes('chat') ?? true)
+
+    return [
+      ...agents
+        .filter(agent => agent.enabled && agent.runtimeKind !== 'cli-tui' && agent.providerTargetId)
+        .map(agent => ({
+          value: `agent:${agent.id}`,
+          label: `${t('integrations.channelBindings.runtimeTargetAgentPrefix')} ${agent.name}`,
+          description: agent.modelId ?? agent.runtimeKind,
+          agentId: agent.id,
+          providerTargetId: null as string | null,
+          runtimeKind: null as string | null,
+        })),
+      ...providerTargets
+        .filter(target => target.enabled)
+        .flatMap(target => chatRuntimes
+          .filter(runtime => runtime.providerKinds.includes(target.providerKind))
+          .map(runtime => ({
+            value: `provider:${target.id}:${runtime.runtimeKind}`,
+            label: `${t('integrations.channelBindings.runtimeTargetProviderPrefix')} ${target.displayName}`,
+            description: runtime.label,
+            agentId: null as string | null,
+            providerTargetId: target.id,
+            runtimeKind: runtime.runtimeKind,
+          }))),
+    ]
+  }, [runtimeTargetsQuery.data, t])
 
   const addMutation = useMutation({
     mutationFn: async () => {
+      const selectedTarget = runtimeTargetOptions.find(option => option.value === runtimeTargetValue)
       const { data, error } = await putConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBinding({
         path: { id: connectionId, externalWorkspaceId, externalChannelId },
-        body: { cradleWorkspaceId },
+        body: {
+          cradleWorkspaceId,
+          sessionAgentId: selectedTarget?.agentId ?? null,
+          sessionProviderTargetId: selectedTarget?.providerTargetId ?? null,
+          sessionRuntimeKind: selectedTarget?.runtimeKind ?? null,
+        },
       })
       if (error) { throw new Error(String(error)) }
       return data
@@ -1209,6 +1272,7 @@ function AddChannelBindingDialog({
       setExternalWorkspaceId('')
       setExternalChannelId('')
       setCradleWorkspaceId('')
+      setRuntimeTargetValue('')
     },
     onError: () => {
       toastManager.add({ type: 'error', title: t('integrations.channelBindings.toast.addFailed') })
@@ -1256,13 +1320,40 @@ function AddChannelBindingDialog({
               </SelectContent>
             </Select>
           </div>
+          <div className="space-y-2">
+            <Label htmlFor="runtimeTarget" className="text-xs">{t('integrations.channelBindings.runtimeTarget')}</Label>
+            <Select
+              value={runtimeTargetValue}
+              onValueChange={setRuntimeTargetValue}
+              disabled={runtimeTargetsQuery.isLoading || runtimeTargetOptions.length === 0}
+            >
+              <SelectTrigger id="runtimeTarget" className="h-8 text-xs">
+                <SelectValue placeholder={runtimeTargetsQuery.isLoading ? t('integrations.channelBindings.runtimeTargetLoading') : t('integrations.channelBindings.runtimeTargetPlaceholder')} />
+              </SelectTrigger>
+              <SelectContent>
+                {runtimeTargetOptions.map(option => (
+                  <SelectItem key={option.value} value={option.value} className="text-xs">
+                    {option.label}
+                    {' · '}
+                    {option.description}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {runtimeTargetsQuery.isError && (
+              <p className="text-[11px] text-destructive">{t('integrations.channelBindings.runtimeTargetError')}</p>
+            )}
+            {!runtimeTargetsQuery.isLoading && runtimeTargetOptions.length === 0 && (
+              <p className="text-[11px] text-muted-foreground">{t('integrations.channelBindings.runtimeTargetEmpty')}</p>
+            )}
+          </div>
         </div>
         <DialogFooter>
           <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="h-7 text-xs">{t('registry.action.cancel')}</Button>
           <Button
             size="sm"
             onClick={() => void addMutation.mutate()}
-            disabled={!externalWorkspaceId || !externalChannelId || !cradleWorkspaceId || addMutation.isPending}
+            disabled={!externalWorkspaceId || !externalChannelId || !cradleWorkspaceId || !runtimeTargetValue || addMutation.isPending}
             className="h-7 text-xs"
           >
             {addMutation.isPending && <Spinner className="size-3.5 mr-1" />}
@@ -1407,13 +1498,12 @@ function ProviderSkillsGroup() {
       </SettingsRow>
       {/* Responsive grid: tiles 2-up at width so the list stays compact as
           more providers are added, never collapsing into a tall single column. */}
-      <div className="grid grid-cols-1 gap-1.5 pt-0.5 sm:grid-cols-2">
+      <div className="grid grid-cols-1 gap-1.5 py-2 sm:grid-cols-2">
         {skillRoots.map(path => (
           <div
             key={path}
             className="inline-flex items-center gap-2 rounded-md bg-muted px-2 py-1.5"
           >
-            <TerminalIcon className="size-3 shrink-0 text-muted-foreground" />
             <span className="shrink-0 text-[11px] font-medium text-foreground">
               {providerLabelFromPath(path)}
             </span>
@@ -1424,6 +1514,139 @@ function ProviderSkillsGroup() {
         ))}
       </div>
     </SettingsGroup>
+  )
+}
+
+function SlackGuideStep({
+  icon: Icon,
+  title,
+  description,
+  items,
+  tone = 'default',
+}: {
+  icon: React.ComponentType<{ className?: string }>
+  title: string
+  description: string
+  items?: string[]
+  tone?: 'default' | 'accent'
+}) {
+  return (
+    <div className="grid grid-cols-[1rem_minmax(0,1fr)] gap-x-3 gap-y-1 py-1">
+      <Icon className={cn('mt-0.5 size-4', tone === 'accent' ? 'text-foreground' : 'text-muted-foreground')} aria-hidden="true" />
+      <div className="min-w-0">
+        <div className="text-[12px] font-medium text-foreground">{title}</div>
+        <p className="mt-0.5 text-[12px] leading-5 text-muted-foreground text-pretty">{description}</p>
+        {items && items.length > 0 && (
+          <div className="mt-1.5 flex flex-wrap gap-1.5">
+            {items.map(item => (
+              <span key={item} className="rounded-md bg-muted px-1.5 py-0.5 font-mono text-[11px] leading-4 text-muted-foreground">
+                {item}
+              </span>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  )
+}
+
+function SlackSetupGuide() {
+  const { t } = useTranslation('settings')
+
+  const slackAppSteps = [
+    {
+      icon: LinkIcon,
+      title: t('integrations.slackGuide.step.createApp.title'),
+      description: t('integrations.slackGuide.step.createApp.description'),
+    },
+    {
+      icon: ZapIcon,
+      title: t('integrations.slackGuide.step.socketMode.title'),
+      description: t('integrations.slackGuide.step.socketMode.description'),
+      items: ['connections:write'],
+    },
+    {
+      icon: KeyIcon,
+      title: t('integrations.slackGuide.step.botScopes.title'),
+      description: t('integrations.slackGuide.step.botScopes.description'),
+      items: ['chat:write', 'app_mentions:read', 'channels:history', 'groups:history', 'commands'],
+    },
+    {
+      icon: SendIcon,
+      title: t('integrations.slackGuide.step.events.title'),
+      description: t('integrations.slackGuide.step.events.description'),
+      items: ['app_mention', 'message.channels', 'message.groups'],
+    },
+    {
+      icon: TerminalIcon,
+      title: t('integrations.slackGuide.step.slashCommand.title'),
+      description: t('integrations.slackGuide.step.slashCommand.description'),
+      items: ['/cradle'],
+      tone: 'accent' as const,
+    },
+  ]
+
+  const cradleSteps = [
+    {
+      icon: KeyIcon,
+      title: t('integrations.slackGuide.step.credentials.title'),
+      description: t('integrations.slackGuide.step.credentials.description'),
+      items: ['xoxb-...', 'xapp-...', 'signing secret'],
+    },
+    {
+      icon: HashIcon,
+      title: t('integrations.slackGuide.step.binding.title'),
+      description: t('integrations.slackGuide.step.binding.description'),
+      items: ['T...', 'C... / G...', 'Cradle workspace', 'default runtime target'],
+    },
+    {
+      icon: BotIcon,
+      title: t('integrations.slackGuide.step.invite.title'),
+      description: t('integrations.slackGuide.step.invite.description'),
+    },
+  ]
+
+  return (
+    <div className="max-w-2xl space-y-5 pb-10">
+      <SettingsGroup
+        label={t('integrations.slackGuide.slackApp.title')}
+        description={t('integrations.slackGuide.slackApp.description')}
+        bare
+        className="p-4"
+      >
+        <div className="flex flex-col gap-2">
+          {slackAppSteps.map(step => (
+            <SlackGuideStep
+              key={step.title}
+              icon={step.icon}
+              title={step.title}
+              description={step.description}
+              items={step.items}
+              tone={step.tone}
+            />
+          ))}
+        </div>
+      </SettingsGroup>
+
+      <SettingsGroup
+        label={t('integrations.slackGuide.cradle.title')}
+        description={t('integrations.slackGuide.cradle.description')}
+        bare
+        className="p-4"
+      >
+        <div className="flex flex-col gap-2">
+          {cradleSteps.map(step => (
+            <SlackGuideStep
+              key={step.title}
+              icon={step.icon}
+              title={step.title}
+              description={step.description}
+              items={step.items}
+            />
+          ))}
+        </div>
+      </SettingsGroup>
+    </div>
   )
 }
 
@@ -1511,6 +1734,7 @@ export function IntegrationsSettings() {
       title={t('integrations.page.title')}
       description={t('integrations.page.description')}
       maxWidth="4xl"
+      className="h-full min-h-0 pb-0"
       action={(
         <div className="flex flex-col items-end gap-2">
           <div className="flex items-center gap-1">
@@ -1540,72 +1764,85 @@ export function IntegrationsSettings() {
         </div>
       )}
     >
-      {isLoading
+      <Tabs defaultValue="connections" className="min-h-0 flex-1 gap-5">
+        <TabsList className="h-8 shrink-0 gap-1 px-0">
+          <TabsTrigger value="connections" className="h-7 px-2.5 text-[12px]">{t('integrations.tabs.connections')}</TabsTrigger>
+          <TabsTrigger value="slack-setup" className="h-7 px-2.5 text-[12px]">{t('integrations.tabs.slackSetup')}</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="connections" className="mt-0 min-h-0 overflow-y-auto pr-1 pb-10">
+          {isLoading
 ? (
-        <SettingsGroup>
-          <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
-            <Spinner className="size-3.5" />
-          </div>
-        </SettingsGroup>
-      )
+            <SettingsGroup>
+              <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
+                <Spinner className="size-3.5" />
+              </div>
+            </SettingsGroup>
+          )
 : adapters.length === 0
 ? (
-        <SettingsGroup>
-          <div className="px-4 py-10 text-center text-xs text-muted-foreground/70">
-            {t('integrations.adapter.empty')}
-          </div>
-        </SettingsGroup>
-      )
-: (
-        <div className="flex flex-col gap-7">
-          {connectionsByAdapter.map(({ adapter, connections: list }) => (
-            <SettingsGroup
-              key={`${adapter.owner}-${adapter.id}`}
-              label={adapter.label}
-              action={(
-                <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-normal tabular-nums">
-                  {list.length}
-                </Badge>
-              )}
-              bare
-              className="overflow-hidden p-0"
-            >
-              {list.length > 0
-? (
-                <div className="flex flex-col [&>*+*]:border-t [&>*+*]:border-border/60">
-                  {list.map(connection => (
-                    <LandingConnectionRow
-                      key={connection.id}
-                      connection={connection}
-                      adapterLabel={adapter.label}
-                      selected={selectedConnectionId === connection.id}
-                      onSelect={() => openConnection(connection.id)}
-                    />
-                  ))}
-                </div>
-              )
-: (
-                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
-                  <span className="text-[11px] text-muted-foreground/70">
-                    {t('integrations.adapter.noConnections')}
-                  </span>
-                  <Button
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => setShowCreateDialog(true)}
-                    className="h-6 gap-1 text-[11px]"
-                  >
-                    <AddIcon className="size-3" />
-                    {t('integrations.connection.create')}
-                  </Button>
-                </div>
-              )}
+            <SettingsGroup>
+              <div className="px-4 py-10 text-center text-xs text-muted-foreground/70">
+                {t('integrations.adapter.empty')}
+              </div>
             </SettingsGroup>
-          ))}
+          )
+: (
+            <div className="flex flex-col gap-7">
+              {connectionsByAdapter.map(({ adapter, connections: list }) => (
+                <SettingsGroup
+                  key={`${adapter.owner}-${adapter.id}`}
+                  label={adapter.label}
+                  action={(
+                    <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-normal tabular-nums">
+                      {list.length}
+                    </Badge>
+                  )}
+                  bare
+                  className="overflow-hidden p-0"
+                >
+                  {list.length > 0
+? (
+                    <div className="flex flex-col [&>*+*]:border-t [&>*+*]:border-border/60">
+                      {list.map(connection => (
+                        <LandingConnectionRow
+                          key={connection.id}
+                          connection={connection}
+                          adapterLabel={adapter.label}
+                          selected={selectedConnectionId === connection.id}
+                          onSelect={() => openConnection(connection.id)}
+                        />
+                      ))}
+                    </div>
+                  )
+: (
+                    <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                      <span className="text-[11px] text-muted-foreground/70">
+                        {t('integrations.adapter.noConnections')}
+                      </span>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowCreateDialog(true)}
+                        className="h-6 gap-1 text-[11px]"
+                      >
+                        <AddIcon className="size-3" />
+                        {t('integrations.connection.create')}
+                      </Button>
+                    </div>
+                  )}
+                </SettingsGroup>
+              ))}
 
-          <ProviderSkillsGroup />
-        </div>
-      )}
+              <ProviderSkillsGroup />
+            </div>
+          )}
+        </TabsContent>
+
+        <TabsContent value="slack-setup" className="mt-0 min-h-0 overflow-y-auto pr-1">
+          <SlackSetupGuide />
+        </TabsContent>
+      </Tabs>
 
       <CreateConnectionDialog
         open={showCreateDialog}

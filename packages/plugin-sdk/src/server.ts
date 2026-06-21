@@ -190,6 +190,11 @@ export interface ConversationBridgeAdapterCapabilities {
   interactiveControls?: boolean
 }
 
+export const CONVERSATION_BRIDGE_STATUS_REFRESH_ACTION = 'cradle_status_refresh'
+export const CONVERSATION_BRIDGE_CHANNEL_UNBIND_ACTION = 'cradle_channel_unbind'
+export const CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION = 'cradle_session_target_select'
+export const CONVERSATION_BRIDGE_SESSION_MODEL_SELECT_ACTION = 'cradle_session_model_select'
+
 export interface ConversationBridgeAdapterRuntimeContext {
   logger: Logger
   sharedConfig: ReadonlyMap<string, string>
@@ -215,6 +220,7 @@ export interface ConversationBridgeConnectionRuntimeConfig {
 
 export interface ConversationBridgeHost {
   handleInboundMessage: (event: NormalizedConversationInboundMessage) => Promise<void>
+  handleControl: (input: NormalizedConversationControl) => Promise<ConversationBridgeControlResponse>
   reportConnectionHealth: (input: ConversationBridgeConnectionHealth) => void
 }
 
@@ -250,6 +256,91 @@ export interface ConversationBridgeConnectionHealth {
   connectionId: string
   status: 'starting' | 'running' | 'stopped' | 'error'
   message?: string | null
+}
+
+export interface NormalizedConversationControl {
+  connectionId: string
+  externalWorkspaceId: string
+  externalChannelId: string
+  externalActorId: string | null
+  kind: 'command' | 'action'
+  command?: string
+  text?: string
+  actionId?: string
+  selectedValue?: string | null
+  value?: string | null
+  payload?: Record<string, unknown>
+}
+
+export interface ConversationBridgeControlResponse {
+  text: string
+  visibility: 'ephemeral' | 'in_channel'
+  replaceOriginal?: boolean
+  blocks?: ConversationBridgeControlBlock[]
+}
+
+export type ConversationBridgeControlBlock =
+  | ConversationBridgeControlHeaderBlock
+  | ConversationBridgeControlSectionBlock
+  | ConversationBridgeControlContextBlock
+  | ConversationBridgeControlDividerBlock
+  | ConversationBridgeControlActionsBlock
+
+export interface ConversationBridgeControlHeaderBlock {
+  type: 'header'
+  text: string
+}
+
+export interface ConversationBridgeControlSectionBlock {
+  type: 'section'
+  text: string
+  accessory?: ConversationBridgeControlElement
+}
+
+export interface ConversationBridgeControlContextBlock {
+  type: 'context'
+  text: string
+}
+
+export interface ConversationBridgeControlDividerBlock {
+  type: 'divider'
+}
+
+export interface ConversationBridgeControlActionsBlock {
+  type: 'actions'
+  elements: ConversationBridgeControlElement[]
+}
+
+export type ConversationBridgeControlElement =
+  | ConversationBridgeControlButtonElement
+  | ConversationBridgeControlSelectElement
+
+export interface ConversationBridgeControlButtonElement {
+  type: 'button'
+  actionId: string
+  text: string
+  value?: string
+  style?: 'primary' | 'danger'
+  confirm?: {
+    title: string
+    text: string
+    confirm: string
+    deny: string
+  }
+}
+
+export interface ConversationBridgeControlSelectElement {
+  type: 'static_select'
+  actionId: string
+  placeholder: string
+  options: ConversationBridgeControlOption[]
+  initialOption?: ConversationBridgeControlOption
+}
+
+export interface ConversationBridgeControlOption {
+  label: string
+  description?: string
+  value: string
 }
 
 export interface ExternalProviderSourceRegistry {
