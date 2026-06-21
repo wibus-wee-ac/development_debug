@@ -328,11 +328,27 @@ function GuideGenerationStatusPanel({
     select: data => data as ChatSessionMessageRow[],
     refetchInterval: active ? 1_500 : false,
   })
+  // The server-side `extractMessageText` only collects `text` parts, so
+  // `row.content` stays empty while Claude (and any other provider that
+  // streams reasoning/thinking first) is in its thinking phase. Walk
+  // `row.message.parts` directly to surface both text and reasoning so the
+  // user sees progress instead of "Waiting for the first assistant token".
   const assistantOutput = useMemo(() => {
     const row = [...(messagesQuery.data ?? [])]
       .reverse()
       .find(message => message.role === 'assistant' && !message.parentToolCallId)
-    return row?.content.trim() || null
+    if (!row) return null
+    const parts = row.message?.parts ?? []
+    let combined = ''
+    for (const part of parts) {
+      if (part.type === 'text') {
+        combined += part.text
+      } else if (part.type === 'reasoning') {
+        const reasoningText = (part as { text?: string }).text
+        if (reasoningText) combined += reasoningText
+      }
+    }
+    return combined.trim() || null
   }, [messagesQuery.data])
 
   return (

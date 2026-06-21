@@ -8,9 +8,9 @@ import { useTranslation } from 'react-i18next'
 import { getSkills } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import { toastManager } from '~/components/ui/toast'
-import type { ClaudeAgentAliasKey, ClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
-import { CLAUDE_AGENT_ALIAS_KEYS, hasClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
-import type { ApiProviderKind, ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
+import type { ClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
+import { hasClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
+import type { ApiProviderKind, RuntimeKind } from '~/features/agent-runtime/types'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import type { ComposerStateResult } from '~/features/composer-toolbar/use-composer-state'
 import type { SkillInventoryEntry } from '~/features/skills/types'
@@ -27,7 +27,7 @@ import type { ChatContextPart } from '../context/chat-context-parts'
 import type { MentionItem } from '../mentions/mention-panel'
 import { searchPluginMentions } from '../mentions/plugin-mentions'
 import type { SkillMentionItem } from '../mentions/skill-mention-panel'
-import { useDraftClaudeMatrix, useProviderTargetClaudeMatrix } from '../runtime/claude-session-model-matrix-control'
+import { useDraftClaudeAgentModelAliases, useProviderTargetClaudeAgentModelAliases } from '../runtime/claude-session-model-matrix-control'
 import { RuntimeSettingsControl } from '../runtime/runtime-settings-control'
 import type { ChatComposerSlashCommand } from '../slash-commands/chat-slash-commands'
 import { CODEX_REVIEW_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_ACTION_ID, CRADLE_APPSHOT_SLASH_COMMAND, withSlashCommandAvailability } from '../slash-commands/chat-slash-commands'
@@ -55,26 +55,6 @@ const PLACEHOLDER_HINT_KEYS = [
   'placeholder.fixTest',
   'placeholder.refactor',
 ] as const
-
-function readClaudeAgentTier(value: string | null): ClaudeAgentAliasKey | null {
-  return CLAUDE_AGENT_ALIAS_KEYS.find(key => key === value) ?? null
-}
-
-function resolveClaudeAgentTierModel(input: {
-  modelId: string | null
-  aliases: ClaudeAgentModelAliases
-  models: ModelDescriptor[]
-}): ModelDescriptor | null {
-  const tier = readClaudeAgentTier(input.modelId)
-  if (!tier) {
-    return null
-  }
-  const resolvedModelId = input.aliases[tier].trim()
-  if (!resolvedModelId) {
-    return null
-  }
-  return input.models.find(model => model.id === resolvedModelId) ?? null
-}
 
 export interface DraftChatComposerSubmitOptions {
   runtimeKind: RuntimeKind
@@ -246,31 +226,24 @@ function DraftChatComposerContent({
   const claudeAgent = selection.profileId ? claudeAgentByProfile[selection.profileId] ?? null : null
   const inputCollapsed = selection.targetMode === 'agent' && selection.runtimeKind === 'cli-tui'
 
-  const providerTargetMatrix = useProviderTargetClaudeMatrix({
+  const providerTargetAliases = useProviderTargetClaudeAgentModelAliases({
     providerTargetId: selection.profileId,
     providerKind: selectedApiProviderKind,
     enabled: selection.targetMode === 'provider' && selection.runtimeKind === 'claude-agent',
   })
-  const claudeMatrixSlot = useDraftClaudeMatrix({
+  const claudeModelAliasesSlot = useDraftClaudeAgentModelAliases({
     active,
     runtimeKind: selection.runtimeKind,
     providerTargetId: selection.profileId,
     providerKind: selectedApiProviderKind,
-    aliases: claudeAgent?.modelAliases ?? providerTargetMatrix.aliases,
-    loading: providerTargetMatrix.isLoading,
+    aliases: claudeAgent?.modelAliases ?? providerTargetAliases.aliases,
+    loading: providerTargetAliases.isLoading,
     onChange: updateClaudeAgentAliases,
   })
-  const claudeMatrix = claudeMatrixSlot
-    ? { slot: claudeMatrixSlot, providerSettingsLoading: providerTargetMatrix.isLoading }
+  const claudeModelAliases = claudeModelAliasesSlot
+    ? { slot: claudeModelAliasesSlot, providerSettingsLoading: providerTargetAliases.isLoading }
     : null
-  const resolvedComposerModel = selection.runtimeKind === 'claude-agent'
-    ? resolveClaudeAgentTierModel({
-        modelId: selection.modelId,
-        aliases: claudeMatrixSlot?.aliases ?? providerTargetMatrix.aliases,
-        models: composerState.models,
-      }) ?? effectiveModel
-    : effectiveModel
-  const supportsAttachments = modelSupportsAttachments(resolvedComposerModel)
+  const supportsAttachments = modelSupportsAttachments(effectiveModel)
   const appshotRuntime = useComposerAppshotCapture({
     active,
     supportsAttachments,
@@ -304,7 +277,7 @@ function DraftChatComposerContent({
       <ComposerToolbar
         context="new-chat"
         state={composerState}
-        claudeMatrix={claudeMatrix}
+        claudeModelAliases={claudeModelAliases}
       />
     </div>
   )

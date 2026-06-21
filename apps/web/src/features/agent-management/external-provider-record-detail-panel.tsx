@@ -118,7 +118,7 @@ function createProviderTargetRequestBody(
   }
 }
 
-function supportsClaudeAgentModelMatrix(providerKind: ApiProviderKind): boolean {
+function supportsClaudeAgentModelAliases(providerKind: ApiProviderKind): boolean {
   return providerKind === 'anthropic' || providerKind === 'universal'
 }
 
@@ -329,7 +329,7 @@ export function ExternalProviderRecordDetailPanel({
         setClaudeAgentAliases(previous)
         toastManager.add({
           type: 'error',
-          title: 'Save Claude matrix failed',
+          title: 'Save Claude aliases failed',
           description: error instanceof Error ? error.message : 'Unknown error',
         })
       }
@@ -576,7 +576,7 @@ export function ExternalProviderRecordDetailPanel({
           </>
         )}
 
-        {apiProviderTarget && apiProviderKind && supportsClaudeAgentModelMatrix(apiProviderKind) && (
+        {apiProviderTarget && apiProviderKind && supportsClaudeAgentModelAliases(apiProviderKind) && (
           <section className="flex flex-col gap-4">
             <ClaudeModelMatrixEditor
               aliases={claudeAgentAliases}
@@ -588,7 +588,7 @@ export function ExternalProviderRecordDetailPanel({
           </section>
         )}
 
-        {apiProviderTarget && apiProviderKind && supportsClaudeAgentModelMatrix(apiProviderKind) && (
+        {apiProviderTarget && apiProviderKind && supportsClaudeAgentModelAliases(apiProviderKind) && (
           <Separator className="bg-foreground/6" />
         )}
 

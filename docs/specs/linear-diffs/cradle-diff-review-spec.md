@@ -328,18 +328,39 @@ interface CreateDiffReviewRequest {
 
 - `POST /workspaces/:workspaceId/diff-reviews/:reviewId/agent-fixes`
 - `GET /workspaces/:workspaceId/diff-reviews/:reviewId/agent-fixes`
+- `POST /workspaces/:workspaceId/diff-reviews/:reviewId/agent-fixes/:agentFixId/start`
+- `POST /workspaces/:workspaceId/diff-reviews/:reviewId/agent-fixes/:agentFixId/cancel`
+- `POST /workspaces/:workspaceId/diff-reviews/:reviewId/agent-fixes/:agentFixId/rerun`
+- `GET /workspaces/:workspaceId/diff-reviews/:reviewId/agent-fixes/:agentFixId/artifact`
+- `DELETE /workspaces/:workspaceId/diff-reviews/:reviewId/agent-fixes/:agentFixId`
 
 ```ts
 interface CreateReviewAgentFixRequest {
   threadId?: string
   anchor?: ReviewRangeAnchor
   instruction: string
-  profileId?: string
+  // The owning agent id. The agent's own config supplies provider target,
+  // model, runtime kind, and thinking effort; callers must not pick those
+  // again here. Stored in `diff_review_agent_fixes.profile_id` (text) — the
+  // column is kept under its legacy name for compatibility, but semantically
+  // holds an agent id.
+  agentId?: string
   expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact'
+}
+
+interface StartReviewAgentFixRequest {
+  // Optional override. When omitted, the server reuses the agent stored on the
+  // work order at create time. Callers may switch agents between runs.
+  agentId?: string
+  // Kept for spec completeness, but the agent-native path does not need it.
+  providerTargetId?: string
+  modelId?: string
 }
 ```
 
 The agent fix creates a `diff-review` work order and may start a chat/session through existing runtime APIs. The review keeps the authoritative relation between feedback and produced revision.
+
+Work order lifecycle is `pending → running → completed | failed | cancelled`. Only `completed`, `failed`, and `cancelled` work orders may be deleted — `pending` must be started or cancelled, `running` must be cancelled first. Delete is a hard row removal from `diff_review_agent_fixes`; the `agent_fix_deleted` event records the previous status so the audit trail keeps the work order's terminal outcome even after the row is gone.
 
 ### Source Readiness
 
@@ -513,6 +534,7 @@ Event kinds:
 - `ci_failed`
 - `agent_fix_completed`
 - `agent_fix_failed`
+- `agent_fix_deleted`
 - `source_readiness_changed`
 - `merge_completed`
 - `merge_failed`

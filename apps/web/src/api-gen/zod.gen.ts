@@ -1817,7 +1817,7 @@ export const zPostWorkspacesByIdDiffReviewsByReviewIdAgentFixesBody = z.object({
         endColumn: z.number().gte(1).optional()
     }).nullish(),
     instruction: z.string().min(1),
-    profileId: z.string().nullish(),
+    agentId: z.string().min(1).nullish(),
     expectedOutput: z.enum([
         'commit',
         'working-tree-change',
@@ -1863,6 +1863,12 @@ export const zPostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerun
 });
 
 export const zPostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerunPath = z.object({
+    id: z.string().min(1),
+    reviewId: z.string().min(1),
+    agentFixId: z.string().min(1)
+});
+
+export const zDeleteWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdPath = z.object({
     id: z.string().min(1),
     reviewId: z.string().min(1),
     agentFixId: z.string().min(1)

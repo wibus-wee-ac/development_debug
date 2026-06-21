@@ -2,6 +2,7 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 
 import type { Logger } from '../../logging/logger'
 import type { CreateEventInput } from '../observability/contract'
+import type { ProviderRuntimeLease } from '../provider-runtime/host-manager'
 import type { ProviderKind, RuntimeKind } from '../provider-contracts/types'
 import type { SecretValueWithMetadata } from '../secrets/service'
 import type { CradleTurnTranscript } from './transcript'
@@ -777,6 +778,7 @@ export interface RuntimeSession {
   runtimeKind: RuntimeKind
   providerSessionId: string | null
   providerStateSnapshot: string | null
+  providerRuntimeLease?: ProviderRuntimeLease<unknown>
 }
 
 export interface StartChatSessionInput {

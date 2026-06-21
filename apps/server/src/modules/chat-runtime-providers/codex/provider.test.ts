@@ -954,7 +954,7 @@ describe('codexProvider app-server integration', () => {
     })
 
     expect(client.initialize).toHaveBeenCalled()
-    expect(client.close).toHaveBeenCalled()
+    expect(client.close).not.toHaveBeenCalled()
     expect(client.requests.map(request => request.method)).toEqual(['thread/fork', 'thread/inject_items'])
     expect(client.requests[0]).toEqual({
       method: 'thread/fork',
@@ -1006,17 +1006,14 @@ describe('codexProvider app-server integration', () => {
         },
       },
     })
+    expect(runtimeSession.providerRuntimeLease).toBeDefined()
+    runtimeSession.providerRuntimeLease?.release()
+    expect(client.close).toHaveBeenCalledOnce()
   })
 
   it('keeps side Codex app-server clients host-managed across fork and side turns', async () => {
     const client = new FakeCodexAppServerClient({})
     const provider = createProvider(client)
-    const sideHostLease = providerRuntimeHostManager.acquireLease({
-      scopeId: CODEX_PROVIDER_APP_SERVER_SCOPE_ID,
-      providerTargetId: 'profile-codex',
-      runtimeKind: 'codex',
-      pinned: true,
-    })
 
     const runtimeSession = await provider.forkRuntimeSession({
       sourceRuntimeSession: createRuntimeSession('codex-parent-thread-1'),
@@ -1080,7 +1077,7 @@ describe('codexProvider app-server integration', () => {
     ])
     expect(client.close).not.toHaveBeenCalled()
 
-    sideHostLease.release()
+    runtimeSession.providerRuntimeLease?.release()
 
     expect(client.close).toHaveBeenCalledOnce()
     expect(providerRuntimeHostManager.listHosts()).toEqual([])

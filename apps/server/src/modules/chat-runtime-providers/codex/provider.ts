@@ -341,6 +341,7 @@ export class CodexProvider implements ChatRuntime {
       },
     })
     const client = hostLease.resource.client
+    let leaseTransferred = false
 
     try {
       await syncCodexSkillExtraRoots(client, skillExtraRoots)
@@ -371,6 +372,7 @@ export class CodexProvider implements ChatRuntime {
         providerTargetId: input.profile.providerTargetId,
         runtimeKind: RUNTIME_KIND,
         providerSessionId: threadId,
+        providerRuntimeLease: hostLease,
         providerStateSnapshot: JSON.stringify({
           workspacePath,
           agentId,
@@ -394,10 +396,13 @@ export class CodexProvider implements ChatRuntime {
         reasoningEffort: response.reasoningEffort ?? null,
         status: response.thread?.status ?? null,
       })
+      leaseTransferred = true
       return runtimeSession
     }
     finally {
-      hostLease.release()
+      if (!leaseTransferred) {
+        hostLease.release()
+      }
     }
   }
 

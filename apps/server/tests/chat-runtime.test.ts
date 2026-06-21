@@ -1804,7 +1804,8 @@ describe('chat runtime capability', () => {
       }))
       expect(runtime.forkInputs).toHaveLength(1)
       expect(runtime.forkInputs[0]?.sourceRuntimeSession.providerSessionId).toBe('codex-thread-side-parent')
-      expect(runtime.forkHostSnapshots[0]).toEqual([
+      expect(runtime.forkHostSnapshots[0]).toEqual([])
+      expect(providerRuntimeHostManager.listHosts()).toEqual([
         expect.objectContaining({
           runtimeKind: 'codex',
           providerTargetId: 'provider-target-codex-side',

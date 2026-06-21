@@ -70,9 +70,9 @@ describe('selectChatThinkingEffort', () => {
     })).toBeNull()
   })
 
-  it('keeps the preferred effort for claude-agent even when the tier model is unresolved', () => {
-    // claude-agent selects a tier alias (fast/balanced/powerful), so the
-    // effective model is null — capability filtering must not clamp to null.
+  it('keeps the preferred effort for claude-agent even when the model is unresolved', () => {
+    // Claude Agent owns effort support at the runtime layer, so a missing model
+    // descriptor must not clamp the selected effort to null.
     expect(selectChatThinkingEffort({
       effectiveModel: null,
       preferredThinkingEffort: 'xhigh',

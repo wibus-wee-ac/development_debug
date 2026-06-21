@@ -224,7 +224,7 @@ function getProfileFormValues(profile: AgentProfile): ProfileDetailFormValues {
   }
 }
 
-function supportsClaudeAgentModelMatrix(providerKind: ApiProviderKind): boolean {
+function supportsClaudeAgentModelAliases(providerKind: ApiProviderKind): boolean {
   return providerKind === 'anthropic' || providerKind === 'universal'
 }
 
@@ -234,7 +234,7 @@ function applyClaudeAgentAliasesToProfileConfig(
 ): Record<string, unknown> {
   return writeClaudeAgentModelAliases(
     config,
-    supportsClaudeAgentModelMatrix(values.providerKind)
+    supportsClaudeAgentModelAliases(values.providerKind)
       ? values.claudeAgentAliases
       : DEFAULT_CLAUDE_AGENT_ALIASES,
   )
@@ -790,7 +790,7 @@ export function ProfileDetailPanel({
           <CodexAccountDiagnosticsPanel providerTargetId={profile.id} />
         )}
 
-        {supportsModels && supportsClaudeAgentModelMatrix(providerKind) && (
+        {supportsModels && supportsClaudeAgentModelAliases(providerKind) && (
           <>
             <SettingsDivider />
             <ClaudeModelMatrixEditor

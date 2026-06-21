@@ -1,4 +1,4 @@
-import { ArrowRightUpLine as PassthroughIcon } from '@mingcute/react'
+import { ArrowRightUpLine as InheritIcon } from '@mingcute/react'
 import { Spinner } from '~/components/ui/spinner'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import type { ClaudeAgentAliasKey, ClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
@@ -69,8 +69,6 @@ export function ClaudeModelMatrixEditor({
   onChange: (next: ClaudeAgentModelAliases) => void
 }) {
   const modelOptions = buildModelOptions({ models, aliases, mainModelId })
-  const canSetAllToCurrent = !!mainModelId
-
   const setAlias = (key: ClaudeAgentAliasKey, value: string) => {
     onChange({
       ...aliases,
@@ -89,30 +87,6 @@ export function ClaudeModelMatrixEditor({
             <TooltipTrigger asChild>
               <button
                 type="button"
-                disabled={!canSetAllToCurrent}
-                onClick={() => {
-                  if (!mainModelId) {
-                    return
-                  }
-                  onChange({
-                    haiku: mainModelId,
-                    sonnet: mainModelId,
-                    opus: mainModelId,
-                  })
-                }}
-                className="rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:pointer-events-none disabled:opacity-40"
-              >
-                Pin all
-              </button>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="text-xs">
-              Route every tier to the current model
-            </TooltipContent>
-          </Tooltip>
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <button
-                type="button"
                 onClick={() => onChange(DEFAULT_CLAUDE_AGENT_ALIASES)}
                 className="rounded-md px-1.5 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground"
               >
@@ -120,7 +94,7 @@ export function ClaudeModelMatrixEditor({
               </button>
             </TooltipTrigger>
             <TooltipContent side="top" className="text-xs">
-              Clear all overrides
+              Clear alias overrides
             </TooltipContent>
           </Tooltip>
         </div>
@@ -142,10 +116,10 @@ export function ClaudeModelMatrixEditor({
                   <TierChip
                     active={isPassthrough}
                     onClick={() => setAlias(tier.key, CURRENT_MODEL_VALUE)}
-                    title="Use main model"
+                    title="Inherit the main model"
                   >
-                    <PassthroughIcon className="size-2.5" aria-hidden="true" />
-                    <span>main</span>
+                    <InheritIcon className="size-2.5" aria-hidden="true" />
+                    <span>inherit</span>
                   </TierChip>
 
                   {modelOptions.map(model => {

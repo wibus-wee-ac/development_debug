@@ -4,8 +4,7 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useSta
 
 import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { getSkills, patchSessionsById } from '~/api-gen/sdk.gen'
-import type { ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
-import { CLAUDE_AGENT_ALIAS_KEYS } from '~/features/agent-runtime/claude-agent-config'
+import type { RuntimeKind } from '~/features/agent-runtime/types'
 import type { MentionItem } from '~/features/chat'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import type { SkillInventoryEntry } from '~/features/skills/types'
@@ -16,7 +15,7 @@ import type { ChatViewProps } from './chat-view'
 import { searchSessionPluginMentions } from './mentions/plugin-mentions'
 import type { SkillMentionItem } from './mentions/skill-mention-panel'
 import type { SendMessageOptions } from './session/use-chat-session'
-import { useProviderTargetClaudeMatrix, useSessionClaudeMatrix } from './runtime/claude-session-model-matrix-control'
+import { useProviderTargetClaudeAgentModelAliases, useSessionClaudeAgentModelAliases } from './runtime/claude-session-model-matrix-control'
 
 const ChatView = lazy(() => import('./chat-view').then(module => ({ default: module.ChatView })))
 
@@ -24,25 +23,6 @@ type SessionProviderModelPatch = {
   providerTargetId?: string
   modelId?: string | null
   thinkingEffort?: SendMessageOptions['thinkingEffort'] | null
-}
-
-function isClaudeAgentTierModelId(value: string | null | undefined): value is (typeof CLAUDE_AGENT_ALIAS_KEYS)[number] {
-  return CLAUDE_AGENT_ALIAS_KEYS.some(key => key === value)
-}
-
-function resolveClaudeAgentTierModel(input: {
-  modelId: string | null
-  aliases: ReturnType<typeof useProviderTargetClaudeMatrix>['aliases']
-  models: ModelDescriptor[]
-}): ModelDescriptor | null {
-  if (!isClaudeAgentTierModelId(input.modelId)) {
-    return null
-  }
-  const resolvedModelId = input.aliases[input.modelId].trim()
-  if (!resolvedModelId) {
-    return null
-  }
-  return input.models.find(model => model.id === resolvedModelId) ?? null
 }
 
 interface SessionProviderModelSaveState {
@@ -148,9 +128,7 @@ export function ChatRuntimeView({
   useLayoutEffect(() => {
     sendOverridesRef.current = {
       providerTargetId: composerState.selection.profileId ?? undefined,
-      modelId: composerState.selection.runtimeKind === 'claude-agent'
-        ? composerState.selection.modelId
-        : composerState.selection.modelId ?? undefined,
+      modelId: composerState.selection.modelId ?? undefined,
       thinkingEffort: composerState.selection.thinkingEffort ?? undefined,
     }
   }, [composerState.selection.modelId, composerState.selection.profileId, composerState.selection.runtimeKind, composerState.selection.thinkingEffort])
@@ -234,16 +212,14 @@ export function ChatRuntimeView({
       return
     }
     const nextModels = modelsByProfileId[pendingProviderTargetId] ?? []
-    if (runtimeKind !== 'claude-agent' && nextModels.length === 0) {
+    if (nextModels.length === 0) {
       if (successfulProfileIds.has(pendingProviderTargetId)) {
         resetManualSelection()
         setPendingProviderTargetId(null)
       }
       return
     }
-    const nextModelId = runtimeKind === 'claude-agent'
-      ? null
-      : nextModels[0]!.id
+    const nextModelId = nextModels[0]!.id
     setModelId(nextModelId, pendingProviderTargetId)
     void persistSessionProviderModel({ providerTargetId: pendingProviderTargetId, modelId: nextModelId })
     setPendingProviderTargetId(null)
@@ -264,10 +240,8 @@ export function ChatRuntimeView({
       composerState.setProfileId(id)
       composerState.requestProfileModels(id)
       const nextModels = composerState.modelsByProfileId[id] ?? []
-      const nextModelId = runtimeKind === 'claude-agent'
-        ? null
-        : nextModels[0]?.id ?? null
-      if (runtimeKind !== 'claude-agent' && !nextModelId) {
+      const nextModelId = nextModels[0]?.id ?? null
+      if (!nextModelId) {
         setPendingProviderTargetId(id)
         return
       }
@@ -294,31 +268,25 @@ export function ChatRuntimeView({
     ? selectedProviderKind
     : null
 
-  const providerTargetMatrix = useProviderTargetClaudeMatrix({
+  const providerTargetAliases = useProviderTargetClaudeAgentModelAliases({
     providerTargetId: sessionComposerState.selection.profileId,
     providerKind: selectedApiProviderKind,
     enabled: sessionComposerState.selection.targetMode === 'provider' && runtimeKind === 'claude-agent',
   })
-  const claudeMatrixSlot = useSessionClaudeMatrix({
+  const claudeModelAliasesSlot = useSessionClaudeAgentModelAliases({
     active,
     sessionId,
     runtimeKind,
     providerTargetId: sessionComposerState.selection.profileId,
     providerKind: selectedApiProviderKind,
+    fallbackAliases: providerTargetAliases.aliases,
   })
-  const claudeMatrix = claudeMatrixSlot
-    ? { slot: claudeMatrixSlot, providerSettingsLoading: providerTargetMatrix.isLoading }
+  const claudeModelAliases = claudeModelAliasesSlot
+    ? { slot: claudeModelAliasesSlot, providerSettingsLoading: providerTargetAliases.isLoading }
     : null
-  const resolvedComposerModel = runtimeKind === 'claude-agent'
-    ? resolveClaudeAgentTierModel({
-        modelId: sessionComposerState.selection.modelId,
-        aliases: claudeMatrixSlot?.aliases ?? providerTargetMatrix.aliases,
-        models: sessionComposerState.models,
-      }) ?? sessionComposerState.effectiveModel
-    : sessionComposerState.effectiveModel
 
   const composerToolbar = (
-    <ComposerToolbar context="chat" state={sessionComposerState} claudeMatrix={claudeMatrix} />
+    <ComposerToolbar context="chat" state={sessionComposerState} claudeModelAliases={claudeModelAliases} />
   )
   const composerToolbarAddons = (
     <>
@@ -340,7 +308,7 @@ export function ChatRuntimeView({
         composerToolbarAddon={composerToolbarAddons}
         composerContextBar={composerContextBar}
         sendOverridesRef={sendOverridesRef}
-        composerModel={resolvedComposerModel}
+        composerModel={sessionComposerState.effectiveModel}
         placeholder={placeholder}
         messageTextTransform={messageTextTransform}
         prepareSend={prepareSend}

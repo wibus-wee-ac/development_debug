@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
+  deleteWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixId,
   getWorkspacesByIdDiffReviewsByReviewId,
   postWorkspacesByIdDiffReviewsByReviewIdAgentFixes,
   postWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCancel,
@@ -318,7 +319,7 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
       threadId?: string | null
       anchor?: ReviewThreadAnchorInput | null
       instruction: string
-      profileId?: string | null
+      agentId?: string | null
       expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact'
     }) => {
       const review = reviewQuery.data
@@ -331,7 +332,7 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
           threadId: input.threadId ?? null,
           anchor: input.anchor ?? null,
           instruction: input.instruction,
-          profileId: input.profileId ?? null,
+          agentId: input.agentId ?? null,
           expectedOutput: input.expectedOutput,
         },
         throwOnError: true,
@@ -419,6 +420,24 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
     },
   })
 
+  const deleteAgentFixMutation = useMutation({
+    mutationFn: async (agentFixId: string) => {
+      const review = reviewQuery.data
+      if (!review) {
+        throw new Error('Review not loaded')
+      }
+      const { data } = await deleteWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixId({
+        path: { id: workspaceId, reviewId: review.id, agentFixId },
+        throwOnError: true,
+      })
+      return data
+    },
+    onSuccess: (data) => {
+      applyReview(data)
+      invalidateList()
+    },
+  })
+
   /**
    * On-demand change walkthrough generation. This spends tokens, so it is strictly user-initiated —
    * never auto-triggered. `force` re-generates over an existing guide.
@@ -485,6 +504,7 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
     startAgentFixMutation,
     cancelAgentFixMutation,
     rerunAgentFixMutation,
+    deleteAgentFixMutation,
     generateGuideMutation,
     cancelGuideMutation,
   }

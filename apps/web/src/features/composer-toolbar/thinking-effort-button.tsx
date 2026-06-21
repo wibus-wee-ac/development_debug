@@ -16,8 +16,7 @@ const LONG_PRESS_MS = 180
 const DRAG_START_THRESHOLD_PX = 8
 const SEGMENT_WIDTH = 20
 const STRIP_PADDING_X = 2
-const MATRIX_DOT_COUNT = 6
-const MATRIX_DOTS = Array.from({ length: MATRIX_DOT_COUNT }, (_, index) => index)
+const DEPTH_BAR_HEIGHTS = [5, 7, 9, 11]
 
 function clampIndex(index: number, length: number): number {
   return Math.max(0, Math.min(length - 1, index))
@@ -46,6 +45,9 @@ export function ThinkingEffortButton({
   const active = tiers[activeIndex] ?? tiers[0]
   const activeLabel = active?.label ?? 'unknown'
   const isDisabled = tiers.length === 0
+  const activeDepthBarCount = isDisabled
+    ? 0
+    : Math.max(1, Math.round(((activeIndex + 1) / tiers.length) * DEPTH_BAR_HEIGHTS.length))
   const surfaceProps = occludeNativeBrowserSurface ? BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS : {}
   const pointerStartXRef = useRef<number | null>(null)
   const pointerStartIndexRef = useRef(currentIndex)
@@ -221,10 +223,26 @@ export function ThinkingEffortButton({
       )}
       style={{ touchAction: 'none' }}
     >
+      <span
+        aria-hidden="true"
+        className="flex size-3.5 shrink-0 items-end justify-center gap-[1.5px] -mt-0.5"
+      >
+        {DEPTH_BAR_HEIGHTS.map((height, index) => (
+          <span
+            key={height}
+            className={cn(
+              'rounded-full transition-colors',
+              index < activeDepthBarCount ? 'bg-muted-foreground/55' : 'bg-muted-foreground/12',
+              mode === 'dragging' && index < activeDepthBarCount && 'bg-foreground/65',
+            )}
+            style={{ width: 1.5, height }}
+          />
+        ))}
+      </span>
       <m.span
         layout
         aria-hidden="true"
-        className="relative inline-flex h-5 shrink-0 items-center overflow-hidden rounded-[7px] bg-foreground/[0.07] p-0.5"
+        className="relative inline-flex h-4 shrink-0 items-center overflow-hidden rounded-[6px] bg-foreground/[0.07] p-0.5"
         style={{ width: stripWidth }}
         transition={transition}
       >
@@ -232,7 +250,7 @@ export function ThinkingEffortButton({
           <m.span
             aria-hidden="true"
             initial={false}
-            className="absolute top-0.5 bottom-0.5 rounded-[5px] bg-background/65 shadow-[0_1px_1px_rgb(0_0_0_/_0.08)]"
+            className="absolute top-0.5 bottom-0.5 rounded-[4px] bg-background/65 shadow-[0_1px_1px_rgb(0_0_0_/_0.08)]"
             animate={{ x: activeIndex * SEGMENT_WIDTH, width: SEGMENT_WIDTH }}
             transition={transition}
             style={{ left: STRIP_PADDING_X }}
@@ -240,28 +258,22 @@ export function ThinkingEffortButton({
         )}
         {tiers.map((tier, index) => {
           const isSelected = index === activeIndex
-          const filledDotCount = Math.max(1, Math.round(((index + 1) / tiers.length) * MATRIX_DOT_COUNT))
           return (
             <span
               key={tier.value}
               style={{ width: SEGMENT_WIDTH }}
               className={cn(
-                'relative z-10 grid h-4 grid-cols-3 grid-rows-2 place-items-center rounded-[5px] px-1 transition-colors',
+                'relative z-10 flex h-3 items-center justify-center rounded-[4px] transition-colors',
                 index > 0 && 'before:absolute before:left-0 before:top-1/2 before:h-2 before:w-px before:-translate-y-1/2 before:bg-foreground/10',
                 isSelected && 'before:bg-transparent',
               )}
             >
-              {MATRIX_DOTS.map(dotIndex => (
-                <span
-                  key={dotIndex}
-                  className={cn(
-                    'size-1 rounded-full transition-colors',
-                    dotIndex < filledDotCount
-                      ? isSelected ? 'bg-foreground/75' : 'bg-muted-foreground/35'
-                      : isSelected ? 'bg-foreground/16' : 'bg-muted-foreground/12',
-                  )}
-                />
-              ))}
+              <span
+                className={cn(
+                  'h-2 w-px rounded-full transition-colors',
+                  isSelected ? 'bg-foreground/80' : 'bg-muted-foreground/35',
+                )}
+              />
             </span>
           )
         })}

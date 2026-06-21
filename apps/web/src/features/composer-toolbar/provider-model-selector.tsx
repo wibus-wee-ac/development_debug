@@ -34,6 +34,7 @@ interface ProviderModelSelectorProps {
   loadingProfileIds: Set<string>
   thinkingEffort: ThinkingEffort
   isLoadingModels: boolean
+  showThinkingInModelMenu?: boolean
   requestProfileModels: (id: string) => void
   onSelectProfile: (id: string) => void
   onSelectModel: (id: string, profileId: string) => void
@@ -61,6 +62,7 @@ export function ProviderModelSelector({
   loadingProfileIds,
   thinkingEffort,
   isLoadingModels,
+  showThinkingInModelMenu = true,
   requestProfileModels,
   onSelectProfile,
   onSelectModel,
@@ -69,6 +71,8 @@ export function ProviderModelSelector({
   const { t } = useTranslation('common')
   const selectedModel = models.find(model => model.id === selectedModelId) ?? null
   const thinkingOptions = useProviderThinkingOptions()
+  const hiddenThinkingOptions: Array<ThinkingOption<ThinkingEffort>> = [{ value: null, label: '', description: '' }]
+  const menuThinkingOptions = showThinkingInModelMenu ? thinkingOptions : hiddenThinkingOptions
   const selectThinkingForModel = (model: ModelDescriptor | null): ThinkingEffort =>
       selectSupportedThinkingValue(model, thinkingOptions, thinkingEffort, 'high')
 
@@ -96,9 +100,11 @@ export function ProviderModelSelector({
     if (loadedModels.length > 0) {
       const firstModel = loadedModels[0]
       onSelectModel(firstModel.id, pendingProfileId)
-      onSelectThinkingEffort(selectThinkingForModel(firstModel))
+      if (showThinkingInModelMenu) {
+        onSelectThinkingEffort(selectThinkingForModel(firstModel))
+      }
     }
-  }, [loadingProfileIds, modelsByProfileId, onSelectModel, onSelectThinkingEffort, selectThinkingForModel])
+  }, [loadingProfileIds, modelsByProfileId, onSelectModel, onSelectThinkingEffort, selectThinkingForModel, showThinkingInModelMenu])
 
   return (
     <ProviderModelPicker
@@ -109,12 +115,15 @@ export function ProviderModelSelector({
       modelsByProviderTargetId={modelsByProfileId}
       loadingProviderTargetIds={loadingProfileIds}
       thinkingValue={thinkingEffort}
-      thinkingOptions={thinkingOptions}
+      thinkingOptions={menuThinkingOptions}
       isLoadingSelectedModels={isLoadingModels}
       emptyProviderTargetsLabel={t('model.noProviderTargets')}
       showProviderLabel
       occludeNativeBrowserSurface
-      getThinkingOptionsForModel={model => filterThinkingOptionsForModel(model, thinkingOptions)}
+      getThinkingOptionsForModel={model =>
+        showThinkingInModelMenu
+          ? filterThinkingOptionsForModel(model, thinkingOptions)
+          : hiddenThinkingOptions}
       onRequestProviderTargetModels={requestProfileModels}
       onSelectProviderTarget={(id) => {
         requestProfileModels(id)
@@ -126,7 +135,9 @@ export function ProviderModelSelector({
         if (id) {
           onSelectModel(id, profileId)
           const nextModel = (modelsByProfileId[profileId] ?? []).find(model => model.id === id) ?? null
-          onSelectThinkingEffort(selectThinkingForModel(nextModel))
+          if (showThinkingInModelMenu) {
+            onSelectThinkingEffort(selectThinkingForModel(nextModel))
+          }
         }
       }}
       onSelectThinking={onSelectThinkingEffort}

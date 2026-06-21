@@ -356,7 +356,7 @@ export const DiffReviewModel = {
     threadId: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
     anchor: t.Optional(t.Nullable(rangeAnchorInput)),
     instruction: t.String({ minLength: 1 }),
-    profileId: t.Optional(t.Nullable(t.String())),
+    agentId: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
     expectedOutput: t.Union([t.Literal('commit'), t.Literal('working-tree-change'), t.Literal('patch-artifact')]),
   }, { additionalProperties: false }),
 

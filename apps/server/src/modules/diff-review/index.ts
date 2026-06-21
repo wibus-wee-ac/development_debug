@@ -304,7 +304,7 @@ export const diffReview = new Elysia({
         endColumn?: number
       } | null
       instruction: string
-      profileId?: string | null
+      agentId?: string | null
       expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact'
     }
     return DiffReview.createAgentFix({
@@ -313,7 +313,7 @@ export const diffReview = new Elysia({
       threadId: input.threadId,
       anchor: input.anchor,
       instruction: input.instruction,
-      profileId: input.profileId,
+      agentId: input.agentId,
       expectedOutput: input.expectedOutput,
     })
   }, {
@@ -408,6 +408,22 @@ export const diffReview = new Elysia({
     },
     params: DiffReviewModel.agentFixParams,
     body: DiffReviewModel.startAgentFixBody,
+    response: { 200: DiffReviewModel.review },
+  })
+  .delete('/:id/diff-reviews/:reviewId/agent-fixes/:agentFixId', async ({ params }) => {
+    return await DiffReview.deleteAgentFix({
+      workspaceId: params.id,
+      reviewId: params.reviewId,
+      agentFixId: params.agentFixId,
+    })
+  }, {
+    detail: {
+      'summary': 'Delete diff review agent fix work order',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'agent-fix', 'delete'],
+      },
+    },
+    params: DiffReviewModel.agentFixParams,
     response: { 200: DiffReviewModel.review },
   })
   .post('/:id/diff-reviews/:reviewId/commit-plan', ({ params, body }) => {

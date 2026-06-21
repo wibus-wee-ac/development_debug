@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
-import { CLAUDE_AGENT_ALIAS_KEYS } from '~/features/agent-runtime/claude-agent-config'
 import type { Agent } from '~/features/agent-runtime/use-agents'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
@@ -61,10 +60,6 @@ export interface ComposerStateResult {
 
 const EMPTY_MODELS: ModelDescriptor[] = []
 
-function isClaudeAgentTierModelId(value: string | null | undefined): value is (typeof CLAUDE_AGENT_ALIAS_KEYS)[number] {
-  return CLAUDE_AGENT_ALIAS_KEYS.some(key => key === value)
-}
-
 function readChatThinkingEffort(value: Agent['thinkingEffort'] | ThinkingEffort | null | undefined): ThinkingEffort {
   switch (value) {
     case 'low':
@@ -110,11 +105,9 @@ export function selectChatThinkingEffort(input: {
   preferredThinkingEffort: ThinkingEffort
   thinkingOptions?: Array<ThinkingOption<ThinkingEffort>>
   /**
-   * When the runtime is claude-agent, the selected "model" is a tier alias
-   * (fast/balanced/powerful) rather than a real model descriptor, so
-   * `effectiveModel` is null and capability-based filtering would strip every
-   * option. Claude Agent supports the full reasoning range regardless of tier,
-   * so skip the filter in that case.
+   * Claude Agent owns effort support at the runtime layer. A provider model
+   * descriptor may be missing or incomplete, so capability filtering must not
+   * clamp the runtime's supported effort choices.
    */
   runtimeKind?: RuntimeKind
 }): ThinkingEffort {
@@ -328,24 +321,8 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     if (effectiveManualModelId && models.some(m => m.id === effectiveManualModelId)) {
       return effectiveManualModelId
     }
-    if (runtimeKind === 'claude-agent' && isClaudeAgentTierModelId(effectiveManualModelId)) {
-      return effectiveManualModelId
-    }
     if (selectedNewChatAgent?.modelId) {
       return selectedNewChatAgent.modelId
-    }
-    if (runtimeKind === 'claude-agent') {
-      if (context === 'chat' && isClaudeAgentTierModelId(boundModelId)) {
-        return boundModelId
-      }
-      if (context === 'chat' && boundModelId) {
-        return boundModelId
-      }
-      const persisted = profileId ? lastModelByProfile[profileId] : undefined
-      if (isClaudeAgentTierModelId(persisted)) {
-        return persisted
-      }
-      return null
     }
     if (context === 'chat') {
       return resolveChatModelId({

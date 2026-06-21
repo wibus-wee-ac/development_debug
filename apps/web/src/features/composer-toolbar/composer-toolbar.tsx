@@ -2,8 +2,8 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { RuntimeKind } from '~/features/agent-runtime/types'
-import type { ClaudeAgentMatrixProviderOption, ClaudeMatrixSlot } from '~/features/chat/runtime/claude-session-model-matrix-control'
-import { ClaudeAgentMatrixSelector } from '~/features/chat/runtime/claude-session-model-matrix-control'
+import type { ClaudeAgentModelAliasesSlot } from '~/features/chat/runtime/claude-session-model-matrix-control'
+import { ClaudeAgentModelAliasesButton } from '~/features/chat/runtime/claude-session-model-matrix-control'
 
 import { AgentSelector } from './agent-selector'
 import { ChatAgentIdentity } from './chat-agent-identity'
@@ -18,10 +18,10 @@ const AGENTS_RUNTIME_SELECTOR_VALUE = 'agents'
 interface ComposerToolbarProps {
   context: ComposerContext
   state: ComposerStateResult
-  claudeMatrix?: { slot: ClaudeMatrixSlot, providerSettingsLoading?: boolean } | null
+  claudeModelAliases?: { slot: ClaudeAgentModelAliasesSlot, providerSettingsLoading?: boolean } | null
 }
 
-export function ComposerToolbar({ context, state, claudeMatrix }: ComposerToolbarProps) {
+export function ComposerToolbar({ context, state, claudeModelAliases }: ComposerToolbarProps) {
   const {
     selection,
     setAgentId,
@@ -68,22 +68,8 @@ export function ComposerToolbar({ context, state, claudeMatrix }: ComposerToolba
 
   const isClaudeAgent = selection.targetMode === 'provider'
     && selection.runtimeKind === 'claude-agent'
-    && !!claudeMatrix
+    && !!claudeModelAliases
   const thinkingOptions = useProviderThinkingOptions()
-  const matrixProfiles: ClaudeAgentMatrixProviderOption[] = useMemo(
-    () => profiles.flatMap((profile) => {
-      if (profile.providerKind === 'cli-tool') {
-        return []
-      }
-      return [{
-        id: profile.id,
-        name: profile.name,
-        providerKind: profile.providerKind,
-        iconSlug: profile.iconSlug,
-      }]
-    }),
-    [profiles],
-  )
 
   const runtimeControl = (
     <RuntimeSelector
@@ -106,16 +92,34 @@ export function ComposerToolbar({ context, state, claudeMatrix }: ComposerToolba
         />
       )
     : null
-  const claudeMatrixSelector = isClaudeAgent
+  const providerSelector = selection.targetMode === 'provider' && selection.runtimeKind !== 'cli-tui'
     ? (
-        <ClaudeAgentMatrixSelector
-          profiles={matrixProfiles}
+        <ProviderModelSelector
+          profiles={profiles}
           selectedProfileId={selection.profileId}
+          selectedModelId={selection.modelId}
+          models={models}
+          modelsByProfileId={modelsByProfileId}
+          loadingProfileIds={loadingProfileIds}
+          thinkingEffort={selection.thinkingEffort}
+          isLoadingModels={isLoadingModels}
+          showThinkingInModelMenu={!isClaudeAgent}
+          requestProfileModels={requestProfileModels}
+          onSelectProfile={setProfileId}
+          onSelectModel={setModelId}
+          onSelectThinkingEffort={setThinkingEffort}
+        />
+      )
+    : null
+  const claudeAliasesControl = isClaudeAgent
+    ? (
+        <ClaudeAgentModelAliasesButton
           models={models}
           selectedModelId={selection.modelId}
-          matrix={claudeMatrix!.slot}
-          loadingModels={isLoadingModels || claudeMatrix!.providerSettingsLoading}
-          onSelectProfile={setProfileId}
+          aliases={claudeModelAliases!.slot.aliases}
+          loading={claudeModelAliases!.slot.loading}
+          loadingModels={isLoadingModels || claudeModelAliases!.providerSettingsLoading}
+          onChange={claudeModelAliases!.slot.onChange}
           occludeNativeBrowserSurface
         />
       )
@@ -130,30 +134,13 @@ export function ComposerToolbar({ context, state, claudeMatrix }: ComposerToolba
         />
       )
     : null
-  const providerSelector = selection.targetMode === 'provider' && selection.runtimeKind !== 'cli-tui' && !isClaudeAgent
-    ? (
-        <ProviderModelSelector
-          profiles={profiles}
-          selectedProfileId={selection.profileId}
-          selectedModelId={selection.modelId}
-          models={models}
-          modelsByProfileId={modelsByProfileId}
-          loadingProfileIds={loadingProfileIds}
-          thinkingEffort={selection.thinkingEffort}
-          isLoadingModels={isLoadingModels}
-          requestProfileModels={requestProfileModels}
-          onSelectProfile={setProfileId}
-          onSelectModel={setModelId}
-          onSelectThinkingEffort={setThinkingEffort}
-        />
-      )
-    : null
-  const targetControl = agentIdentity ?? agentSelector ?? claudeMatrixSelector ?? providerSelector
+  const targetControl = agentIdentity ?? agentSelector ?? providerSelector
 
   return (
     <div className="flex min-w-0 items-center gap-1">
       {runtimeControl}
       {targetControl}
+      {claudeAliasesControl}
       {thinkingControl}
     </div>
   )

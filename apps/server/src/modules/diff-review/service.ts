@@ -2123,7 +2123,7 @@ export function createAgentFix(input: {
   threadId?: string | null
   anchor?: ReviewRangeAnchorInput | ReviewRangeAnchorView | null
   instruction: string
-  profileId?: string | null
+  agentId?: string | null
   expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact'
   userId?: string
 }): DiffReviewView {
@@ -2147,7 +2147,7 @@ export function createAgentFix(input: {
     threadId: input.threadId ?? null,
     anchorJson: anchor ? jsonStringify(anchor) : null,
     instruction: input.instruction,
-    profileId: input.profileId ?? null,
+    profileId: input.agentId ?? null,
     expectedOutput: input.expectedOutput,
     status: 'pending',
     createdAt: now,
@@ -2585,6 +2585,53 @@ export async function cancelAgentFix(input: {
       sessionId: agentFix.sessionId,
       runId: agentFix.runId,
       previousStatus: agentFix.status,
+    },
+    createdAt: now,
+  })
+  return loadReviewView(getReviewRow(input.workspaceId, input.reviewId), { userId: input.userId })
+}
+
+export async function deleteAgentFix(input: {
+  workspaceId: string
+  reviewId: string
+  agentFixId: string
+  userId?: string
+}): Promise<DiffReviewView> {
+  const review = getReviewRow(input.workspaceId, input.reviewId)
+  const agentFix = getAgentFixForReview(review.id, input.agentFixId)
+  if (agentFix.status === 'pending') {
+    throw new AppError({
+      code: 'diff_review_agent_fix_pending',
+      status: 409,
+      message: 'Pending agent fix work orders must be started or cancelled before they can be deleted',
+      details: { reviewId: review.id, agentFixId: agentFix.id },
+    })
+  }
+  if (agentFix.status === 'running') {
+    throw new AppError({
+      code: 'diff_review_agent_fix_running',
+      status: 409,
+      message: 'Running agent fix work orders must be cancelled before they can be deleted',
+      details: { reviewId: review.id, agentFixId: agentFix.id },
+    })
+  }
+
+  const now = currentUnixSeconds()
+  db().delete(diffReviewAgentFixes)
+    .where(eq(diffReviewAgentFixes.id, agentFix.id))
+    .run()
+  recordEvent({
+    reviewId: review.id,
+    eventKind: 'agent_fix_deleted',
+    actorKind: 'user',
+    actorId: input.userId ?? LOCAL_USER_ID,
+    payload: {
+      agentFixId: agentFix.id,
+      previousStatus: agentFix.status,
+      sessionId: agentFix.sessionId,
+      runId: agentFix.runId,
+      artifactId: agentFix.artifactId,
+      resultRevisionId: agentFix.resultRevisionId,
     },
     createdAt: now,
   })

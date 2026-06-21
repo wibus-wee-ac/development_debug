@@ -1,12 +1,13 @@
-import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
-  RightSmallLine as ChevronRightIcon,
+  DeleteLine as TrashIcon,
   GitBranchLine as GitBranchIcon,
   LoadingLine as LoaderCircleIcon,
   PlusLine as PlusIcon,
+  RightSmallLine as ChevronRightIcon,
   SafeShieldLine as ShieldCheckIcon,
-  DeleteLine as TrashIcon
+  SandglassLine as HourglassIcon,
 } from '@mingcute/react'
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -14,12 +15,25 @@ import { Button } from '~/components/ui/button'
 import { Input } from '~/components/ui/input'
 import { Switch } from '~/components/ui/switch'
 import { toastManager } from '~/components/ui/toast'
+import type { Workspace } from '~/features/workspace/types'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { client } from '~/lib/client.config'
 import { cn } from '~/lib/cn'
-import type { Workspace } from '~/features/workspace/types'
 
-import { SettingsPage } from './settings-container'
+import { SettingsGroup, SettingsPage } from './settings-container'
+
+const HOW_IT_WORKS_STEPS = [
+  'await.guide.step.scope',
+  'await.guide.step.match',
+  'await.guide.step.apply',
+] as const
+
+const PATTERN_EXAMPLES: Array<{ pattern: string, descriptionKey: 'await.guide.pattern.example1.desc' | 'await.guide.pattern.example2.desc' | 'await.guide.pattern.example3.desc' | 'await.guide.pattern.example4.desc' }> = [
+  { pattern: 'PR Checklist*', descriptionKey: 'await.guide.pattern.example1.desc' },
+  { pattern: 'lint:*', descriptionKey: 'await.guide.pattern.example2.desc' },
+  { pattern: 'snapshot', descriptionKey: 'await.guide.pattern.example3.desc' },
+  { pattern: 'ci/?', descriptionKey: 'await.guide.pattern.example4.desc' },
+]
 
 // ── Types ──
 
@@ -466,6 +480,95 @@ const WorkspaceBypassSection = ({ workspace }: { workspace: Workspace }) => {
   )
 }
 
+// ── Guide ──
+
+function AwaitGuide() {
+  const { t } = useTranslation('settings')
+  return (
+    <SettingsGroup
+      label={t('await.guide.label')}
+      description={t('await.guide.description')}
+      bare
+      className="overflow-hidden"
+      data-testid="await-guide"
+    >
+      <div className="flex gap-3 p-4">
+        <div className="mt-0.5 flex size-8 shrink-0 items-center justify-center rounded-lg bg-amber-500/10 text-amber-700 dark:text-amber-300">
+          <HourglassIcon className="size-4" aria-hidden="true" />
+        </div>
+        <div className="min-w-0">
+          <h3 className="text-[13px] font-medium text-foreground">
+            {t('await.guide.intro.title')}
+          </h3>
+          <p className="mt-1 text-[12px] leading-5 text-muted-foreground text-pretty">
+            {t('await.guide.intro.body')}
+          </p>
+        </div>
+      </div>
+
+      <div className="border-t border-border/60 px-4 py-3">
+        <h4 className="text-[12px] font-medium text-foreground/90">
+          {t('await.guide.bypass.title')}
+        </h4>
+        <p className="mt-1 text-[12px] leading-5 text-muted-foreground text-pretty">
+          {t('await.guide.bypass.body')}
+        </p>
+        <ol className="mt-3 grid gap-2">
+          {HOW_IT_WORKS_STEPS.map((stepKey, index) => (
+            <li
+              key={stepKey}
+              className="grid grid-cols-[auto_1fr] gap-2 text-[12px] leading-5 text-muted-foreground"
+            >
+              <span className="flex size-5 shrink-0 items-center justify-center rounded-full bg-muted text-[11px] font-medium text-foreground tabular-nums">
+                {index + 1}
+              </span>
+              <span className="text-pretty">{t(stepKey)}</span>
+            </li>
+          ))}
+        </ol>
+      </div>
+
+      <div className="border-t border-border/60 px-4 py-3">
+        <h4 className="text-[12px] font-medium text-foreground/90">
+          {t('await.guide.patterns.title')}
+        </h4>
+        <p className="mt-1 text-[12px] leading-5 text-muted-foreground text-pretty">
+          {t('await.guide.patterns.note')}
+        </p>
+        <ul className="mt-2 grid gap-1.5">
+          {PATTERN_EXAMPLES.map(({ pattern, descriptionKey }) => (
+            <li
+              key={pattern}
+              className="grid grid-cols-[auto_1fr] items-baseline gap-2 text-[12px]"
+            >
+              <code className="rounded bg-muted/60 px-1.5 py-0.5 font-mono text-[11px] text-foreground/90">
+                {pattern}
+              </code>
+              <span className="text-muted-foreground text-pretty">{t(descriptionKey)}</span>
+            </li>
+          ))}
+        </ul>
+      </div>
+
+      <div className="border-t border-border/60 bg-muted/30 px-4 py-3">
+        <div className="grid grid-cols-[auto_1fr] gap-2">
+          <ShieldCheckIcon
+            className="mt-0.5 size-3.5 shrink-0 !text-amber-700 dark:!text-amber-300"
+            aria-hidden="true"
+          />
+          <p className="text-[12px] leading-5 text-muted-foreground text-pretty">
+            <span className="font-medium text-foreground">
+              {t('await.guide.scope.title')}
+            </span>
+            {' '}
+            {t('await.guide.scope.description')}
+          </p>
+        </div>
+      </div>
+    </SettingsGroup>
+  )
+}
+
 // ── Page ──
 
 export function AwaitSettings() {
@@ -485,6 +588,7 @@ export function AwaitSettings() {
           <WorkspaceBypassSection key={w.id} workspace={w} />
         ))}
       </div>
+      <AwaitGuide />
     </SettingsPage>
   )
 }

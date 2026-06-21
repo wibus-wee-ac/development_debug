@@ -106,12 +106,8 @@ export async function createSideChat(
       : null
   const transcript = await deps.readTranscript(input.parentSessionId)
   const requestedModelId = parentRuntime.requestedModelId ?? input.modelId ?? undefined
-  const sideHostLease = reserveSideConversationHostLease({
-    sideConversationId,
-    runtimeKind,
-    providerTargetId: context.providerTarget.id
-  })
   let sideRegistered = false
+  let sideHostLease: ReturnType<typeof reserveSideConversationHostLease> | null = null
   try {
     const childRuntimeSession =
       runtime.forkRuntimeSession && parentRuntime.runtimeSession?.providerSessionId
@@ -132,6 +128,20 @@ export async function createSideChat(
             agentId: childAgentId,
             modelId: requestedModelId
           })
+
+    sideHostLease = childRuntimeSession.providerRuntimeLease
+      ? {
+          sideConversationId,
+          providerTargetId: context.providerTarget.id,
+          runtimeKind: childRuntimeSession.runtimeKind,
+          pinned: true,
+          lease: childRuntimeSession.providerRuntimeLease
+        }
+      : reserveSideConversationHostLease({
+          sideConversationId,
+          runtimeKind: childRuntimeSession.runtimeKind,
+          providerTargetId: context.providerTarget.id
+        })
 
     const record = registerSideConversation({
       sideConversationId,
@@ -159,7 +169,7 @@ export async function createSideChat(
     }
   } finally {
     if (!sideRegistered) {
-      sideHostLease.lease.release()
+      sideHostLease?.lease.release()
     }
   }
 }

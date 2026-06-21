@@ -312,6 +312,7 @@ export const diffReviewEvents = sqliteTable('diff_review_events', {
       'agent_fix_completed',
       'agent_fix_failed',
       'agent_fix_cancelled',
+      'agent_fix_deleted',
       'guide_cancelled',
       'commit_plan_created',
       'commit_plan_updated',

@@ -51,6 +51,7 @@ export function ReviewDetailPage({
     startAgentFixMutation,
     cancelAgentFixMutation,
     rerunAgentFixMutation,
+    deleteAgentFixMutation,
   } = useReview({ workspaceId, repositoryPath, reviewId })
 
   const [diffStyle, setDiffStyle] = useState<DiffStyle>('split')
@@ -337,10 +338,12 @@ export function ReviewDetailPage({
                     startPending={startAgentFixMutation.isPending}
                     cancelPending={cancelAgentFixMutation.isPending}
                     rerunPending={rerunAgentFixMutation.isPending}
+                    deletePending={deleteAgentFixMutation.isPending}
                     onCreate={input => createAgentFixMutation.mutateAsync(input)}
                     onStart={input => startAgentFixMutation.mutateAsync(input)}
                     onCancel={agentFixId => cancelAgentFixMutation.mutate(agentFixId)}
                     onRerun={input => rerunAgentFixMutation.mutateAsync(input)}
+                    onDelete={agentFixId => deleteAgentFixMutation.mutate(agentFixId)}
                     onCollapse={() => setThreadsRailCollapsed(true)}
                     width={threadsRailWidth}
                   />

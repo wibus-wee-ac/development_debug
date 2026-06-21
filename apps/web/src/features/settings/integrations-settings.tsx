@@ -1,17 +1,23 @@
 import {
   AddLine as AddIcon,
-  BridgeLine as BridgeIcon,
-  CodeLine as CodeIcon,
+  ArrowRightLine as ArrowRightIcon,
+  CheckLine as CheckIcon,
+  ChipLine as ChipIcon,
+  CloseLine as CloseIcon,
   CommandLine as TerminalIcon,
   DeleteLine as TrashIcon,
+  FlashLine as ZapIcon,
+  HashtagLine as HashIcon,
+  Key2Line as KeyIcon,
   Link3Line as LinkIcon,
-  LoadingLine as LoaderIcon,
   More2Line as MoreIcon,
+  PencilLine as PencilIcon,
   PlayLine as PlayIcon,
-  PuzzledLine as PuzzleIcon,
   Refresh2Line as RefreshIcon,
+  RobotLine as BotIcon,
+  SendLine as SendIcon,
+  ServerLine as ServerIcon,
   StopLine as StopIcon,
-  Settings2Line,
 } from '@mingcute/react'
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import { useCallback, useMemo, useState } from 'react'
@@ -27,26 +33,14 @@ import {
   getConversationBridgeDeliveryAttemptsRetryable,
   getSecrets,
   patchConversationBridgeConnectionsById,
-  postConversationBridgeConnections,
   postConversationBridgeConnectionsByIdStart,
   postConversationBridgeConnectionsByIdStop,
   postConversationBridgeDeliveryAttemptsRetry,
-  postSecrets,
   putConversationBridgeConnectionsByIdWorkspacesByExternalWorkspaceIdChannelsByExternalChannelIdBinding,
 } from '~/api-gen/sdk.gen'
-import type {
-  GetConversationBridgeAdaptersResponse,
-  GetConversationBridgeConnectionsResponse,
-  GetConversationBridgeConnectionsByIdChannelBindingsResponse,
-  GetConversationBridgeConnectionsByIdThreadsResponse,
-  GetConversationBridgeDeliveryAttemptsRetryableResponse,
-  GetSecretsResponse,
-} from '~/api-gen/types.gen'
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from '~/components/ui/alert-dialog'
 import { Badge } from '~/components/ui/badge'
 import { Button } from '~/components/ui/button'
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '~/components/ui/card'
-import { Checkbox } from '~/components/ui/checkbox'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from '~/components/ui/dialog'
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '~/components/ui/dropdown-menu'
 import { Input } from '~/components/ui/input'
@@ -59,291 +53,26 @@ import { toastManager } from '~/components/ui/toast'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import { cn } from '~/lib/cn'
 
-import { SettingsGroup, SettingsHeader, SettingsMasterDetail, SettingsPage } from './settings-container'
+import { CreateConnectionDialog } from './connection-create-dialog'
+import type { Adapter, ChannelBinding, Connection, DeliveryAttempt, HealthStatus, Secret, ThreadBinding } from './integrations-primitives'
+import { formatTimestamp, healthStatusLabel, PlatformGlyph, queryKeys, StatusDot, timeAgo } from './integrations-primitives'
+import { SettingsGroup, SettingsMasterDetail, SettingsPage } from './settings-container'
+import { SettingsRow } from './settings-row'
 import { useAppPreferences } from './use-app-preferences'
-
-type Adapter = GetConversationBridgeAdaptersResponse[number]
-type Connection = GetConversationBridgeConnectionsResponse[number]
-type ChannelBinding = GetConversationBridgeConnectionsByIdChannelBindingsResponse[number]
-type ThreadBinding = GetConversationBridgeConnectionsByIdThreadsResponse[number]
-type DeliveryAttempt = GetConversationBridgeDeliveryAttemptsRetryableResponse[number]
-type Secret = GetSecretsResponse[number]
-
-type HealthStatus = 'unknown' | 'starting' | 'running' | 'stopped' | 'error'
-
-const queryKeys = {
-  adapters: ['conversation-bridge', 'adapters'] as const,
-  connections: ['conversation-bridge', 'connections'] as const,
-  connection: (id: string) => ['conversation-bridge', 'connections', id] as const,
-  channelBindings: (id: string) => ['conversation-bridge', 'connections', id, 'channel-bindings'] as const,
-  threads: (id: string) => ['conversation-bridge', 'connections', id, 'threads'] as const,
-  retryableDeliveries: ['conversation-bridge', 'delivery-attempts', 'retryable'] as const,
-  secrets: ['secrets'] as const,
-}
-
-// Status dot component with better visuals
-function StatusDot({ status, pulse, size = 'md' }: { status: HealthStatus; pulse?: boolean; size?: 'sm' | 'md' | 'lg' }) {
-  const dotClasses: Record<HealthStatus, string> = {
-    unknown: 'bg-muted-foreground/40',
-    starting: 'bg-warning',
-    running: 'bg-success',
-    stopped: 'bg-muted-foreground/40',
-    error: 'bg-destructive',
-  }
-
-  const sizeClasses = {
-    sm: 'size-1.5',
-    md: 'size-2',
-    lg: 'size-2.5',
-  }
-
-  return (
-    <span className="relative flex items-center justify-center" aria-hidden="true">
-      {pulse && status === 'running' && (
-        <span className={cn('absolute inline-flex animate-ping rounded-full', dotClasses[status], 'opacity-40', sizeClasses[size === 'sm' ? 'md' : size === 'md' ? 'lg' : 'lg'])} />
-      )}
-      <span className={cn('relative inline-flex rounded-full', dotClasses[status], sizeClasses[size])} />
-    </span>
-  )
-}
-
-// Adapter mark component with gradient
-function AdapterMark({ adapter, size = 'md' }: { adapter: Adapter; size?: 'sm' | 'md' | 'lg' }) {
-  const initial = (adapter.label[0] ?? '?').toUpperCase()
-
-  const sizeClasses = {
-    sm: 'size-8 text-[11px]',
-    md: 'size-10 text-[13px]',
-    lg: 'size-12 text-[15px]',
-  }
-
-  // Pick a deterministic gradient based on adapter name
-  const gradients = [
-    'from-indigo-500 to-purple-500',
-    'from-rose-500 to-orange-500',
-    'from-cyan-500 to-blue-500',
-    'from-emerald-500 to-teal-500',
-    'from-violet-500 to-fuchsia-500',
-  ]
-  const gradientIndex = adapter.label.charCodeAt(0) % gradients.length
-
-  return (
-    <div className={cn(
-      'flex shrink-0 items-center justify-center rounded-xl font-semibold text-white select-none',
-      'bg-gradient-to-br shadow-sm shadow-black/10',
-      gradients[gradientIndex],
-      sizeClasses[size]
-    )}>
-      {initial}
-    </div>
-  )
-}
-
-// Time ago helper
-function timeAgo(timestamp: number | null): string | null {
-  if (!timestamp) return null
-  const diff = Math.floor(Date.now() / 1000) - timestamp
-  if (diff < 60) return 'just now'
-  if (diff < 3600) return `${Math.floor(diff / 60)}m ago`
-  if (diff < 86400) return `${Math.floor(diff / 3600)}h ago`
-  if (diff < 2592000) return `${Math.floor(diff / 86400)}d ago`
-  return new Date(timestamp * 1000).toLocaleDateString()
-}
-
-function formatTimestamp(timestamp: number | null): string | null {
-  if (!timestamp) return null
-  return new Date(timestamp * 1000).toLocaleDateString()
-}
-
-// Health status label
-function healthStatusLabel(status: HealthStatus, t: any): string {
-  switch (status) {
-    case 'unknown': return t('integrations.connection.healthUnknown')
-    case 'starting': return t('integrations.connection.healthStarting')
-    case 'running': return t('integrations.connection.healthRunning')
-    case 'stopped': return t('integrations.connection.healthStopped')
-    case 'error': return t('integrations.connection.healthError')
-    default: return status
-  }
-}
-
-// Integration card component - main entry point
-function IntegrationCard({
-  icon: Icon,
-  title,
-  description,
-  badge,
-  color = 'blue',
-  onClick,
-  rightContent,
-}: {
-  icon: any
-  title: string
-  description: string
-  badge?: string
-  color?: 'blue' | 'purple' | 'green' | 'orange' | 'rose' | 'cyan'
-  onClick?: () => void
-  rightContent?: React.ReactNode
-}) {
-  const colorClasses = {
-    blue: 'from-blue-500 to-cyan-500 bg-blue-500/10 text-blue-500',
-    purple: 'from-purple-500 to-pink-500 bg-purple-500/10 text-purple-500',
-    green: 'from-emerald-500 to-teal-500 bg-emerald-500/10 text-emerald-500',
-    orange: 'from-orange-500 to-amber-500 bg-orange-500/10 text-orange-500',
-    rose: 'from-rose-500 to-red-500 bg-rose-500/10 text-rose-500',
-    cyan: 'from-cyan-500 to-sky-500 bg-cyan-500/10 text-cyan-500',
-  }
-
-  return (
-    <Card
-      className={cn(
-        'group overflow-hidden transition-all duration-200',
-        'hover:border-border/80 hover:bg-accent/30 hover:shadow-md hover:shadow-black/5',
-        onClick ? 'cursor-pointer' : ''
-      )}
-      onClick={onClick}
-    >
-      <CardHeader className="flex flex-row items-start gap-4 pb-4">
-        <div className={cn(
-          'flex size-12 items-center justify-center rounded-xl bg-gradient-to-br shadow-sm shadow-black/10',
-          colorClasses[color]
-        )}>
-          <Icon className="size-5 text-white" aria-hidden="true" />
-        </div>
-        <div className="flex-1">
-          <div className="flex items-center gap-2">
-            <CardTitle className="text-sm font-medium">{title}</CardTitle>
-            {badge && (
-              <Badge
-                variant="secondary"
-                className="h-5 px-1.5 text-[10px] font-medium"
-              >
-                {badge}
-              </Badge>
-            )}
-          </div>
-          <CardDescription className="mt-1.5 text-[12px] leading-relaxed">{description}</CardDescription>
-        </div>
-        {rightContent && (
-          <div className="flex items-center">
-            {rightContent}
-          </div>
-        )}
-      </CardHeader>
-    </Card>
-  )
-}
-
-// Provider integration view component
-function ProviderIntegrationView({
-  onBack,
-  prefs,
-  prefsLoading,
-  isSaving,
-  saveFeatureFlags,
-}: {
-  onBack: () => void
-  prefs: ReturnType<typeof useAppPreferences>['prefs']
-  prefsLoading: boolean
-  isSaving: boolean
-  saveFeatureFlags: (flags: any) => void
-}) {
-  const { t } = useTranslation('settings')
-
-  return (
-    <SettingsPage
-      title={t('integrations.categories.provider.title')}
-      description={t('integrations.categories.provider.description')}
-      maxWidth="2xl"
-    >
-      <Button
-        variant="ghost"
-        size="sm"
-        onClick={onBack}
-        className="mb-4 w-fit text-xs"
-      >
-        <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1"><path d="m15 18-6-6 6-6"/></svg>
-        Back
-      </Button>
-      <div className="space-y-6">
-        {/* Provider native skill roots setting */}
-        <SettingsGroup label="Provider Native Skills">
-          <div className="p-4">
-            <div className="flex items-start justify-between gap-6">
-              <div className="space-y-1.5 flex-1">
-                <div className="flex items-center gap-2">
-                  <Label htmlFor="native-skill-roots" className="text-sm font-medium">
-                    {t('features.nativeProviderSkillProjection.label')}
-                  </Label>
-                  <Badge variant="secondary" className="text-[10px]">Recommended</Badge>
-                </div>
-                <p className="text-[12px] text-muted-foreground leading-relaxed">
-                  {t('features.nativeProviderSkillProjection.description')}
-                </p>
-                <div className="mt-3 flex flex-wrap gap-2">
-                  <span className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-1 text-[10px] text-muted-foreground">
-                    <TerminalIcon className="size-3.5" />
-                    ~/.codex/skills/cradle
-                  </span>
-                  <span className="inline-flex items-center gap-1 rounded-md bg-accent px-2 py-1 text-[10px] text-muted-foreground">
-                    <TerminalIcon className="size-3.5" />
-                    ~/.claude/skills/cradle
-                  </span>
-                </div>
-              </div>
-              <Switch
-                id="native-skill-roots"
-                size="sm"
-                checked={prefs?.featureFlags.nativeProviderSkillProjection ?? false}
-                disabled={prefsLoading || isSaving}
-                onCheckedChange={(checked) => saveFeatureFlags({ nativeProviderSkillProjection: checked })}
-                className="mt-0.5"
-              />
-            </div>
-          </div>
-        </SettingsGroup>
-
-        {/* Info card */}
-        <Card className="border-border/60 bg-accent/30">
-          <CardHeader className="pb-3">
-            <div className="flex items-center gap-2">
-              <div className="flex size-8 items-center justify-center rounded-lg bg-background">
-                <Settings2Line className="size-4 text-amber-500" aria-hidden="true" />
-              </div>
-              <div>
-                <CardTitle className="text-xs font-medium">How it works</CardTitle>
-              </div>
-            </div>
-          </CardHeader>
-          <CardContent className="text-[12px] text-muted-foreground space-y-2">
-            <p>When enabled, Cradle will symlink your enabled plugins and built-in skills into the native skill directories of your AI providers.</p>
-            <p>This allows Codex and Claude to discover and use your Cradle skills even when you're using them outside of Cradle.</p>
-          </CardContent>
-        </Card>
-      </div>
-    </SettingsPage>
-  )
-}
 
 // Connections view component
 function ConnectionsView({
   onBack,
   selectedConnectionId,
   onSelectConnection,
-  showCreateDialog,
-  setShowCreateDialog,
-  showRetryDialog,
-  setShowRetryDialog,
+  onCreateConnection,
   deletingConnectionId,
   setDeletingConnectionId,
 }: {
   onBack: () => void
   selectedConnectionId: string | null
   onSelectConnection: (id: string | null) => void
-  showCreateDialog: boolean
-  setShowCreateDialog: (v: boolean) => void
-  showRetryDialog: boolean
-  setShowRetryDialog: (v: boolean) => void
+  onCreateConnection: () => void
   deletingConnectionId: string | null
   setDeletingConnectionId: (v: string | null) => void
 }) {
@@ -355,7 +84,7 @@ function ConnectionsView({
     queryKey: queryKeys.adapters,
     queryFn: async () => {
       const { data, error } = await getConversationBridgeAdapters()
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
       return data ?? []
     },
   })
@@ -364,7 +93,7 @@ function ConnectionsView({
     queryKey: queryKeys.connections,
     queryFn: async () => {
       const { data, error } = await getConversationBridgeConnections()
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
       return data ?? []
     },
   })
@@ -373,7 +102,7 @@ function ConnectionsView({
     queryKey: queryKeys.secrets,
     queryFn: async () => {
       const { data, error } = await getSecrets()
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
       return data ?? []
     },
   })
@@ -382,7 +111,7 @@ function ConnectionsView({
   const startMutation = useMutation({
     mutationFn: async (id: string) => {
       const { data, error } = await postConversationBridgeConnectionsByIdStart({ path: { id } })
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
       return data
     },
     onSuccess: () => {
@@ -397,7 +126,7 @@ function ConnectionsView({
   const stopMutation = useMutation({
     mutationFn: async (id: string) => {
       const { data, error } = await postConversationBridgeConnectionsByIdStop({ path: { id } })
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
       return data
     },
     onSuccess: () => {
@@ -412,7 +141,7 @@ function ConnectionsView({
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
       const { error } = await deleteConversationBridgeConnectionsById({ path: { id } })
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
     },
     onSuccess: () => {
       toastManager.add({ type: 'success', title: t('integrations.connection.toast.deleted') })
@@ -443,20 +172,6 @@ function ConnectionsView({
     }
   }
 
-  const handleConnectionCreated = () => {
-    setShowCreateDialog(false)
-    void queryClient.invalidateQueries({ queryKey: queryKeys.connections })
-  }
-
-  const handleRetryDeliveries = () => {
-    setShowRetryDialog(true)
-  }
-
-  const handleDeliveriesRetried = () => {
-    setShowRetryDialog(false)
-    void queryClient.invalidateQueries({ queryKey: queryKeys.retryableDeliveries })
-  }
-
   // Derived state
   const adapters = useMemo(() => adaptersQuery.data ?? [], [adaptersQuery.data])
   const connections = useMemo(() => connectionsQuery.data ?? [], [connectionsQuery.data])
@@ -464,7 +179,7 @@ function ConnectionsView({
 
   const selectedConnection = useMemo(
     () => connections.find(c => c.id === selectedConnectionId) ?? null,
-    [connections, selectedConnectionId]
+    [connections, selectedConnectionId],
   )
 
   // Group connections by adapter
@@ -476,33 +191,30 @@ function ConnectionsView({
     return map
   }, [adapters, connections])
 
-  const connectedCount = connections.filter(c => c.healthStatus === 'running').length
-  const errorCount = connections.filter(c => c.healthStatus === 'error').length
-
   const isLoading = adaptersQuery.isLoading || connectionsQuery.isLoading || secretsQuery.isLoading
 
   return (
     <SettingsMasterDetail
       title={t('integrations.categories.connections.title')}
       description={t('integrations.categories.connections.description')}
-      toolbar={
+      toolbar={(
         <Button
           variant="ghost"
           size="sm"
           onClick={onBack}
           className="mb-2 w-fit text-xs"
         >
-          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1"><path d="m15 18-6-6 6-6"/></svg>
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="mr-1"><path d="m15 18-6-6 6-6" /></svg>
           Back
         </Button>
-      }
-      list={
+      )}
+      list={(
         <div className="flex h-full flex-col">
           <div className="flex items-center justify-between gap-2 border-b border-border/60 px-3 py-2">
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setShowCreateDialog(true)}
+              onClick={onCreateConnection}
               className="h-7 gap-1.5 text-xs"
               disabled={adapters.length === 0}
             >
@@ -522,15 +234,19 @@ function ConnectionsView({
             </Button>
           </div>
           <div className="flex-1 overflow-y-auto">
-            {isLoading ? (
+            {isLoading
+? (
               <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
                 <Spinner className="size-3.5" />
               </div>
-            ) : adapters.length === 0 ? (
+            )
+: adapters.length === 0
+? (
               <div className="border-y border-border/60 bg-muted/20 px-4 py-8 text-center text-xs text-muted-foreground/70">
                 {t('integrations.adapter.empty')}
               </div>
-            ) : (
+            )
+: (
               <div className="flex flex-col gap-1.5 p-2">
                 {adapters.map(adapter => (
                   <AdapterSection
@@ -556,45 +272,33 @@ function ConnectionsView({
             )}
           </div>
         </div>
-      }
+      )}
       detail={
-        selectedConnection ? (
+        selectedConnection
+? (
           <ConnectionDetail
             connection={selectedConnection}
             secrets={secrets}
             onUpdated={() => queryClient.invalidateQueries({ queryKey: queryKeys.connections })}
-            onRetryDeliveries={handleRetryDeliveries}
+            onDelete={() => setDeletingConnectionId(selectedConnection.id)}
           />
-        ) : (
+        )
+: (
           <div className="flex h-full flex-col items-center justify-center gap-3 text-xs text-muted-foreground">
             <div className="flex size-12 items-center justify-center rounded-2xl bg-muted/30">
               <LinkIcon className="size-5 text-muted-foreground/50" aria-hidden="true" />
             </div>
             <div className="text-center">
-              <p className="font-medium text-foreground">Select a connection</p>
-              <p className="mt-1 text-[11px]">{t('integrations.connection.selectPlaceholder')}</p>
+              <p className="font-medium text-foreground">{t('integrations.connection.selectConnection')}</p>
+              <p className="mt-1 text-[11px]">{t('integrations.connection.selectConnectionHint')}</p>
             </div>
           </div>
         )
       }
     >
-      <CreateConnectionDialog
-        open={showCreateDialog}
-        onOpenChange={setShowCreateDialog}
-        adapters={adapters}
-        secrets={secrets}
-        onCreated={handleConnectionCreated}
-      />
-
-      <RetryDeliveriesDialog
-        open={showRetryDialog}
-        onOpenChange={setShowRetryDialog}
-        onRetried={handleDeliveriesRetried}
-      />
-
       <AlertDialog
         open={!!deletingConnectionId}
-        onOpenChange={(open) => !open && setDeletingConnectionId(null)}
+        onOpenChange={open => !open && setDeletingConnectionId(null)}
       >
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -650,7 +354,7 @@ function AdapterSection({
   return (
     <section className="overflow-hidden rounded-xl border border-border/60 bg-card">
       <div className="flex items-center gap-3 px-3 py-2.5">
-        <AdapterMark adapter={adapter} size="sm" />
+        <PlatformGlyph platform={adapter.platform} label={adapter.label} size="sm" />
         <div className="min-w-0 flex-1">
           <div className="flex items-center gap-2">
             <span className={cn('truncate text-xs font-medium', isAvailable ? 'text-foreground' : 'text-muted-foreground')}>
@@ -718,18 +422,18 @@ function ConnectionRow({
       onClick={onSelect}
       className={cn(
         'group flex w-full items-center gap-3 px-3 py-2.5 text-left transition-colors',
-        selected ? 'bg-accent/60' : 'hover:bg-accent/30'
+        selected ? 'bg-accent/60' : 'hover:bg-accent/30',
       )}
     >
       <StatusDot
-        status={connection.healthStatus}
+        status={connection.healthStatus as HealthStatus}
         pulse={connection.healthStatus === 'running'}
         size="sm"
       />
       <div className="min-w-0 flex-1">
         <span className="truncate text-xs font-medium text-foreground">{connection.displayName}</span>
         <p className="mt-0.5 flex items-center gap-1 truncate text-[11px] text-muted-foreground">
-          <span>{healthStatusLabel(connection.healthStatus, t)}</span>
+          <span>{healthStatusLabel(connection.healthStatus as HealthStatus, t)}</span>
         </p>
       </div>
       <DropdownMenu>
@@ -738,7 +442,7 @@ function ConnectionRow({
             type="button"
             variant="ghost"
             size="icon-xs"
-            onClick={(e) => e.stopPropagation()}
+            onClick={e => e.stopPropagation()}
             className="opacity-0 focus-visible:opacity-100 group-hover:opacity-100"
           >
             <MoreIcon className="size-3.5" aria-hidden="true" />
@@ -777,30 +481,58 @@ function ConnectionRow({
   )
 }
 
-// Connection detail component
+// ── Connection detail (drill-in) ─────────────────────────────────────────────
+// The Slack inner page. Redesigned to actually show the connection's data
+// instead of a "managed via secrets" dead end: live health + direct enable
+// toggle + inline name edit in a Configuration group; real Slack credentials
+// (masked, looked up via secretRefs → secrets) + log level in a Credentials
+// group; and a Lifecycle group for timestamps. The three list tabs
+// (bindings / threads / deliveries) use the same flat card language as the
+// rest of Settings.
+
+// Label/value row for read-mostly metadata inside a detail group.
+function MetaRow({ label, children }: { label: string, children: React.ReactNode }) {
+  return (
+    <div className="flex items-center justify-between gap-4 py-1.5">
+      <span className="text-[12px] text-muted-foreground">{label}</span>
+      <span className="min-w-0 truncate text-right text-[12px] text-foreground">{children}</span>
+    </div>
+  )
+}
+
+// Small inline chip for an optional routing default on a channel binding.
+function RoutingChip({ icon: Icon, value }: { icon: React.ComponentType<{ className?: string }>, value: string }) {
+  return (
+    <span className="inline-flex items-center gap-1 rounded-md bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
+      <Icon className="size-3" />
+      <span className="max-w-[12rem] truncate">{value}</span>
+    </span>
+  )
+}
+
 function ConnectionDetail({
   connection,
   secrets,
   onUpdated,
-  onRetryDeliveries,
+  onDelete,
 }: {
   connection: Connection
   secrets: Secret[]
   onUpdated: () => void
-  onRetryDeliveries: () => void
+  onDelete: () => void
 }) {
   const { t } = useTranslation('settings')
   const queryClient = useQueryClient()
 
   const [displayName, setDisplayName] = useState(connection.displayName)
+  const [isEditingName, setIsEditingName] = useState(false)
   const [enabled, setEnabled] = useState(connection.enabled)
-  const [isEditing, setIsEditing] = useState(false)
 
   const channelBindingsQuery = useQuery({
     queryKey: queryKeys.channelBindings(connection.id),
     queryFn: async () => {
       const { data, error } = await getConversationBridgeConnectionsByIdChannelBindings({ path: { id: connection.id } })
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
       return data ?? []
     },
   })
@@ -809,7 +541,7 @@ function ConnectionDetail({
     queryKey: queryKeys.threads(connection.id),
     queryFn: async () => {
       const { data, error } = await getConversationBridgeConnectionsByIdThreads({ path: { id: connection.id } })
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
       return data ?? []
     },
   })
@@ -818,34 +550,40 @@ function ConnectionDetail({
     queryKey: queryKeys.retryableDeliveries,
     queryFn: async () => {
       const { data, error } = await getConversationBridgeDeliveryAttemptsRetryable()
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
       return (data ?? []).filter(d => d.connectionId === connection.id)
     },
   })
 
+  // Single patch mutation shared by the name save and the enable toggle —
+  // both write { displayName, enabled }, so one code path keeps them honest.
   const updateMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (patch: { displayName?: string, enabled?: boolean }) => {
       const { data, error } = await patchConversationBridgeConnectionsById({
         path: { id: connection.id },
-        body: { displayName, enabled },
+        body: {
+          displayName: patch.displayName ?? connection.displayName,
+          enabled: patch.enabled ?? connection.enabled,
+        },
       })
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
       return data
     },
     onSuccess: () => {
       toastManager.add({ type: 'success', title: t('integrations.connection.toast.updated') })
-      setIsEditing(false)
       void onUpdated()
     },
     onError: () => {
       toastManager.add({ type: 'error', title: t('integrations.connection.toast.updateFailed') })
+      // Roll back the optimistic enable toggle on failure.
+      setEnabled(connection.enabled)
     },
   })
 
   const startMutation = useMutation({
     mutationFn: async () => {
       const { data, error } = await postConversationBridgeConnectionsByIdStart({ path: { id: connection.id } })
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
       return data
     },
     onSuccess: () => {
@@ -860,7 +598,7 @@ function ConnectionDetail({
   const stopMutation = useMutation({
     mutationFn: async () => {
       const { data, error } = await postConversationBridgeConnectionsByIdStop({ path: { id: connection.id } })
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
       return data
     },
     onSuccess: () => {
@@ -872,79 +610,116 @@ function ConnectionDetail({
     },
   })
 
-  const handleSave = () => {
-    void updateMutation.mutate()
-  }
-
-  const handleCancel = () => {
-    setDisplayName(connection.displayName)
-    setEnabled(connection.enabled)
-    setIsEditing(false)
-  }
-
-  const handleStart = () => {
-    void startMutation.mutate()
-  }
-
-  const handleStop = () => {
-    void stopMutation.mutate()
-  }
-
   const invalidateBindings = useCallback(() => {
     void queryClient.invalidateQueries({ queryKey: queryKeys.channelBindings(connection.id) })
   }, [queryClient, connection.id])
 
   const isSlack = connection.platform === 'slack'
+  const status = connection.healthStatus as HealthStatus
+  const isRunning = connection.healthStatus === 'running'
+  const savingName = isEditingName && updateMutation.isPending
+
+  const handleSaveName = () => {
+    void updateMutation.mutate({ displayName })
+    setIsEditingName(false)
+  }
+
+  const handleCancelName = () => {
+    setDisplayName(connection.displayName)
+    setIsEditingName(false)
+  }
+
+  const handleToggleEnabled = (next: boolean) => {
+    setEnabled(next)
+    void updateMutation.mutate({ enabled: next })
+  }
+
+  // Resolve a Slack secret ref (by id stored in secretRefs) to its stored
+  // secret so we can show a masked value + label instead of a dead-end note.
+  const secretRefs = (connection.secretRefs ?? {}) as Record<string, string>
+  const resolveSecret = (refKey: string): Secret | undefined =>
+    secretRefs[refKey] ? secrets.find(s => s.id === secretRefs[refKey]) : undefined
+  const slackCredentials = isSlack
+    ? [
+      { refKey: 'botToken', labelKey: 'integrations.slack.botToken' as const },
+      { refKey: 'appToken', labelKey: 'integrations.slack.appToken' as const },
+      { refKey: 'signingSecret', labelKey: 'integrations.slack.signingSecret' as const },
+    ]
+    : []
+  const logLevel = isSlack ? (connection.config as { logLevel?: string } | null)?.logLevel : undefined
 
   return (
     <div className="flex h-full flex-col overflow-y-auto">
       <Tabs defaultValue="config" className="flex-1">
-        <div className="sticky top-0 z-10 border-b border-border/60 bg-background px-4 pt-3">
-          <div className="flex items-center justify-between gap-2">
-            <div className="flex items-center gap-3">
-              <div className="flex items-center gap-2">
-                <StatusDot status={connection.healthStatus} pulse={connection.healthStatus === 'running'} />
-                <h2 className="text-sm font-medium text-foreground">{connection.displayName}</h2>
+        {/* Sticky identity + action bar */}
+        <div className="sticky top-0 z-10 border-b border-border/60 bg-background px-5 pt-4">
+          <div className="flex items-center justify-between gap-3">
+            <div className="flex min-w-0 items-center gap-3">
+              <PlatformGlyph platform={connection.platform} label={connection.displayName} size="sm" />
+              <div className="flex min-w-0 items-center gap-2">
+                <StatusDot status={status} pulse={isRunning} />
+                <h2 className="truncate text-[15px] font-medium text-foreground">{connection.displayName}</h2>
               </div>
-              <Badge variant="outline" className="text-[10px]">{connection.platform}</Badge>
+              <Badge variant="outline" className="shrink-0 text-[10px] capitalize">{connection.platform}</Badge>
             </div>
-            <div className="flex items-center gap-1">
-              {connection.healthStatus !== 'running' && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleStart}
-                  disabled={startMutation.isPending}
-                  className="h-7 gap-1.5 text-xs"
-                >
-                  {startMutation.isPending && <Spinner className="size-3.5" />}
-                  {!startMutation.isPending && <PlayIcon className="size-3.5" aria-hidden="true" />}
-                  {t('integrations.connection.start')}
-                </Button>
-              )}
-              {connection.healthStatus === 'running' && (
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={handleStop}
-                  disabled={stopMutation.isPending}
-                  className="h-7 gap-1.5 text-xs"
-                >
-                  {stopMutation.isPending && <Spinner className="size-3.5" />}
-                  {!stopMutation.isPending && <StopIcon className="size-3.5" aria-hidden="true" />}
-                  {t('integrations.connection.stop')}
-                </Button>
-              )}
+            <div className="flex shrink-0 items-center gap-1">
+              {isRunning
+                ? (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => void stopMutation.mutate()}
+                    disabled={stopMutation.isPending}
+                    className="h-7 gap-1.5 text-xs"
+                  >
+                    {stopMutation.isPending
+                      ? <Spinner className="size-3.5" />
+                      : <StopIcon className="size-3.5" aria-hidden="true" />}
+                    {t('integrations.connection.stop')}
+                  </Button>
+                )
+                : (
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={() => void startMutation.mutate()}
+                    disabled={startMutation.isPending}
+                    className="h-7 gap-1.5 text-xs"
+                  >
+                    {startMutation.isPending
+                      ? <Spinner className="size-3.5" />
+                      : <PlayIcon className="size-3.5" aria-hidden="true" />}
+                    {t('integrations.connection.start')}
+                  </Button>
+                )}
+              <DropdownMenu>
+                <DropdownMenuTrigger asChild>
+                  <Button variant="ghost" size="icon-sm" aria-label={t('integrations.connection.edit')}>
+                    <MoreIcon className="size-3.5" aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent align="end" className="w-40">
+                  <DropdownMenuItem onClick={() => setIsEditingName(true)}>
+                    <PencilIcon className="mr-2 size-3.5" aria-hidden="true" />
+                    {t('integrations.connection.edit')}
+                  </DropdownMenuItem>
+                  <DropdownMenuSeparator />
+                  <DropdownMenuItem variant="destructive" onClick={onDelete}>
+                    <TrashIcon className="mr-2 size-3.5" aria-hidden="true" />
+                    {t('integrations.connection.delete')}
+                  </DropdownMenuItem>
+                </DropdownMenuContent>
+              </DropdownMenu>
             </div>
           </div>
-          <TabsList className="mt-3 h-7 gap-1 px-0">
-            <TabsTrigger value="config" className="h-6 px-2 text-[11px]">Configuration</TabsTrigger>
-            <TabsTrigger value="bindings" className="h-6 px-2 text-[11px]">Channel Bindings</TabsTrigger>
-            <TabsTrigger value="threads" className="h-6 px-2 text-[11px]">Threads</TabsTrigger>
-            <TabsTrigger value="deliveries" className="h-6 px-2 text-[11px]">
-              Deliveries
+          <TabsList className="mt-3 h-8 gap-1 px-0">
+            <TabsTrigger value="config" className="h-7 px-2.5 text-[12px]">{t('integrations.connection.configTitle')}</TabsTrigger>
+            <TabsTrigger value="bindings" className="h-7 px-2.5 text-[12px]">{t('integrations.channelBindings.title')}</TabsTrigger>
+            <TabsTrigger value="threads" className="h-7 px-2.5 text-[12px]">{t('integrations.threads.title')}</TabsTrigger>
+            <TabsTrigger value="deliveries" className="h-7 px-2.5 text-[12px]">
+              {t('integrations.delivery.title')}
               {retryableDeliveriesQuery.data && retryableDeliveriesQuery.data.length > 0 && (
-                <span className="ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[9px] text-white">
+                <span className="ml-1.5 inline-flex h-4 min-w-[16px] items-center justify-center rounded-full bg-destructive px-1 text-[9px] font-medium text-white">
                   {retryableDeliveriesQuery.data.length}
                 </span>
               )}
@@ -952,128 +727,134 @@ function ConnectionDetail({
           </TabsList>
         </div>
 
-        <TabsContent value="config" className="flex-1 px-4 py-4">
-          <SettingsGroup label={t('integrations.page.title')}>
-            <div className="space-y-4 p-4">
-              <div className="space-y-2">
-                <Label htmlFor="displayName" className="text-xs">{t('integrations.connection.displayName')}</Label>
-                {isEditing ? (
-                  <Input
-                    id="displayName"
-                    value={displayName}
-                    onChange={(e) => setDisplayName(e.target.value)}
-                    placeholder={t('integrations.connection.displayNamePlaceholder')}
-                    className="h-8 text-xs"
-                  />
-                ) : (
-                  <div className="h-8 rounded-md border border-border/60 bg-muted/20 px-3 py-1.5 text-xs text-foreground">
-                    {displayName}
-                  </div>
-                )}
+        {/* Configuration */}
+        <TabsContent value="config" className="flex-1 space-y-6 px-5 py-5">
+          <SettingsGroup label={t('integrations.connection.configTitle')}>
+            {/* Display name — inline edit */}
+            <div className="flex items-center justify-between gap-4 px-4 py-3">
+              <div className="min-w-0">
+                <Label className="text-[13px] font-medium text-foreground">{t('integrations.connection.displayName')}</Label>
               </div>
-
-              <div className="flex items-center justify-between">
-                <div className="space-y-1">
-                  <Label className="text-xs">{t('integrations.connection.enabled')}</Label>
-                  <p className="text-[11px] text-muted-foreground">{t('integrations.connection.enabledDescription')}</p>
-                </div>
-                {isEditing ? (
-                  <Switch checked={enabled} onCheckedChange={setEnabled} />
-                ) : (
-                  <Switch checked={enabled} disabled />
-                )}
-              </div>
-
-              <div className="space-y-2">
-                <Label className="text-xs">{t('integrations.connection.healthStatus')}</Label>
-                <div className="flex items-center gap-2">
-                  <StatusDot status={connection.healthStatus} pulse={connection.healthStatus === 'running'} />
-                  <span className="text-xs text-foreground">{healthStatusLabel(connection.healthStatus, t)}</span>
-                </div>
-                {connection.healthMessage && (
-                  <p className="text-[11px] text-muted-foreground">{connection.healthMessage}</p>
-                )}
-              </div>
-
-              <div className="flex items-center justify-between gap-4 pt-2">
-                <Button
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => setIsEditing(!isEditing)}
-                  className="h-7 text-xs"
-                >
-                  {isEditing ? t('integrations.connection.save') : t('registry.action.edit')}
-                </Button>
-                {isEditing && (
+              {isEditingName
+                ? (
                   <div className="flex items-center gap-1">
-                    <Button
-                      variant="ghost"
-                      size="sm"
-                      onClick={handleCancel}
-                      className="h-7 text-xs"
-                      disabled={updateMutation.isPending}
-                    >
-                      {t('registry.action.cancel')}
+                    <Input
+                      value={displayName}
+                      autoFocus
+                      onChange={e => setDisplayName(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key === 'Enter') { handleSaveName() }
+                        if (e.key === 'Escape') { handleCancelName() }
+                      }}
+                      placeholder={t('integrations.connection.displayNamePlaceholder')}
+                      className="h-7 w-48 text-xs"
+                    />
+                    <Button variant="ghost" size="icon-xs" onClick={handleCancelName} disabled={savingName}>
+                      <CloseIcon className="size-3.5" aria-hidden="true" />
                     </Button>
-                    <Button
-                      size="sm"
-                      onClick={handleSave}
-                      className="h-7 text-xs"
-                      disabled={updateMutation.isPending}
-                    >
-                      {updateMutation.isPending && <Spinner className="size-3.5 mr-1" />}
-                      {t('integrations.connection.save')}
+                    <Button size="icon-xs" onClick={handleSaveName} disabled={savingName || !displayName.trim()}>
+                      {savingName ? <Spinner className="size-3.5" /> : <CheckIcon className="size-3.5" aria-hidden="true" />}
                     </Button>
                   </div>
+                )
+                : (
+                  <button
+                    type="button"
+                    onClick={() => setIsEditingName(true)}
+                    className="group flex items-center gap-1.5 text-[13px] text-foreground"
+                  >
+                    <span className="truncate">{connection.displayName}</span>
+                    <PencilIcon className="size-3 text-muted-foreground/0 transition-colors group-hover:text-muted-foreground" aria-hidden="true" />
+                  </button>
                 )}
+            </div>
+
+            {/* Enabled — direct toggle */}
+            <div className="flex items-center justify-between gap-4 border-t border-border/60 px-4 py-3">
+              <div className="min-w-0 space-y-0.5">
+                <Label className="text-[13px] font-medium text-foreground">{t('integrations.connection.enabled')}</Label>
+                <p className="text-[12px] text-muted-foreground">{t('integrations.connection.enabledDescription')}</p>
               </div>
+              <Switch size="sm" checked={enabled} disabled={updateMutation.isPending} onCheckedChange={handleToggleEnabled} />
+            </div>
+
+            {/* Health */}
+            <div className="border-t border-border/60 px-4 py-3">
+              <div className="flex items-center justify-between gap-4">
+                <Label className="text-[13px] font-medium text-foreground">{t('integrations.connection.healthStatus')}</Label>
+                <div className="flex items-center gap-1.5">
+                  <StatusDot status={status} pulse={isRunning} size="sm" />
+                  <span className="text-[13px] text-foreground">{healthStatusLabel(status, t)}</span>
+                </div>
+              </div>
+              {connection.healthMessage && (
+                <p className="mt-1.5 text-[12px] text-muted-foreground">{connection.healthMessage}</p>
+              )}
             </div>
           </SettingsGroup>
 
+          {/* Slack credentials — real masked values, not a dead end */}
           {isSlack && (
-            <SettingsGroup label={t('integrations.slack.title')} className="mt-6">
-              <div className="space-y-2 p-4">
-                <p className="text-[11px] text-muted-foreground">{t('integrations.slack.description')}</p>
-                <p className="mt-2 text-[11px] text-muted-foreground/80">
-                  Slack configuration is managed via secrets. Edit the connection to update credentials.
-                </p>
-              </div>
+            <SettingsGroup label={t('integrations.slack.title')} description={t('integrations.slack.description')}>
+              {slackCredentials.map(({ refKey, labelKey }) => {
+                const secret = resolveSecret(refKey)
+                return (
+                  <div key={refKey} className="flex items-center justify-between gap-4 px-4 py-2.5 [&:not(:first-child)]:border-t [&:not(:first-child)]:border-border/60">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <KeyIcon className="size-3.5 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <span className="text-[13px] font-medium text-foreground">{t(labelKey)}</span>
+                    </div>
+                    {secret
+                      ? (
+                        <div className="flex min-w-0 flex-col items-end gap-0.5">
+                          <span className="truncate font-mono text-[12px] text-foreground">{secret.maskedSecret}</span>
+                          <span className="truncate text-[11px] text-muted-foreground">{secret.label}</span>
+                        </div>
+                      )
+                      : (
+                        <span className="text-[12px] italic text-muted-foreground/70">—</span>
+                      )}
+                  </div>
+                )
+              })}
+              {logLevel && (
+                <div className="flex items-center justify-between gap-4 border-t border-border/60 px-4 py-2.5">
+                  <span className="text-[13px] font-medium text-foreground">{t('integrations.slack.logLevel')}</span>
+                  <Badge variant="outline" className="text-[10px] capitalize">{logLevel}</Badge>
+                </div>
+              )}
             </SettingsGroup>
           )}
 
-          <SettingsGroup label={t('integrations.connection.healthStatus')} className="mt-6">
-            <div className="grid gap-3 p-4 text-xs text-muted-foreground">
-              <div className="flex items-center justify-between py-1">
-                <span>{t('integrations.connection.createdAt')}</span>
-                <span className="text-foreground">{formatTimestamp(connection.createdAt)}</span>
-              </div>
-              <div className="flex items-center justify-between py-1">
-                <span>{t('integrations.connection.updatedAt')}</span>
-                <span className="text-foreground">{formatTimestamp(connection.updatedAt)}</span>
-              </div>
+          {/* Lifecycle — timestamps */}
+          <SettingsGroup label={t('integrations.connection.metadataTitle')}>
+            <div className="px-4 py-1">
+              <MetaRow label={t('integrations.connection.createdAt')}>
+                {formatTimestamp(connection.createdAt)}
+              </MetaRow>
+              <MetaRow label={t('integrations.connection.updatedAt')}>
+                {formatTimestamp(connection.updatedAt)}
+              </MetaRow>
               {connection.lastStartedAt && (
-                <div className="flex items-center justify-between py-1">
-                  <span>{t('integrations.connection.lastStartedAt')}</span>
-                  <span className="text-foreground">{formatTimestamp(connection.lastStartedAt)}</span>
-                </div>
+                <MetaRow label={t('integrations.connection.lastStartedAt')}>
+                  {formatTimestamp(connection.lastStartedAt)}
+                </MetaRow>
               )}
               {connection.lastStoppedAt && (
-                <div className="flex items-center justify-between py-1">
-                  <span>{t('integrations.connection.lastStoppedAt')}</span>
-                  <span className="text-foreground">{formatTimestamp(connection.lastStoppedAt)}</span>
-                </div>
+                <MetaRow label={t('integrations.connection.lastStoppedAt')}>
+                  {formatTimestamp(connection.lastStoppedAt)}
+                </MetaRow>
               )}
               {connection.lastErrorAt && (
-                <div className="flex items-center justify-between py-1">
-                  <span>{t('integrations.connection.lastErrorAt')}</span>
+                <MetaRow label={t('integrations.connection.lastErrorAt')}>
                   <span className="text-destructive">{formatTimestamp(connection.lastErrorAt)}</span>
-                </div>
+                </MetaRow>
               )}
             </div>
           </SettingsGroup>
         </TabsContent>
 
-        <TabsContent value="bindings" className="flex-1 px-4 py-4">
+        <TabsContent value="bindings" className="flex-1 px-5 py-5">
           <ChannelBindingsSection
             connectionId={connection.id}
             bindings={channelBindingsQuery.data ?? []}
@@ -1082,16 +863,15 @@ function ConnectionDetail({
           />
         </TabsContent>
 
-        <TabsContent value="threads" className="flex-1 px-4 py-4">
+        <TabsContent value="threads" className="flex-1 px-5 py-5">
           <ThreadsSection
             threads={threadsQuery.data ?? []}
             loading={threadsQuery.isLoading}
           />
         </TabsContent>
 
-        <TabsContent value="deliveries" className="flex-1 px-4 py-4">
+        <TabsContent value="deliveries" className="flex-1 px-5 py-5">
           <FailedDeliveriesSection
-            connectionId={connection.id}
             deliveries={retryableDeliveriesQuery.data ?? []}
             loading={retryableDeliveriesQuery.isLoading}
           />
@@ -1101,7 +881,8 @@ function ConnectionDetail({
   )
 }
 
-// Channel bindings section
+// ── Channel bindings tab ─────────────────────────────────────────────────────
+
 function ChannelBindingsSection({
   connectionId,
   bindings,
@@ -1114,7 +895,6 @@ function ChannelBindingsSection({
   onUpdated: () => void
 }) {
   const { t } = useTranslation('settings')
-  const queryClient = useQueryClient()
   const { workspaces } = useWorkspaces()
 
   const [showAddDialog, setShowAddDialog] = useState(false)
@@ -1128,7 +908,7 @@ function ChannelBindingsSection({
           externalChannelId: binding.externalChannelId,
         },
       })
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
     },
     onSuccess: () => {
       toastManager.add({ type: 'success', title: t('integrations.channelBindings.toast.removed') })
@@ -1139,75 +919,258 @@ function ChannelBindingsSection({
     },
   })
 
-  const handleRemoveBinding = (binding: ChannelBinding) => {
-    void deleteMutation.mutate(binding)
-  }
-
-  const handleBindingAdded = () => {
-    setShowAddDialog(false)
-    void onUpdated()
-  }
+  const cradleWorkspaceName = (id: string) => workspaces.find(w => w.id === id)?.name ?? id
 
   return (
     <div className="space-y-4">
-      <SettingsHeader
+      <SectionHeader
         title={t('integrations.channelBindings.title')}
         description={t('integrations.channelBindings.description')}
-        action={
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => setShowAddDialog(true)}
-            className="h-7 gap-1.5 text-xs"
-          >
+        action={(
+          <Button variant="ghost" size="sm" onClick={() => setShowAddDialog(true)} className="h-7 gap-1.5 text-xs">
             <AddIcon className="size-3.5" aria-hidden="true" />
             {t('integrations.channelBindings.add')}
           </Button>
-        }
+        )}
       />
 
-      {loading ? (
-        <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
-          <Spinner className="size-3.5" />
-        </div>
-      ) : bindings.length === 0 ? (
-        <div className="mt-4 rounded-xl border border-dashed border-foreground/10 bg-muted/20 px-4 py-8 text-center">
-          <LinksIcon className="mx-auto size-6 text-muted-foreground/40" aria-hidden="true" />
-          <p className="mt-3 text-xs text-muted-foreground">{t('integrations.channelBindings.empty')}</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {bindings.map(binding => (
-            <div key={binding.id} className="flex items-center justify-between rounded-xl border border-border/60 bg-card px-3 py-3">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-foreground">{binding.externalChannelId}</span>
-                  <span className="text-[11px] text-muted-foreground">in</span>
-                  <span className="text-xs text-foreground">{binding.externalWorkspaceId}</span>
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Workspace: {workspaces.find(w => w.id === binding.cradleWorkspaceId)?.name ?? binding.cradleWorkspaceId}
-                </p>
-              </div>
-              <Button
-                variant="ghost"
-                size="icon-xs"
-                onClick={() => handleRemoveBinding(binding)}
-                disabled={deleteMutation.isPending}
-              >
-                <TrashIcon className="size-3.5" aria-hidden="true" />
-              </Button>
+      {loading
+        ? (
+          <LoadingRow />
+        )
+        : bindings.length === 0
+          ? (
+            <EmptyState icon={<HashIcon className="size-6" />} text={t('integrations.channelBindings.empty')} />
+          )
+          : (
+            <div className="space-y-2">
+              {bindings.map((binding) => {
+                const routing = [
+                  binding.sessionAgentId && { icon: BotIcon, value: binding.sessionAgentId },
+                  binding.sessionProviderTargetId && { icon: ServerIcon, value: binding.sessionProviderTargetId },
+                  binding.sessionRuntimeKind && { icon: ChipIcon, value: binding.sessionRuntimeKind },
+                  binding.sessionModelId && { icon: ZapIcon, value: binding.sessionModelId },
+                ].filter(Boolean) as Array<{ icon: React.ComponentType<{ className?: string }>, value: string }>
+
+                return (
+                  <div key={binding.id} className="group rounded-xl border border-border/60 bg-card px-3 py-2.5">
+                    <div className="flex items-start justify-between gap-3">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <HashIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                        <span className="truncate font-mono text-[13px] font-medium text-foreground">{binding.externalChannelId}</span>
+                      </div>
+                      <Button
+                        variant="ghost"
+                        size="icon-xs"
+                        onClick={() => void deleteMutation.mutate(binding)}
+                        disabled={deleteMutation.isPending}
+                        className="opacity-0 transition-opacity focus-visible:opacity-100 group-hover:opacity-100"
+                      >
+                        <TrashIcon className="size-3.5" aria-hidden="true" />
+                      </Button>
+                    </div>
+                    <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 pl-6 text-[11px] text-muted-foreground">
+                      <span>in</span>
+                      <span className="font-mono text-foreground">{binding.externalWorkspaceId}</span>
+                      <ArrowRightIcon className="size-3 text-muted-foreground/50" aria-hidden="true" />
+                      <span className="text-foreground">{cradleWorkspaceName(binding.cradleWorkspaceId)}</span>
+                      <span className="text-muted-foreground/40">·</span>
+                      <span>{timeAgo(binding.createdAt)}</span>
+                    </div>
+                    {routing.length > 0 && (
+                      <div className="mt-2 flex flex-wrap gap-1.5 pl-6">
+                        {routing.map(({ icon: Icon, value }) => (
+                          <RoutingChip key={value} icon={Icon} value={value} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                )
+              })}
             </div>
-          ))}
-        </div>
-      )}
+          )}
 
       <AddChannelBindingDialog
         open={showAddDialog}
         onOpenChange={setShowAddDialog}
         connectionId={connectionId}
-        onAdded={handleBindingAdded}
+        onAdded={() => { setShowAddDialog(false); void onUpdated() }}
       />
+    </div>
+  )
+}
+
+// ── Threads tab ──────────────────────────────────────────────────────────────
+
+function ThreadsSection({
+  threads,
+  loading,
+}: {
+  threads: ThreadBinding[]
+  loading: boolean
+}) {
+  const { t } = useTranslation('settings')
+  const { workspaces } = useWorkspaces()
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader title={t('integrations.threads.title')} description={t('integrations.threads.description')} />
+
+      {loading
+        ? <LoadingRow />
+        : threads.length === 0
+          ? <EmptyState icon={<HashIcon className="size-6" />} text={t('integrations.threads.empty')} />
+          : (
+            <div className="space-y-2">
+              {threads.map(thread => (
+                <div key={thread.id} className="rounded-xl border border-border/60 bg-card px-3 py-2.5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <HashIcon className="size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+                      <span className="truncate font-mono text-[13px] font-medium text-foreground">{thread.externalThreadId}</span>
+                    </div>
+                    <span className="shrink-0 text-[11px] text-muted-foreground">{timeAgo(thread.createdAt)}</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-1.5 gap-y-1 pl-6 text-[11px] text-muted-foreground">
+                    <span>in</span>
+                    <span className="font-mono text-foreground">{thread.externalChannelId}</span>
+                    <ArrowRightIcon className="size-3 text-muted-foreground/50" aria-hidden="true" />
+                    <span className="text-foreground">{workspaces.find(w => w.id === thread.cradleWorkspaceId)?.name ?? thread.cradleWorkspaceId ?? '—'}</span>
+                  </div>
+                  <div className="mt-1 pl-6 text-[11px] text-muted-foreground">
+                    <span className="text-muted-foreground/60">session</span>
+                    {' '}
+                    <span className="font-mono text-foreground/80">{thread.sessionId}</span>
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+    </div>
+  )
+}
+
+// ── Failed deliveries tab ────────────────────────────────────────────────────
+
+function FailedDeliveriesSection({
+  deliveries,
+  loading,
+}: {
+  deliveries: DeliveryAttempt[]
+  loading: boolean
+}) {
+  const { t } = useTranslation('settings')
+  const queryClient = useQueryClient()
+
+  const retryMutation = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await postConversationBridgeDeliveryAttemptsRetry()
+      if (error) { throw new Error(String(error)) }
+      return data
+    },
+    onSuccess: (result) => {
+      toastManager.add({
+        type: 'success',
+        title: t('integrations.delivery.toast.retried', {
+          attempted: result?.attempted ?? 0,
+          delivered: result?.delivered ?? 0,
+          failed: result?.failed ?? 0,
+        }),
+      })
+      void queryClient.invalidateQueries({ queryKey: queryKeys.retryableDeliveries })
+    },
+    onError: () => {
+      toastManager.add({ type: 'error', title: t('integrations.delivery.toast.retryFailed') })
+    },
+  })
+
+  return (
+    <div className="space-y-4">
+      <SectionHeader
+        title={t('integrations.delivery.title')}
+        description={t('integrations.delivery.description')}
+        action={deliveries.length > 0 && (
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => void retryMutation.mutate()}
+            disabled={retryMutation.isPending}
+            className="h-7 gap-1.5 text-xs"
+          >
+            {retryMutation.isPending
+              ? <Spinner className="size-3.5" />
+              : <RefreshIcon className="size-3.5" aria-hidden="true" />}
+            {t('integrations.delivery.retryAll')}
+          </Button>
+        )}
+      />
+
+      {loading
+        ? <LoadingRow />
+        : deliveries.length === 0
+          ? <EmptyState icon={<SendIcon className="size-6" />} text={t('integrations.delivery.empty')} />
+          : (
+            <div className="space-y-2">
+              {deliveries.map(delivery => (
+                <div key={delivery.id} className="rounded-xl border border-border/60 bg-card px-3 py-2.5">
+                  <div className="flex items-center justify-between gap-3">
+                    <div className="flex min-w-0 items-center gap-2">
+                      <Badge variant="outline" className="shrink-0 text-[10px] capitalize">{delivery.status}</Badge>
+                      <span className="truncate font-mono text-[12px] font-medium text-foreground">{delivery.externalThreadId}</span>
+                    </div>
+                    <span className="shrink-0 text-[11px] text-muted-foreground">{timeAgo(delivery.createdAt)}</span>
+                  </div>
+                  <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 pl-1 text-[11px] text-muted-foreground">
+                    <span>
+                      {t('integrations.delivery.attemptCount')}
+                      :
+                      {' '}
+                      <span className="text-foreground">{delivery.attemptCount}</span>
+                    </span>
+                    {delivery.errorText && (
+                      <span className="text-destructive">
+                        {t('integrations.delivery.errorText')}
+                        :
+                        {' '}
+                        {delivery.errorText}
+                      </span>
+                    )}
+                  </div>
+                </div>
+              ))}
+            </div>
+          )}
+    </div>
+  )
+}
+
+// ── Shared detail-tab helpers ────────────────────────────────────────────────
+
+function SectionHeader({ title, description, action }: { title: string, description?: string, action?: React.ReactNode }) {
+  return (
+    <div className="flex items-start justify-between gap-4">
+      <div className="min-w-0">
+        <h3 className="text-sm font-semibold text-foreground">{title}</h3>
+        {description && <p className="mt-1 text-[12px] text-muted-foreground">{description}</p>}
+      </div>
+      {action && <div className="shrink-0">{action}</div>}
+    </div>
+  )
+}
+
+function LoadingRow() {
+  return (
+    <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
+      <Spinner className="size-3.5" />
+    </div>
+  )
+}
+
+function EmptyState({ icon, text }: { icon: React.ReactNode, text: string }) {
+  return (
+    <div className="flex flex-col items-center gap-2 rounded-xl border border-dashed border-foreground/10 bg-muted/20 px-4 py-10 text-center">
+      <span className="text-muted-foreground/40">{icon}</span>
+      <p className="text-xs text-muted-foreground">{text}</p>
     </div>
   )
 }
@@ -1237,7 +1200,7 @@ function AddChannelBindingDialog({
         path: { id: connectionId, externalWorkspaceId, externalChannelId },
         body: { cradleWorkspaceId },
       })
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
       return data
     },
     onSuccess: () => {
@@ -1252,10 +1215,6 @@ function AddChannelBindingDialog({
     },
   })
 
-  const handleAdd = () => {
-    void addMutation.mutate()
-  }
-
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-md">
@@ -1265,59 +1224,44 @@ function AddChannelBindingDialog({
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-2">
-            <Label htmlFor="externalWorkspaceId" className="text-xs">
-              {t('integrations.channelBindings.externalWorkspaceId')}
-            </Label>
+            <Label htmlFor="externalWorkspaceId" className="text-xs">{t('integrations.channelBindings.externalWorkspaceId')}</Label>
             <Input
               id="externalWorkspaceId"
               value={externalWorkspaceId}
-              onChange={(e) => setExternalWorkspaceId(e.target.value)}
+              onChange={e => setExternalWorkspaceId(e.target.value)}
               placeholder={t('integrations.channelBindings.externalWorkspaceIdPlaceholder')}
               className="h-8 text-xs"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="externalChannelId" className="text-xs">
-              {t('integrations.channelBindings.externalChannelId')}
-            </Label>
+            <Label htmlFor="externalChannelId" className="text-xs">{t('integrations.channelBindings.externalChannelId')}</Label>
             <Input
               id="externalChannelId"
               value={externalChannelId}
-              onChange={(e) => setExternalChannelId(e.target.value)}
+              onChange={e => setExternalChannelId(e.target.value)}
               placeholder={t('integrations.channelBindings.externalChannelIdPlaceholder')}
               className="h-8 text-xs"
             />
           </div>
           <div className="space-y-2">
-            <Label htmlFor="cradleWorkspaceId" className="text-xs">
-              {t('integrations.channelBindings.cradleWorkspaceId')}
-            </Label>
+            <Label htmlFor="cradleWorkspaceId" className="text-xs">{t('integrations.channelBindings.cradleWorkspaceId')}</Label>
             <Select value={cradleWorkspaceId} onValueChange={setCradleWorkspaceId}>
               <SelectTrigger id="cradleWorkspaceId" className="h-8 text-xs">
                 <SelectValue placeholder={t('integrations.channelBindings.cradleWorkspacePlaceholder')} />
               </SelectTrigger>
               <SelectContent>
                 {workspaces.map(workspace => (
-                  <SelectItem key={workspace.id} value={workspace.id} className="text-xs">
-                    {workspace.name}
-                  </SelectItem>
+                  <SelectItem key={workspace.id} value={workspace.id} className="text-xs">{workspace.name}</SelectItem>
                 ))}
               </SelectContent>
             </Select>
           </div>
         </div>
         <DialogFooter>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onOpenChange(false)}
-            className="h-7 text-xs"
-          >
-            {t('registry.action.cancel')}
-          </Button>
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="h-7 text-xs">{t('registry.action.cancel')}</Button>
           <Button
             size="sm"
-            onClick={handleAdd}
+            onClick={() => void addMutation.mutate()}
             disabled={!externalWorkspaceId || !externalChannelId || !cradleWorkspaceId || addMutation.isPending}
             className="h-7 text-xs"
           >
@@ -1330,666 +1274,169 @@ function AddChannelBindingDialog({
   )
 }
 
-// Threads section
-function ThreadsSection({
-  threads,
-  loading,
-}: {
-  threads: ThreadBinding[]
-  loading: boolean
-}) {
+// ── Landing ──────────────────────────────────────────────────────────────────
+// Flat, platform-as-the-axis board. One SettingsGroup per adapter (platform),
+// its connections listed as hairline-divided rows underneath. No fake
+// "category" cards, no big-number stat dashboard — those broke Cradle's flat
+// surface-texture language. Live health lives in the header as a compact
+// status pill; Provider Skills is demoted to one quiet toggle at the bottom.
+
+function StatusPill({ adapters, connections }: { adapters: Adapter[], connections: Connection[] }) {
   const { t } = useTranslation('settings')
+  const running = connections.filter(c => c.healthStatus === 'running').length
+  const failed = connections.filter(c => c.healthStatus === 'error').length
 
   return (
-    <div className="space-y-4">
-      <SettingsHeader
-        title={t('integrations.threads.title')}
-        description={t('integrations.threads.description')}
-      />
-
-      {loading ? (
-        <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
-          <Spinner className="size-3.5" />
-        </div>
-      ) : threads.length === 0 ? (
-        <div className="mt-4 rounded-xl border border-dashed border-foreground/10 bg-muted/20 px-4 py-8 text-center">
-          <LinkIcon className="mx-auto size-6 text-muted-foreground/40" aria-hidden="true" />
-          <p className="mt-3 text-xs text-muted-foreground">{t('integrations.threads.empty')}</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {threads.map(thread => (
-            <div key={thread.id} className="flex items-center justify-between rounded-xl border border-border/60 bg-card px-3 py-3">
-              <div className="space-y-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-xs font-medium text-foreground">{thread.externalThreadId}</span>
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Session: {thread.sessionId}
-                </p>
-              </div>
-              <span className="text-[11px] text-muted-foreground">{timeAgo(thread.createdAt)}</span>
-            </div>
-          ))}
-        </div>
+    <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground tabular-nums">
+      <span className="flex items-center gap-1.5">
+        {t('integrations.console.statusStrip.adapters')}
+        <span className="font-medium text-foreground">{adapters.length}</span>
+      </span>
+      <span className="text-border">·</span>
+      <span className="flex items-center gap-1.5">
+        <StatusDot status="running" size="sm" />
+        {t('integrations.console.statusStrip.running')}
+        <span className="font-medium text-success">{running}</span>
+      </span>
+      {failed > 0 && (
+        <>
+          <span className="text-border">·</span>
+          <span className="flex items-center gap-1.5">
+            <StatusDot status="error" size="sm" />
+            {t('integrations.console.statusStrip.failed')}
+            <span className="font-medium text-destructive">{failed}</span>
+          </span>
+        </>
       )}
     </div>
   )
 }
 
-// Failed deliveries section
-function FailedDeliveriesSection({
-  deliveries,
-  loading,
+function LandingConnectionRow({
+  connection,
+  adapterLabel,
+  selected,
+  onSelect,
 }: {
-  connectionId: string
-  deliveries: DeliveryAttempt[]
-  loading: boolean
+  connection: Connection
+  adapterLabel: string
+  selected: boolean
+  onSelect: () => void
 }) {
   const { t } = useTranslation('settings')
-  const queryClient = useQueryClient()
-
-  const retryMutation = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await postConversationBridgeDeliveryAttemptsRetry()
-      if (error) throw new Error(String(error))
-      return data
-    },
-    onSuccess: (result) => {
-      toastManager.add({
-        type: 'success',
-        title: t('integrations.delivery.toast.retried', {
-          attempted: result?.attempted ?? 0,
-          delivered: result?.delivered ?? 0,
-          failed: result?.failed ?? 0,
-        }),
-      })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.retryableDeliveries })
-    },
-    onError: () => {
-      toastManager.add({ type: 'error', title: t('integrations.delivery.toast.retryFailed') })
-    },
-  })
-
-  const handleRetryAll = () => {
-    void retryMutation.mutate()
-  }
+  const status = connection.healthStatus as HealthStatus
 
   return (
-    <div className="space-y-4">
-      <SettingsHeader
-        title={t('integrations.delivery.title')}
-        description={t('integrations.delivery.description')}
-        action={
-          deliveries.length > 0 && (
-            <Button
-              variant="ghost"
-              size="sm"
-              onClick={handleRetryAll}
-              disabled={retryMutation.isPending}
-              className="h-7 gap-1.5 text-xs"
-            >
-              {retryMutation.isPending && <Spinner className="size-3.5" />}
-              {!retryMutation.isPending && <RefreshIcon className="size-3.5" aria-hidden="true" />}
-              {t('integrations.delivery.retryAll')}
-            </Button>
-          )
-        }
-      />
-
-      {loading ? (
-        <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
-          <Spinner className="size-3.5" />
-        </div>
-      ) : deliveries.length === 0 ? (
-        <div className="mt-4 rounded-xl border border-dashed border-foreground/10 bg-muted/20 px-4 py-8 text-center">
-          <RefreshIcon className="mx-auto size-6 text-muted-foreground/40" aria-hidden="true" />
-          <p className="mt-3 text-xs text-muted-foreground">{t('integrations.delivery.empty')}</p>
-        </div>
-      ) : (
-        <div className="space-y-2">
-          {deliveries.map(delivery => (
-            <div key={delivery.id} className="rounded-xl border border-border/60 bg-card px-3 py-3">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <Badge variant="outline" className="text-[10px]">{delivery.status}</Badge>
-                  <span className="text-xs font-medium text-foreground">{delivery.externalThreadId}</span>
-                </div>
-                <span className="text-[11px] text-muted-foreground">{timeAgo(delivery.createdAt)}</span>
-              </div>
-              <div className="mt-2 flex items-center gap-4 text-[11px] text-muted-foreground">
-                <span>{t('integrations.delivery.attemptCount')}: {delivery.attemptCount}</span>
-                {delivery.errorText && (
-                  <span className="text-destructive">{t('integrations.delivery.errorText')}: {delivery.errorText}</span>
-                )}
-              </div>
-            </div>
-          ))}
-        </div>
+    <button
+      type="button"
+      onClick={onSelect}
+      className={cn(
+        'group flex w-full items-center gap-3 px-4 py-2.5 text-left transition-colors',
+        selected ? 'bg-accent/60' : 'hover:bg-accent/40',
       )}
-    </div>
-  )
-}
-
-// Retry deliveries dialog
-function RetryDeliveriesDialog({
-  open,
-  onOpenChange,
-  onRetried,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  onRetried: () => void
-}) {
-  const { t } = useTranslation('settings')
-  const queryClient = useQueryClient()
-
-  const retryMutation = useMutation({
-    mutationFn: async () => {
-      const { data, error } = await postConversationBridgeDeliveryAttemptsRetry()
-      if (error) throw new Error(String(error))
-      return data
-    },
-    onSuccess: (result) => {
-      toastManager.add({
-        type: 'success',
-        title: t('integrations.delivery.toast.retried', {
-          attempted: result?.attempted ?? 0,
-          delivered: result?.delivered ?? 0,
-          failed: result?.failed ?? 0,
-        }),
-      })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.retryableDeliveries })
-      onRetried()
-    },
-    onError: () => {
-      toastManager.add({ type: 'error', title: t('integrations.delivery.toast.retryFailed') })
-    },
-  })
-
-  const handleRetry = () => {
-    void retryMutation.mutate()
-  }
-
-  return (
-    <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-md">
-        <DialogHeader>
-          <DialogTitle>{t('integrations.delivery.retry')}</DialogTitle>
-          <DialogDescription>{t('integrations.delivery.description')}</DialogDescription>
-        </DialogHeader>
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onOpenChange(false)}
-            className="h-7 text-xs"
-          >
-            {t('registry.action.cancel')}
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleRetry}
-            disabled={retryMutation.isPending}
-            className="h-7 text-xs"
-          >
-            {retryMutation.isPending && <Spinner className="size-3.5 mr-1" />}
-            {t('integrations.delivery.retryAll')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  )
-}
-
-// Create connection dialog
-function CreateConnectionDialog({
-  open,
-  onOpenChange,
-  adapters,
-  secrets,
-  onCreated,
-}: {
-  open: boolean
-  onOpenChange: (open: boolean) => void
-  adapters: Adapter[]
-  secrets: Secret[]
-  onCreated: () => void
-}) {
-  const { t } = useTranslation('settings')
-  const queryClient = useQueryClient()
-
-  const [selectedAdapterId, setSelectedAdapterId] = useState<string>('')
-  const [displayName, setDisplayName] = useState('')
-  const [enabled, setEnabled] = useState(true)
-
-  // Slack specific
-  const [botTokenMode, setBotTokenMode] = useState<'select' | 'create'>('create')
-  const [selectedBotTokenSecretId, setSelectedBotTokenSecretId] = useState('')
-  const [newBotToken, setNewBotToken] = useState('')
-  const [newBotTokenLabel, setNewBotTokenLabel] = useState('')
-
-  const [appTokenMode, setAppTokenMode] = useState<'select' | 'create'>('create')
-  const [selectedAppTokenSecretId, setSelectedAppTokenSecretId] = useState('')
-  const [newAppToken, setNewAppToken] = useState('')
-  const [newAppTokenLabel, setNewAppTokenLabel] = useState('')
-
-  const [signingSecretMode, setSigningSecretMode] = useState<'select' | 'create'>('create')
-  const [selectedSigningSecretSecretId, setSelectedSigningSecretSecretId] = useState('')
-  const [newSigningSecret, setNewSigningSecret] = useState('')
-  const [newSigningSecretLabel, setNewSigningSecretLabel] = useState('')
-
-  const [logLevel, setLogLevel] = useState<'debug' | 'info' | 'warn' | 'error'>('info')
-
-  const [creatingSecrets, setCreatingSecrets] = useState(false)
-  const [createdSecretIds, setCreatedSecretIds] = useState<Record<string, string>>({})
-
-  const selectedAdapter = useMemo(
-    () => adapters.find(a => a.id === selectedAdapterId),
-    [adapters, selectedAdapterId]
-  )
-
-  const isSlack = selectedAdapter?.platform === 'slack'
-
-  const resetForm = () => {
-    setSelectedAdapterId('')
-    setDisplayName('')
-    setEnabled(true)
-    setBotTokenMode('create')
-    setSelectedBotTokenSecretId('')
-    setNewBotToken('')
-    setNewBotTokenLabel('')
-    setAppTokenMode('create')
-    setSelectedAppTokenSecretId('')
-    setNewAppToken('')
-    setNewAppTokenLabel('')
-    setSigningSecretMode('create')
-    setSelectedSigningSecretSecretId('')
-    setNewSigningSecret('')
-    setNewSigningSecretLabel('')
-    setLogLevel('info')
-    setCreatingSecrets(false)
-    setCreatedSecretIds({})
-  }
-
-  const createSecrets = async (): Promise<Record<string, string>> => {
-    const ids: Record<string, string> = {}
-
-    if (isSlack) {
-      // Bot token
-      if (botTokenMode === 'create' && newBotToken && newBotTokenLabel) {
-        const { data } = await postSecrets({
-          body: { kind: 'slack-bot-token', label: newBotTokenLabel, secret: newBotToken },
-        })
-        if (data?.id) ids.botToken = data.id
-      } else if (botTokenMode === 'select' && selectedBotTokenSecretId) {
-        ids.botToken = selectedBotTokenSecretId
-      }
-
-      // App token
-      if (appTokenMode === 'create' && newAppToken && newAppTokenLabel) {
-        const { data } = await postSecrets({
-          body: { kind: 'slack-app-token', label: newAppTokenLabel, secret: newAppToken },
-        })
-        if (data?.id) ids.appToken = data.id
-      } else if (appTokenMode === 'select' && selectedAppTokenSecretId) {
-        ids.appToken = selectedAppTokenSecretId
-      }
-
-      // Signing secret
-      if (signingSecretMode === 'create' && newSigningSecret && newSigningSecretLabel) {
-        const { data } = await postSecrets({
-          body: { kind: 'slack-signing-secret', label: newSigningSecretLabel, secret: newSigningSecret },
-        })
-        if (data?.id) ids.signingSecret = data.id
-      } else if (signingSecretMode === 'select' && selectedSigningSecretSecretId) {
-        ids.signingSecret = selectedSigningSecretSecretId
-      }
-    }
-
-    return ids
-  }
-
-  const createMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedAdapter) throw new Error('No adapter selected')
-
-      const secretRefs: Record<string, string> = {}
-      const config: Record<string, any> = {}
-
-      if (isSlack) {
-        // Use created or selected secrets
-        if (createdSecretIds.botToken) secretRefs.botToken = createdSecretIds.botToken
-        if (createdSecretIds.appToken) secretRefs.appToken = createdSecretIds.appToken
-        if (createdSecretIds.signingSecret) secretRefs.signingSecret = createdSecretIds.signingSecret
-        config.logLevel = logLevel
-      }
-
-      const { data, error } = await postConversationBridgeConnections({
-        body: {
-          platform: selectedAdapter.platform,
-          adapterOwner: selectedAdapter.owner,
-          adapterId: selectedAdapter.id,
-          displayName,
-          enabled,
-          secretRefs: Object.keys(secretRefs).length > 0 ? secretRefs : undefined,
-          config: Object.keys(config).length > 0 ? config : undefined,
-        },
-      })
-      if (error) throw new Error(String(error))
-      return data
-    },
-    onSuccess: () => {
-      toastManager.add({ type: 'success', title: t('integrations.connection.toast.created') })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.connections })
-      void queryClient.invalidateQueries({ queryKey: queryKeys.secrets })
-      resetForm()
-      onCreated()
-    },
-    onError: () => {
-      toastManager.add({ type: 'error', title: t('integrations.connection.toast.createFailed') })
-      setCreatingSecrets(false)
-    },
-  })
-
-  const handleCreate = async () => {
-    if (!selectedAdapter) return
-
-    setCreatingSecrets(true)
-    try {
-      const ids = await createSecrets()
-      setCreatedSecretIds(ids)
-      void createMutation.mutate()
-    } catch (e) {
-      toastManager.add({ type: 'error', title: t('integrations.connection.toast.createFailed') })
-      setCreatingSecrets(false)
-    }
-  }
-
-  const isSlackFormValid = isSlack && (
-    ((botTokenMode === 'create' && newBotToken && newBotTokenLabel) || (botTokenMode === 'select' && selectedBotTokenSecretId)) &&
-    ((appTokenMode === 'create' && newAppToken && newAppTokenLabel) || (appTokenMode === 'select' && selectedAppTokenSecretId)) &&
-    ((signingSecretMode === 'create' && newSigningSecret && newSigningSecretLabel) || (signingSecretMode === 'select' && selectedSigningSecretSecretId))
-  )
-
-  const isFormValid = selectedAdapter && displayName && (isSlack ? isSlackFormValid : true)
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(open) => {
-        if (!open) resetForm()
-        onOpenChange(open)
-      }}
     >
-      <DialogContent className="sm:max-w-lg max-h-[80vh] overflow-y-auto">
-        <DialogHeader>
-          <DialogTitle>{t('integrations.connection.create')}</DialogTitle>
-          <DialogDescription>Configure a new connection for an integration adapter.</DialogDescription>
-        </DialogHeader>
-
-        <div className="space-y-4 py-2">
-          {/* Adapter selection */}
-          <div className="space-y-2">
-            <Label htmlFor="adapter" className="text-xs">{t('integrations.connection.adapter')}</Label>
-            <Select value={selectedAdapterId} onValueChange={setSelectedAdapterId}>
-              <SelectTrigger id="adapter" className="h-8 text-xs">
-                <SelectValue placeholder="Select an adapter" />
-              </SelectTrigger>
-              <SelectContent>
-                {adapters.map(adapter => (
-                  <SelectItem key={`${adapter.owner}-${adapter.id}`} value={adapter.id} className="text-xs">
-                    {adapter.label} ({adapter.platform})
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-          </div>
-
-          {/* Display name */}
-          <div className="space-y-2">
-            <Label htmlFor="displayName" className="text-xs">{t('integrations.connection.displayName')}</Label>
-            <Input
-              id="displayName"
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-              placeholder={t('integrations.connection.displayNamePlaceholder')}
-              className="h-8 text-xs"
-            />
-          </div>
-
-          {/* Enabled toggle */}
-          <div className="flex items-center justify-between">
-            <div className="space-y-1">
-              <Label className="text-xs">{t('integrations.connection.enabled')}</Label>
-              <p className="text-[11px] text-muted-foreground">{t('integrations.connection.enabledDescription')}</p>
-            </div>
-            <Switch checked={enabled} onCheckedChange={setEnabled} />
-          </div>
-
-          {/* Slack specific configuration */}
-          {isSlack && (
-            <div className="space-y-4 rounded-xl border border-border/60 bg-muted/20 p-4">
-              <h3 className="text-xs font-medium text-foreground">{t('integrations.slack.title')}</h3>
-              <p className="text-[11px] text-muted-foreground">{t('integrations.slack.description')}</p>
-
-              {/* Bot token */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs">{t('integrations.slack.botToken')}</Label>
-                  <div className="flex items-center gap-2 text-[11px]">
-                    <label className="flex items-center gap-1 cursor-pointer">
-                      <Checkbox
-                        checked={botTokenMode === 'select'}
-                        onCheckedChange={() => setBotTokenMode('select')}
-                      />
-                      {t('integrations.slack.secret.selectExisting')}
-                    </label>
-                    <label className="flex items-center gap-1 cursor-pointer">
-                      <Checkbox
-                        checked={botTokenMode === 'create'}
-                        onCheckedChange={() => setBotTokenMode('create')}
-                      />
-                      {t('integrations.slack.secret.createNew')}
-                    </label>
-                  </div>
-                </div>
-                {botTokenMode === 'select' ? (
-                  <Select value={selectedBotTokenSecretId} onValueChange={setSelectedBotTokenSecretId}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Select a secret" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {secrets.map(secret => (
-                        <SelectItem key={secret.id} value={secret.id} className="text-xs">
-                          {secret.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <>
-                    <Input
-                      value={newBotTokenLabel}
-                      onChange={(e) => setNewBotTokenLabel(e.target.value)}
-                      placeholder={t('integrations.slack.secret.labelPlaceholder')}
-                      className="h-8 text-xs"
-                    />
-                    <Input
-                      value={newBotToken}
-                      onChange={(e) => setNewBotToken(e.target.value)}
-                      placeholder={t('integrations.slack.botTokenPlaceholder')}
-                      type="password"
-                      className="h-8 text-xs"
-                    />
-                  </>
-                )}
-                <p className="text-[11px] text-muted-foreground">{t('integrations.slack.botTokenDescription')}</p>
-              </div>
-
-              {/* App token */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs">{t('integrations.slack.appToken')}</Label>
-                  <div className="flex items-center gap-2 text-[11px]">
-                    <label className="flex items-center gap-1 cursor-pointer">
-                      <Checkbox
-                        checked={appTokenMode === 'select'}
-                        onCheckedChange={() => setAppTokenMode('select')}
-                      />
-                      {t('integrations.slack.secret.selectExisting')}
-                    </label>
-                    <label className="flex items-center gap-1 cursor-pointer">
-                      <Checkbox
-                        checked={appTokenMode === 'create'}
-                        onCheckedChange={() => setAppTokenMode('create')}
-                      />
-                      {t('integrations.slack.secret.createNew')}
-                    </label>
-                  </div>
-                </div>
-                {appTokenMode === 'select' ? (
-                  <Select value={selectedAppTokenSecretId} onValueChange={setSelectedAppTokenSecretId}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Select a secret" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {secrets.map(secret => (
-                        <SelectItem key={secret.id} value={secret.id} className="text-xs">
-                          {secret.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <>
-                    <Input
-                      value={newAppTokenLabel}
-                      onChange={(e) => setNewAppTokenLabel(e.target.value)}
-                      placeholder={t('integrations.slack.secret.labelPlaceholder')}
-                      className="h-8 text-xs"
-                    />
-                    <Input
-                      value={newAppToken}
-                      onChange={(e) => setNewAppToken(e.target.value)}
-                      placeholder={t('integrations.slack.appTokenPlaceholder')}
-                      type="password"
-                      className="h-8 text-xs"
-                    />
-                  </>
-                )}
-                <p className="text-[11px] text-muted-foreground">{t('integrations.slack.appTokenDescription')}</p>
-              </div>
-
-              {/* Signing secret */}
-              <div className="space-y-2">
-                <div className="flex items-center justify-between">
-                  <Label className="text-xs">{t('integrations.slack.signingSecret')}</Label>
-                  <div className="flex items-center gap-2 text-[11px]">
-                    <label className="flex items-center gap-1 cursor-pointer">
-                      <Checkbox
-                        checked={signingSecretMode === 'select'}
-                        onCheckedChange={() => setSigningSecretMode('select')}
-                      />
-                      {t('integrations.slack.secret.selectExisting')}
-                    </label>
-                    <label className="flex items-center gap-1 cursor-pointer">
-                      <Checkbox
-                        checked={signingSecretMode === 'create'}
-                        onCheckedChange={() => setSigningSecretMode('create')}
-                      />
-                      {t('integrations.slack.secret.createNew')}
-                    </label>
-                  </div>
-                </div>
-                {signingSecretMode === 'select' ? (
-                  <Select value={selectedSigningSecretSecretId} onValueChange={setSelectedSigningSecretSecretId}>
-                    <SelectTrigger className="h-8 text-xs">
-                      <SelectValue placeholder="Select a secret" />
-                    </SelectTrigger>
-                    <SelectContent>
-                      {secrets.map(secret => (
-                        <SelectItem key={secret.id} value={secret.id} className="text-xs">
-                          {secret.label}
-                        </SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                ) : (
-                  <>
-                    <Input
-                      value={newSigningSecretLabel}
-                      onChange={(e) => setNewSigningSecretLabel(e.target.value)}
-                      placeholder={t('integrations.slack.secret.labelPlaceholder')}
-                      className="h-8 text-xs"
-                    />
-                    <Input
-                      value={newSigningSecret}
-                      onChange={(e) => setNewSigningSecret(e.target.value)}
-                      placeholder={t('integrations.slack.signingSecretPlaceholder')}
-                      type="password"
-                      className="h-8 text-xs"
-                    />
-                  </>
-                )}
-                <p className="text-[11px] text-muted-foreground">{t('integrations.slack.signingSecretDescription')}</p>
-              </div>
-
-              {/* Log level */}
-              <div className="space-y-2">
-                <Label htmlFor="logLevel" className="text-xs">{t('integrations.slack.logLevel')}</Label>
-                <Select value={logLevel} onValueChange={(v: any) => setLogLevel(v)}>
-                  <SelectTrigger id="logLevel" className="h-8 text-xs">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="debug" className="text-xs">{t('integrations.slack.logLevelDebug')}</SelectItem>
-                    <SelectItem value="info" className="text-xs">{t('integrations.slack.logLevelInfo')}</SelectItem>
-                    <SelectItem value="warn" className="text-xs">{t('integrations.slack.logLevelWarn')}</SelectItem>
-                    <SelectItem value="error" className="text-xs">{t('integrations.slack.logLevelError')}</SelectItem>
-                  </SelectContent>
-                </Select>
-              </div>
-            </div>
-          )}
-        </div>
-
-        <DialogFooter>
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => onOpenChange(false)}
-            className="h-7 text-xs"
-          >
-            {t('registry.action.cancel')}
-          </Button>
-          <Button
-            size="sm"
-            onClick={handleCreate}
-            disabled={!isFormValid || createMutation.isPending || creatingSecrets}
-            className="h-7 text-xs"
-          >
-            {(createMutation.isPending || creatingSecrets) && <Spinner className="size-3.5 mr-1" />}
-            {t('integrations.connection.create')}
-          </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
+      <StatusDot status={status} pulse={status === 'running'} size="sm" />
+      <div className="min-w-0 flex-1">
+        <span className="block truncate text-[13px] font-medium text-foreground">{connection.displayName}</span>
+        <span className="mt-0.5 block truncate text-[11px] text-muted-foreground">
+          {adapterLabel}
+{' '}
+·
+{healthStatusLabel(status, t)}
+        </span>
+      </div>
+      <svg
+        xmlns="http://www.w3.org/2000/svg"
+        width="14"
+        height="14"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        className="shrink-0 text-muted-foreground/50 transition-transform group-hover:translate-x-0.5"
+      >
+        <path d="m9 18 6-6-6-6" />
+      </svg>
+    </button>
   )
 }
 
-// Main component - Landing page with categories
+// Native skill roots this feature symlinks into. Keep this as the single
+// source of truth: adding a provider means one entry here plus its
+// `integrations.console.providerSkills.path*` string in the default locale.
+// The provider label is derived from the path (the `~/.<provider>/` segment)
+// so we never carry a redundant, separately-localised name alongside the path
+// that already names it.
+function providerLabelFromPath(path: string): string {
+  const segment = path.split('/')[1] ?? ''
+  const name = segment.replace(/^\./, '')
+  if (!name) { return path }
+  return name.charAt(0).toUpperCase() + name.slice(1)
+}
+
+function ProviderSkillsGroup() {
+  const { t } = useTranslation('settings')
+  const { prefs, isLoading: prefsLoading, isSaving, savePrefs } = useAppPreferences()
+
+  const saveFeatureFlags = (featureFlags: Partial<NonNullable<typeof prefs>['featureFlags']>) => {
+    if (!prefs) { return }
+    void savePrefs({ featureFlags: { ...prefs.featureFlags, ...featureFlags } })
+  }
+
+  const enabled = prefs?.featureFlags.nativeProviderSkillProjection ?? false
+
+  const skillRoots = [
+    t('integrations.console.providerSkills.pathCodex'),
+    t('integrations.console.providerSkills.pathClaude'),
+  ]
+
+  return (
+    <SettingsGroup label={t('integrations.categories.provider.title')}>
+      <SettingsRow
+        label={t('features.nativeProviderSkillProjection.label')}
+        description={t('integrations.console.providerSkills.hint')}
+      >
+        <Switch
+          size="sm"
+          checked={enabled}
+          disabled={prefsLoading || isSaving}
+          onCheckedChange={checked => saveFeatureFlags({ nativeProviderSkillProjection: checked })}
+        />
+      </SettingsRow>
+      {/* Responsive grid: tiles 2-up at width so the list stays compact as
+          more providers are added, never collapsing into a tall single column. */}
+      <div className="grid grid-cols-1 gap-1.5 pt-0.5 sm:grid-cols-2">
+        {skillRoots.map(path => (
+          <div
+            key={path}
+            className="inline-flex items-center gap-2 rounded-md bg-muted px-2 py-1.5"
+          >
+            <TerminalIcon className="size-3 shrink-0 text-muted-foreground" />
+            <span className="shrink-0 text-[11px] font-medium text-foreground">
+              {providerLabelFromPath(path)}
+            </span>
+            <span className="truncate font-mono text-[11px] text-muted-foreground">
+              {path}
+            </span>
+          </div>
+        ))}
+      </div>
+    </SettingsGroup>
+  )
+}
+
+// Main component — landing board with drill-in to connection detail.
 export function IntegrationsSettings() {
   const { t } = useTranslation('settings')
-  const { prefs, isLoading: prefsLoading, savePrefs, isSaving } = useAppPreferences()
   const queryClient = useQueryClient()
 
-  // Queries for status badges
   const adaptersQuery = useQuery({
     queryKey: queryKeys.adapters,
     queryFn: async () => {
       const { data, error } = await getConversationBridgeAdapters()
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
       return data ?? []
     },
   })
@@ -1998,146 +1445,174 @@ export function IntegrationsSettings() {
     queryKey: queryKeys.connections,
     queryFn: async () => {
       const { data, error } = await getConversationBridgeConnections()
-      if (error) throw new Error(String(error))
+      if (error) { throw new Error(String(error)) }
       return data ?? []
     },
   })
 
-  // State for active view
-  const [activeView, setActiveView] = useState<'landing' | 'connections' | 'provider'>('landing')
+  const [activeView, setActiveView] = useState<'landing' | 'connections'>('landing')
   const [selectedConnectionId, setSelectedConnectionId] = useState<string | null>(null)
   const [showCreateDialog, setShowCreateDialog] = useState(false)
-  const [showRetryDialog, setShowRetryDialog] = useState(false)
   const [deletingConnectionId, setDeletingConnectionId] = useState<string | null>(null)
 
-  // Derived state
   const adapters = useMemo(() => adaptersQuery.data ?? [], [adaptersQuery.data])
   const connections = useMemo(() => connectionsQuery.data ?? [], [connectionsQuery.data])
 
-  const connectedCount = connections.filter(c => c.healthStatus === 'running').length
-  const errorCount = connections.filter(c => c.healthStatus === 'error').length
+  const refreshing = adaptersQuery.isFetching || connectionsQuery.isFetching
+  const isLoading = adaptersQuery.isLoading || connectionsQuery.isLoading
 
-  // Save feature flags helper
-  const saveFeatureFlags = (featureFlags: Partial<typeof prefs.featureFlags>) => {
-    if (!prefs) {
-      return
+  const connectionsByAdapter = useMemo(() => {
+    const map = new Map<string, Connection[]>()
+    for (const adapter of adapters) {
+      map.set(adapter.id, connections.filter(c => c.adapterId === adapter.id && c.adapterOwner === adapter.owner))
     }
+    return adapters.map(a => ({ adapter: a, connections: map.get(a.id) ?? [] }))
+  }, [adapters, connections])
 
-    void savePrefs({
-      featureFlags: {
-        ...prefs.featureFlags,
-        ...featureFlags,
-      },
-    })
-  }
-
-  // Back to landing
   const goToLanding = () => {
     setActiveView('landing')
     setSelectedConnectionId(null)
   }
 
-  // If showing connections detail view
+  const openConnection = (id: string) => {
+    setSelectedConnectionId(id)
+    setActiveView('connections')
+  }
+
+  const handleCreated = () => {
+    setShowCreateDialog(false)
+    void queryClient.invalidateQueries({ queryKey: queryKeys.connections })
+  }
+
   if (activeView === 'connections') {
     return (
-      <ConnectionsView
-        onBack={goToLanding}
-        selectedConnectionId={selectedConnectionId}
-        onSelectConnection={setSelectedConnectionId}
-        showCreateDialog={showCreateDialog}
-        setShowCreateDialog={setShowCreateDialog}
-        showRetryDialog={showRetryDialog}
-        setShowRetryDialog={setShowRetryDialog}
-        deletingConnectionId={deletingConnectionId}
-        setDeletingConnectionId={setDeletingConnectionId}
-      />
+      <>
+        <ConnectionsView
+          onBack={goToLanding}
+          selectedConnectionId={selectedConnectionId}
+          onSelectConnection={setSelectedConnectionId}
+          onCreateConnection={() => setShowCreateDialog(true)}
+          deletingConnectionId={deletingConnectionId}
+          setDeletingConnectionId={setDeletingConnectionId}
+        />
+        <CreateConnectionDialog
+          open={showCreateDialog}
+          onOpenChange={setShowCreateDialog}
+          adapters={adapters}
+          onCreated={handleCreated}
+        />
+      </>
     )
   }
 
-  // If showing provider integration settings
-  if (activeView === 'provider') {
-    return (
-      <ProviderIntegrationView
-        onBack={goToLanding}
-        prefs={prefs}
-        prefsLoading={prefsLoading}
-        isSaving={isSaving}
-        saveFeatureFlags={saveFeatureFlags}
-      />
-    )
-  }
-
-  // Landing page
+  // Landing — platform-grouped board
   return (
     <SettingsPage
       title={t('integrations.page.title')}
       description={t('integrations.page.description')}
-      maxWidth="3xl"
+      maxWidth="4xl"
+      action={(
+        <div className="flex flex-col items-end gap-2">
+          <div className="flex items-center gap-1">
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => setShowCreateDialog(true)}
+              disabled={adapters.length === 0}
+              className="h-7 gap-1.5 text-xs"
+            >
+              <AddIcon className="size-3.5" />
+              {t('integrations.console.bridge.new')}
+            </Button>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              onClick={() => {
+                void adaptersQuery.refetch()
+                void connectionsQuery.refetch()
+              }}
+              aria-label={t('integrations.console.bridge.refresh')}
+            >
+              <RefreshIcon className={cn('size-3.5', refreshing && 'animate-spin')} />
+            </Button>
+          </div>
+          <StatusPill adapters={adapters} connections={connections} />
+        </div>
+      )}
     >
-      <div className="space-y-8">
-        {/* Integration Categories */}
-        <div className="space-y-3">
-          <div className="px-1">
-            <h2 className="text-xs font-medium text-muted-foreground">{t('integrations.categories.label')}</h2>
+      {isLoading
+? (
+        <SettingsGroup>
+          <div className="flex items-center justify-center gap-2 py-10 text-xs text-muted-foreground">
+            <Spinner className="size-3.5" />
           </div>
-          <div className="grid gap-3">
-            <IntegrationCard
-              icon={LinkIcon}
-              title={t('integrations.categories.connections.title')}
-              description={t('integrations.categories.connections.description')}
-              badge={connections.length > 0 ? `${connectedCount}/${connections.length}` : undefined}
-              color="blue"
-              onClick={() => setActiveView('connections')}
-            />
-            <IntegrationCard
-              icon={CodeIcon}
-              title={t('integrations.categories.provider.title')}
-              description={t('integrations.categories.provider.description')}
-              badge={prefs?.featureFlags.nativeProviderSkillProjection ? 'Enabled' : undefined}
-              color="purple"
-              onClick={() => setActiveView('provider')}
-            />
+        </SettingsGroup>
+      )
+: adapters.length === 0
+? (
+        <SettingsGroup>
+          <div className="px-4 py-10 text-center text-xs text-muted-foreground/70">
+            {t('integrations.adapter.empty')}
           </div>
-        </div>
-
-        {/* Quick Stats */}
-        <div className="space-y-3">
-          <div className="px-1">
-            <h2 className="text-xs font-medium text-muted-foreground">{t('integrations.overview.label')}</h2>
-          </div>
-          <div className="grid grid-cols-2 gap-3">
-            <Card className="border-border/60 bg-card">
-              <CardHeader className="py-3">
-                <div className="flex items-center gap-2">
-                  <BridgeIcon className="size-4 text-muted-foreground" aria-hidden="true" />
-                  <CardTitle className="text-[11px] font-medium text-muted-foreground">{t('integrations.overview.adapters')}</CardTitle>
+        </SettingsGroup>
+      )
+: (
+        <div className="flex flex-col gap-7">
+          {connectionsByAdapter.map(({ adapter, connections: list }) => (
+            <SettingsGroup
+              key={`${adapter.owner}-${adapter.id}`}
+              label={adapter.label}
+              action={(
+                <Badge variant="outline" className="h-5 px-1.5 text-[10px] font-normal tabular-nums">
+                  {list.length}
+                </Badge>
+              )}
+              bare
+              className="overflow-hidden p-0"
+            >
+              {list.length > 0
+? (
+                <div className="flex flex-col [&>*+*]:border-t [&>*+*]:border-border/60">
+                  {list.map(connection => (
+                    <LandingConnectionRow
+                      key={connection.id}
+                      connection={connection}
+                      adapterLabel={adapter.label}
+                      selected={selectedConnectionId === connection.id}
+                      onSelect={() => openConnection(connection.id)}
+                    />
+                  ))}
                 </div>
-                <div className="mt-1 text-lg font-semibold text-foreground">
-                  {adaptersQuery.isLoading ? '...' : adapters.length}
-                </div>
-              </CardHeader>
-            </Card>
-            <Card className="border-border/60 bg-card">
-              <CardHeader className="py-3">
-                <div className="flex items-center gap-2">
-                  <PuzzleIcon className="size-4 text-muted-foreground" aria-hidden="true" />
-                  <CardTitle className="text-[11px] font-medium text-muted-foreground">{t('integrations.overview.connections')}</CardTitle>
-                </div>
-                <div className="mt-1 flex items-baseline gap-2">
-                  <span className="text-lg font-semibold text-foreground">
-                    {connectionsQuery.isLoading ? '...' : connections.length}
+              )
+: (
+                <div className="flex items-center justify-between gap-3 px-4 py-2.5">
+                  <span className="text-[11px] text-muted-foreground/70">
+                    {t('integrations.adapter.noConnections')}
                   </span>
-                  {connectedCount > 0 && (
-                    <span className="text-[11px] text-success">
-                      {connectedCount} running
-                    </span>
-                  )}
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => setShowCreateDialog(true)}
+                    className="h-6 gap-1 text-[11px]"
+                  >
+                    <AddIcon className="size-3" />
+                    {t('integrations.connection.create')}
+                  </Button>
                 </div>
-              </CardHeader>
-            </Card>
-          </div>
+              )}
+            </SettingsGroup>
+          ))}
+
+          <ProviderSkillsGroup />
         </div>
-      </div>
+      )}
+
+      <CreateConnectionDialog
+        open={showCreateDialog}
+        onOpenChange={setShowCreateDialog}
+        adapters={adapters}
+        onCreated={handleCreated}
+      />
     </SettingsPage>
   )
 }
