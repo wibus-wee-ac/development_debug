@@ -104,6 +104,8 @@ export type {
 const LOCAL_USER_ID = 'local-user'
 const GUIDE_ARTIFACT_START = '<cradle_guide>'
 const GUIDE_ARTIFACT_END = '</cradle_guide>'
+const COMMIT_PLAN_ARTIFACT_START = '<cradle_commit_plan>'
+const COMMIT_PLAN_ARTIFACT_END = '</cradle_commit_plan>'
 const GUIDE_RUNTIME_SETTINGS: ChatRuntimeSettings = {
   accessMode: 'full-access',
   interactionMode: 'default',
@@ -1819,16 +1821,16 @@ function upsertGuide(input: {
   }).run()
 }
 
-async function assertGuideWorktreeMatchesRevision(input: {
+async function assertLocalWorktreeMatchesRevision(input: {
   workspaceId: string
   review: DiffReview
   revision: DiffReviewRevision
 }): Promise<void> {
   if (input.review.sourceKind !== 'local-working-tree') {
     throw new AppError({
-      code: 'diff_review_guide_source_unsupported',
+      code: 'diff_review_local_source_unsupported',
       status: 400,
-      message: 'Guided review generation currently supports local working tree reviews only',
+      message: 'Diff review generation currently supports local working tree reviews only',
       details: {
         reviewId: input.review.id,
         sourceKind: input.review.sourceKind,
@@ -1839,9 +1841,9 @@ async function assertGuideWorktreeMatchesRevision(input: {
   const currentPatchHash = hashText(currentPatch)
   if (currentPatchHash !== input.revision.patchHash) {
     throw new AppError({
-      code: 'diff_review_guide_source_changed',
+      code: 'diff_review_source_changed',
       status: 409,
-      message: 'Diff review source changed; refresh the review before generating a guide',
+      message: 'Diff review source changed; refresh the review before generating output',
       details: {
         reviewId: input.review.id,
         revisionId: input.revision.id,
@@ -1890,7 +1892,7 @@ async function runGuideGenerationTask(input: {
     if (!rawOutput) {
       throw new Error('Guide generation completed without assistant output')
     }
-    await assertGuideWorktreeMatchesRevision({
+    await assertLocalWorktreeMatchesRevision({
       workspaceId: input.workspaceId,
       review: input.review,
       revision: input.revision,
@@ -1973,7 +1975,7 @@ export async function generateGuide(input: {
       details: { reviewId: review.id, revisionId: revision.id },
     })
   }
-  await assertGuideWorktreeMatchesRevision({
+  await assertLocalWorktreeMatchesRevision({
     workspaceId: input.workspaceId,
     review,
     revision,
@@ -2196,6 +2198,94 @@ function formatAgentFixAnchor(anchor: ReviewRangeAnchorView | null): string {
   ].join('\n')
 }
 
+function buildCommitPlanAgentPrompt(input: {
+  review: DiffReview
+  revision: DiffReviewRevision | null
+  agentFix: DiffReviewAgentFix
+  files: DiffReviewFile[]
+}): string {
+  const files = input.files.map(file => ({
+    id: file.id,
+    path: file.path,
+    previousPath: file.previousPath,
+    status: file.status,
+    additions: file.additions,
+    deletions: file.deletions,
+    isGenerated: file.isGenerated,
+    isBinary: file.isBinary,
+  }))
+  const gitTarget = input.review.repositoryPath === '.'
+    ? 'the current directory'
+    : `repository path ${input.review.repositoryPath}`
+  const gitPrefix = input.review.repositoryPath === '.'
+    ? 'git'
+    : `git -C ${shellQuote(input.review.repositoryPath)}`
+  const patchSummary = input.revision
+    ? `Revision ${input.revision.id} has patch hash ${input.revision.patchHash}, ${input.revision.fileCount} files, +${input.revision.additions}/-${input.revision.deletions}.`
+    : 'The review currently has no active revision.'
+
+  return [
+    'You are generating a Cradle Diffs commit plan for the current local working tree.',
+    '',
+    'This is not a code review and not a fix task. Decide how the existing diff should be split into clean native git commits.',
+    'Use the available shell and file tools to inspect the repository. Do not rely only on the file inventory below.',
+    'Do not modify files, do not apply patches, do not commit, and do not run formatting or install commands.',
+    '',
+    'Repository:',
+    `- Workspace command cwd starts at the Cradle workspace root.`,
+    `- The diff review repository is ${gitTarget}.`,
+    `- Use commands with this prefix when inspecting git state: ${gitPrefix}`,
+    '',
+    'Useful read-only commands:',
+    `- ${gitPrefix} status --short`,
+    `- ${gitPrefix} diff --stat HEAD`,
+    `- ${gitPrefix} diff --name-status HEAD`,
+    `- ${gitPrefix} diff --unified=80 HEAD -- <path>`,
+    '- rg / sed / cat for surrounding source context.',
+    '',
+    'Final output contract:',
+    `- Emit the final artifact between ${COMMIT_PLAN_ARTIFACT_START} and ${COMMIT_PLAN_ARTIFACT_END}.`,
+    '- The text inside those tags must be one JSON object.',
+    '- Do not put Markdown fences inside the tags.',
+    '- Do not generate Cradle ids. Cradle will derive group ids.',
+    '',
+    'Artifact shape:',
+    '{"rationale":"string","groups":[{"title":"string","message":"type(scope): summary","rationale":"string","fileIds":["changed-file-id"],"dependsOn":[1]}]}',
+    '',
+    'Rules:',
+    '- Prefer 1 to 6 commit groups. Use one group for a single coherent change.',
+    '- Every changed file id from the provided file list must appear in exactly one group.',
+    '- Use only fileIds from the provided changed files list.',
+    '- Order groups in the order they should be committed.',
+    '- dependsOn is optional and uses 1-based group indexes, not ids or titles.',
+    '- Keep commit messages imperative, specific, and suitable for git commit subjects.',
+    '- Separate generated files, docs, tests, migrations, and implementation only when that produces a clearer reviewable history.',
+    '- Do not split files that must be committed together for the repository to stay coherent.',
+    '- Rationale explains why the grouping is clean and how dependencies should be applied.',
+    '',
+    'User instruction:',
+    input.agentFix.instruction,
+    '',
+    'Review:',
+    JSON.stringify({
+      id: input.review.id,
+      title: input.review.title,
+      sourceKind: input.review.sourceKind,
+      repositoryPath: input.review.repositoryPath,
+      revision: input.revision
+        ? {
+            id: input.revision.id,
+            patchHash: input.revision.patchHash,
+            fileCount: input.revision.fileCount,
+            additions: input.revision.additions,
+            deletions: input.revision.deletions,
+          }
+        : null,
+      files,
+    }),
+  ].join('\n')
+}
+
 function buildAgentFixPrompt(input: {
   review: DiffReview
   revision: DiffReviewRevision | null
@@ -2204,6 +2294,15 @@ function buildAgentFixPrompt(input: {
   comments: DiffReviewComment[]
   files: DiffReviewFile[]
 }): string {
+  if (input.agentFix.expectedOutput === 'commit') {
+    return buildCommitPlanAgentPrompt({
+      review: input.review,
+      revision: input.revision,
+      agentFix: input.agentFix,
+      files: input.files,
+    })
+  }
+
   const anchor = toAnchorView(safeJsonParse(input.agentFix.anchorJson))
   const changedFiles = input.files.length > 0
     ? input.files.map(file => `- ${file.status}: ${file.path}`).join('\n')
@@ -2229,11 +2328,9 @@ function buildAgentFixPrompt(input: {
     patchSummary,
     '',
     '## Requested Output',
-    input.agentFix.expectedOutput === 'commit'
-      ? 'Create a commit only if that is the natural result of the fix. Keep the review feedback traceable in your final summary.'
-      : input.agentFix.expectedOutput === 'patch-artifact'
-        ? 'Produce a patch-style change artifact or leave the working tree changes clearly summarized.'
-        : 'Apply the fix to the working tree and summarize the changed files.',
+    input.agentFix.expectedOutput === 'patch-artifact'
+      ? 'Produce a patch-style change artifact or leave the working tree changes clearly summarized.'
+      : 'Apply the fix to the working tree and summarize the changed files.',
     '',
     '## User Instruction',
     input.agentFix.instruction,
@@ -2272,6 +2369,161 @@ function readAgentFixArtifact(input: {
     content,
     createdAt: input.agentFix.updatedAt,
   })
+}
+
+function parseCommitPlanJson(raw: string): unknown {
+  const taggedStart = raw.indexOf(COMMIT_PLAN_ARTIFACT_START)
+  const taggedEnd = raw.lastIndexOf(COMMIT_PLAN_ARTIFACT_END)
+  if (taggedStart >= 0 && taggedEnd > taggedStart) {
+    const tagged = raw.slice(taggedStart + COMMIT_PLAN_ARTIFACT_START.length, taggedEnd).trim()
+    const parsed = safeJsonParse(tagged)
+    if (parsed) {
+      return parsed
+    }
+    throw new Error('Commit plan artifact is not valid JSON')
+  }
+
+  const direct = safeJsonParse(raw.trim())
+  if (direct) {
+    return direct
+  }
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(raw)
+  if (fenced?.[1]) {
+    const parsed = safeJsonParse(fenced[1].trim())
+    if (parsed) {
+      return parsed
+    }
+  }
+  throw new Error(`Commit plan output is missing ${COMMIT_PLAN_ARTIFACT_START}`)
+}
+
+function readCommitPlanGroupRecords(parsed: unknown): Record<string, unknown>[] {
+  const record = parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : null
+  const rawGroups = Array.isArray(record?.groups) ? record.groups : null
+  if (!rawGroups) {
+    throw new Error('Commit plan output is missing groups[]')
+  }
+  return rawGroups.map(rawGroup => rawGroup && typeof rawGroup === 'object' ? rawGroup as Record<string, unknown> : {})
+}
+
+function readCommitPlanDependencyIndexes(value: unknown, groupCount: number, groupIndex: number): number[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  const indexes = value.flatMap((item): number[] => {
+    const index = readPositiveInteger(item)
+    return index ? [index] : []
+  })
+  for (const index of indexes) {
+    if (index > groupCount) {
+      throw new Error(`Commit plan group ${groupIndex + 1} depends on missing group ${index}`)
+    }
+    if (index === groupIndex + 1) {
+      throw new Error(`Commit plan group ${groupIndex + 1} cannot depend on itself`)
+    }
+    if (index > groupIndex + 1) {
+      throw new Error(`Commit plan group ${groupIndex + 1} can only depend on earlier groups`)
+    }
+  }
+  return [...new Set(indexes)]
+}
+
+function normalizeGeneratedCommitPlan(input: {
+  parsed: unknown
+  revision: DiffReviewRevision
+  files: DiffReviewFile[]
+}): { groups: ReviewCommitPlanGroupView[], rationale: string } {
+  const record = input.parsed && typeof input.parsed === 'object' ? input.parsed as Record<string, unknown> : null
+  const rationale = readString(record?.rationale)
+  if (!rationale) {
+    throw new Error('Commit plan output is missing rationale')
+  }
+
+  const groupRecords = readCommitPlanGroupRecords(input.parsed)
+  const groupIds = groupRecords.map((group, index) => {
+    const title = readString(group.title)
+    return `commit:${index + 1}-${shortHash(title || `group-${index + 1}`)}`
+  })
+  const groups: ReviewCommitPlanGroupInput[] = groupRecords.map((group, index) => {
+    const title = readString(group.title)
+    const message = readString(group.message)
+    const groupRationale = readString(group.rationale)
+    const fileIds = [...new Set(readStringArray(group.fileIds))]
+    if (!title) {
+      throw new Error(`Commit plan group ${index + 1} is missing title`)
+    }
+    if (!message) {
+      throw new Error(`Commit plan group ${index + 1} is missing message`)
+    }
+    if (!groupRationale) {
+      throw new Error(`Commit plan group ${index + 1} is missing rationale`)
+    }
+    const dependsOn = readCommitPlanDependencyIndexes(group.dependsOn, groupRecords.length, index)
+      .map(dependencyIndex => groupIds[dependencyIndex - 1])
+    return {
+      id: groupIds[index],
+      title,
+      message,
+      rationale: groupRationale,
+      fileIds,
+      dependsOn,
+    }
+  })
+
+  const normalized = normalizeCommitPlanGroups(input.revision.id, groups)
+  const plannedFileIds = new Set(normalized.flatMap(group => group.fileIds))
+  const missingFiles = input.files.filter(file => !plannedFileIds.has(file.id))
+  if (missingFiles.length > 0) {
+    throw new Error(`Commit plan omitted changed files: ${missingFiles.map(file => file.path).join(', ')}`)
+  }
+  return { groups: normalized, rationale }
+}
+
+async function createCommitPlanFromAgentOutput(input: {
+  workspaceId: string
+  review: DiffReview
+  revision: DiffReviewRevision
+  files: DiffReviewFile[]
+  agentFix: DiffReviewAgentFix
+  rawOutput: string
+}): Promise<DiffReviewCommitPlan> {
+  await assertLocalWorktreeMatchesRevision({
+    workspaceId: input.workspaceId,
+    review: input.review,
+    revision: input.revision,
+  })
+  const parsed = parseCommitPlanJson(input.rawOutput)
+  const plan = normalizeGeneratedCommitPlan({
+    parsed,
+    revision: input.revision,
+    files: input.files,
+  })
+  const now = currentUnixSeconds()
+  const row = db().insert(diffReviewCommitPlans).values({
+    id: randomUUID(),
+    reviewId: input.review.id,
+    revisionId: input.revision.id,
+    actorId: input.agentFix.profileId ?? LOCAL_USER_ID,
+    strategy: 'manual',
+    status: 'draft',
+    groupsJson: jsonStringify(plan.groups),
+    rationale: plan.rationale,
+    createdAt: now,
+    updatedAt: now,
+  }).returning().get()
+  recordEvent({
+    reviewId: input.review.id,
+    eventKind: 'commit_plan_created',
+    actorKind: 'agent',
+    actorId: input.agentFix.profileId,
+    payload: {
+      commitPlanId: row.id,
+      agentFixId: input.agentFix.id,
+      groupCount: plan.groups.length,
+    },
+    createdAt: now,
+  })
+  return row
 }
 
 function markAgentFixFailed(input: {
@@ -2332,6 +2584,65 @@ async function watchAgentFixRunCompletion(input: {
         actorKind: 'system',
         actorId: null,
         payload: { agentFixId: input.agentFixId, sessionId: input.sessionId, runId: input.runId, runStatus: run.status },
+        createdAt: now,
+      })
+      return
+    }
+
+    if (current.expectedOutput === 'commit') {
+      const now = currentUnixSeconds()
+      const rawOutput = Session.getRunMessageContents([input.runId])[0]?.content?.trim()
+      if (!rawOutput) {
+        throw new Error('Commit plan generation completed without assistant output')
+      }
+      const review = getReviewRow(input.workspaceId, input.reviewId)
+      const revision = getCurrentRevision(review)
+      const files = db().select().from(diffReviewFiles)
+        .where(eq(diffReviewFiles.revisionId, revision.id))
+        .orderBy(asc(diffReviewFiles.path))
+        .all()
+      const artifact = readAgentFixArtifact({
+        reviewId: input.reviewId,
+        agentFix: {
+          ...current,
+          sessionId: input.sessionId,
+          runId: input.runId,
+          updatedAt: now,
+        },
+      })
+      const commitPlan = await createCommitPlanFromAgentOutput({
+        workspaceId: input.workspaceId,
+        review,
+        revision,
+        files,
+        agentFix: current,
+        rawOutput,
+      })
+      db().update(diffReviewAgentFixes)
+        .set({
+          status: 'completed',
+          artifactId: artifact?.id ?? null,
+          resultRevisionId: revision.id,
+          errorMessage: null,
+          updatedAt: now,
+        })
+        .where(eq(diffReviewAgentFixes.id, input.agentFixId))
+        .run()
+      recordEvent({
+        reviewId: input.reviewId,
+        eventKind: 'agent_fix_completed',
+        actorKind: 'agent',
+        actorId: current.profileId,
+        payload: {
+          agentFixId: input.agentFixId,
+          sessionId: input.sessionId,
+          runId: input.runId,
+          artifactId: artifact?.id ?? null,
+          artifactKind: artifact?.kind ?? null,
+          artifactContentHash: artifact?.contentHash ?? null,
+          resultRevisionId: revision.id,
+          commitPlanId: commitPlan.id,
+        },
         createdAt: now,
       })
       return

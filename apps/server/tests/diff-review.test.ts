@@ -40,6 +40,7 @@ class TestDiffReviewRuntime implements ChatRuntime {
   readonly metadata = TEST_DIFF_REVIEW_RUNTIME_METADATA
   readonly capabilities = TEST_DIFF_REVIEW_RUNTIME_CAPABILITIES
   readonly streamInputs: StreamTurnInput[] = []
+  responseText = 'Applied review feedback.'
   blockNextRun = false
   private releaseBlockedRun: (() => void) | null = null
 
@@ -67,7 +68,7 @@ class TestDiffReviewRuntime implements ChatRuntime {
         this.releaseBlockedRun = resolve
       })
     }
-    yield { type: 'text-delta', id: 'diff-review-agent-fix', delta: 'Applied review feedback.' }
+    yield { type: 'text-delta', id: 'diff-review-agent-fix', delta: this.responseText }
     yield { type: 'text-end', id: 'diff-review-agent-fix' }
     yield { type: 'finish', finishReason: 'stop' }
   }
@@ -982,6 +983,148 @@ describe('diff-review capability', () => {
           expect.objectContaining({
             eventKind: 'agent_fix_completed',
             payload: expect.objectContaining({ artifactId: completedFix?.artifactId }),
+          }),
+        ]),
+      )
+    }
+    finally {
+      if (originalStandardRuntime) {
+        registerRuntime(originalStandardRuntime)
+      }
+      restoreTestInfra(previousEnv)
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+    }
+  })
+
+  it('creates a manual commit plan from completed commit planning output', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-diff-review-workspace-')
+    const previousEnv = useIsolatedTestInfra(dataDir)
+    const runtime = new TestDiffReviewRuntime()
+    const originalStandardRuntime = getRuntimeRegistry().get('standard')
+
+    try {
+      registerRuntime(runtime)
+      initGitRepository(workspaceRoot)
+      commitFile(workspaceRoot, 'README.md', '# Diff Review Fixture', 'repo: initial commit')
+      writeFileSync(join(workspaceRoot, 'README.md'), '# Diff Review Fixture\ncommit docs\n', 'utf8')
+      writeFileSync(join(workspaceRoot, 'app.ts'), 'export const planned = true\n', 'utf8')
+
+      const app = await createServerApp()
+      db()
+        .insert(workspaces)
+        .values({
+          id: 'workspace-diff-review-commit-plan-agent',
+          name: 'Workspace Diff Review Commit Plan Agent',
+          path: workspaceRoot,
+        })
+        .run()
+      db().insert(providerTargets).values({
+        id: 'provider-target-diff-review-commit-plan-agent',
+        kind: 'manual',
+        providerKind: 'openai-compatible',
+        displayName: 'Diff Review Commit Plan Provider',
+        enabled: true,
+      }).run()
+
+      const review = await refreshLocalReview(app, 'workspace-diff-review-commit-plan-agent')
+      const appFile = review.files.find(file => file.path === 'app.ts')
+      const readmeFile = review.files.find(file => file.path === 'README.md')
+      expect(appFile).toBeTruthy()
+      expect(readmeFile).toBeTruthy()
+      runtime.responseText = [
+        '<cradle_commit_plan>',
+        JSON.stringify({
+          rationale: 'Keep implementation and documentation reviewable as separate commits.',
+          groups: [
+            {
+              title: 'Implementation',
+              message: 'diff-review: add planned implementation',
+              rationale: 'Adds the runtime-facing code change.',
+              fileIds: [appFile!.id],
+            },
+            {
+              title: 'Documentation',
+              message: 'docs: describe planned commit flow',
+              rationale: 'Documents the changed behavior after the code lands.',
+              fileIds: [readmeFile!.id],
+              dependsOn: [1],
+            },
+          ],
+        }),
+        '</cradle_commit_plan>',
+      ].join('\n')
+
+      const created = await postJson<DiffReviewResponse>(
+        app,
+        `/workspaces/workspace-diff-review-commit-plan-agent/diff-reviews/${review.id}/agent-fixes`,
+        {
+          instruction: 'Plan a clean commit sequence for this review.',
+          expectedOutput: 'commit',
+        },
+      )
+      const agentFix = created.agentFixes[0]!
+      const started = await postJson<DiffReviewResponse>(
+        app,
+        `/workspaces/workspace-diff-review-commit-plan-agent/diff-reviews/${review.id}/agent-fixes/${agentFix.id}/start`,
+        {
+          providerTargetId: 'provider-target-diff-review-commit-plan-agent',
+          runtimeKind: 'standard',
+        },
+      )
+      expect(started.agentFixes.find(item => item.id === agentFix.id)).toMatchObject({
+        status: 'running',
+      })
+      expect(runtime.streamInputs[0]?.message.parts).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            type: 'text',
+            text: expect.stringContaining('<cradle_commit_plan>'),
+          }),
+        ]),
+      )
+
+      const completed = await waitForCondition(async () => {
+        const reloaded = await getJson<DiffReviewResponse>(
+          app,
+          `/workspaces/workspace-diff-review-commit-plan-agent/diff-reviews/${review.id}`,
+        )
+        const completedFix = reloaded.agentFixes.find(item => item.id === agentFix.id)
+        return completedFix?.status === 'completed' && reloaded.commitPlans.length === 1 ? reloaded : null
+      }, 'diff review commit plan generation')
+      const plan = completed.commitPlans[0]!
+      expect(plan).toMatchObject({
+        strategy: 'manual',
+        status: 'draft',
+        rationale: 'Keep implementation and documentation reviewable as separate commits.',
+      })
+      expect(plan.groups).toEqual([
+        expect.objectContaining({
+          title: 'Implementation',
+          message: 'diff-review: add planned implementation',
+          fileIds: [appFile!.id],
+          paths: ['app.ts'],
+          dependsOn: [],
+        }),
+        expect.objectContaining({
+          title: 'Documentation',
+          message: 'docs: describe planned commit flow',
+          fileIds: [readmeFile!.id],
+          paths: ['README.md'],
+          dependsOn: [plan.groups[0]!.id],
+        }),
+      ])
+      expect(completed.agentFixes.find(item => item.id === agentFix.id)).toMatchObject({
+        status: 'completed',
+        resultRevisionId: completed.currentRevisionId,
+        errorMessage: null,
+      })
+      expect(completed.events).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            eventKind: 'commit_plan_created',
+            payload: expect.objectContaining({ commitPlanId: plan.id, agentFixId: agentFix.id }),
           }),
         ]),
       )
