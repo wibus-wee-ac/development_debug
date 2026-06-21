@@ -31,12 +31,13 @@
 - `native-appshot-target.ts`：拥有 desktop-owned Appshot research target synthesis，在没有 renderer composer frame 时生成 composer-like destination，避免 parity probe 退回到 source-equals-destination geometry。
 - `native-services.test.ts`：覆盖 Appshot parity target synthesis，确保 research probe 的默认 destination 不等于 frontmost window fallback。
 - `update-manager.ts`：拥有 renderer-visible Desktop Updates workflow；编排 manifest 检查、下载、staging、安装触发和状态事件。
+- `update-manager.test.ts`：覆盖 Desktop Updates 手动 Check/Download/Apply 编排、installer launch、quit hook，以及没有 prepared update 时的 apply error。
 - `update-source.ts`：拥有 desktop update manifest 读取、schema 校验、版本比较和 artifact 选择。
 - `update-source.test.ts`：覆盖 desktop update manifest URL 解析、renderer-visible 状态投影、版本比较，以及非 numeric dot version 的拒绝行为。
 - `update-downloader.ts`：拥有 update artifact 流式下载、进度投影和 SHA-256 校验。
 - `update-downloader.test.ts`：覆盖 update artifact 下载落盘、SHA-256 校验、进度收敛，以及 digest mismatch 时清理临时 archive。
 - `update-installer.ts`：拥有 macOS `.app` bundle staging、bundle version 校验、detached installer script 生成、替换和 relaunch 触发。
-- `update-installer.test.ts`：覆盖 update staging plan 生成、bundle version 校验、detached installer script 关键命令，以及版本不匹配时拒绝安装。
+- `update-installer.test.ts`：覆盖 update staging plan 生成、bundle version 校验、detached installer script 关键命令、临时 `.app` bundle 替换 smoke，以及版本不匹配时拒绝安装。
 - `mac-bridge-manager.ts`：拥有 desktop-owned `cradle-mac-bridge` 子进程生命周期、NDJSON request/response 协议、hotkey event 投影、显式 parity-test synthetic hotkey helper、dev/packaged binary 路径解析，以及缺少 binary 时的非阻塞状态。
 - `mac-bridge-protocol.ts`：定义 Electron main 与 Swift Mac Bridge 共享的协议 schema，包括 `bridge.status`、权限状态、双 Command hotkey 配置、显式 synthetic both-Command parity helper、frontmost window capture、显式 `targetWindow` capture、Appshot capture/frontmost context、display/window recording 和 hotkey event。
 - `mac-screenshot-sinks.ts`：拥有 Mac Bridge screenshot 的 post-capture sink，包括保留文件、写剪贴板和可选 CleanShot URL scheme handoff。CleanShot 不是 hard dependency。

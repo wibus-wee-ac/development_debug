@@ -1,4 +1,4 @@
-import { mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
+import { access, mkdir, mkdtemp, readFile, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
@@ -43,6 +43,7 @@ const extractZipMocks = vi.hoisted(() => ({
     const appPath = join(options.dir, 'Cradle.app')
     await mkdir(join(appPath, 'Contents'), { recursive: true })
     await writeFile(join(appPath, 'Contents', 'Info.plist'), '')
+    await writeFile(join(appPath, 'Contents', 'update-marker.txt'), 'new')
   }),
 }))
 
@@ -79,6 +80,16 @@ async function createTempRoot(): Promise<string> {
   const root = await mkdtemp(join(tmpdir(), 'cradle-update-installer-'))
   tempRoots.push(root)
   return root
+}
+
+async function pathExists(filePath: string): Promise<boolean> {
+  try {
+    await access(filePath)
+    return true
+  }
+  catch {
+    return false
+  }
 }
 
 function createDownload(archivePath: string): DesktopUpdateDownload {
@@ -157,6 +168,67 @@ describe('DesktopUpdateInstaller', () => {
     expect(script).toContain(`TARGET_APP='${currentAppPath}'`)
     expect(script).toContain('wait_for_parent')
     expect(script).toContain('/usr/bin/open -n "$TARGET_APP"')
+  })
+
+  it('runs the installer script replacement path against a temporary app bundle', async () => {
+    const root = await createTempRoot()
+    const currentAppPath = join(root, 'Applications', 'Cradle.app')
+    const currentExecutablePath = join(currentAppPath, 'Contents', 'MacOS', 'Cradle')
+    const archivePath = join(root, 'Cradle-1.2.3-universal.zip')
+    const updatesDir = join(root, 'updates')
+    await mkdir(join(currentAppPath, 'Contents', 'MacOS'), { recursive: true })
+    await writeFile(currentExecutablePath, '')
+    await writeFile(join(currentAppPath, 'Contents', 'update-marker.txt'), 'old')
+    await writeFile(archivePath, 'zip-payload')
+    setExecPath(currentExecutablePath)
+
+    const { execFile: realExecFile } = await vi.importActual<typeof import('node:child_process')>('node:child_process')
+    const { promisify } = await vi.importActual<typeof import('node:util')>('node:util')
+    const runFile = promisify(realExecFile)
+    const { DesktopUpdateInstaller } = await import('./update-installer')
+    const installer = new DesktopUpdateInstaller({ updatesDir })
+    const plan = await installer.prepare(createDownload(archivePath), '1.2.3')
+    const script = (await readFile(plan.scriptPath, 'utf8'))
+      .replace(/^PARENT_PID=\d+$/m, 'PARENT_PID=999999')
+      .replace(
+        '/usr/bin/open -n "$TARGET_APP" || fail_update "Updated app could not be reopened"',
+        '/usr/bin/true || fail_update "Updated app could not be reopened"',
+      )
+    await writeFile(plan.scriptPath, script)
+
+    await runFile('/bin/bash', [plan.scriptPath])
+
+    await expect(readFile(join(currentAppPath, 'Contents', 'update-marker.txt'), 'utf8')).resolves.toBe('new')
+    await expect(pathExists(`${currentAppPath}.previous-update`)).resolves.toBe(false)
+    await expect(pathExists(plan.stagingRoot)).resolves.toBe(false)
+    await expect(pathExists(archivePath)).resolves.toBe(false)
+    await expect(readFile(plan.resultPath, 'utf8').then(JSON.parse)).resolves.toMatchObject({
+      ok: true,
+      version: '1.2.3',
+      error: null,
+    })
+  })
+
+  it('launches the installer script as a detached child process', async () => {
+    const { DesktopUpdateInstaller } = await import('./update-installer')
+    const installer = new DesktopUpdateInstaller({ updatesDir: '/unused' })
+
+    installer.launch({
+      version: '1.2.3',
+      archivePath: '/tmp/Cradle-1.2.3-universal.zip',
+      stagingRoot: '/tmp/staging',
+      stagedAppPath: '/tmp/staging/Cradle.app',
+      targetAppPath: '/Applications/Cradle.app',
+      scriptPath: '/tmp/apply-1.2.3.sh',
+      resultPath: '/tmp/last-update-result.json',
+      usesAdministratorPrivileges: true,
+    })
+
+    expect(childProcessMocks.spawn).toHaveBeenCalledWith('/bin/bash', ['/tmp/apply-1.2.3.sh'], {
+      detached: true,
+      stdio: 'ignore',
+    })
+    expect(childProcessMocks.spawn.mock.results[0]?.value.unref).toHaveBeenCalled()
   })
 
   it('rejects a staged bundle with a mismatched version', async () => {

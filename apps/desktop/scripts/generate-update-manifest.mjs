@@ -18,6 +18,7 @@ Options:
   --release-name <name>  Release display name. Defaults to Cradle <version>.
   --release-notes <text> Release notes.
   --release-date <iso>   Release date. Defaults to the current time.
+  --version <version>     Manifest version. Defaults to apps/desktop/package.json.
 `)
 }
 
@@ -30,6 +31,7 @@ function parseArgs(argv) {
     releaseDate: new Date().toISOString(),
     releaseName: null,
     releaseNotes: null,
+    version: null,
   }
 
   for (let index = 0; index < argv.length; index++) {
@@ -67,6 +69,10 @@ function parseArgs(argv) {
         break
       case '--release-notes':
         options.releaseNotes = readOptionValue(arg, value)
+        index++
+        break
+      case '--version':
+        options.version = readOptionValue(arg, value)
         index++
         break
       default:
@@ -169,7 +175,7 @@ function joinUrl(...parts) {
 
 async function main() {
   const options = parseArgs(process.argv.slice(2))
-  const version = await readPackageVersion()
+  const version = options.version ?? await readPackageVersion()
   const artifactPath = await selectArtifactPath(version, options.artifact)
   const outputDir = path.dirname(options.out)
   const artifactName = path.basename(artifactPath)

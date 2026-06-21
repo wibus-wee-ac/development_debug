@@ -9,6 +9,7 @@ Desktop-owned build and verification helper scripts.
 - **build-mac-bridge.mjs**: Builds the Swift `cradle-mac-bridge` executable on macOS, atomically replaces the deterministic desktop packaging binary, and copies Mac Bridge runtime resources such as `Appshot.wav` into `.build/cradle-dist/resources`. Non-macOS hosts skip this step so shared CI can continue to build non-macOS slices.
 - **generate-update-manifest.mjs**: Copies a macOS zip artifact into `release/update/macos`, calculates SHA-256 and size metadata, and writes the Cradle desktop update manifest consumed by the self-update runtime.
 - **record-appshot-parity.mjs**: Records observe-only Codex UI Appshot evidence and Cradle native Appshot evidence into `docs/manual-reports`. The script owns Appshot parity evidence collection only; it is unrelated to desktop packaging or updates.
+- **run-update-smoke.mjs**: Prepares a local update feed from a new macOS zip artifact, serves it on `127.0.0.1`, and optionally launches an old packaged `.app` with `CRADLE_DESKTOP_UPDATE_URL` set for manual Desktop settings smoke.
 - **set-version.mjs**: Updates `apps/desktop/package.json` to the release version used by Electron Builder and the Cradle desktop update manifest.
 - **verify-macos-distribution-credentials.mjs**: Checks local macOS Developer ID Application and Developer ID Installer identities, optional notary profile access, and the active `electron-builder.mjs` signing configuration before starting expensive distribution packaging.
 
@@ -42,6 +43,16 @@ Upload `apps/desktop/release/update` so the public update root contains `macos/m
 5. 如果旧版本 app 安装在 `/Applications`，确认 macOS administrator prompt 出现并授权。
 6. 等待旧版本主进程退出、installer script 替换 `.app`、新版本通过 `open -n` 启动。
 7. 验证 About/Desktop settings 中版本号为新版本，并检查 `Application Support/Cradle/updates/last-update-result.json` 中 `ok` 为 `true`。
+
+For a local feed and launch helper:
+
+    pnpm --filter @cradle/desktop smoke:update -- \
+      --old-app "/Applications/Cradle.app" \
+      --new-zip "release/Cradle-0.0.2-universal.zip" \
+      --version "0.0.2" \
+      --launch
+
+Keep the smoke helper running until the app finishes downloading the update. It serves the generated feed from a temporary directory and injects the update URL through the old app process environment.
 
 ## macOS Credentials
 
