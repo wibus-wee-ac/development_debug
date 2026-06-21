@@ -9,8 +9,13 @@ import type { ServerPluginRouteContext } from '@cradle/plugin-sdk/server'
 import { Elysia } from 'elysia'
 
 import { createChildLogger } from '../logging/logger'
+import {
+  stopAllConversationBridgeConnections,
+  stopConversationBridgeConnectionsForOwner,
+} from '../modules/conversation-bridge/runtime-supervisor'
 import { readPluginActivationPolicy, setPluginActivationPolicy } from './activation-policy'
 import { createServerPluginContext } from './context'
+import { resetConversationBridgeAdapterRegistry } from './conversation-adapter-registry'
 import type { DiscoveredPluginPackage } from './discovery'
 import { discoverPluginPackages } from './discovery'
 import { resetExternalIssueSourceRegistry } from './external-issue-source-registry'
@@ -27,6 +32,7 @@ import {
   setPluginActivationState,
   setPluginLayerState,
 } from './runtime-registry'
+import { resetPluginSkillRegistry } from './skill-registry'
 import { createPluginStaticServer, rewritePluginWebBundleImports } from './static-server'
 import { validatePluginModule } from './validation'
 
@@ -191,6 +197,12 @@ function preparePluginWebLayer(manifest: PluginManifest): void {
 async function deactivatePluginServerLayer(pluginName: string): Promise<void> {
   const plugin = activePlugins.get(pluginName)
   activePlugins.delete(pluginName)
+  try {
+    await stopConversationBridgeConnectionsForOwner(pluginName)
+  }
+  catch (err) {
+    logger.error('conversation bridge plugin runtime stop failed', { plugin: pluginName, err })
+  }
   if (plugin) {
     try {
       await plugin.deactivate?.()
@@ -252,6 +264,7 @@ export async function activateServerPlugins(app: Elysia): Promise<void> {
   for (const pluginName of [...activePlugins.keys()]) {
     await deactivatePluginServerLayer(pluginName)
   }
+  resetPluginSkillRegistry()
   discoveredPluginManifests.clear()
 
   // Discover from plugins/ relative to workspace root
@@ -264,6 +277,7 @@ export async function activateServerPlugins(app: Elysia): Promise<void> {
   resetPluginRouteRegistry()
   resetExternalProviderSourceRegistry()
   resetExternalIssueSourceRegistry()
+  resetConversationBridgeAdapterRegistry()
 
   for (const { pkg, source } of packages) {
     if (!pkg.manifest) {
@@ -425,9 +439,14 @@ export async function enablePlugin(pluginName: string): Promise<PluginDescriptor
 }
 
 export async function deactivateAllPlugins(): Promise<void> {
+  await stopAllConversationBridgeConnections()
   for (const name of [...activePlugins.keys()]) {
     await deactivatePluginServerLayer(name)
   }
   activePlugins.clear()
+  resetPluginSkillRegistry()
   resetPluginRouteRegistry()
+  resetExternalProviderSourceRegistry()
+  resetExternalIssueSourceRegistry()
+  resetConversationBridgeAdapterRegistry()
 }

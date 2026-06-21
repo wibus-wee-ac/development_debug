@@ -8,6 +8,7 @@ import { afterEach, describe, expect, it } from 'vitest'
 import { listRuntimeCatalog } from '../modules/chat-runtime/chat-runtime-provider-registry'
 import type { ChatRuntime, ChatRuntimeCapabilities, ChatRuntimeMetadata } from '../modules/chat-runtime/runtime-provider-types'
 import { createServerPluginContext } from './context'
+import { listConversationBridgeAdapters, resetConversationBridgeAdapterRegistry } from './conversation-adapter-registry'
 import { getRegisteredMcpServers } from './mcp-registry'
 import { dispatchPluginRoute, resetPluginRouteRegistry } from './route-registry'
 import {
@@ -17,6 +18,7 @@ import {
   registerPluginDescriptor,
   resetPluginRuntimeRegistry,
 } from './runtime-registry'
+import { getPluginSkills, resetPluginSkillRegistry } from './skill-registry'
 
 function manifest(name: string): PluginManifest {
   const pkg = CradlePluginPackageJsonSchema.parse({
@@ -53,6 +55,8 @@ describe('server plugin context lifecycle', () => {
   afterEach(() => {
     resetPluginRuntimeRegistry()
     resetPluginRouteRegistry()
+    resetPluginSkillRegistry()
+    resetConversationBridgeAdapterRegistry()
   })
 
   it('skips MCP registration when an async predicate returns false', async () => {
@@ -211,10 +215,19 @@ describe('server plugin context lifecycle', () => {
 
     expect(ctx.subscriptions).toEqual([disposable])
     expect(listPluginDescriptors()[0]?.capabilities.map(capability => capability.type)).toEqual(['skill'])
+    expect(getPluginSkills()).toEqual([{
+      owner: '@cradle/context-skill',
+      skill: {
+        name: 'context-skill',
+        description: 'A test skill',
+        skillFile: '/tmp/SKILL.md',
+      },
+    }])
 
     disposable.dispose()
 
     expect(listPluginDescriptors()[0]?.capabilities).toHaveLength(0)
+    expect(getPluginSkills()).toEqual([])
   })
 
   it('supports namespace registration APIs without changing capability ownership', () => {
@@ -347,6 +360,51 @@ describe('server plugin context lifecycle', () => {
     disposable.dispose()
 
     expect(listRuntimeCatalog().some(runtime => runtime.runtimeKind === 'plugin-runtime')).toBe(false)
+    expect(listPluginDescriptors()[0]?.capabilities).toHaveLength(0)
+  })
+
+  it('tracks conversation adapter registrations and removes capability records on dispose', () => {
+    const pluginManifest = manifest('@cradle/context-conversation')
+    registerDescriptor(pluginManifest)
+    const ctx = createServerPluginContext(pluginManifest)
+
+    const disposable = ctx.conversation.adapters.register({
+      id: 'test-chat',
+      platform: 'test',
+      label: 'Test Chat',
+      createRuntime: () => ({
+        async start() {},
+        async stop() {},
+        async sendMessage() {
+          return { externalMessageId: null }
+        },
+      }),
+    })
+
+    expect(ctx.subscriptions).toEqual([disposable])
+    expect(listConversationBridgeAdapters()).toEqual([
+      expect.objectContaining({
+        key: '@cradle/context-conversation:test-chat',
+        owner: '@cradle/context-conversation',
+        adapter: expect.objectContaining({
+          id: 'test-chat',
+          platform: 'test',
+          label: 'Test Chat',
+        }),
+      }),
+    ])
+    expect(listPluginDescriptors()[0]?.capabilities).toEqual([
+      expect.objectContaining({
+        type: 'conversation-adapter',
+        metadata: expect.objectContaining({
+          platform: 'test',
+        }),
+      }),
+    ])
+
+    disposable.dispose()
+
+    expect(listConversationBridgeAdapters()).toEqual([])
     expect(listPluginDescriptors()[0]?.capabilities).toHaveLength(0)
   })
 })

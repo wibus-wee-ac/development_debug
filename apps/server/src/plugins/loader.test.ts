@@ -1,5 +1,6 @@
 /* Verifies server plugin activation and shutdown cleanup behavior. */
 
+import { existsSync } from 'node:fs'
 import { mkdir, mkdtemp, rm, writeFile } from 'node:fs/promises'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
@@ -7,6 +8,9 @@ import { join } from 'node:path'
 import { Elysia } from 'elysia'
 import { afterEach, describe, expect, it } from 'vitest'
 
+import { resolveCodexRuntimeContext } from '../modules/chat-runtime-providers/codex/config/runtime-context'
+import { setAppPreferences } from '../modules/preferences/service'
+import { resetNativeSkillProjectionTargets } from '../modules/skills/native-skill-projection'
 import { setPluginActivationPolicy } from './activation-policy'
 import { activateServerPlugins, deactivateAllPlugins, disablePlugin, enablePlugin } from './loader'
 import { getRegisteredMcpServers } from './mcp-registry'
@@ -77,6 +81,17 @@ async function writePluginPackage(options: PluginPackageOptions = {}): Promise<s
       options.webSource ?? 'export function activate() {}',
     )
   }
+  await writeFile(
+    join(pluginDir, 'SKILL.md'),
+    [
+      '---',
+      'name: loader-cleanup-skill',
+      'description: Loader cleanup skill',
+      '---',
+      '',
+      '# Loader Cleanup Skill',
+    ].join('\n'),
+  )
   if (options.provenance === true) {
     await writeFile(
       join(pluginDir, 'cradle-marketplace-install.json'),
@@ -128,14 +143,33 @@ async function writeUnsupportedManifestPackage(): Promise<string> {
   return pluginsRoot
 }
 
+async function writeBuiltinSkillPackage(root: string): Promise<string> {
+  const skillDir = join(root, 'builtin-loader-skill')
+  await mkdir(skillDir, { recursive: true })
+  await writeFile(
+    join(skillDir, 'SKILL.md'),
+    [
+      '---',
+      'name: builtin-loader-skill',
+      'description: Builtin loader skill',
+      '---',
+      '',
+      '# Builtin Loader Skill',
+    ].join('\n'),
+  )
+  return skillDir
+}
+
 describe('server plugin loader lifecycle', () => {
   afterEach(async () => {
     await deactivateAllPlugins()
+    resetNativeSkillProjectionTargets()
     setPluginActivationPolicy('@cradle/loader-cleanup', { enabled: true, reason: null })
     delete process.env.CRADLE_PLUGINS_DIR
     delete process.env.CRADLE_PLUGINS_SOURCE_KIND
     delete process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
     delete process.env.CRADLE_MARKETPLACE_PLUGINS_DIR
+    delete process.env.CRADLE_BUILTIN_SKILLS_DIR
     delete process.env.CRADLE_PLUGIN_ALLOWED_PERMISSIONS
     delete process.env.CRADLE_PLUGIN_ALLOWED_LOADER_CLEANUP_PERMISSIONS
     if (tempPluginsDir) {
@@ -450,7 +484,7 @@ describe('server plugin loader lifecycle', () => {
     const dependencyResponse = await app.handle(new Request('http://localhost/api/plugins/-/deps/react.mjs'))
     expect(dependencyResponse.status).toBe(200)
     expect(dependencyResponse.headers.get('access-control-allow-origin')).toBe('*')
-    expect(await dependencyResponse.text()).toContain("window[Symbol.for('cradle:modules')]")
+    expect(await dependencyResponse.text()).toContain('window[Symbol.for(\'cradle:modules\')]')
   })
 
   it('dispatches plugin HTTP routes and removes them on deactivation', async () => {
@@ -485,37 +519,98 @@ describe('server plugin loader lifecycle', () => {
   })
 
   it('hot disables and re-enables active plugin runtime registrations', async () => {
+    const homeDir = await mkdtemp(join(tmpdir(), 'cradle-plugin-loader-home-'))
+    const builtinRoot = join(homeDir, 'builtin-skills')
+    const previousHome = process.env.HOME
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousBuiltinSkillsDir = process.env.CRADLE_BUILTIN_SKILLS_DIR
+    process.env.HOME = homeDir
+    process.env.CRADLE_DATA_DIR = homeDir
+    process.env.CRADLE_BUILTIN_SKILLS_DIR = builtinRoot
+    await writeBuiltinSkillPackage(builtinRoot)
     tempPluginsDir = await writePluginPackage({
       serverSource: [
+        'import { fileURLToPath } from "node:url"',
+        '',
         'export function activate(ctx) {',
         '  ctx.mcp.registerServer({ transport: "stdio", name: "loader-cleanup", command: "node", args: ["server.mjs"] })',
         '  ctx.routes.register({ method: "GET", path: "/status", handler: () => ({ ok: true }) })',
-        '  ctx.skills.register({ name: "loader-cleanup-skill", description: "A skill", skillFile: "/tmp/SKILL.md" })',
+        '  ctx.skills.register({ name: "loader-cleanup-skill", description: "A skill", skillFile: fileURLToPath(new URL("./SKILL.md", import.meta.url)) })',
         '}',
       ].join('\n'),
     })
-    process.env.CRADLE_PLUGINS_DIR = tempPluginsDir
-    process.env.CRADLE_PLUGINS_SOURCE_KIND = 'workspaceDev'
+    try {
+      process.env.CRADLE_PLUGINS_DIR = tempPluginsDir
+      process.env.CRADLE_PLUGINS_SOURCE_KIND = 'workspaceDev'
 
-    const app = new Elysia()
-    await activateServerPlugins(app)
+      const app = new Elysia()
+      await activateServerPlugins(app)
 
-    expect(getRegisteredMcpServers()).toHaveProperty('loader-cleanup')
-    expect((await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/status'))).status).toBe(200)
+      expect(getRegisteredMcpServers()).toHaveProperty('loader-cleanup')
+      expect((await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/status'))).status).toBe(200)
 
-    const disabled = await disablePlugin('@cradle/loader-cleanup', 'hot test')
-    expect(disabled.activation).toMatchObject({ enabled: false, source: 'user', reason: 'hot test' })
-    expect(disabled.layers.server.status).toBe('disabled')
-    expect(disabled.capabilities).toHaveLength(0)
-    expect(getRegisteredMcpServers()).not.toHaveProperty('loader-cleanup')
-    expect((await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/status'))).status).toBe(404)
+      const runtimeContext = resolveCodexRuntimeContext('/tmp/workspace', 'loader-agent')
+      const projectedSkill = join(runtimeContext.agentHome ?? '', 'skills', 'cradle', 'plugin-loader-cleanup-skill', 'SKILL.md')
+      expect(existsSync(projectedSkill)).toBe(true)
 
-    const enabled = await enablePlugin('@cradle/loader-cleanup')
-    expect(enabled.activation).toMatchObject({ enabled: true, source: 'user' })
-    expect(enabled.layers.server.status).toBe('active')
-    expect(enabled.capabilities.map(capability => capability.type).sort()).toEqual(['mcp-server', 'server-route', 'skill'])
-    expect(getRegisteredMcpServers()).toHaveProperty('loader-cleanup')
-    expect((await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/status'))).status).toBe(200)
+      await setAppPreferences({
+        featureFlags: {
+          multiWorkspacePoc: false,
+          localAuthForDangerousActions: false,
+          continueBlockedCodexGoals: false,
+          blockCodexAppServerLogInserts: false,
+          nativeProviderSkillProjection: true,
+        },
+      })
+      const globalRuntimeContext = resolveCodexRuntimeContext('/tmp/workspace', null)
+      const globalProjectedSkill = join(homeDir, '.codex', 'skills', 'cradle', 'plugin-loader-cleanup-skill', 'SKILL.md')
+      const globalBuiltinSkill = join(homeDir, '.codex', 'skills', 'cradle', 'builtin-loader-skill', 'SKILL.md')
+      expect(globalRuntimeContext.agentHome).toBeNull()
+      expect(existsSync(globalProjectedSkill)).toBe(true)
+      expect(existsSync(globalBuiltinSkill)).toBe(true)
+
+      const disabled = await disablePlugin('@cradle/loader-cleanup', 'hot test')
+      expect(disabled.activation).toMatchObject({ enabled: false, source: 'user', reason: 'hot test' })
+      expect(disabled.layers.server.status).toBe('disabled')
+      expect(disabled.capabilities).toHaveLength(0)
+      expect(getRegisteredMcpServers()).not.toHaveProperty('loader-cleanup')
+      expect((await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/status'))).status).toBe(404)
+      expect(existsSync(projectedSkill)).toBe(false)
+      expect(existsSync(globalProjectedSkill)).toBe(false)
+      expect(existsSync(globalBuiltinSkill)).toBe(true)
+
+      const enabled = await enablePlugin('@cradle/loader-cleanup')
+      expect(enabled.activation).toMatchObject({ enabled: true, source: 'user' })
+      expect(enabled.layers.server.status).toBe('active')
+      expect(enabled.capabilities.map(capability => capability.type).sort()).toEqual(['mcp-server', 'server-route', 'skill'])
+      expect(getRegisteredMcpServers()).toHaveProperty('loader-cleanup')
+      expect((await app.handle(new Request('http://localhost/api/plugins/loader-cleanup/status'))).status).toBe(200)
+      expect(existsSync(projectedSkill)).toBe(true)
+      expect(existsSync(globalProjectedSkill)).toBe(true)
+      expect(existsSync(globalBuiltinSkill)).toBe(true)
+    }
+    finally {
+      resetNativeSkillProjectionTargets()
+      if (previousHome === undefined) {
+        delete process.env.HOME
+      }
+      else {
+        process.env.HOME = previousHome
+      }
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousBuiltinSkillsDir === undefined) {
+        delete process.env.CRADLE_BUILTIN_SKILLS_DIR
+      }
+      else {
+        process.env.CRADLE_BUILTIN_SKILLS_DIR = previousBuiltinSkillsDir
+      }
+      await rm(homeDir, { recursive: true, force: true })
+    }
   })
 
   it('marks plugins with missing web bundles as failed before listing descriptors', async () => {

@@ -6,6 +6,7 @@ import { createChildLogger } from '../logging/logger'
 import { assertChatRuntime, registerRuntime, unregisterRuntime } from '../modules/chat-runtime/chat-runtime-provider-registry'
 import type { ChatRuntimeMetadata } from '../modules/chat-runtime/runtime-provider-types'
 import type { ProviderKind } from '../modules/provider-contracts/types'
+import { registerConversationBridgeAdapter } from './conversation-adapter-registry'
 import { createPluginEventBus } from './event-bus'
 import { registerExternalIssueSource } from './external-issue-source-registry'
 import { registerExternalProviderSource } from './external-provider-source-registry'
@@ -136,6 +137,14 @@ export function createServerPluginContext(
     },
   } satisfies ServerPluginContext['issues']
 
+  const conversation = {
+    adapters: {
+      register(adapter) {
+        return track(registerConversationBridgeAdapter(manifest.name, adapter))
+      },
+    },
+  } satisfies ServerPluginContext['conversation']
+
   const runtimes = {
     register(runtime, metadata) {
       assertChatRuntime(runtime)
@@ -193,6 +202,7 @@ export function createServerPluginContext(
     skills,
     providers,
     issues,
+    conversation,
     runtimes,
     storage: createPluginStorage(manifest.name),
     logger,
