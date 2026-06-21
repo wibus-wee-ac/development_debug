@@ -6,10 +6,13 @@ import type { Static } from 'elysia'
 
 import { AppError } from '../../errors/app-error'
 import { getServerConfig } from '../../infra'
+import { getPluginSkillProjectionSources } from '../../plugins/skill-registry'
 import {
   createClaudeGlobalNativeSkillProjectionTarget,
   createCodexGlobalNativeSkillProjectionTarget,
+  getBuiltinSkillProjectionSources,
   reconcileNativeSkillProjections,
+  registerNativeSkillProjectionTarget,
   unregisterNativeSkillProjectionTarget,
 } from '../skills/native-skill-projection'
 import type { PreferencesModel } from './model'
@@ -88,7 +91,10 @@ export async function setAppPreferences(preferences: Static<typeof PreferencesMo
   const normalized = AppPreferencesJsonSchema.parse(JSON.stringify(preferences))
   await mkdir(dirname(filePath), { recursive: true })
   await writeFile(filePath, JSON.stringify(normalized, null, 2), 'utf8')
-  if (!normalized.featureFlags.nativeProviderSkillProjection) {
+  if (normalized.featureFlags.nativeProviderSkillProjection) {
+    applyNativeProviderSkillProjections()
+  }
+  else {
     removeNativeProviderSkillProjections()
   }
   const { setCodexAppServerLogInsertBlocker } = await import('../chat-runtime-providers/codex/app-server/log-insert-blocker')
@@ -96,6 +102,20 @@ export async function setAppPreferences(preferences: Static<typeof PreferencesMo
   if (result.status === 'failed') {
     console.warn('[preferences] Failed to apply Codex app-server log insert blocker feature flag:', result)
   }
+}
+
+function applyNativeProviderSkillProjections(): void {
+  const targets = [
+    createCodexGlobalNativeSkillProjectionTarget(),
+    createClaudeGlobalNativeSkillProjectionTarget(),
+  ]
+  for (const target of targets) {
+    registerNativeSkillProjectionTarget(target)
+  }
+  reconcileNativeSkillProjections([
+    ...getBuiltinSkillProjectionSources(),
+    ...getPluginSkillProjectionSources(),
+  ], targets)
 }
 
 function removeNativeProviderSkillProjections(): void {

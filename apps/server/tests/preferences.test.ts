@@ -10,6 +10,7 @@ import { shutdownInfra } from '../src/infra'
 import { setCodexChatgptCredentialLoginFetchForTests } from '../src/modules/chat-runtime-providers/codex/app-server/account-service'
 import { setCodexChatgptModelListClientFactoryForTests } from '../src/modules/chat-runtime-providers/codex/app-server/model-list'
 import { readSecret, saveSecret } from '../src/modules/secrets/service'
+import { registerPluginSkill, resetPluginSkillRegistry } from '../src/plugins/skill-registry'
 import {
   createClaudeGlobalNativeSkillProjectionTarget,
   createCodexGlobalNativeSkillProjectionTarget,
@@ -30,7 +31,9 @@ describe('preferences capability', () => {
   it('returns defaults when missing and persists app feature flags under the server data directory', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousHome = process.env.HOME
     process.env.CRADLE_DATA_DIR = dataDir
+    process.env.HOME = dataDir
     let app: Awaited<ReturnType<typeof createServerApp>> | undefined
 
     try {
@@ -93,6 +96,113 @@ describe('preferences capability', () => {
       }
       else {
         process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousHome === undefined) {
+        delete process.env.HOME
+      }
+      else {
+        process.env.HOME = previousHome
+      }
+    }
+  })
+
+  it('projects provider-native skills immediately when the app feature flag is enabled', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousHome = process.env.HOME
+    const previousBuiltinSkillsDir = process.env.CRADLE_BUILTIN_SKILLS_DIR
+    const builtinSkillsDir = join(dataDir, 'builtin-skills')
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.HOME = dataDir
+    process.env.CRADLE_BUILTIN_SKILLS_DIR = builtinSkillsDir
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+
+      const pluginSkillDir = join(dataDir, 'plugin-skill')
+      mkdirSync(pluginSkillDir, { recursive: true })
+      writeFileSync(join(pluginSkillDir, 'SKILL.md'), [
+        '---',
+        'name: native-enable-plugin-demo',
+        'description: Native enable plugin demo',
+        '---',
+        '',
+        '# Native Enable Plugin Demo',
+      ].join('\n'))
+      registerPluginSkill('@cradle/native-enable-demo', {
+        name: 'native-enable-plugin-demo',
+        description: 'Native enable plugin demo',
+        skillFile: join(pluginSkillDir, 'SKILL.md'),
+      })
+
+      const builtinSkillDir = join(builtinSkillsDir, 'native-enable-builtin-demo')
+      mkdirSync(builtinSkillDir, { recursive: true })
+      writeFileSync(join(builtinSkillDir, 'SKILL.md'), [
+        '---',
+        'name: native-enable-builtin-demo',
+        'description: Native enable builtin demo',
+        '---',
+        '',
+        '# Native Enable Builtin Demo',
+      ].join('\n'))
+
+      const enableRes = await app.handle(new Request('http://localhost/preferences/app', {
+        method: 'PUT',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          featureFlags: {
+            multiWorkspacePoc: false,
+            localAuthForDangerousActions: false,
+            continueBlockedCodexGoals: false,
+            blockCodexAppServerLogInserts: false,
+            nativeProviderSkillProjection: true,
+          },
+        }),
+      }))
+
+      expect(enableRes.status).toBe(200)
+      for (const providerRoot of ['.codex', '.claude']) {
+        expect(existsSync(join(
+          dataDir,
+          providerRoot,
+          'skills',
+          'cradle',
+          'plugin-native-enable-plugin-demo',
+          'SKILL.md',
+        ))).toBe(true)
+        expect(existsSync(join(
+          dataDir,
+          providerRoot,
+          'skills',
+          'cradle',
+          'native-enable-builtin-demo',
+          'SKILL.md',
+        ))).toBe(true)
+      }
+    }
+    finally {
+      resetPluginSkillRegistry()
+      resetNativeSkillProjectionTargets()
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousHome === undefined) {
+        delete process.env.HOME
+      }
+      else {
+        process.env.HOME = previousHome
+      }
+      if (previousBuiltinSkillsDir === undefined) {
+        delete process.env.CRADLE_BUILTIN_SKILLS_DIR
+      }
+      else {
+        process.env.CRADLE_BUILTIN_SKILLS_DIR = previousBuiltinSkillsDir
       }
     }
   })
