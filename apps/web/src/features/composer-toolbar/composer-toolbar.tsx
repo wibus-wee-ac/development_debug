@@ -3,7 +3,6 @@ import { useTranslation } from 'react-i18next'
 
 import type { RuntimeKind } from '~/features/agent-runtime/types'
 import type { ClaudeAgentModelAliasesSlot } from '~/features/chat/runtime/claude-session-model-matrix-control'
-import { ClaudeAgentModelAliasesButton } from '~/features/chat/runtime/claude-session-model-matrix-control'
 
 import { AgentSelector } from './agent-selector'
 import { ChatAgentIdentity } from './chat-agent-identity'
@@ -104,23 +103,11 @@ export function ComposerToolbar({ context, state, claudeModelAliases }: Composer
           thinkingEffort={selection.thinkingEffort}
           isLoadingModels={isLoadingModels}
           showThinkingInModelMenu={!isClaudeAgent}
+          claudeModelAliases={isClaudeAgent ? claudeModelAliases : null}
           requestProfileModels={requestProfileModels}
           onSelectProfile={setProfileId}
           onSelectModel={setModelId}
           onSelectThinkingEffort={setThinkingEffort}
-        />
-      )
-    : null
-  const claudeAliasesControl = isClaudeAgent
-    ? (
-        <ClaudeAgentModelAliasesButton
-          models={models}
-          selectedModelId={selection.modelId}
-          aliases={claudeModelAliases!.slot.aliases}
-          loading={claudeModelAliases!.slot.loading}
-          loadingModels={isLoadingModels || claudeModelAliases!.providerSettingsLoading}
-          onChange={claudeModelAliases!.slot.onChange}
-          occludeNativeBrowserSurface
         />
       )
     : null
@@ -140,7 +127,6 @@ export function ComposerToolbar({ context, state, claudeModelAliases }: Composer
     <div className="flex min-w-0 items-center gap-1">
       {runtimeControl}
       {targetControl}
-      {claudeAliasesControl}
       {thinkingControl}
     </div>
   )

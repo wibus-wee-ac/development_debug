@@ -2,6 +2,8 @@ import { useEffect, useRef } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { ModelDescriptor } from '~/features/agent-runtime/types'
+import type { ClaudeAgentModelAliasesSlot } from '~/features/chat/runtime/claude-session-model-matrix-control'
+import { ClaudeAgentModelAliasesSubmenu } from '~/features/chat/runtime/claude-session-model-matrix-control'
 
 import { filterThinkingOptionsForModel, selectSupportedThinkingValue, THINKING_EFFORTS } from './constants'
 import type { ThinkingOption } from './provider-model-menu'
@@ -35,6 +37,7 @@ interface ProviderModelSelectorProps {
   thinkingEffort: ThinkingEffort
   isLoadingModels: boolean
   showThinkingInModelMenu?: boolean
+  claudeModelAliases?: { slot: ClaudeAgentModelAliasesSlot, providerSettingsLoading?: boolean } | null
   requestProfileModels: (id: string) => void
   onSelectProfile: (id: string) => void
   onSelectModel: (id: string, profileId: string) => void
@@ -63,6 +66,7 @@ export function ProviderModelSelector({
   thinkingEffort,
   isLoadingModels,
   showThinkingInModelMenu = true,
+  claudeModelAliases,
   requestProfileModels,
   onSelectProfile,
   onSelectModel,
@@ -120,6 +124,19 @@ export function ProviderModelSelector({
       emptyProviderTargetsLabel={t('model.noProviderTargets')}
       showProviderLabel
       occludeNativeBrowserSurface
+      leadingContent={claudeModelAliases
+        ? (
+            <ClaudeAgentModelAliasesSubmenu
+              models={models}
+              selectedModelId={selectedModelId}
+              aliases={claudeModelAliases.slot.aliases}
+              loading={claudeModelAliases.slot.loading}
+              loadingModels={isLoadingModels || claudeModelAliases.providerSettingsLoading}
+              onChange={claudeModelAliases.slot.onChange}
+              occludeNativeBrowserSurface
+            />
+          )
+        : null}
       getThinkingOptionsForModel={model =>
         showThinkingInModelMenu
           ? filterThinkingOptionsForModel(model, thinkingOptions)

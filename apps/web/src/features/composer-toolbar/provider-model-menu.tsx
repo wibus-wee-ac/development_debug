@@ -2,7 +2,7 @@ import {
   BrainLine as BrainIcon,
   CheckLine as CheckIcon,
   HammerLine as HammerIcon,
-  Scan2Line as ScanEyeIcon
+  Scan2Line as ScanEyeIcon,
 } from '@mingcute/react'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
@@ -43,6 +43,7 @@ interface ProviderModelMenuProps<TThinking extends string | null> {
     active: boolean
     onSelect: () => void
   }
+  leadingContent?: ReactNode
   onRequestProviderTargetModels?: (id: string, options?: { refresh?: boolean }) => void
   onSelectProviderTarget: (id: string) => void
   onSelectModel: (id: string | null, providerTargetId: string) => void
@@ -352,6 +353,7 @@ export function ProviderModelMenu<TThinking extends string | null>({
   isProviderTargetSelectionDisabled = false,
   occludeNativeBrowserSurface = false,
   leadingSelection,
+  leadingContent,
   onRequestProviderTargetModels,
   onSelectProviderTarget,
   onSelectModel,
@@ -376,6 +378,12 @@ export function ProviderModelMenu<TThinking extends string | null>({
               )}
             </div>
           </MenuItem>
+          <MenuSeparator />
+        </>
+      )}
+      {leadingContent && (
+        <>
+          {leadingContent}
           <MenuSeparator />
         </>
       )}

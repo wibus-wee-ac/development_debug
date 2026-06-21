@@ -150,7 +150,7 @@ export function useProviderTargetClaudeAgentModelAliases(args: {
   }
 }
 
-export function ClaudeAgentModelAliasesButton({
+export function ClaudeAgentModelAliasesSubmenu({
   models,
   selectedModelId,
   aliases,
@@ -184,7 +184,9 @@ export function ClaudeAgentModelAliasesButton({
         <div className="flex min-w-0 flex-col gap-0.5">
           <span className="truncate font-medium">Model aliases</span>
           <span className="max-w-52 truncate text-[11px] font-normal text-muted-foreground/60">
-            Main model: {mainModelLabel}
+            Main model:
+            {' '}
+            {mainModelLabel}
           </span>
         </div>
         {isCustom && <span className="size-1.5 shrink-0 rounded-full bg-primary" />}
@@ -200,7 +202,9 @@ export function ClaudeAgentModelAliasesButton({
                 Model aliases
               </div>
               <div className="truncate text-xs text-muted-foreground">
-                Main model: {mainModelLabel}
+                Main model:
+                {' '}
+                {mainModelLabel}
               </div>
             </div>
             {loading || loadingModels

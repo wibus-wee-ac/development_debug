@@ -1,4 +1,5 @@
 import { ChipLine as CpuIcon } from '@mingcute/react'
+import type { ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { ProviderIcon } from '~/components/common/provider-icons'
@@ -37,6 +38,7 @@ interface ProviderModelPickerProps<TThinking extends string | null> {
     active: boolean
     onSelect: () => void
   }
+  leadingContent?: ReactNode
   getThinkingOptionsForModel?: (model: ModelDescriptor | null) => Array<ThinkingOption<TThinking>>
   onRequestProviderTargetModels?: (id: string, options?: { refresh?: boolean }) => void
   onSelectProviderTarget: (id: string) => void
@@ -64,6 +66,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
   showProviderLabel = false,
   occludeNativeBrowserSurface = false,
   leadingSelection,
+  leadingContent,
   getThinkingOptionsForModel,
   onRequestProviderTargetModels,
   onSelectProviderTarget,
@@ -160,6 +163,7 @@ export function ProviderModelPicker<TThinking extends string | null>({
           emptyProviderTargetsLabel={emptyProviderTargetsLabel}
           occludeNativeBrowserSurface={occludeNativeBrowserSurface}
           leadingSelection={leadingSelection}
+          leadingContent={leadingContent}
           onRequestProviderTargetModels={onRequestProviderTargetModels}
           onSelectProviderTarget={onSelectProviderTarget}
           onSelectModel={onSelectModel}
