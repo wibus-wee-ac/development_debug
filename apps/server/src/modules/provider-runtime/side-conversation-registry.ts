@@ -15,7 +15,7 @@ export interface SideConversationRecord {
   history: UIMessage[]
   expiresAt: number
   pinned: boolean
-  lease: ProviderRuntimeLease
+  lease: ProviderRuntimeLease<unknown>
 }
 
 export interface ReservedSideConversationHostLease {
@@ -23,7 +23,7 @@ export interface ReservedSideConversationHostLease {
   providerTargetId: string
   runtimeKind: RuntimeKind
   pinned: true
-  lease: ProviderRuntimeLease
+  lease: ProviderRuntimeLease<unknown>
 }
 
 const DEFAULT_SIDE_CONVERSATION_TTL_MS = 30 * 60 * 1000
