@@ -1,6 +1,8 @@
 import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
+import { Logger } from '../../../logging/logger'
+import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
 import { generateClaudeSessionTitle } from './provider-title-generation'
 import type { ClaudeAgentProviderDeps, ClaudeTitleGenerationThinkingEffort } from './types'
 
@@ -30,19 +32,50 @@ function createFakeQuery(items: unknown[]) {
   }
 }
 
-function createDeps(logger = { warn: vi.fn(), info: vi.fn(), error: vi.fn() }): ClaudeAgentProviderDeps {
+function createTestLogger(): Logger {
+  const logger = new Logger()
+  vi.spyOn(logger, 'warn').mockImplementation(() => undefined)
+  vi.spyOn(logger, 'info').mockImplementation(() => undefined)
+  vi.spyOn(logger, 'error').mockImplementation(() => undefined)
+  return logger
+}
+
+function createDeps(logger = createTestLogger()): ClaudeAgentProviderDeps {
   return {
     readSecret: () => 'sk-ant-test',
     logger,
-  } as unknown as ClaudeAgentProviderDeps
+  }
 }
 
-function createProfile(thinkingEffort: ClaudeTitleGenerationThinkingEffort = 'minimal') {
+function createProfile(thinkingEffort: ClaudeTitleGenerationThinkingEffort = 'minimal'): RuntimeProviderTargetProfile {
+  return createProfileWithConfig('profile-1', { apiKey: 'sk-ant-test', thinkingEffort })
+}
+
+function createProfileWithConfig(id: string, config: object): RuntimeProviderTargetProfile {
   return {
-    id: 'profile-1',
-    providerKind: 'claude-agent',
-    configJson: JSON.stringify({ apiKey: 'sk-ant-test', thinkingEffort }),
-  } as unknown as Parameters<typeof generateClaudeSessionTitle>[0]['profile']
+    id,
+    name: id,
+    providerKind: 'anthropic',
+    enabled: true,
+    configJson: JSON.stringify(config),
+    credentialRef: null,
+    customModels: '[]',
+    iconSlug: null,
+    providerTargetKind: 'manual',
+    providerTargetId: id,
+  }
+}
+
+function createRuntimeSession(overrides: Partial<RuntimeSession> = {}): RuntimeSession {
+  return {
+    id: 'runtime-session-1',
+    chatSessionId: 'chat-session-1',
+    providerTargetId: 'profile-1',
+    runtimeKind: 'claude-agent',
+    providerSessionId: null,
+    providerStateSnapshot: null,
+    ...overrides,
+  }
 }
 
 afterEach(() => {
@@ -77,8 +110,9 @@ describe('generateClaudeSessionTitle', () => {
       ])
     })
 
-    const logger = { warn: vi.fn(), info: vi.fn(), error: vi.fn() }
+    const logger = createTestLogger()
     const title = await generateClaudeSessionTitle({
+      runtimeSession: createRuntimeSession(),
       profile: createProfile(),
       promptText: 'Help me debug the login flow',
       modelId: 'claude-test-model',
@@ -115,13 +149,10 @@ describe('generateClaudeSessionTitle', () => {
       ])
     })
 
-    const profile = {
-      id: 'profile-2',
-      providerKind: 'claude-agent',
-      configJson: JSON.stringify({ apiKey: 'sk-ant-test', model: 'claude-config-model' }),
-    } as unknown as Parameters<typeof generateClaudeSessionTitle>[0]['profile']
+    const profile = createProfileWithConfig('profile-2', { apiKey: 'sk-ant-test', model: 'claude-config-model' })
 
     const title = await generateClaudeSessionTitle({
+      runtimeSession: createRuntimeSession(),
       profile,
       promptText: 'Refactor the auth middleware',
       modelId: null,
@@ -154,8 +185,9 @@ describe('generateClaudeSessionTitle', () => {
       },
     ]))
 
-    const logger = { warn: vi.fn(), info: vi.fn(), error: vi.fn() }
+    const logger = createTestLogger()
     const title = await generateClaudeSessionTitle({
+      runtimeSession: createRuntimeSession(),
       profile: createProfile(),
       promptText: 'Run the build script',
       modelId: 'claude-test-model',
@@ -177,13 +209,10 @@ describe('generateClaudeSessionTitle', () => {
     vi.stubEnv('ANTHROPIC_API_KEY', '')
     vi.stubEnv('ANTHROPIC_AUTH_TOKEN', '')
     vi.stubEnv('CLAUDE_CODE_OAUTH_TOKEN', '')
-    const logger = { warn: vi.fn(), info: vi.fn(), error: vi.fn() }
+    const logger = createTestLogger()
     const title = await generateClaudeSessionTitle({
-      profile: {
-        id: 'profile-no-key',
-        providerKind: 'claude-agent',
-        configJson: JSON.stringify({}),
-      } as unknown as Parameters<typeof generateClaudeSessionTitle>[0]['profile'],
+      runtimeSession: createRuntimeSession(),
+      profile: createProfileWithConfig('profile-no-key', {}),
       promptText: 'Hello',
       modelId: 'claude-test-model',
       thinkingEffort: 'minimal',
@@ -192,7 +221,7 @@ describe('generateClaudeSessionTitle', () => {
       deps: {
         readSecret: () => { throw new Error('no secret') },
         logger,
-      } as unknown as ClaudeAgentProviderDeps,
+      },
       signal: new AbortController().signal,
     })
 
@@ -203,5 +232,48 @@ describe('generateClaudeSessionTitle', () => {
       expect.objectContaining({ modelId: 'claude-test-model' }),
     )
     vi.unstubAllEnvs()
+  })
+
+  it('projects the provider base URL into the title query environment', async () => {
+    sdkMocks.query.mockImplementation(({ options }: { prompt: string, options: Options }) => {
+      expect(options.env?.ANTHROPIC_BASE_URL).toBe('https://proxy.example')
+      expect(options.tools).toEqual([])
+      expect(options.mcpServers).toBeUndefined()
+      expect(options.skills).toBeUndefined()
+      return createFakeQuery([
+        {
+          type: 'assistant',
+          session_id: 'claude-session-4',
+          message: {
+            id: 'msg_4',
+            container: null,
+            content: [{ type: 'text', text: 'Proxy-backed title', citations: null }],
+            usage: { input_tokens: 1, output_tokens: 1 },
+          },
+        },
+        {
+          type: 'result',
+          session_id: 'claude-session-4',
+          usage: { input_tokens: 1, output_tokens: 1 },
+        },
+      ])
+    })
+
+    const title = await generateClaudeSessionTitle({
+      runtimeSession: createRuntimeSession(),
+      profile: createProfileWithConfig('proxy-profile', {
+        apiKey: 'sk-proxy-test',
+        baseUrl: 'https://proxy.example',
+      }),
+      promptText: 'Name this session',
+      modelId: 'claude-test-model',
+      thinkingEffort: 'minimal',
+      workspacePath: '/tmp/cradle-test-workspace',
+      agentId: null,
+      deps: createDeps(),
+      signal: new AbortController().signal,
+    })
+
+    expect(title).toBe('Proxy-backed title')
   })
 })

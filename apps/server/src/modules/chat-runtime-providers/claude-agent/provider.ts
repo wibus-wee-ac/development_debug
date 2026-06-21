@@ -458,12 +458,14 @@ export class ClaudeAgentProvider implements ChatRuntime {
               fallbackModel: effectiveModel ?? null,
             })
             this.generateClaudeSessionTitleInBackground({
+              runtimeSession: input.runtimeSession,
               profile: titleGeneration.profile,
               mainSessionId: nextProviderSessionId,
               promptText: userPromptText,
               modelId: titleGeneration.modelId ?? titleGeneration.fallbackModel,
               fallbackModel: titleGeneration.fallbackModel,
               thinkingEffort: titleGeneration.thinkingEffort,
+              workspaceId: input.workspaceId,
               workspacePath: input.workspacePath ?? snapshot.workspacePath ?? '',
               agentId: input.agentId ?? snapshot.agentId ?? null,
               reportSessionTitle: input.reportSessionTitle,
@@ -690,10 +692,12 @@ export class ClaudeAgentProvider implements ChatRuntime {
     const abortController = new AbortController()
     try {
       const title = await generateClaudeSessionTitle({
+        runtimeSession: input.runtimeSession,
         profile: titleGeneration.profile,
         promptText: input.promptText,
         modelId: titleGeneration.modelId ?? titleGeneration.fallbackModel,
         thinkingEffort: titleGeneration.thinkingEffort,
+        workspaceId: input.workspaceId,
         workspacePath: input.workspacePath ?? snapshot.workspacePath ?? '',
         agentId: input.agentId ?? snapshot.agentId ?? null,
         deps: this.deps,
@@ -792,12 +796,14 @@ export class ClaudeAgentProvider implements ChatRuntime {
   }
 
   private generateClaudeSessionTitleInBackground(input: {
+    runtimeSession: RuntimeSession
     profile: StreamTurnInput['profile']
     mainSessionId: string
     promptText: string
     modelId: string | null
     fallbackModel: string | null
     thinkingEffort: ClaudeTitleGenerationThinkingEffort
+    workspaceId?: string | null
     workspacePath: string
     agentId: string | null
     reportSessionTitle?: (title: string) => void
@@ -808,10 +814,12 @@ export class ClaudeAgentProvider implements ChatRuntime {
         try {
           const model = input.modelId ?? input.fallbackModel
           const generatedTitle = await generateClaudeSessionTitle({
+            runtimeSession: input.runtimeSession,
             profile: input.profile,
             promptText: input.promptText,
             modelId: model,
             thinkingEffort: input.thinkingEffort,
+            workspaceId: input.workspaceId,
             workspacePath: input.workspacePath,
             agentId: input.agentId,
             deps: this.deps,

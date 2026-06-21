@@ -6,10 +6,11 @@
 import type { Options } from '@anthropic-ai/claude-agent-sdk'
 import { query } from '@anthropic-ai/claude-agent-sdk'
 
-import type { StreamTurnInput } from '../../chat-runtime/runtime-provider-types'
-import { readTrustedClaudeAgentConfig, resolveApiKey } from '../../provider-contracts/provider-base'
+import type { GetCapabilitiesInput, RuntimeSession, StreamTurnInput } from '../../chat-runtime/runtime-provider-types'
+import { ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
+import { readTrustedClaudeAgentConfig } from '../../provider-contracts/provider-base'
 import { createBoundedTextCollector } from '../bounded-text-collector'
-import { activateClaudeAgentSdkConfigDir, resolveClaudeAgentRuntimeContext } from './runtime-context'
+import { buildClaudeQueryOptions } from './input-projector'
 import type { ClaudeAgentProviderDeps, ClaudeTitleGenerationThinkingEffort } from './types'
 
 const CLAUDE_SESSION_TITLE_MAX_LENGTH = 60
@@ -26,10 +27,12 @@ const CLAUDE_SESSION_TITLE_PROMPT_PREFIX = [
 ].join('\n')
 
 export async function generateClaudeSessionTitle(input: {
+  runtimeSession: RuntimeSession
   profile: StreamTurnInput['profile']
   promptText: string
   modelId: string | null
   thinkingEffort: ClaudeTitleGenerationThinkingEffort
+  workspaceId?: string | null
   workspacePath: string
   agentId: string | null
   deps: ClaudeAgentProviderDeps
@@ -37,46 +40,35 @@ export async function generateClaudeSessionTitle(input: {
 }): Promise<string | null> {
   const titlePrompt = `${CLAUDE_SESSION_TITLE_PROMPT_PREFIX}\n\n${input.promptText}`
   const abortController = new AbortController()
-  const runtimeContext = resolveClaudeAgentRuntimeContext(input.workspacePath, input.agentId)
 
   const timeout = setTimeout(() => abortController.abort(), CLAUDE_SESSION_TITLE_TIMEOUT_MS)
   const abortTitleRead = () => abortController.abort()
   input.signal.addEventListener('abort', abortTitleRead, { once: true })
 
-  let apiKey: string | null = null
-
   try {
     const config = readTrustedClaudeAgentConfig(input.profile.configJson)
-    apiKey = resolveApiKey(input.profile, config.apiKey, 'ANTHROPIC_API_KEY', input.deps)
-
-    if (!apiKey) {
-      input.deps.logger?.warn('claude session title generation skipped: no api key resolved', {
-        modelId: input.modelId ?? null,
-        profileId: input.profile.id,
-      })
-      return null
-    }
-
-    const claudeConfigDir = activateClaudeAgentSdkConfigDir()
-    const queryOptions: Options = {
+    const titleRuntimeInput = {
+      runtimeSession: input.runtimeSession,
+      profile: input.profile,
+      workspaceId: input.workspaceId,
+      workspacePath: input.workspacePath,
+      agentId: input.agentId,
+      modelId: input.modelId ?? undefined,
+    } satisfies GetCapabilitiesInput
+    const queryOptions: Options = buildClaudeQueryOptions({
+      deps: input.deps,
+      input: titleRuntimeInput,
       abortController,
-      cwd: runtimeContext.cwd,
-      permissionMode: 'bypassPermissions',
-      allowDangerouslySkipPermissions: true,
-      model: input.modelId ?? config.model ?? undefined,
-      effort: input.thinkingEffort === 'minimal' ? 'low' : input.thinkingEffort,
       persistSession: false,
-      env: {
-        ...process.env,
-        ANTHROPIC_API_KEY: apiKey,
-        CLAUDE_CONFIG_DIR: claudeConfigDir,
-        CRADLE_WORKSPACE_PATH: runtimeContext.workspacePath,
-        CRADLE_AGENT_ID: input.agentId ?? undefined,
-        CRADLE_AGENT_HOME: runtimeContext.agentHome ?? undefined,
-        CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC: '1',
-        CLAUDE_CODE_ATTRIBUTION_HEADER: '0',
-      },
-    }
+      attachPermissionHandler: false,
+    })
+    queryOptions.permissionMode = 'bypassPermissions'
+    queryOptions.allowDangerouslySkipPermissions = true
+    queryOptions.model = input.modelId ?? config.model ?? queryOptions.model
+    queryOptions.effort = input.thinkingEffort === 'minimal' ? 'low' : input.thinkingEffort
+    queryOptions.tools = []
+    delete queryOptions.mcpServers
+    delete queryOptions.skills
 
     const titleQuery = query({
       prompt: titlePrompt,
@@ -108,7 +100,10 @@ export async function generateClaudeSessionTitle(input: {
       }
     }
 
-    titleQuery.close()
+    const closeTitleQuery = (titleQuery as { close?: () => void }).close
+    if (typeof closeTitleQuery === 'function') {
+      closeTitleQuery.call(titleQuery)
+    }
     const generatedTitle = titleCollector.read()?.trim() ?? ''
     if (generatedTitle.length === 0) {
       input.deps.logger?.warn('claude session title generation produced no assistant text', {
@@ -128,10 +123,16 @@ export async function generateClaudeSessionTitle(input: {
     return generatedTitle
   }
   catch (error) {
+    if (error instanceof ProviderRuntimeError && error.providerError._tag === 'auth_failed') {
+      input.deps.logger?.warn('claude session title generation skipped: no api key resolved', {
+        modelId: input.modelId ?? null,
+        profileId: input.profile.id,
+      })
+      return null
+    }
     input.deps.logger?.warn('claude session title generation failed', {
       err: error,
       modelId: input.modelId ?? null,
-      hasApiKey: Boolean(apiKey),
     })
     return null
   }
