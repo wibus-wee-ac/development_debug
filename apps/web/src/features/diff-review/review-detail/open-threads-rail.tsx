@@ -13,6 +13,7 @@ interface OpenThreadsRailProps {
   onJumpToThread: (thread: ReviewThread) => void
   onResolve: (threadId: string) => void
   resolvePending: boolean
+  onAskAgent?: (threadId: string) => void
   onCollapse: () => void
   width: number
 }
@@ -23,6 +24,7 @@ export function OpenThreadsRail({
   onJumpToThread,
   onResolve,
   resolvePending,
+  onAskAgent,
   onCollapse,
   width,
 }: OpenThreadsRailProps) {
@@ -117,6 +119,15 @@ export function OpenThreadsRail({
                       >
                         <XIcon className="size-3" />
                       </button>
+                      {onAskAgent && (
+                        <button
+                          type="button"
+                          onClick={() => onAskAgent(thread.id)}
+                          className="ml-8 mb-1 hidden rounded px-2 py-0.5 text-[11px] text-muted-foreground transition-colors hover:bg-muted hover:text-foreground group-hover:inline-flex"
+                        >
+                          Ask agent
+                        </button>
+                      )}
                     </div>
                   )
                 })}

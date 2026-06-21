@@ -4,7 +4,12 @@ import { CodeView, useStableCallback } from '@pierre/diffs/react'
 import { useEffect, useMemo, useRef } from 'react'
 
 import type { CodeViewLineSelection, DiffData, ThreadAnnotation } from '../shared/diff-items'
-import { buildCodeViewOptions, buildThreadAnnotations } from '../shared/diff-items'
+import {
+  anchorSideToSelectionSide,
+  buildCodeViewOptions,
+  buildThreadAnnotations,
+  getSelectedReviewRange,
+} from '../shared/diff-items'
 import type { CradleDiffReview, DiffStyle, ReviewFile, ReviewThread } from '../shared/types'
 import { InlineThread } from './inline-thread'
 import { ThreadComposer } from './thread-composer'
@@ -32,9 +37,35 @@ interface DiffStageProps {
   replyPending: boolean
   onResolve: (threadId: string) => void
   resolvePending: boolean
+  onAskAgentForThread?: (threadId: string) => void
   files: ReviewFile[]
   onExpandedThreadIdChange?: (id: string | null) => void
   handleRef?: (handle: DiffStageHandle | null) => void
+}
+
+function annotationRenderVersion(
+  item: CodeViewItem<ThreadAnnotation>,
+  annotations: DiffLineAnnotation<ThreadAnnotation>[],
+  review: CradleDiffReview,
+  composerAnchor: CodeViewLineSelection | null,
+): number {
+  let version = typeof item.version === 'number' ? item.version : 0
+  version += review.updatedAt
+  version += annotations.length * 13
+  for (const thread of review.threads) {
+    version += thread.updatedAt
+    version += thread.comments.length * 17
+    version += thread.state === 'resolved' ? 19 : 23
+  }
+  if (composerAnchor?.id === item.id) {
+    const { range } = composerAnchor
+    version += 1_000_003
+    version += range.start * 31
+    version += range.end * 37
+    version += range.side === 'deletions' ? 41 : 43
+    version += range.endSide === 'deletions' ? 47 : range.endSide === 'additions' ? 53 : 0
+  }
+  return version
 }
 
 export function DiffStage({
@@ -55,6 +86,7 @@ export function DiffStage({
   replyPending,
   onResolve,
   resolvePending,
+  onAskAgentForThread,
   files,
   onExpandedThreadIdChange,
   handleRef,
@@ -78,19 +110,34 @@ export function DiffStage({
   )
 
   const annotationsByItem = useMemo(
-    () => buildThreadAnnotations(review.threads, diffData.itemIdToPath),
+    () => {
+      const next = buildThreadAnnotations(review.threads, diffData.itemIdToPath)
+      const range = getSelectedReviewRange(composerAnchor, files, diffData.itemIdToPath)
+      if (composerAnchor && range) {
+        const list = next.get(composerAnchor.id) ?? []
+        list.push({
+          side: anchorSideToSelectionSide(range.side),
+          lineNumber: range.startLine,
+          metadata: { kind: 'composer' },
+        })
+        next.set(composerAnchor.id, list)
+      }
+      return next
+    },
     // Key on `review.threads` only: unrelated review changes (viewed/preference/submit mutations)
     // must not rebuild item objects, or CodeView's referential areItemListsEqual check fails and it
     // does a full setItems + re-render of the whole visible window.
-    [review.threads, diffData.itemIdToPath],
+    [composerAnchor, files, review.threads, diffData.itemIdToPath],
   )
 
   const itemsWithAnnotations = useMemo(
     () => visibleItems.map((item) => {
       const annotations = annotationsByItem.get(item.id)
-      return annotations ? { ...item, annotations } : item
+      return annotations
+        ? { ...item, annotations, version: annotationRenderVersion(item, annotations, review, composerAnchor) }
+        : item
     }),
-    [visibleItems, annotationsByItem],
+    [visibleItems, annotationsByItem, review, composerAnchor],
   )
 
   const scrollToPath = useStableCallback((path: string) => {
@@ -131,7 +178,20 @@ export function DiffStage({
   const threadById = useMemo(() => new Map(review.threads.map(thread => [thread.id, thread])), [review.threads])
 
   const renderAnnotation = useStableCallback((annotation: DiffLineAnnotation<ThreadAnnotation>) => {
-    const thread = annotation.metadata ? threadById.get(annotation.metadata.threadId) : null
+    if (annotation.metadata?.kind === 'composer' && composerAnchor) {
+      return (
+        <ThreadComposer
+          selection={composerAnchor}
+          files={files}
+          itemIdToPath={diffData.itemIdToPath}
+          onClose={onComposerClose}
+          onCreate={onCreateThread}
+          pending={createPending}
+        />
+      )
+    }
+
+    const thread = annotation.metadata?.kind === 'thread' ? threadById.get(annotation.metadata.threadId) : null
     if (!thread) {
       return null
     }
@@ -142,6 +202,7 @@ export function DiffStage({
         replyPending={replyPending}
         onResolve={onResolve}
         resolvePending={resolvePending}
+        onAskAgent={onAskAgentForThread}
         onExpandedChange={onExpandedThreadIdChange}
       />
     )
@@ -179,16 +240,6 @@ export function DiffStage({
             />
           )}
 
-      {composerAnchor && (
-        <ThreadComposer
-          selection={composerAnchor}
-          files={files}
-          itemIdToPath={diffData.itemIdToPath}
-          onClose={onComposerClose}
-          onCreate={onCreateThread}
-          pending={createPending}
-        />
-      )}
     </div>
   )
 }

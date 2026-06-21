@@ -13,6 +13,7 @@ interface InlineThreadProps {
   replyPending: boolean
   onResolve: (threadId: string) => void
   resolvePending: boolean
+  onAskAgent?: (threadId: string) => void
   onExpandedChange?: (id: string | null) => void
 }
 
@@ -22,6 +23,7 @@ export function InlineThread({
   replyPending,
   onResolve,
   resolvePending,
+  onAskAgent,
   onExpandedChange,
 }: InlineThreadProps) {
   const [expanded, setExpanded] = useState(thread.state !== 'resolved')
@@ -155,6 +157,18 @@ export function InlineThread({
                     >
                       Reply
                     </button>
+                    {onAskAgent && (
+                      <>
+                        <span className="text-muted-foreground/30">·</span>
+                        <button
+                          type="button"
+                          onClick={() => onAskAgent(thread.id)}
+                          className="text-[12px] text-muted-foreground transition-colors hover:text-foreground"
+                        >
+                          Ask agent
+                        </button>
+                      </>
+                    )}
                     <span className="text-muted-foreground/30">·</span>
                     <button
                       type="button"

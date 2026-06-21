@@ -2,6 +2,11 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 
 import {
   getWorkspacesByIdDiffReviewsByReviewId,
+  postWorkspacesByIdDiffReviewsByReviewIdAgentFixes,
+  postWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCancel,
+  postWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerun,
+  postWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStart,
+  postWorkspacesByIdDiffReviewsByReviewIdClose,
   postWorkspacesByIdDiffReviewsByReviewIdCommitPlan,
   postWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdApply,
   postWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewed,
@@ -193,6 +198,24 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
     },
   })
 
+  const closeReviewMutation = useMutation({
+    mutationFn: async () => {
+      const review = reviewQuery.data
+      if (!review) {
+        throw new Error('Review not loaded')
+      }
+      const { data } = await postWorkspacesByIdDiffReviewsByReviewIdClose({
+        path: { id: workspaceId, reviewId: review.id },
+        throwOnError: true,
+      })
+      return data
+    },
+    onSuccess: (data) => {
+      applyReview(data)
+      invalidateList()
+    },
+  })
+
   const preferenceMutation = useMutation({
     mutationFn: async (input: {
       diffStyle?: DiffStyle
@@ -290,6 +313,112 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
     },
   })
 
+  const createAgentFixMutation = useMutation({
+    mutationFn: async (input: {
+      threadId?: string | null
+      anchor?: ReviewThreadAnchorInput | null
+      instruction: string
+      profileId?: string | null
+      expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact'
+    }) => {
+      const review = reviewQuery.data
+      if (!review) {
+        throw new Error('Review not loaded')
+      }
+      const { data } = await postWorkspacesByIdDiffReviewsByReviewIdAgentFixes({
+        path: { id: workspaceId, reviewId: review.id },
+        body: {
+          threadId: input.threadId ?? null,
+          anchor: input.anchor ?? null,
+          instruction: input.instruction,
+          profileId: input.profileId ?? null,
+          expectedOutput: input.expectedOutput,
+        },
+        throwOnError: true,
+      })
+      return data
+    },
+    onSuccess: (data) => {
+      applyReview(data)
+      invalidateList()
+    },
+  })
+
+  const startAgentFixMutation = useMutation({
+    mutationFn: async (input: {
+      agentFixId: string
+      agentId?: string | null
+      providerTargetId?: string | null
+      modelId?: string | null
+    }) => {
+      const review = reviewQuery.data
+      if (!review) {
+        throw new Error('Review not loaded')
+      }
+      const { data } = await postWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStart({
+        path: { id: workspaceId, reviewId: review.id, agentFixId: input.agentFixId },
+        body: {
+          agentId: input.agentId ?? null,
+          providerTargetId: input.providerTargetId ?? null,
+          modelId: input.modelId ?? null,
+        },
+        throwOnError: true,
+      })
+      return data
+    },
+    onSuccess: (data) => {
+      applyReview(data)
+      invalidateList()
+    },
+  })
+
+  const cancelAgentFixMutation = useMutation({
+    mutationFn: async (agentFixId: string) => {
+      const review = reviewQuery.data
+      if (!review) {
+        throw new Error('Review not loaded')
+      }
+      const { data } = await postWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCancel({
+        path: { id: workspaceId, reviewId: review.id, agentFixId },
+        body: {},
+        throwOnError: true,
+      })
+      return data
+    },
+    onSuccess: (data) => {
+      applyReview(data)
+      invalidateList()
+    },
+  })
+
+  const rerunAgentFixMutation = useMutation({
+    mutationFn: async (input: {
+      agentFixId: string
+      agentId?: string | null
+      providerTargetId?: string | null
+      modelId?: string | null
+    }) => {
+      const review = reviewQuery.data
+      if (!review) {
+        throw new Error('Review not loaded')
+      }
+      const { data } = await postWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerun({
+        path: { id: workspaceId, reviewId: review.id, agentFixId: input.agentFixId },
+        body: {
+          agentId: input.agentId ?? null,
+          providerTargetId: input.providerTargetId ?? null,
+          modelId: input.modelId ?? null,
+        },
+        throwOnError: true,
+      })
+      return data
+    },
+    onSuccess: (data) => {
+      applyReview(data)
+      invalidateList()
+    },
+  })
+
   /**
    * On-demand change walkthrough generation. This spends tokens, so it is strictly user-initiated —
    * never auto-triggered. `force` re-generates over an existing guide.
@@ -347,10 +476,15 @@ export function useReview({ workspaceId, repositoryPath, reviewId }: UseReviewAr
     replyMutation,
     resolveThreadMutation,
     submitMutation,
+    closeReviewMutation,
     preferenceMutation,
     commitPlanMutation,
     commitPlanUpdateMutation,
     commitPlanApplyMutation,
+    createAgentFixMutation,
+    startAgentFixMutation,
+    cancelAgentFixMutation,
+    rerunAgentFixMutation,
     generateGuideMutation,
     cancelGuideMutation,
   }

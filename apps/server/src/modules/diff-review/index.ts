@@ -99,6 +99,19 @@ export const diffReview = new Elysia({
     params: DiffReviewModel.reviewParams,
     response: { 200: DiffReviewModel.review },
   })
+  .post('/:id/diff-reviews/:reviewId/close', ({ params }) => DiffReview.closeReview({
+    workspaceId: params.id,
+    reviewId: params.reviewId,
+  }), {
+    detail: {
+      'summary': 'Close diff review',
+      'x-cradle-cli': {
+        command: ['workspace', 'diffs', 'close'],
+      },
+    },
+    params: DiffReviewModel.reviewParams,
+    response: { 200: DiffReviewModel.review },
+  })
   .post('/:id/diff-reviews/:reviewId/files/:fileId/viewed', ({ params, body }) => {
     const input = body as { viewed: boolean }
     return DiffReview.setFileViewed(params.id, params.reviewId, params.fileId, input.viewed)

@@ -15,8 +15,42 @@ export interface ReviewListGroup {
   reviews: CradleDiffReview[]
 }
 
+function groupSourceLabel(sourceKind: ReviewSourceKind): string {
+  if (sourceKind === 'local-working-tree') {
+    return 'Working tree reviews'
+  }
+  if (sourceKind === 'local-branch-compare') {
+    return 'Branch comparisons'
+  }
+  if (sourceKind === 'local-commit') {
+    return 'Commit diffs'
+  }
+  if (sourceKind === 'agent-change-set') {
+    return 'Agent change sets'
+  }
+  if (sourceKind === 'github-pull-request') {
+    return 'GitHub pull requests'
+  }
+  return `${sourceLabel(sourceKind)} reviews`
+}
+
+function statusLabel(status: CradleDiffReview['status']): string {
+  if (status === 'open') {
+    return ''
+  }
+  if (status === 'merged') {
+    return 'Merged'
+  }
+  if (status === 'closed') {
+    return 'Closed'
+  }
+  return 'Abandoned'
+}
+
 function groupLabel(sourceKind: ReviewSourceKind, status: CradleDiffReview['status']): string {
-  return `${sourceLabel(sourceKind)} · ${status}`
+  const label = groupSourceLabel(sourceKind)
+  const statusPrefix = statusLabel(status)
+  return statusPrefix ? `${statusPrefix} ${label.toLowerCase()}` : label
 }
 
 function matchesTab(review: CradleDiffReview, tab: ReviewsListTab): boolean {

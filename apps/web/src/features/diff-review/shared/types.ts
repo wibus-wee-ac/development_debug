@@ -17,6 +17,7 @@ export type ReviewSubmission = CradleDiffReview['submissions'][number]
 export type ReviewGuideStep = CradleDiffReview['guide']['steps'][number]
 export type ReviewGuideAnchor = ReviewGuideStep['anchors'][number]
 export type ReviewCommitPlan = CradleDiffReview['commitPlans'][number]
+export type ReviewAgentFix = CradleDiffReview['agentFixes'][number]
 export type ReviewCommitPlanGroup = ReviewCommitPlan['groups'][number]
 export type ReviewPreferences = CradleDiffReview['preferences']
 export type ReviewRevision = NonNullable<CradleDiffReview['currentRevision']>

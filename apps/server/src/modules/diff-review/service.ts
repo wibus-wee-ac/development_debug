@@ -1293,6 +1293,34 @@ export function submitReview(input: {
   return loadReviewView(getReviewRow(input.workspaceId, input.reviewId), { userId })
 }
 
+export function closeReview(input: {
+  workspaceId: string
+  reviewId: string
+  userId?: string
+}): DiffReviewView {
+  const review = getReviewRow(input.workspaceId, input.reviewId)
+  const userId = input.userId ?? LOCAL_USER_ID
+  if (review.status === 'closed') {
+    return loadReviewView(review, { userId })
+  }
+
+  const now = currentUnixSeconds()
+  const updated = db().update(diffReviews)
+    .set({ status: 'closed', updatedAt: now })
+    .where(eq(diffReviews.id, review.id))
+    .returning()
+    .get()
+  recordEvent({
+    reviewId: review.id,
+    eventKind: 'review_closed',
+    actorKind: 'user',
+    actorId: userId,
+    payload: { previousStatus: review.status },
+    createdAt: now,
+  })
+  return loadReviewView(updated, { userId })
+}
+
 export function updatePreferences(input: {
   workspaceId: string
   userId?: string

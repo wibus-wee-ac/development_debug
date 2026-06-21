@@ -1,10 +1,12 @@
 import {
   CheckLine as CheckIcon,
+  CloseLine as CloseIcon,
   GitCommitLine as GitCommitHorizontalIcon,
   GitCommitLine as GitCommitVerticalIcon,
   TreeLine as ListTreeIcon,
   Message1Line as MessageSquareIcon,
   Refresh1Line as RefreshCwIcon,
+  RobotLine as BotIcon,
   Rows3Line as Rows3Icon,
   SendLine as SendIcon,
   SelectorHorizontalLine as SlidersHorizontalIcon
@@ -27,6 +29,8 @@ interface ReviewTopBarProps {
   preferencePending: boolean
   onSubmit: (decision: ReviewDecision, bodyMarkdown: string) => void
   submitPending: boolean
+  onCloseReview: () => void
+  closeReviewPending: boolean
   onRefresh: () => void
   refreshPending: boolean
   isFetching: boolean
@@ -35,8 +39,11 @@ interface ReviewTopBarProps {
   onOpenCommit?: () => void
   hasCommitPlan?: boolean
   threadsRailCollapsed: boolean
-  onToggleThreadsRail: () => void
+  agentRailActive: boolean
+  onShowThreadsRail: () => void
+  onShowAgentRail: () => void
   openThreadCount: number
+  agentFixCount: number
 }
 
 const REVIEW_STATE_TONE: Record<CradleDiffReview['reviewState'], string> = {
@@ -55,6 +62,8 @@ export function ReviewTopBar({
   preferencePending,
   onSubmit,
   submitPending,
+  onCloseReview,
+  closeReviewPending,
   onRefresh,
   refreshPending,
   isFetching,
@@ -63,8 +72,11 @@ export function ReviewTopBar({
   onOpenCommit,
   hasCommitPlan,
   threadsRailCollapsed,
-  onToggleThreadsRail,
+  agentRailActive,
+  onShowThreadsRail,
+  onShowAgentRail,
   openThreadCount,
+  agentFixCount,
 }: ReviewTopBarProps) {
   const [isDiffStylePending, startDiffStyleTransition] = useTransition()
   const refreshing = refreshPending || isFetching
@@ -131,15 +143,31 @@ export function ReviewTopBar({
       <Button
         variant="ghost"
         size="icon"
-        className={cn('relative size-7', threadsRailCollapsed && 'bg-muted text-foreground')}
-        onClick={onToggleThreadsRail}
-        aria-label={threadsRailCollapsed ? 'Show threads' : 'Hide threads'}
-        title={threadsRailCollapsed ? 'Show threads' : 'Hide threads'}
+        className={cn('relative size-7', !threadsRailCollapsed && !agentRailActive && 'bg-muted text-foreground')}
+        onClick={onShowThreadsRail}
+        aria-label="Show threads"
+        title="Show threads"
       >
         <MessageSquareIcon className="size-3.5" />
         {openThreadCount > 0 && (
           <span className="absolute -right-0.5 -top-0.5 flex min-w-3.5 items-center justify-center rounded-full bg-orange-500 px-1 text-[10px] font-medium text-white">
             {openThreadCount}
+          </span>
+        )}
+      </Button>
+
+      <Button
+        variant="ghost"
+        size="icon"
+        className={cn('relative size-7', agentRailActive && 'bg-muted text-foreground')}
+        onClick={onShowAgentRail}
+        aria-label="Show agent"
+        title="Show agent"
+      >
+        <BotIcon className="size-3.5" />
+        {agentFixCount > 0 && (
+          <span className="absolute -right-0.5 -top-0.5 flex min-w-3.5 items-center justify-center rounded-full bg-sky-500 px-1 text-[10px] font-medium text-white">
+            {agentFixCount}
           </span>
         )}
       </Button>
@@ -150,6 +178,25 @@ export function ReviewTopBar({
         state={review.reviewState}
         onSubmit={onSubmit}
       />
+
+      {review.status === 'open'
+        ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-7 gap-1.5 px-2 text-[12px] text-muted-foreground hover:text-foreground"
+              onClick={onCloseReview}
+              disabled={closeReviewPending}
+            >
+              <CloseIcon className="size-3.5" />
+              Close
+            </Button>
+          )
+        : (
+            <span className="rounded-md bg-muted px-2 py-1 text-[12px] font-medium capitalize text-muted-foreground">
+              {review.status}
+            </span>
+          )}
 
       <Button
         variant="ghost"

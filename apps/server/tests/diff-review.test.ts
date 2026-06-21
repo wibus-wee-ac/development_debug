@@ -120,6 +120,7 @@ interface DiffReviewResponse {
   repositoryPath: string
   sourceKind: 'local-working-tree' | 'local-branch-compare' | 'local-commit'
   title: string
+  status: 'open' | 'merged' | 'closed' | 'abandoned'
   reviewState: 'unreviewed' | 'in-review' | 'changes-requested' | 'approved' | 'commented'
   currentRevisionId: string | null
   currentRevision: {
@@ -575,6 +576,13 @@ describe('diff-review capability', () => {
         paths: ['app.ts'],
       })
 
+      const closed = await postJson<DiffReviewResponse>(
+        app,
+        `/workspaces/workspace-diff-review-lifecycle/diff-reviews/${review.id}/close`,
+        {},
+      )
+      expect(closed.status).toBe('closed')
+
       const readiness = await getJson<Array<{ sourceKind: string, state: string }>>(
         app,
         '/workspaces/workspace-diff-review-lifecycle/diff-reviews/source-readiness',
@@ -591,6 +599,7 @@ describe('diff-review capability', () => {
         `/workspaces/workspace-diff-review-lifecycle/diff-reviews/${review.id}`,
       )
       expect(reloaded.files.find(item => item.id === file!.id)?.isViewed).toBe(true)
+      expect(reloaded.status).toBe('closed')
       expect(reloaded.threads[0]?.state).toBe('resolved')
       expect(reloaded.preferences).toMatchObject({ diffStyle: 'unified', fontSize: 13 })
       expect(reloaded.events).toEqual(
@@ -602,6 +611,7 @@ describe('diff-review capability', () => {
           expect.objectContaining({ eventKind: 'agent_fix_created' }),
           expect.objectContaining({ eventKind: 'commit_plan_created' }),
           expect.objectContaining({ eventKind: 'commit_plan_updated' }),
+          expect.objectContaining({ eventKind: 'review_closed' }),
         ]),
       )
     }

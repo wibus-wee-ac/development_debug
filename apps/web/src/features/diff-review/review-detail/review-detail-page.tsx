@@ -5,10 +5,16 @@ import { useDeferredValue, useEffect, useMemo, useRef, useState } from 'react'
 import { ResizeHandle } from '~/components/layout/resize-handle'
 
 import type { CodeViewLineSelection, DiffData, ThreadAnnotation } from '../shared/diff-items'
-import { buildItemsFromPatch, EMPTY_DIFF_DATA } from '../shared/diff-items'
-import { navigateToCommitView, navigateToGuideView } from '../shared/navigation'
+import {
+  buildItemsFromPatch,
+  EMPTY_DIFF_DATA,
+  formatSelectedReviewRange,
+  getSelectedReviewRange,
+} from '../shared/diff-items'
+import { navigateToCommitView, navigateToGuideView, navigateToReviewsList } from '../shared/navigation'
 import type { DiffStyle, ReviewFile, ReviewThread } from '../shared/types'
 import { useReview } from '../shared/use-review'
+import { AgentRail } from './agent-rail'
 import type { DiffStageHandle } from './diff-stage'
 import { DiffStage } from './diff-stage'
 import { FileListAside } from './file-tree-aside'
@@ -39,7 +45,12 @@ export function ReviewDetailPage({
     replyMutation,
     resolveThreadMutation,
     submitMutation,
+    closeReviewMutation,
     preferenceMutation,
+    createAgentFixMutation,
+    startAgentFixMutation,
+    cancelAgentFixMutation,
+    rerunAgentFixMutation,
   } = useReview({ workspaceId, repositoryPath, reviewId })
 
   const [diffStyle, setDiffStyle] = useState<DiffStyle>('split')
@@ -54,6 +65,7 @@ export function ReviewDetailPage({
   const [fileTreeWidth, setFileTreeWidth] = useState(256)
   const [threadsRailWidth, setThreadsRailWidth] = useState(320)
   const [threadsRailCollapsed, setThreadsRailCollapsed] = useState(false)
+  const [railMode, setRailMode] = useState<'threads' | 'agent'>('threads')
 
   const files = useMemo(() => review?.files ?? [], [review?.files])
   const patch = review?.currentRevision?.patch ?? ''
@@ -125,6 +137,20 @@ export function ReviewDetailPage({
     return next
   }, [collapseGeneratedFiles, diffData.pathToItemId, diffData.whitespaceOnlyPaths, generatedPaths, hideWhitespaceOnly])
 
+  const selectedRange = useMemo(
+    () => getSelectedReviewRange(selectedLineSelection, files, diffData.itemIdToPath),
+    [diffData.itemIdToPath, files, selectedLineSelection],
+  )
+  const selectedAgentAnchor = selectedRange
+    ? {
+        fileId: selectedRange.file.id,
+        side: selectedRange.side,
+        startLine: selectedRange.startLine,
+        endLine: selectedRange.endLine,
+      }
+    : null
+  const selectedAgentLabel = selectedRange ? formatSelectedReviewRange(selectedRange) : null
+
   useEffect(() => {
     if (review?.preferences.diffStyle) {
       setDiffStyle(review.preferences.diffStyle)
@@ -160,6 +186,19 @@ export function ReviewDetailPage({
     stageHandleRef.current?.scrollToThread(thread)
   }
 
+  const askAgentForThread = (threadId: string) => {
+    createAgentFixMutation.mutate({
+      threadId,
+      instruction: 'Address this review thread.',
+      expectedOutput: 'working-tree-change',
+    }, {
+      onSuccess: () => {
+        setRailMode('agent')
+        setThreadsRailCollapsed(false)
+      },
+    })
+  }
+
   if (isLoading) {
     return (
       <div className="flex h-full w-full items-center justify-center" data-testid="review-detail-loading">
@@ -183,7 +222,7 @@ export function ReviewDetailPage({
   const hiddenGeneratedFileCount = collapseGeneratedFiles ? files.filter(file => file.isGenerated).length : 0
 
   const openThreadCount = review.threads.filter(thread => thread.state !== 'resolved').length
-  const showThreadsRail = !threadsRailCollapsed
+  const showRightRail = !threadsRailCollapsed
 
   return (
     <div className="flex h-full w-full min-h-0 flex-col overflow-hidden" data-testid="review-detail-page">
@@ -198,6 +237,10 @@ export function ReviewDetailPage({
         preferencePending={preferenceMutation.isPending}
         onSubmit={(decision, bodyMarkdown) => submitMutation.mutate({ decision, bodyMarkdown })}
         submitPending={submitMutation.isPending}
+        onCloseReview={() => closeReviewMutation.mutate(undefined, {
+          onSuccess: () => navigateToReviewsList(workspaceId, repositoryPath),
+        })}
+        closeReviewPending={closeReviewMutation.isPending}
         onRefresh={() => refreshMutation.mutate()}
         refreshPending={refreshMutation.isPending}
         isFetching={isFetching}
@@ -206,8 +249,17 @@ export function ReviewDetailPage({
         onOpenCommit={() => navigateToCommitView(workspaceId, review.id, repositoryPath)}
         hasCommitPlan={review.commitPlans.length > 0}
         threadsRailCollapsed={threadsRailCollapsed}
-        onToggleThreadsRail={() => setThreadsRailCollapsed(value => !value)}
+        agentRailActive={!threadsRailCollapsed && railMode === 'agent'}
+        onShowThreadsRail={() => {
+          setRailMode('threads')
+          setThreadsRailCollapsed(value => railMode === 'threads' ? !value : false)
+        }}
+        onShowAgentRail={() => {
+          setRailMode('agent')
+          setThreadsRailCollapsed(value => railMode === 'agent' ? !value : false)
+        }}
         openThreadCount={openThreadCount}
+        agentFixCount={review.agentFixes.length}
       />
 
       <div className="flex min-h-0 flex-1">
@@ -258,12 +310,13 @@ export function ReviewDetailPage({
             replyPending={replyMutation.isPending}
             onResolve={threadId => resolveThreadMutation.mutate(threadId)}
             resolvePending={resolveThreadMutation.isPending}
+            onAskAgentForThread={askAgentForThread}
             files={files}
             handleRef={handle => stageHandleRef.current = handle}
           />
         </main>
 
-        {showThreadsRail && (
+        {showRightRail && (
           <>
             <ResizeHandle
               direction="horizontal"
@@ -274,15 +327,36 @@ export function ReviewDetailPage({
               inverted
               className="w-1.25 h-full"
             />
-            <OpenThreadsRail
-              review={review}
-              files={files}
-              onJumpToThread={jumpToThread}
-              onResolve={threadId => resolveThreadMutation.mutate(threadId)}
-              resolvePending={resolveThreadMutation.isPending}
-              onCollapse={() => setThreadsRailCollapsed(true)}
-              width={threadsRailWidth}
-            />
+            {railMode === 'agent'
+              ? (
+                  <AgentRail
+                    review={review}
+                    selectedAnchor={selectedAgentAnchor}
+                    selectedLabel={selectedAgentLabel}
+                    createPending={createAgentFixMutation.isPending}
+                    startPending={startAgentFixMutation.isPending}
+                    cancelPending={cancelAgentFixMutation.isPending}
+                    rerunPending={rerunAgentFixMutation.isPending}
+                    onCreate={input => createAgentFixMutation.mutateAsync(input)}
+                    onStart={input => startAgentFixMutation.mutateAsync(input)}
+                    onCancel={agentFixId => cancelAgentFixMutation.mutate(agentFixId)}
+                    onRerun={input => rerunAgentFixMutation.mutateAsync(input)}
+                    onCollapse={() => setThreadsRailCollapsed(true)}
+                    width={threadsRailWidth}
+                  />
+                )
+              : (
+                  <OpenThreadsRail
+                    review={review}
+                    files={files}
+                    onJumpToThread={jumpToThread}
+                    onResolve={threadId => resolveThreadMutation.mutate(threadId)}
+                    resolvePending={resolveThreadMutation.isPending}
+                    onAskAgent={askAgentForThread}
+                    onCollapse={() => setThreadsRailCollapsed(true)}
+                    width={threadsRailWidth}
+                  />
+                )}
           </>
         )}
       </div>

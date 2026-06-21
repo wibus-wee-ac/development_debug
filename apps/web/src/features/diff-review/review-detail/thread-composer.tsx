@@ -51,11 +51,11 @@ export function ThreadComposer({
 
   return (
     <div
-      className="absolute inset-x-0 top-0 z-20 border-b border-border bg-background/95 backdrop-blur"
+      className="my-px border-l border-border bg-background"
       data-testid="thread-composer"
     >
-      <div className="mx-auto flex max-w-3xl items-start gap-2 px-4 py-2">
-        <span className="mt-1.5 shrink-0 truncate font-mono text-[12px] text-muted-foreground">
+      <div className="flex items-start gap-2 px-3 py-2 pl-5">
+        <span className="mt-1.5 max-w-48 shrink-0 truncate font-mono text-[12px] text-muted-foreground">
           {formatSelectedReviewRange(range)}
         </span>
         <Textarea

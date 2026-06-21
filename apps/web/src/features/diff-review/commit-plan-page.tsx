@@ -12,11 +12,15 @@ import { useEffect, useMemo, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Textarea } from '~/components/ui/textarea'
+import { ProviderModelSelector, useComposerState } from '~/features/composer-toolbar'
 import { cn } from '~/lib/cn'
+import { openChatSession } from '~/navigation/navigation-commands'
 
 import { navigateToReview } from './shared/navigation'
 import type {
+  CradleDiffReview,
   EditableCommitPlanStatus,
+  ReviewAgentFix,
   ReviewCommitPlan,
   ReviewCommitPlanGroup,
   ReviewFile,
@@ -45,7 +49,10 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
     commitPlanMutation,
     commitPlanUpdateMutation,
     commitPlanApplyMutation,
+    createAgentFixMutation,
+    startAgentFixMutation,
   } = useReview({ workspaceId, repositoryPath, reviewId })
+  const composer = useComposerState({ context: 'new-chat' })
 
   const files = useMemo(() => review?.files ?? [], [review?.files])
   const plan = review?.commitPlans[0] ?? null
@@ -64,6 +71,7 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
   }, [plan])
 
   const editable = plan != null && plan.status !== 'applied'
+  const commitAgentBusy = createAgentFixMutation.isPending || startAgentFixMutation.isPending
 
   const resetDrafts = () => {
     if (!plan) {
@@ -135,8 +143,65 @@ export function CommitPlanPage({ workspaceId, repositoryPath, reviewId }: Commit
         <div className="mx-auto max-w-2xl space-y-3">
           <div className="rounded-lg border border-border bg-background p-3">
             <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-foreground">
+              <GitCommitVerticalIcon className="size-3.5 !text-muted-foreground/70" />
+              Ask an agent to plan commits
+            </div>
+            <p className="mb-3 text-[11px] leading-relaxed text-muted-foreground">
+              The agent reads this review, proposes commit groups, and can make the final commit sequence traceable in chat.
+            </p>
+            <ProviderModelSelector
+              profiles={composer.profiles}
+              selectedProfileId={composer.selection.profileId}
+              selectedModelId={composer.selection.modelId}
+              models={composer.models}
+              modelsByProfileId={composer.modelsByProfileId}
+              loadingProfileIds={composer.loadingProfileIds}
+              thinkingEffort={composer.selection.thinkingEffort}
+              isLoadingModels={composer.isLoadingModels}
+              requestProfileModels={composer.requestProfileModels}
+              onSelectProfile={composer.setProfileId}
+              onSelectModel={composer.setModelId}
+              onSelectThinkingEffort={composer.setThinkingEffort}
+            />
+            <Button
+              type="button"
+              size="sm"
+              className="mt-3 w-full text-xs"
+              disabled={commitAgentBusy || files.length === 0 || !composer.selection.profileId}
+              onClick={async () => {
+                if (!review || !composer.selection.profileId) {
+                  return
+                }
+                const beforeIds = new Set(review.agentFixes.map(fix => fix.id))
+                const createdReview = await createAgentFixMutation.mutateAsync({
+                  instruction: 'Plan a clean commit sequence for this review. Propose commit messages, file groupings, dependencies, and whether the working tree is ready to commit.',
+                  expectedOutput: 'commit',
+                  profileId: composer.selection.profileId,
+                })
+                const created = latestAgentFix(createdReview, beforeIds)
+                if (!created) {
+                  return
+                }
+                const startedReview = await startAgentFixMutation.mutateAsync({
+                  agentFixId: created.id,
+                  providerTargetId: composer.selection.profileId,
+                  modelId: composer.selection.modelId,
+                })
+                const started = startedReview.agentFixes.find(fix => fix.id === created.id)
+                if (started?.sessionId) {
+                  openChatSession(started.sessionId)
+                }
+              }}
+            >
+              {commitAgentBusy ? <Loader2Icon className="size-3.5 animate-spin" /> : <GitCommitVerticalIcon className="size-3.5" />}
+              Plan with agent
+            </Button>
+          </div>
+
+          <div className="rounded-lg border border-border bg-background p-3">
+            <div className="mb-2 flex items-center gap-1.5 text-xs font-medium text-foreground">
               <ListChecksIcon className="size-3.5 !text-muted-foreground/70" />
-              Generate a plan
+              Fallback plan
             </div>
             <p className="mb-2 text-[11px] leading-relaxed text-muted-foreground">
               Group the
@@ -306,6 +371,12 @@ into logical commits, or squash everything into a single commit.
       </div>
     </div>
   )
+}
+
+function latestAgentFix(review: CradleDiffReview, beforeIds: Set<string>): ReviewAgentFix | null {
+  return review.agentFixes
+    .filter(fix => !beforeIds.has(fix.id))
+    .sort((left, right) => right.createdAt - left.createdAt)[0] ?? null
 }
 
 function CommitGroup({

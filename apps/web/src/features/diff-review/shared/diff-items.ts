@@ -1,7 +1,7 @@
 import type {
   CodeViewItem,
   CodeViewOptions,
-DiffLineAnnotation,
+  DiffLineAnnotation,
   SelectedLineRange,
   SelectionSide,
 } from '@pierre/diffs'
@@ -26,9 +26,9 @@ export interface DiffData {
 }
 
 /** Per-thread annotation metadata carried on a CodeView line. */
-export interface ThreadAnnotation {
-  threadId: string
-}
+export type ThreadAnnotation =
+  | { kind: 'thread', threadId: string }
+  | { kind: 'composer' }
 
 export type CodeViewLineSelection = {
   id: string
@@ -154,7 +154,7 @@ export function buildThreadAnnotations(
     }
     const side = anchor.side === 'base' ? 'deletions' : 'additions'
     const list = byItem.get(itemId) ?? []
-    list.push({ side, lineNumber: anchor.startLine, metadata: { threadId: thread.id } })
+    list.push({ side, lineNumber: anchor.startLine, metadata: { kind: 'thread', threadId: thread.id } })
     byItem.set(itemId, list)
   }
   return byItem
@@ -192,7 +192,7 @@ export function sourceLabel(sourceKind: ReviewSourceKind): string {
     return 'Branch compare'
   }
   if (sourceKind === 'local-commit') {
-    return 'Commit'
+    return 'Commit diff'
   }
   if (sourceKind === 'agent-change-set') {
     return 'Agent changes'
