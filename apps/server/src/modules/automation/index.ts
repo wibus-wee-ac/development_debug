@@ -4,12 +4,103 @@ import { AutomationModel } from './model'
 import * as AutomationPoller from './poller'
 import * as Automation from './service'
 
-export const automation = new Elysia({
+type CronJobCreate = {
+  id: string
+  workspaceId?: string | null
+  title: string
+  description?: string
+  enabled?: boolean
+  scheduleKind: 'rrule'
+  scheduleConfig: string
+  timezone: string
+  prompt: string
+  providerTargetId?: string
+  modelId?: string
+}
+
+type CronJobUpdate = Partial<Omit<CronJobCreate, 'id' | 'workspaceId'>>
+
+function projectCronJob(definition: Automation.AutomationDefinitionView) {
+  return {
+    id: definition.id,
+    automationDefinitionId: definition.id,
+    workspaceId: definition.workspaceId,
+    title: definition.title,
+    description: definition.description,
+    enabled: definition.enabled,
+    scheduleKind: 'rrule' as const,
+    scheduleConfig: definition.trigger.rrule,
+    timezone: definition.trigger.timezone,
+    prompt: definition.recipe.prompt,
+    providerTargetId: definition.recipe.providerTargetId ?? null,
+    modelId: definition.recipe.modelId ?? null,
+    nextRunAt: definition.nextRunAt,
+    lastRunAt: definition.lastRunAt,
+    createdAt: definition.createdAt,
+    updatedAt: definition.updatedAt,
+  }
+}
+
+function createCronJob(input: CronJobCreate) {
+  return projectCronJob(Automation.create({
+    id: input.id,
+    workspaceId: input.workspaceId,
+    title: input.title,
+    description: input.description,
+    enabled: input.enabled,
+    trigger: {
+      type: 'rrule',
+      rrule: input.scheduleConfig,
+      timezone: input.timezone,
+    },
+    recipe: {
+      kind: 'agent_task',
+      prompt: input.prompt,
+      inputs: [],
+      artifactRequests: [],
+      providerTargetId: input.providerTargetId,
+      modelId: input.modelId,
+    },
+    createdByKind: 'user',
+  }))
+}
+
+function updateCronJob(id: string, input: CronJobUpdate) {
+  const existing = Automation.get(id)
+  const triggerChanged = input.scheduleConfig !== undefined || input.timezone !== undefined
+  const recipeChanged = input.prompt !== undefined || input.providerTargetId !== undefined || input.modelId !== undefined
+  let updated = Automation.update(id, {
+    title: input.title,
+    description: input.description,
+    trigger: triggerChanged
+      ? {
+          type: 'rrule',
+          rrule: input.scheduleConfig ?? existing.trigger.rrule,
+          timezone: input.timezone ?? existing.trigger.timezone,
+          misfirePolicy: existing.trigger.misfirePolicy,
+        }
+      : undefined,
+    recipe: recipeChanged
+      ? {
+          ...existing.recipe,
+          prompt: input.prompt ?? existing.recipe.prompt,
+          providerTargetId: input.providerTargetId ?? existing.recipe.providerTargetId,
+          modelId: input.modelId ?? existing.recipe.modelId,
+        }
+      : undefined,
+  })
+
+  if (input.enabled !== undefined && input.enabled !== updated.enabled) {
+    updated = Automation.setEnabled(id, input.enabled)
+  }
+
+  return projectCronJob(updated)
+}
+
+const automationRoutes = new Elysia({
   prefix: '/automations',
   detail: { tags: ['automation'] },
 })
-  .onStart(() => { AutomationPoller.start() })
-  .onStop(() => { AutomationPoller.stop() })
   .post('/', ({ body }) => Automation.create(body), {
     detail: {
       'summary': 'Create automation',
@@ -119,3 +210,44 @@ export const automation = new Elysia({
     params: AutomationModel.artifactIdParams,
     response: { 200: AutomationModel.artifact },
   })
+
+const cronRoutes = new Elysia({
+  prefix: '/cron',
+  detail: { tags: ['automation'] },
+})
+  .post('/jobs', ({ body }) => createCronJob(body), {
+    detail: { summary: 'Create cron-compatible automation job' },
+    body: AutomationModel.cronCreateBody,
+  })
+  .get('/jobs', ({ query }) => Automation.list(query).map(projectCronJob), {
+    detail: { summary: 'List cron-compatible automation jobs' },
+    query: AutomationModel.listQuery,
+  })
+  .get('/jobs/:id', ({ params }) => projectCronJob(Automation.get(params.id)), {
+    detail: { summary: 'Get cron-compatible automation job' },
+    params: AutomationModel.cronJobIdParams,
+  })
+  .put('/jobs/:id', ({ params, body }) => updateCronJob(params.id, body), {
+    detail: { summary: 'Update cron-compatible automation job' },
+    params: AutomationModel.cronJobIdParams,
+    body: AutomationModel.cronUpdateBody,
+  })
+  .delete('/jobs/:id', ({ params }) => {
+    Automation.remove(params.id)
+    return { ok: true as const }
+  }, {
+    detail: { summary: 'Delete cron-compatible automation job' },
+    params: AutomationModel.cronJobIdParams,
+    response: { 200: AutomationModel.ok },
+  })
+  .get('/runs', ({ query }) => Automation.listRuns(query.jobId), {
+    detail: { summary: 'List cron-compatible automation runs' },
+    query: AutomationModel.cronRunsQuery,
+    response: { 200: t.Array(AutomationModel.run) },
+  })
+
+export const automation = new Elysia()
+  .onStart(() => { AutomationPoller.start() })
+  .onStop(() => { AutomationPoller.stop() })
+  .use(automationRoutes)
+  .use(cronRoutes)

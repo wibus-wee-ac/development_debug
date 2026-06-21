@@ -448,7 +448,7 @@ const AccessibilitySnapshotReportInputSchema = z.object({
 const AccessibilityEventReportInputSchema = z.object({
   sourceId: z.string(),
   capturedAt: UnixTimestampTextSchema,
-  provider: AccessibilityEventProviderSchema,
+  provider: AccessibilityEventProviderSchema.default('macos-ax-observer'),
   appBundleId: NullableStringSchema,
   pid: z.number().nullable().default(null).transform(value => value === null ? null : Math.trunc(value)),
   notification: z.string().trim().min(1).transform(value => boundedString(value, 160)),

@@ -117,7 +117,7 @@ async function createCliTuiSession(baseUrl: string, workspaceRoot: string) {
 }
 
 async function startServerApp(): Promise<{ app: ElysiaApp, baseUrl: string }> {
-  const app = await createServerApp()
+  const app = await createServerApp({ startBackgroundTasks: false })
   const port = await getAvailablePort()
   app.listen({ hostname: '127.0.0.1', port })
   return { app, baseUrl: `http://127.0.0.1:${port}` }

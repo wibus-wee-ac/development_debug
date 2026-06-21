@@ -33,7 +33,7 @@ import { z } from 'zod'
 
 import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
-import { runDreamSchedulerTick, runSlackSyncTick, stopActivityPipelineScheduler, stopDreamScheduler, stopSlackBackgroundSync } from '../src/modules/chronicle/service'
+import { runDreamSchedulerTick, stopActivityPipelineScheduler, stopDreamScheduler, stopSlackBackgroundSync } from '../src/modules/chronicle/service'
 
 const runEmbeddingBatchMock = vi.hoisted(() => vi.fn(() => {
   throw new Error('embedding runtime unavailable')
@@ -864,7 +864,7 @@ describe('chronicle module', () => {
       expect(frameResponse.headers.get('content-type')).toBe('image/jpeg')
       expect(await frameResponse.arrayBuffer()).toHaveProperty('byteLength', 4)
 
-      const activitySessionsResponse = await requestJson(app, '/api/activity/sessions?limit=5')
+      const activitySessionsResponse = await requestJson(app, '/chronicle/activity-sessions?limit=5')
       expect(activitySessionsResponse.status).toBe(200)
       const activitySessions = await activitySessionsResponse.json() as Array<{
         id: string
@@ -879,7 +879,7 @@ describe('chronicle module', () => {
       expect(activitySession?.segmentCount).toBeGreaterThanOrEqual(1)
       expect(activitySession?.frontApp).toBe('app.cradle.desktop')
 
-      const activitySessionResponse = await requestJson(app, `/api/activity/session/${snapshotActivitySegment!.sessionId}`)
+      const activitySessionResponse = await requestJson(app, `/chronicle/activity-sessions/${snapshotActivitySegment!.sessionId}`)
       expect(activitySessionResponse.status).toBe(200)
       const activitySessionDetail = await activitySessionResponse.json() as {
         id: string
@@ -889,7 +889,7 @@ describe('chronicle module', () => {
       expect(activitySessionDetail.segments.some(segment => segment.id === snapshotActivitySegment!.id)).toBe(true)
       expect(activitySessionDetail.segments.some(segment => segment.sourceRefs.snapshotIds?.includes(snapshot!.id))).toBe(true)
 
-      const activitySessionSnapshotsResponse = await requestJson(app, `/api/activity/session/${snapshotActivitySegment!.sessionId}/snapshots`)
+      const activitySessionSnapshotsResponse = await requestJson(app, `/chronicle/activity-sessions/${snapshotActivitySegment!.sessionId}/snapshots`)
       expect(activitySessionSnapshotsResponse.status).toBe(200)
       const activitySessionSnapshots = await activitySessionSnapshotsResponse.json() as Array<{
         id: string
@@ -900,7 +900,7 @@ describe('chronicle module', () => {
       }>
       expect(activitySessionSnapshots.some(entry => entry.id === snapshot!.id && entry.ocrText?.includes('TargetAlpha'))).toBe(true)
 
-      const activitySnapshotResponse = await requestJson(app, `/api/activity/snapshot/${snapshot!.id}`)
+      const activitySnapshotResponse = await requestJson(app, `/chronicle/activity-snapshots/${snapshot!.id}`)
       expect(activitySnapshotResponse.status).toBe(200)
       const activitySnapshot = await activitySnapshotResponse.json() as {
         id: string
@@ -917,7 +917,7 @@ describe('chronicle module', () => {
       expect(activitySnapshot.ocrText).toContain('TargetAlpha')
       expect(activitySnapshot.metadata.ocrPath).toBe('1/20260521100000/ocr-00007.json')
 
-      const activitySnapshotOcrResponse = await requestJson(app, `/api/activity/snapshot/${snapshot!.id}/ocr`)
+      const activitySnapshotOcrResponse = await requestJson(app, `/chronicle/activity-snapshots/${snapshot!.id}/ocr`)
       expect(activitySnapshotOcrResponse.status).toBe(200)
       expect(await activitySnapshotOcrResponse.json()).toEqual({
         snapshotId: snapshot!.id,
@@ -928,7 +928,7 @@ describe('chronicle module', () => {
         capturedAtUnix: 1779357600,
       })
 
-      const monitorStatusResponse = await requestJson(app, '/api/activity/monitor-status')
+      const monitorStatusResponse = await requestJson(app, '/chronicle/activity-monitor/status')
       expect(monitorStatusResponse.status).toBe(200)
       const monitorStatus = await monitorStatusResponse.json() as {
         enabled: boolean
@@ -956,7 +956,7 @@ describe('chronicle module', () => {
       expect(monitorStatus.enabled).toBe(false)
       expect(monitorStatus.monitorStatus).toBe('disabled')
       expect(monitorStatus.captureStatus).toBe('idle')
-      expect(monitorStatus.pipelineStatus).toBe('idle')
+      expect(monitorStatus.pipelineStatus).toBe('disabled')
       expect(monitorStatus.audioStatus).toBe('disabled')
       expect(monitorStatus.lastCaptureAtUnix).toBeGreaterThanOrEqual(1779357600)
       expect(monitorStatus.totals.snapshots).toBeGreaterThanOrEqual(1)
@@ -967,11 +967,11 @@ describe('chronicle module', () => {
       expect(monitorStatus.totals.audioTranscripts).toBeGreaterThanOrEqual(0)
       expect(monitorStatus.totals.audioRawSegments).toBeGreaterThanOrEqual(0)
       expect(monitorStatus.totals.memories).toBeGreaterThanOrEqual(0)
-      expect(monitorStatus.config.activityPipelineEnabled).toBe(true)
+      expect(monitorStatus.config.activityPipelineEnabled).toBe(false)
       expect(monitorStatus.config.audioCaptureEnabled).toBe(true)
       expect(monitorStatus.config.audioSource).toBe('microphone')
 
-      const storageStatsResponse = await requestJson(app, '/api/activity/storage-stats')
+      const storageStatsResponse = await requestJson(app, '/chronicle/activity-storage/stats')
       expect(storageStatsResponse.status).toBe(200)
       const storageStats = await storageStatsResponse.json() as {
         storageRoot: string
@@ -1728,8 +1728,11 @@ describe('chronicle module', () => {
       expect(source.botTokenRef).toBe(secret.id)
       expect(source.channelIds).toEqual(['C123'])
 
-      const tickResult = await runSlackSyncTick()
-      expect(tickResult).toEqual({ checked: 1, synced: 1, errors: 0 })
+      const initialSyncResponse = await requestJson(app, `/chronicle/message-sources/${source.id}/sync`, { method: 'POST' })
+      expect(initialSyncResponse.status).toBe(200)
+      const initialSyncBody = await initialSyncResponse.json() as { status: string, ingested: number }
+      expect(initialSyncBody.status).toBe('success')
+      expect(initialSyncBody.ingested).toBe(1)
 
       const duplicateSyncResponse = await requestJson(app, `/chronicle/message-sources/${source.id}/sync`, { method: 'POST' })
       expect(duplicateSyncResponse.status).toBe(200)
@@ -2029,7 +2032,7 @@ describe('chronicle module', () => {
       expect(db().select().from(chronicleKnowledgeCards).all()).toHaveLength(1)
       expect(db().select().from(chronicleKnowledgeVersions).where(eq(chronicleKnowledgeVersions.knowledgeId, knowledgeRows[0].id)).all()).toHaveLength(1)
 
-      const memoryStatusResponse = await requestJson(app, '/api/memory/status')
+      const memoryStatusResponse = await requestJson(app, '/chronicle/memory/status')
       expect(memoryStatusResponse.status).toBe(200)
       const memoryStatus = await memoryStatusResponse.json() as {
         totalMemories: number
@@ -2062,29 +2065,23 @@ describe('chronicle module', () => {
       expect(memoryStatus.searchIndex.keywordCount).toBe(memoryStatus.totalKeywords)
       expect(memoryStatus.searchIndex.embeddingCount).toBeGreaterThanOrEqual(0)
 
-      const memoryCrystallizeResponse = await requestJson(app, '/api/memory/crystallize', {
+      const memoryCrystallizeResponse = await requestJson(app, `/chronicle/activity-segments/${snapshotActivitySegment!.id}/crystallize`, {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
-        body: JSON.stringify({ segmentId: snapshotActivitySegment!.id }),
       })
       expect(memoryCrystallizeResponse.status).toBe(200)
       const memoryCrystallize = await memoryCrystallizeResponse.json() as {
         status: string
-        segmentId: string
-        result: {
-          status: string
-          knowledgeCards: Array<{ id: string }>
-          segment: { id: string, pipelineStatus: string, isCrystallized: boolean }
-          run: { stage: string, status: string }
-        }
+        knowledgeCards: Array<{ id: string }>
+        segment: { id: string, pipelineStatus: string, isCrystallized: boolean }
+        run: { stage: string, status: string }
       }
       expect(memoryCrystallize.status).toBe('success')
-      expect(memoryCrystallize.segmentId).toBe(snapshotActivitySegment!.id)
-      expect(memoryCrystallize.result.segment.id).toBe(snapshotActivitySegment!.id)
-      expect(memoryCrystallize.result.segment.pipelineStatus).toBe('crystallized')
-      expect(memoryCrystallize.result.segment.isCrystallized).toBe(true)
-      expect(memoryCrystallize.result.run.stage).toBe('crystallization')
-      expect(memoryCrystallize.result.knowledgeCards[0].id).toBe(knowledgeRows[0].id)
+      expect(memoryCrystallize.segment.id).toBe(snapshotActivitySegment!.id)
+      expect(memoryCrystallize.segment.pipelineStatus).toBe('crystallized')
+      expect(memoryCrystallize.segment.isCrystallized).toBe(true)
+      expect(memoryCrystallize.run.stage).toBe('crystallization')
+      expect(memoryCrystallize.knowledgeCards[0].id).toBe(knowledgeRows[0].id)
       expect(mockedGenerateText).toHaveBeenCalledTimes(3)
       expect(db().select().from(chronicleKnowledgeCards).all()).toHaveLength(1)
       expect(db().select().from(chronicleKnowledgeVersions).where(eq(chronicleKnowledgeVersions.knowledgeId, knowledgeRows[0].id)).all()).toHaveLength(1)

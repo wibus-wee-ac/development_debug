@@ -21,6 +21,8 @@ import { PtySocketHub } from './pty.socket'
 import { ptyTimeline } from './pty.timeline'
 
 const codexCaptureTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const shellLeaseTimers = new Map<string, ReturnType<typeof setTimeout>>()
+const shellSocketCounts = new Map<string, number>()
 const pendingTitleOscBuffers = new Map<string, string>()
 const CODEX_CAPTURE_ATTEMPTS = 12
 const CODEX_CAPTURE_RETRY_MS = 500
@@ -64,6 +66,51 @@ const ptyRuntime = new PtyRuntimeRegistry({
 })
 
 const ptySocketHub = new PtySocketHub(ptyRuntime, ptyTimeline)
+
+function shellLeaseMs(): number {
+  const parsed = Number(process.env.CRADLE_PTY_SHELL_LEASE_MS)
+  if (Number.isFinite(parsed) && parsed > 0) {
+    return parsed
+  }
+  return 30_000
+}
+
+function cancelShellLease(ptyId: string): void {
+  const timer = shellLeaseTimers.get(ptyId)
+  if (!timer) {
+    return
+  }
+  clearTimeout(timer)
+  shellLeaseTimers.delete(ptyId)
+}
+
+function scheduleShellLeaseExpiry(ptyId: string): void {
+  cancelShellLease(ptyId)
+  const timer = setTimeout(() => {
+    shellLeaseTimers.delete(ptyId)
+    if ((shellSocketCounts.get(ptyId) ?? 0) > 0) {
+      return
+    }
+    ptyRuntime.destroy(ptyId)
+  }, shellLeaseMs())
+  timer.unref?.()
+  shellLeaseTimers.set(ptyId, timer)
+}
+
+function attachShellSocket(ptyId: string): void {
+  cancelShellLease(ptyId)
+  shellSocketCounts.set(ptyId, (shellSocketCounts.get(ptyId) ?? 0) + 1)
+}
+
+function detachShellSocket(ptyId: string): void {
+  const nextCount = Math.max(0, (shellSocketCounts.get(ptyId) ?? 1) - 1)
+  if (nextCount > 0) {
+    shellSocketCounts.set(ptyId, nextCount)
+    return
+  }
+  shellSocketCounts.delete(ptyId)
+  scheduleShellLeaseExpiry(ptyId)
+}
 
 SessionService.onSessionCleanup((sessionId) => {
   cancelCodexSessionCapture(sessionId)
@@ -326,13 +373,17 @@ export function openShellSocket(input: {
   ws: PtyLiveSocket
 }): void {
   requireTimelineSession(input.ptyId, 'Shell session not found')
+  attachShellSocket(input.ptyId)
   ptySocketHub.open(input.ws, {
     channelId: input.ptyId,
     fromSeq: input.fromSeq,
+    onClose: () => detachShellSocket(input.ptyId),
   })
 }
 
 export function shellStop(ptyId: string): void {
+  cancelShellLease(ptyId)
+  shellSocketCounts.delete(ptyId)
   ptyRuntime.destroy(ptyId)
 }
 
@@ -346,6 +397,11 @@ export function shutdownPtyModule(): void {
     clearTimeout(timer)
   }
   codexCaptureTimers.clear()
+  for (const timer of shellLeaseTimers.values()) {
+    clearTimeout(timer)
+  }
+  shellLeaseTimers.clear()
+  shellSocketCounts.clear()
   ptySocketHub.clear()
   ptyRuntime.destroyAll()
   ptyTimeline.clear()

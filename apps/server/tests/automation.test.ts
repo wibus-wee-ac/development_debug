@@ -3,7 +3,7 @@ import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import { automationRuns, sessions, workspaces } from '@cradle/db'
+import { automationDefinitions, automationRuns, sessions, workspaces } from '@cradle/db'
 import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 import { z } from 'zod'
@@ -421,6 +421,9 @@ describe('automation capability', () => {
       await createAutomation(app)
 
       const now = Date.parse('2026-05-25T04:00:00.000Z') / 1000
+      db().update(automationDefinitions).set({
+        nextRunAt: 1779670800,
+      }).where(eq(automationDefinitions.id, 'automation-weekly-report')).run()
       const runs = Automation.enqueueDueRuns({
         now,
         lookbackSeconds: 60,

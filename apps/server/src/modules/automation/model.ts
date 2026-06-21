@@ -80,6 +80,14 @@ export const AutomationModel = {
     artifactId: t.String({ minLength: 1 }),
   }, { additionalProperties: false }),
 
+  cronJobIdParams: t.Object({
+    id: t.String({ minLength: 1 }),
+  }, { additionalProperties: false }),
+
+  cronRunsQuery: t.Object({
+    jobId: t.String({ minLength: 1 }),
+  }, { additionalProperties: false }),
+
   listQuery: t.Object({
     workspaceId: t.Optional(t.String({ minLength: 1 })),
     enabled: t.Optional(t.Boolean()),
@@ -104,6 +112,32 @@ export const AutomationModel = {
     recipe: t.Optional(recipeSchema),
     createdByKind: t.Optional(createdByKindSchema),
     createdById: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
+  }, { additionalProperties: false }),
+
+  cronCreateBody: t.Object({
+    id: t.String({ minLength: 1 }),
+    workspaceId: t.Optional(t.Nullable(t.String({ minLength: 1 }))),
+    title: t.String({ minLength: 1 }),
+    description: t.Optional(t.String()),
+    enabled: t.Optional(t.Boolean()),
+    scheduleKind: t.Literal('rrule'),
+    scheduleConfig: t.String({ minLength: 1 }),
+    timezone: t.String({ minLength: 1 }),
+    prompt: t.String({ minLength: 1 }),
+    providerTargetId: t.Optional(t.String({ minLength: 1 })),
+    modelId: t.Optional(t.String({ minLength: 1 })),
+  }, { additionalProperties: false }),
+
+  cronUpdateBody: t.Object({
+    title: t.Optional(t.String({ minLength: 1 })),
+    description: t.Optional(t.String()),
+    enabled: t.Optional(t.Boolean()),
+    scheduleKind: t.Optional(t.Literal('rrule')),
+    scheduleConfig: t.Optional(t.String({ minLength: 1 })),
+    timezone: t.Optional(t.String({ minLength: 1 })),
+    prompt: t.Optional(t.String({ minLength: 1 })),
+    providerTargetId: t.Optional(t.String({ minLength: 1 })),
+    modelId: t.Optional(t.String({ minLength: 1 })),
   }, { additionalProperties: false }),
 
   runNowBody: t.Object({

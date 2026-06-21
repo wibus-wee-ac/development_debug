@@ -304,6 +304,51 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
     query: t.Object({ limit: t.Optional(t.Number({ default: 20 })) }),
     response: { 200: t.Array(ChronicleModel.activitySegment) },
   })
+  .get('/activity-sessions', ({ query }) => Chronicle.listActivitySessions(query.limit), {
+    detail: {
+      'summary': 'List Chronicle activity sessions',
+      'tags': ['chronicle'],
+      'x-cradle-cli': { command: ['chronicle', 'activity-sessions', 'list'] },
+    },
+    query: t.Object({ limit: t.Optional(t.Number({ default: 20 })) }),
+    response: { 200: t.Array(ChronicleModel.activitySession) },
+  })
+  .get('/activity-sessions/:sessionId', ({ params }) => Chronicle.getActivitySession(params.sessionId), {
+    detail: {
+      'summary': 'Get a Chronicle activity session',
+      'tags': ['chronicle'],
+      'x-cradle-cli': { command: ['chronicle', 'activity-sessions', 'get'] },
+    },
+    params: t.Object({ sessionId: t.String({ minLength: 1 }) }),
+    response: { 200: ChronicleModel.activitySessionDetail },
+  })
+  .get('/activity-sessions/:sessionId/snapshots', ({ params }) => Chronicle.listActivitySessionSnapshots(params.sessionId), {
+    detail: {
+      'summary': 'List snapshots linked to a Chronicle activity session',
+      'tags': ['chronicle'],
+      'x-cradle-cli': { command: ['chronicle', 'activity-sessions', 'snapshots'] },
+    },
+    params: t.Object({ sessionId: t.String({ minLength: 1 }) }),
+    response: { 200: t.Array(ChronicleModel.activitySnapshot) },
+  })
+  .get('/activity-snapshots/:snapshotId', ({ params }) => Chronicle.getActivitySnapshot(params.snapshotId), {
+    detail: {
+      'summary': 'Get a Chronicle activity snapshot',
+      'tags': ['chronicle'],
+      'x-cradle-cli': { command: ['chronicle', 'activity-snapshots', 'get'] },
+    },
+    params: t.Object({ snapshotId: t.String({ minLength: 1 }) }),
+    response: { 200: ChronicleModel.activitySnapshot },
+  })
+  .get('/activity-snapshots/:snapshotId/ocr', ({ params }) => Chronicle.getActivitySnapshotOcr(params.snapshotId), {
+    detail: {
+      'summary': 'Get Chronicle activity snapshot OCR metadata',
+      'tags': ['chronicle'],
+      'x-cradle-cli': { command: ['chronicle', 'activity-snapshots', 'ocr'] },
+    },
+    params: t.Object({ snapshotId: t.String({ minLength: 1 }) }),
+    response: { 200: ChronicleModel.activitySnapshotOcr },
+  })
   .get('/activity-segments/:segmentId', ({ params }) => Chronicle.getActivitySegment(params.segmentId), {
     detail: {
       'summary': 'Get a Chronicle activity segment',
@@ -347,6 +392,30 @@ export const chronicle = new Elysia({ prefix: '/chronicle' })
       'x-cradle-cli': { command: ['chronicle', 'activity-pipeline', 'tick'] },
     },
     response: { 200: ChronicleModel.activityPipelineTickResponse },
+  })
+  .get('/activity-monitor/status', () => Chronicle.getActivityMonitorStatus(), {
+    detail: {
+      'summary': 'Get Chronicle activity monitor status',
+      'tags': ['chronicle'],
+      'x-cradle-cli': { command: ['chronicle', 'activity-monitor', 'status'] },
+    },
+    response: { 200: ChronicleModel.activityMonitorStatus },
+  })
+  .get('/activity-storage/stats', () => Chronicle.getActivityStorageStats(), {
+    detail: {
+      'summary': 'Get Chronicle activity storage stats',
+      'tags': ['chronicle'],
+      'x-cradle-cli': { command: ['chronicle', 'activity-storage', 'stats'] },
+    },
+    response: { 200: ChronicleModel.activityStorageStats },
+  })
+  .get('/memory/status', () => Chronicle.getMemoryStatus(), {
+    detail: {
+      'summary': 'Get Chronicle memory status',
+      'tags': ['chronicle'],
+      'x-cradle-cli': { command: ['chronicle', 'memory', 'status'] },
+    },
+    response: { 200: ChronicleModel.memoryStatus },
   })
   .get('/pipeline-runs', ({ query }) => Chronicle.listPipelineRuns(query.limit), {
     detail: {
