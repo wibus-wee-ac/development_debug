@@ -12,7 +12,7 @@ const SPRING_SOFT = { type: 'spring', stiffness: 150, damping: 24 } as const
 // Smooth-in-out for the shimmer sweep — Material standard ease.
 const SHIMMER_EASE = [0.4, 0, 0.2, 1] as const
 
-const CRADLE_ICON_URL = '/icon.png'
+const CRADLE_ICON_URL = './icon.png'
 
 // AE-style narrative timeline (overlapping for continuous flow):
 //   0.2s  ─ icon materialises large in centre (slow spring settle ~1.3s)
