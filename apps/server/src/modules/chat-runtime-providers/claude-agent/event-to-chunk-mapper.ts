@@ -359,6 +359,7 @@ async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState):
                 ? createClaudeAgentSubagentOutput(subagentMessage, b.content ?? output)
                 : output,
             })
+            chunks.push(...projectClaudeToolResultImageFileChunks(normalizedOutput))
           }
         }
       }
@@ -881,6 +882,37 @@ function normalizeToolResultContent(content: unknown): unknown {
     }
   }
   return String(content)
+}
+
+function projectClaudeToolResultImageFileChunks(content: unknown): UIMessageChunk[] {
+  const blocks = Array.isArray(content) ? content : [content]
+  return blocks.flatMap(projectClaudeToolResultImageFileChunk)
+}
+
+function projectClaudeToolResultImageFileChunk(block: unknown): UIMessageChunk[] {
+  if (!isRecord(block) || block.type !== 'image') {
+    return []
+  }
+  const source = isRecord(block.source) ? block.source : null
+  if (!source) {
+    return []
+  }
+
+  switch (source.type) {
+    case 'base64': {
+      const mediaType = typeof source.media_type === 'string' ? source.media_type : null
+      const data = typeof source.data === 'string' ? source.data : null
+      return mediaType && data
+        ? [{ type: 'file', mediaType, url: `data:${mediaType};base64,${data}` }]
+        : []
+    }
+    case 'url': {
+      const url = typeof source.url === 'string' ? source.url : null
+      return url ? [{ type: 'file', mediaType: 'image/*', url }] : []
+    }
+    default:
+      return []
+  }
 }
 
 function normalizeToolErrorText(output: unknown): string {

@@ -8,6 +8,7 @@ import type { UIMessageChunk } from 'ai'
 
 import type { BoundedTextCollector } from '../../bounded-text-collector'
 import { createBoundedTextCollector } from '../../bounded-text-collector'
+import type { ResponseItem as CodexResponseItem } from '../app-server-protocol/ResponseItem'
 import { isCodexAppServerToolApprovalRequest } from '../app-server/server-request-methods'
 import type { CodexAppServerItem } from '../tools/mapper'
 import {
@@ -29,6 +30,7 @@ export interface CodexAppServerMapperState {
   startedToolItemIds: Set<string>
   startedAgentMessageIds: Set<string>
   pendingServerRequestIds: Set<number>
+  emittedImageFileItemIds: Set<string>
   synthesizePlanImplementationRequest: boolean
   lastCompletedPlan: CodexCompletedPlan | null
   emittedPlanImplementationTurnIds: Set<string>
@@ -55,7 +57,7 @@ interface DeltaNotificationParams {
 interface RawResponseItemCompletedParams {
   threadId?: string
   turnId?: string
-  item?: unknown
+  item?: CodexResponseItem
 }
 
 interface ServerRequestHandledParams {
@@ -104,6 +106,7 @@ export function createCodexAppServerMapperState(
     startedToolItemIds: new Set(),
     startedAgentMessageIds: new Set(),
     pendingServerRequestIds: new Set(),
+    emittedImageFileItemIds: new Set(),
     synthesizePlanImplementationRequest: options.synthesizePlanImplementationRequest === true,
     lastCompletedPlan: null,
     emittedPlanImplementationTurnIds: new Set(),
@@ -120,7 +123,7 @@ export function mapCodexAppServerNotificationToChunks(
     case 'item/completed':
       return mapCompletedItem(notification.params, state)
     case 'rawResponseItem/completed':
-      return mapRawResponseItemCompleted(notification.params)
+      return mapRawResponseItemCompleted(notification.params, state)
     case 'turn/completed':
       return mapCompletedTurn(notification.params, state)
     case 'turn/moderationMetadata':
@@ -186,6 +189,8 @@ function mapStartedItem(rawParams: unknown, state: CodexAppServerMapperState): U
     case 'collabAgentToolCall':
     case 'webSearch':
     case 'plan':
+    case 'imageView':
+    case 'imageGeneration':
     case 'contextCompaction':
       return mapStartedToolItem(item, state)
     default:
@@ -232,6 +237,8 @@ function mapCompletedItem(rawParams: unknown, state: CodexAppServerMapperState):
     case 'collabAgentToolCall':
     case 'webSearch':
     case 'plan':
+    case 'imageView':
+    case 'imageGeneration':
     case 'contextCompaction':
       recordCompletedPlan(item, params.turnId, state)
       return mapCompletedToolItem(item, state)
@@ -295,7 +302,7 @@ function mapCompletedToolItem(item: CodexAppServerItem, state: CodexAppServerMap
   if (errorText) {
     return [{ type: 'tool-output-error', toolCallId: item.id, errorText }]
   }
-  return [{
+  const chunks: UIMessageChunk[] = [{
     type: 'tool-output-available',
     toolCallId: item.id,
     output: buildCodexToolOutput(
@@ -305,6 +312,59 @@ function mapCompletedToolItem(item: CodexAppServerItem, state: CodexAppServerMap
       state.toolArgsById.get(item.id),
     ),
   }]
+  const imageChunk = projectCodexImageFileChunk(item)
+  if (imageChunk && !state.emittedImageFileItemIds.has(item.id)) {
+    state.emittedImageFileItemIds.add(item.id)
+    chunks.push(imageChunk)
+  }
+  return chunks
+}
+
+function projectCodexImageFileChunk(item: CodexAppServerItem): UIMessageChunk | null {
+  switch (item.type) {
+    case 'imageGeneration':
+      return projectCodexImageGenerationFileChunk(item)
+    case 'imageView':
+      return projectCodexImageViewFileChunk(item)
+    default:
+      return null
+  }
+}
+
+function projectCodexImageGenerationFileChunk(item: CodexAppServerItem): UIMessageChunk | null {
+  const savedPath = (item as { savedPath?: string | null }).savedPath
+  if (savedPath) {
+    return { type: 'file', mediaType: 'image/*', url: `file://${savedPath}` }
+  }
+  const result = (item as { result?: string | null }).result
+  return projectImageResultStringFileChunk(result)
+}
+
+function projectCodexImageViewFileChunk(item: CodexAppServerItem): UIMessageChunk | null {
+  const path = (item as { path?: string | null }).path
+  return path ? { type: 'file', mediaType: 'image/*', url: `file://${path}` } : null
+}
+
+function readImageDataUrlMediaType(value: string | null | undefined): string | null {
+  if (!value) {
+    return null
+  }
+  const match = /^data:(image\/[a-z0-9.+-]+);base64,/i.exec(value)
+  return match?.[1] ?? null
+}
+
+function projectImageResultStringFileChunk(value: string | null | undefined): UIMessageChunk | null {
+  if (!value) {
+    return null
+  }
+  const mediaType = readImageDataUrlMediaType(value)
+  if (mediaType) {
+    return { type: 'file', mediaType, url: value }
+  }
+  if (/^https?:\/\//i.test(value)) {
+    return { type: 'file', mediaType: 'image/*', url: value }
+  }
+  return { type: 'file', mediaType: 'image/png', url: `data:image/png;base64,${value}` }
 }
 
 function mapAgentMessageDelta(rawParams: unknown, state: CodexAppServerMapperState): UIMessageChunk[] {
@@ -325,12 +385,12 @@ function mapAgentMessageDelta(rawParams: unknown, state: CodexAppServerMapperSta
   return chunks
 }
 
-function mapRawResponseItemCompleted(rawParams: unknown): UIMessageChunk[] {
+function mapRawResponseItemCompleted(rawParams: unknown, state: CodexAppServerMapperState): UIMessageChunk[] {
   const params = rawParams as RawResponseItemCompletedParams
   if (!params.threadId || !params.turnId || params.item === undefined) {
     return []
   }
-  return [{
+  const chunks: UIMessageChunk[] = [{
     type: 'message-metadata',
     messageMetadata: {
       codex: {
@@ -342,6 +402,15 @@ function mapRawResponseItemCompleted(rawParams: unknown): UIMessageChunk[] {
       },
     },
   }]
+  const item = params.item
+  if (item.type === 'image_generation_call' && !state.emittedImageFileItemIds.has(item.id)) {
+    const imageChunk = projectImageResultStringFileChunk(item.result)
+    if (imageChunk) {
+      state.emittedImageFileItemIds.add(item.id)
+      chunks.push(imageChunk)
+    }
+  }
+  return chunks
 }
 
 function mapTurnModerationMetadata(rawParams: unknown): UIMessageChunk[] {

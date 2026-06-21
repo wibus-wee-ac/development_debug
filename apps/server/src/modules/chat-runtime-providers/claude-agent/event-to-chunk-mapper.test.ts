@@ -272,6 +272,72 @@ describe('mapClaudeAgentMessageToChunks', () => {
     ])
   })
 
+  it('projects Claude tool result image content blocks as renderable file chunks', async () => {
+    const state = createClaudeAgentChunkMapperState('text-1')
+    const imageBlock = {
+      type: 'image',
+      source: {
+        type: 'base64',
+        media_type: 'image/png',
+        data: 'image-data',
+      },
+    }
+
+    await mapClaudeAgentMessageToChunks({
+      type: 'assistant',
+      session_id: 'claude-session-image-output',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_read_1',
+            name: 'Read',
+            input: { file_path: '/tmp/chart.png' },
+          },
+        ],
+      },
+    } as unknown as SDKMessage, state)
+
+    const result = await mapClaudeAgentMessageToChunks({
+      type: 'user',
+      session_id: 'claude-session-image-output',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_read_1',
+            content: [
+              { type: 'text', text: 'Rendered chart' },
+              imageBlock,
+            ],
+          },
+        ],
+      },
+    } as unknown as SDKMessage, state)
+
+    expect(result.chunks).toEqual([
+      {
+        type: 'tool-output-available',
+        toolCallId: 'toolu_read_1',
+        output: {
+          type: 'cradle.builtin-tool-call.result.v1',
+          identifier: 'claude-code',
+          apiName: 'Read',
+          args: { file_path: '/tmp/chart.png' },
+          result: [
+            { type: 'text', text: 'Rendered chart' },
+            imageBlock,
+          ],
+        },
+      },
+      {
+        type: 'file',
+        mediaType: 'image/png',
+        url: 'data:image/png;base64,image-data',
+      },
+    ])
+  })
+
   it('throttles preliminary subagent snapshots while keeping the terminal output complete', async () => {
     const state = createClaudeAgentChunkMapperState('text-1')
     const emittedPreliminaryOutputs: unknown[] = []
