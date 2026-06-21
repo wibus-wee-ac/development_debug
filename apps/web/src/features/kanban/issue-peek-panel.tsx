@@ -1,9 +1,9 @@
-import { StaticRender } from '@cradle/streamdown'
 import type { TFunction } from 'i18next'
 import { CloseLine as XIcon } from '@mingcute/react'
 import { AnimatePresence, m } from 'motion/react'
 import { useTranslation } from 'react-i18next'
 
+import { AssetMarkdown } from '~/features/assets/asset-markdown'
 import { useWorkspaces } from '~/features/workspace/use-workspace'
 import type { KanbanBoardIssue, KanbanStatus } from '~/features/kanban/types'
 import { isExternalKanbanIssue } from '~/features/kanban/types'
@@ -142,7 +142,7 @@ function IssuePeekContent({
       {issue.description && (
         <div className="px-4 py-1 max-h-80 overflow-y-auto mask-[linear-gradient(to_bottom,transparent_0,black_8px,black_calc(100%-12px),transparent_100%)] scrollbar-thin scrollbar-thumb-border scrollbar-track-transparent">
           <div className="py-1 h-full text-muted-foreground leading-relaxed **:text-sm **:leading-relaxed">
-            <StaticRender content={issue.description} />
+            <AssetMarkdown content={issue.description} />
           </div>
         </div>
       )}

@@ -1,18 +1,21 @@
-import { StaticRender } from '@cradle/streamdown'
 import type { TFunction } from 'i18next'
 import {
   AddCircleLine as CirclePlusIcon,
   GitBranchLine as GitBranchIcon,
+  PicLine as PicIcon,
   SparklesLine as SparklesIcon,
   DeleteLine as Trash2Icon,
   UserFollowLine as UserRoundCheckIcon,
   UserRemoveLine as UserRoundMinusIcon
 } from '@mingcute/react'
 import type { ElementType, ReactNode } from 'react'
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
+import { toastManager } from '~/components/ui/toast'
+import { AssetMarkdown, toAssetImageMarkdown } from '~/features/assets/asset-markdown'
+import { useUploadAsset } from '~/features/assets/use-upload-asset'
 import type {
   IssueActivityAction,
   IssueActivityField,
@@ -28,17 +31,47 @@ import { useAddComment, useDeleteComment, useIssueActivity } from '../use-kanban
 
 interface ActivityTimelineProps {
   issueId: string
+  workspaceId?: string | null
   readOnly?: boolean
 }
 
 type KanbanTranslation = TFunction<'kanban'>
 type KanbanKey = keyof typeof import('~/locales/default').default.kanban
 
-export const ActivityTimeline = ({ issueId, readOnly = false }: ActivityTimelineProps) => {
+const COMMENT_IMAGE_ACCEPT = 'image/png,image/jpeg,image/webp'
+const COMMENT_IMAGE_MIME_TYPES = new Set(['image/png', 'image/jpeg', 'image/webp'])
+
+function collectCommentImageFiles(files: FileList | File[] | null | undefined): File[] {
+  if (!files) {
+    return []
+  }
+  return Array.from(files).filter(file => COMMENT_IMAGE_MIME_TYPES.has(file.type))
+}
+
+function appendMarkdownBlock(current: string, block: string): string {
+  if (!current.trim()) {
+    return block
+  }
+  if (current.endsWith('\n\n')) {
+    return `${current}${block}`
+  }
+  if (current.endsWith('\n')) {
+    return `${current}\n${block}`
+  }
+  return `${current}\n\n${block}`
+}
+
+export const ActivityTimeline = ({
+  issueId,
+  workspaceId = null,
+  readOnly = false,
+}: ActivityTimelineProps) => {
   const { t } = useTranslation('kanban')
   const { data: activity = [] } = useIssueActivity(issueId, !readOnly)
   const addComment = useAddComment()
   const deleteComment = useDeleteComment()
+  const assetUpload = useUploadAsset({ workspaceId })
+  const imageInputRef = useRef<HTMLInputElement>(null)
   const [commentText, setCommentText] = useState('')
   const timelineItems = activity.toSorted((left, right) => left.createdAt - right.createdAt)
 
@@ -59,6 +92,33 @@ export const ActivityTimeline = ({ issueId, readOnly = false }: ActivityTimeline
       return
     }
     deleteComment.mutate({ id: commentId, issueId })
+  }
+
+  const handleUploadImages = async (files: FileList | File[] | null | undefined) => {
+    if (readOnly) {
+      return false
+    }
+
+    const imageFiles = collectCommentImageFiles(files)
+    if (imageFiles.length === 0) {
+      return false
+    }
+
+    try {
+      for (const file of imageFiles) {
+        const asset = await assetUpload.upload(file)
+        setCommentText(current => appendMarkdownBlock(current, toAssetImageMarkdown(asset)))
+      }
+    }
+    catch (error) {
+      toastManager.add({
+        type: 'error',
+        title: 'Image upload failed',
+        description: error instanceof Error ? error.message : 'Could not upload image asset.',
+      })
+    }
+
+    return true
   }
 
   return (
@@ -86,6 +146,13 @@ export const ActivityTimeline = ({ issueId, readOnly = false }: ActivityTimeline
           value={commentText}
           aria-label={t('issue.comment.placeholder')}
           onChange={e => setCommentText(e.target.value)}
+          onPaste={(event) => {
+            const imageFiles = collectCommentImageFiles(event.clipboardData.files)
+            if (imageFiles.length > 0) {
+              event.preventDefault()
+              void handleUploadImages(imageFiles)
+            }
+          }}
           onKeyDown={(e) => {
             if (e.key === 'Enter' && (e.metaKey || e.ctrlKey)) {
               e.preventDefault()
@@ -105,16 +172,40 @@ export const ActivityTimeline = ({ issueId, readOnly = false }: ActivityTimeline
           <span className="text-[11px] text-text-dim">
             {t('issue.comment.submitHint', { shortcut: '⌘↵' })}
           </span>
-          <Button
-            variant="ghost"
-            size="sm"
-            className="h-6 text-[12px]"
-            onClick={handleSubmit}
-            disabled={readOnly || !commentText.trim()}
-            data-testid="issue-comment-submit"
-          >
-            {t('issue.comment.submit')}
-          </Button>
+          <div className="flex items-center gap-1">
+            <input
+              ref={imageInputRef}
+              type="file"
+              accept={COMMENT_IMAGE_ACCEPT}
+              multiple
+              className="hidden"
+              onChange={(event) => {
+                void handleUploadImages(event.currentTarget.files)
+                event.currentTarget.value = ''
+              }}
+            />
+            <Button
+              type="button"
+              variant="ghost"
+              size="icon-xs"
+              aria-label="Attach image"
+              title="Attach image"
+              disabled={readOnly || assetUpload.isUploading}
+              onClick={() => imageInputRef.current?.click()}
+            >
+              <PicIcon className="size-3.5" aria-hidden="true" />
+            </Button>
+            <Button
+              variant="ghost"
+              size="sm"
+              className="h-6 text-[12px]"
+              onClick={handleSubmit}
+              disabled={readOnly || !commentText.trim()}
+              data-testid="issue-comment-submit"
+            >
+              {t('issue.comment.submit')}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
@@ -308,7 +399,7 @@ const CommentItem = ({
             </button>
           )}
         </div>
-        <StaticRender
+        <AssetMarkdown
           content={comment.content}
           className={cn(
             'mt-1 min-w-0 text-[13px] leading-relaxed text-foreground/90 !tracking-normal',

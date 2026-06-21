@@ -3,6 +3,7 @@ import { z } from 'zod'
 
 import { getIssuesSearch, getSessionsByIdMessages } from '~/api-gen/sdk.gen'
 import { MarkdownEditor } from '~/components/editor/markdown-editor'
+import { useUploadAsset } from '~/features/assets/use-upload-asset'
 import type {
   SmartMentionAttrs,
   SmartMentionItem,
@@ -179,6 +180,7 @@ export function IssueDescription({ issue, onUpdate, readOnly = false }: IssueDes
   const { data: boards = [] } = useAllBoards()
   const setSettingsSection = useSettingsOverlayStore(s => s.setSettingsSection)
   const setAgentFocusTarget = useSettingsOverlayStore(s => s.setAgentFocusTarget)
+  const assetUpload = useUploadAsset({ workspaceId: issue.workspaceId })
 
   const sessionMessageCounts = useQueries({
     queries: sessions.slice(0, 20).map(session => ({
@@ -407,6 +409,7 @@ export function IssueDescription({ issue, onUpdate, readOnly = false }: IssueDes
         }}
         readonly={readOnly}
         placeholder="Add description..."
+        assetImages={readOnly ? undefined : { upload: assetUpload.upload }}
         smartMentions={{
           getItems: getMentionItems,
           onOpen: handleMentionOpen,

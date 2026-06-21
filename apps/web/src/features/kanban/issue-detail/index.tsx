@@ -213,7 +213,7 @@ export function IssueDetail({
             </div>
 
             <div className="mt-8">
-              <ActivityTimeline issueId={issueId} readOnly={readOnly} />
+              <ActivityTimeline issueId={issueId} workspaceId={workspaceId} readOnly={readOnly} />
             </div>
           </div>
         </div>

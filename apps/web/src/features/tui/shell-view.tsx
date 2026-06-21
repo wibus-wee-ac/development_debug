@@ -1,5 +1,3 @@
-import '@xterm/xterm/css/xterm.css'
-
 import { ClipboardAddon } from '@xterm/addon-clipboard'
 import { FitAddon } from '@xterm/addon-fit'
 import { ImageAddon } from '@xterm/addon-image'

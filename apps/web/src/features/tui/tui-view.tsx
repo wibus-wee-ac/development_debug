@@ -4,8 +4,6 @@
 // On unmount: dispose xterm instance and close the socket — PTY keeps running.
 // PTY is only stopped when the session is explicitly deleted.
 
-import '@xterm/xterm/css/xterm.css'
-
 import { FitAddon } from '@xterm/addon-fit'
 import { WebglAddon } from '@xterm/addon-webgl'
 import { Terminal } from '@xterm/xterm'

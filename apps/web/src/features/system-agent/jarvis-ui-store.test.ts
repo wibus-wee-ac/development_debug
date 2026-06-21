@@ -28,6 +28,13 @@ class FakeBroadcastChannel {
     }
   }
 
+  addEventListener(type: string, listener: BroadcastListener) {
+    if (type !== 'message') {
+      return
+    }
+    this.onmessage = listener
+  }
+
   close() {
     FakeBroadcastChannel.channels.get(this.name)?.delete(this)
   }
