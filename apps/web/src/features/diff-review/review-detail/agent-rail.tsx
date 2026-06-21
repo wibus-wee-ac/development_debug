@@ -3,9 +3,9 @@ import {
   CloseLine as XIcon,
   DeleteLine as TrashIcon,
   LoadingLine as Loader2Icon,
+  Message3Line as MessageCircleIcon,
   PlayCircleLine as PlayCircleIcon,
   Refresh1Line as RefreshCwIcon,
-  Message3Line as MessageCircleIcon,
   RobotLine as BotIcon,
   Settings3Line as SettingsIcon,
 } from '@mingcute/react'
@@ -114,14 +114,10 @@ export function AgentRail({
       if (!created) {
         throw new Error('Agent work order was not created')
       }
-      const startedReview = await onStart({
+      await onStart({
         agentFixId: created.id,
         agentId,
       })
-      const started = startedReview.agentFixes.find(fix => fix.id === created.id)
-      if (started?.sessionId) {
-        openChatSession(started.sessionId)
-      }
       setInstruction('')
     }
     catch (err) {
