@@ -181,7 +181,6 @@ const config = {
     ...(hasAppleSigningIdentity ? {} : { identity: null }),
     target: [
       'dmg',
-      'zip',
     ],
   },
 
