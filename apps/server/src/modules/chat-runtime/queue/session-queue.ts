@@ -49,7 +49,7 @@ export interface EnqueueSessionQueueItemInput {
   files?: FileUIPart[]
   contextParts?: ChatContextPart[]
   providerTargetId?: string
-  modelId?: string
+  modelId?: string | null
   thinkingEffort?: PersistedThinkingEffort
   runtimeSettings?: ChatRuntimeSettingsPatch
 }

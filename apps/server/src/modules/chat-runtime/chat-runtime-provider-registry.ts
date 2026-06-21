@@ -2,6 +2,7 @@ import fs from 'node:fs'
 import path from 'node:path'
 
 import { createChildLogger } from '../../logging/logger'
+import { getPluginSkillProjectionSources, getPluginSkillRegistryVersion } from '../../plugins/skill-registry'
 import { createAcpProvider } from '../chat-runtime-providers/acp/provider'
 import { createClaudeAgentProvider } from '../chat-runtime-providers/claude-agent/provider'
 import { createCodexProvider } from '../chat-runtime-providers/codex/provider'
@@ -15,6 +16,7 @@ import { registerRuntimeProviderKinds } from '../provider-contracts/runtime-comp
 import type { RuntimeKind } from '../provider-contracts/types'
 import { resolveProviderTargetForRuntime } from '../provider-targets/service'
 import * as Secrets from '../secrets/service'
+import { resolveNativeSkillPackageDir } from '../skills/native-skill-projection'
 import { resolveScopeRoot } from '../skills/skills-paths'
 import { requestRuntimeToolApproval } from './pending-tool-approval'
 import { requestRuntimeUserInput } from './pending-user-input'
@@ -26,6 +28,7 @@ import type {
   ProviderContext,
   ProviderHealthStatus,
 } from './runtime-provider-types'
+import { updateSessionRuntimeSettings as updateChatSessionRuntimeSettings } from './runtime-settings-api'
 
 const SKILL_PATH_CACHE_TTL_MS = 30_000
 
@@ -56,6 +59,7 @@ const CATALOG_ONLY_BUILTIN_RUNTIME_KINDS = new Set<RuntimeKind>(
 interface SkillPathCacheEntry {
   paths: string[]
   expiresAt: number
+  pluginSkillRegistryVersion: number
 }
 
 export class RuntimeRegistry {
@@ -258,8 +262,9 @@ const skillPathCache = new Map<string, SkillPathCacheEntry>()
 /** Resolve all skill folder paths that should be given to a runtime for a workspace. */
 export function resolveRuntimeSkillPaths(workspacePath: string): string[] {
   const now = Date.now()
+  const pluginSkillRegistryVersion = getPluginSkillRegistryVersion()
   const cached = skillPathCache.get(workspacePath)
-  if (cached && cached.expiresAt > now) {
+  if (cached && cached.expiresAt > now && cached.pluginSkillRegistryVersion === pluginSkillRegistryVersion) {
     return [...cached.paths]
   }
 
@@ -268,6 +273,15 @@ export function resolveRuntimeSkillPaths(workspacePath: string): string[] {
     resolveScopeRoot('workspace', { workspacePath }),
   ]
   const paths: string[] = []
+  const seenPaths = new Set<string>()
+  const pushPath = (skillDir: string): void => {
+    if (seenPaths.has(skillDir)) {
+      return
+    }
+    seenPaths.add(skillDir)
+    paths.push(skillDir)
+  }
+
   for (const root of roots) {
     if (!fs.existsSync(root)) {
       continue
@@ -278,13 +292,24 @@ export function resolveRuntimeSkillPaths(workspacePath: string): string[] {
       }
       const skillDir = path.join(root, entry.name)
       if (fs.existsSync(path.join(skillDir, 'SKILL.md'))) {
-        paths.push(skillDir)
+        pushPath(skillDir)
       }
     }
   }
+
+  for (const source of getPluginSkillProjectionSources()) {
+    try {
+      pushPath(resolveNativeSkillPackageDir(source.skillFile))
+    }
+    catch {
+      // Invalid plugin skill packages are ignored here; native projection reports conflicts separately.
+    }
+  }
+
   skillPathCache.set(workspacePath, {
     paths,
     expiresAt: now + SKILL_PATH_CACHE_TTL_MS,
+    pluginSkillRegistryVersion,
   })
   return [...paths]
 }
@@ -297,6 +322,9 @@ function createProviderContext(): ProviderContext {
     readSecretValueWithMetadata: ref => Secrets.readSecretValueWithMetadata(ref),
     updateSecret: (ref, val) => Secrets.updateSecretValue(ref, val),
     resolveSkillPaths: resolveRuntimeSkillPaths,
+    updateSessionRuntimeSettings: async (input) => {
+      await updateChatSessionRuntimeSettings(input)
+    },
     requestUserInput: requestRuntimeUserInput,
     requestToolApproval: requestRuntimeToolApproval,
     recordObservability,

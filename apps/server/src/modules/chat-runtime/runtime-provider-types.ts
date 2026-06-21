@@ -594,6 +594,10 @@ export interface ProviderContext {
   readSecretValueWithMetadata?: (credentialRef: string) => SecretValueWithMetadata
   updateSecret?: (credentialRef: string, value: string) => void
   resolveSkillPaths?: (workspacePath: string) => string[]
+  updateSessionRuntimeSettings?: (input: {
+    sessionId: string
+    patch: ChatRuntimeSettingsPatch
+  }) => Promise<void>
   requestUserInput?: (input: RuntimeUserInputRequest) => Promise<RuntimeUserInputResolution>
   requestToolApproval?: (input: RuntimeToolApprovalRequest) => Promise<RuntimeToolApprovalResolution>
   recordObservability?: (input: CreateEventInput) => void
@@ -780,7 +784,7 @@ export interface StartChatSessionInput {
   profile: RuntimeProviderTargetProfile
   workspacePath: string
   agentId?: string | null
-  modelId?: string
+  modelId?: string | null
   previousProviderStateSnapshot?: string | null
 }
 
@@ -789,7 +793,7 @@ export interface ResumeChatSessionInput {
   profile: RuntimeProviderTargetProfile
   workspacePath: string
   agentId?: string | null
-  modelId?: string
+  modelId?: string | null
 }
 
 export interface ForkRuntimeSessionInput {
@@ -799,7 +803,7 @@ export interface ForkRuntimeSessionInput {
   workspaceId?: string | null
   workspacePath: string
   agentId?: string | null
-  modelId?: string
+  modelId?: string | null
   systemPrompt?: string
 }
 
@@ -820,7 +824,7 @@ export interface StreamTurnInput {
   transcript?: CradleTurnTranscript
   originalMessages?: UIMessage[]
   responseMessageId?: string
-  modelId?: string
+  modelId?: string | null
   workspaceId?: string | null
   workspacePath?: string
   agentId?: string | null
@@ -979,7 +983,7 @@ export interface ExecuteShellCommandInput {
   workspaceId?: string | null
   workspacePath: string
   agentId?: string | null
-  modelId?: string
+  modelId?: string | null
   command: string
   signal?: AbortSignal
 }
@@ -1000,7 +1004,7 @@ export interface GetCapabilitiesInput {
   workspaceId?: string | null
   workspacePath: string
   agentId?: string | null
-  modelId?: string
+  modelId?: string | null
   systemPrompt?: string
 }
 

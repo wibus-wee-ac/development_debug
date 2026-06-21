@@ -755,6 +755,7 @@ const thinkingEffortSchema = t.Union([
   t.Literal('high'),
   t.Literal('xhigh')
 ])
+const nullableModelIdSchema = t.Union([t.String(), t.Null()])
 
 const queueItemSchema = t.Object({
   id: t.String(),
@@ -1008,7 +1009,7 @@ export const ChatRuntimeModel = {
     contextParts: t.Optional(t.Array(contextPartSchema)),
     messages: t.Optional(t.Array(uiMessageSchema)),
     providerTargetId: t.Optional(t.String()),
-    modelId: t.Optional(t.String()),
+    modelId: t.Optional(nullableModelIdSchema),
     thinkingEffort: t.Optional(thinkingEffortSchema),
     runtimeSettings: t.Optional(runtimeSettingsPatchSchema)
   }),
@@ -1019,7 +1020,7 @@ export const ChatRuntimeModel = {
 
   sideChatBody: t.Object({
     providerTargetId: t.Optional(t.String()),
-    modelId: t.Optional(t.String())
+    modelId: t.Optional(nullableModelIdSchema)
   }),
 
   quickQuestionBody: t.Object({
@@ -1247,7 +1248,7 @@ export const ChatRuntimeModel = {
     files: t.Optional(t.Array(filePartSchema)),
     contextParts: t.Optional(t.Array(contextPartSchema)),
     providerTargetId: t.Optional(t.String()),
-    modelId: t.Optional(t.String()),
+    modelId: t.Optional(nullableModelIdSchema),
     thinkingEffort: t.Optional(thinkingEffortSchema),
     runtimeSettings: t.Optional(runtimeSettingsPatchSchema)
   }),

@@ -11,6 +11,7 @@ import { automation } from './modules/automation'
 import { assets } from './modules/assets'
 import { chatRuntime } from './modules/chat-runtime'
 import { chronicle } from './modules/chronicle'
+import { conversationBridge } from './modules/conversation-bridge'
 import { desktop } from './modules/desktop'
 import { diffReview } from './modules/diff-review'
 import { externalIssueSources } from './modules/external-issue-sources'
@@ -143,6 +144,7 @@ export async function createServerContractApp(options: CreateServerContractAppOp
   app.use(diffReview)
   app.use(acp)
   app.use(chatRuntime)
+  app.use(conversationBridge)
   app.use(chronicle)
   app.use(agentInteractionRuntime)
   app.use(desktop)
@@ -174,6 +176,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     { providerRuntimeHostManager },
     { clearSideConversations },
     { activateServerPlugins, deactivateAllPlugins },
+    conversationBridgeSupervisor,
     { destroyWorkspaceFileIndexes },
   ] = await Promise.all([
     import('./infra'),
@@ -186,6 +189,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     import('./modules/provider-runtime/host-manager'),
     import('./modules/provider-runtime/side-conversation-registry'),
     import('./plugins/loader'),
+    import('./modules/conversation-bridge/runtime-supervisor'),
     import('./modules/workspace/files'),
   ])
   if (recoverPersistedRunsOnCreate) {
@@ -201,6 +205,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
   app.onStop([
     () => flushAllActiveRunSnapshots(),
     () => clearSideConversations(),
+    () => conversationBridgeSupervisor.stopAllConversationBridgeConnections(),
     () => deactivateAllPlugins(),
     () => providerRuntimeHostManager.shutdown(),
     () => chronicleService.stopActivityPipelineScheduler(),
@@ -235,6 +240,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
       chronicleService.startSlackBackgroundSync()
     }
     providerRuntimeHostManager.startReaper()
+    void conversationBridgeSupervisor.startEnabledConversationBridgeConnections()
   }
 
   return app

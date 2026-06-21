@@ -22,7 +22,7 @@ const sideChatLogger = createChildLogger({ module: 'chat-runtime.side-chat' })
 export interface CreateSideChatInput {
   parentSessionId: string
   providerTargetId?: string
-  modelId?: string
+  modelId?: string | null
 }
 
 export interface SideChatSessionDto {
@@ -169,7 +169,7 @@ async function resolveParentRuntimeSessionForSide(input: {
   context: SideChatRunContext
   runtimeKind: RuntimeKind
   runtime: ChatRuntime
-  modelId?: string
+  modelId?: string | null
   deps: CreateSideChatDeps
 }): Promise<{
   runtimeSession: RuntimeSession | null

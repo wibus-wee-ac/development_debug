@@ -1429,7 +1429,7 @@ export async function createRun(input: {
   contextParts?: ChatContextPart[]
   messages?: UIMessage[]
   providerTargetId?: string
-  modelId?: string
+  modelId?: string | null
   thinkingEffort?: ChatThinkingEffort
   runtimeSettings?: ChatRuntimeSettingsPatch
   continuationMode?: ChatSessionQueueMode
@@ -1540,11 +1540,12 @@ export async function createRun(input: {
       normalizeRuntimeSettingsPatch(input.runtimeSettings)
     )
     const requestedModelId =
-      input.modelId ??
-      readSessionRequestedModelId({
-        session: context.session,
-        requestedProviderTargetId
-      })
+      input.modelId !== undefined
+        ? input.modelId
+        : readSessionRequestedModelId({
+            session: context.session,
+            requestedProviderTargetId
+          })
     const requestedThinkingEffort =
       input.thinkingEffort ??
       readSessionRequestedThinkingEffort({
@@ -1700,7 +1701,7 @@ export async function createRun(input: {
     void executeRun(activeRun, {
       message: draft.userMessage,
       profile: context.profile,
-      modelId: requestedModelId ?? runtimeResolution.requestedModelId ?? undefined,
+      modelId: requestedModelId !== undefined ? requestedModelId : runtimeResolution.requestedModelId ?? undefined,
       thinkingEffort: requestedThinkingEffort,
       runtimeSettings,
       systemPrompt: turnContext.systemPrompt,
@@ -1744,7 +1745,7 @@ export async function streamResponse(input: {
   contextParts?: ChatContextPart[]
   messages?: UIMessage[]
   providerTargetId?: string
-  modelId?: string
+  modelId?: string | null
   thinkingEffort?: ChatThinkingEffort
   runtimeSettings?: ChatRuntimeSettingsPatch
 }): Promise<{
@@ -1765,7 +1766,7 @@ export async function streamSideConversationResponse(input: {
   text?: string
   files?: FileUIPart[]
   contextParts?: ChatContextPart[]
-  modelId?: string
+  modelId?: string | null
   thinkingEffort?: ChatThinkingEffort
   runtimeSettings?: ChatRuntimeSettingsPatch
 }): Promise<{
@@ -2405,7 +2406,7 @@ function startActiveRunSnapshot(
 interface ExecuteRunInput {
   message: UIMessage
   profile: RuntimeProviderTargetProfile
-  modelId?: string
+  modelId?: string | null
   thinkingEffort?: ChatThinkingEffort
   runtimeSettings?: ChatRuntimeSettings
   systemPrompt?: string

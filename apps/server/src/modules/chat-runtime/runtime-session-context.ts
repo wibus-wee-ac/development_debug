@@ -123,7 +123,7 @@ export async function resolveExistingRuntimeSessionForContext(input: {
   context: SessionRunContext
   runtimeKind: RuntimeKind
   runtime: ChatRuntime
-  modelId?: string
+  modelId?: string | null
 }): Promise<{
   runtimeSession: RuntimeSession
   requestedModelId: string | null
@@ -151,7 +151,7 @@ export async function resolveRuntimeSessionForContext(input: {
   context: SessionRunContext
   runtimeKind: RuntimeKind
   runtime: ChatRuntime
-  modelId?: string
+  modelId?: string | null
   requestedProviderTargetId?: string
 }): Promise<{
   runtimeSession: RuntimeSession

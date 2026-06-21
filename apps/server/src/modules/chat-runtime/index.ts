@@ -59,6 +59,13 @@ function readChatThinkingEffort(value: unknown): QueueThinkingEffort | undefined
     : undefined
 }
 
+function readOptionalModelId(value: string | null | undefined): string | null | undefined {
+  if (value === null) {
+    return null
+  }
+  return value?.trim() || undefined
+}
+
 export const chatRuntime = new Elysia({
   prefix: '/chat',
   detail: { tags: ['chat-runtime'] }
@@ -75,7 +82,7 @@ export const chatRuntime = new Elysia({
         contextParts: body.contextParts,
         messages: body.messages as StreamResponseInput['messages'],
         providerTargetId: body.providerTargetId?.trim() || undefined,
-        modelId: body.modelId?.trim() || undefined,
+        modelId: readOptionalModelId(body.modelId),
         thinkingEffort: readChatThinkingEffort(body.thinkingEffort),
         runtimeSettings: body.runtimeSettings
       })
@@ -157,7 +164,7 @@ export const chatRuntime = new Elysia({
       ).createSideChat({
         parentSessionId: params.sessionId,
         providerTargetId: body.providerTargetId?.trim() || undefined,
-        modelId: body.modelId?.trim() || undefined
+        modelId: readOptionalModelId(body.modelId)
       })
     },
     {
@@ -255,7 +262,7 @@ export const chatRuntime = new Elysia({
         text: body.text ?? '',
         files: body.files,
         contextParts: body.contextParts,
-        modelId: body.modelId?.trim() || undefined,
+        modelId: readOptionalModelId(body.modelId),
         thinkingEffort: readChatThinkingEffort(body.thinkingEffort),
         runtimeSettings: body.runtimeSettings
       })
@@ -385,7 +392,7 @@ export const chatRuntime = new Elysia({
         files: body.files,
         contextParts: body.contextParts,
         providerTargetId: body.providerTargetId?.trim() || undefined,
-        modelId: body.modelId?.trim() || undefined,
+        modelId: readOptionalModelId(body.modelId),
         thinkingEffort: readChatThinkingEffort(body.thinkingEffort),
         runtimeSettings: body.runtimeSettings
       })
