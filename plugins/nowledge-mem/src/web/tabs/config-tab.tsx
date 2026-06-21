@@ -1,6 +1,4 @@
-/* Config tab — connection settings, status, and SaveState auto-save indicator.
-   Ported from the original web.tsx logic but restyled with SettingsRow +
-   SettingsSectionHeader to match the agent-management panel aesthetic. */
+/* Settings panel for Nowledge Mem connection and runtime toggles. */
 
 import type { WebPluginContext } from '@cradle/plugin-sdk/web'
 import {
@@ -10,7 +8,7 @@ import {
   LockLine as LockIcon,
 } from '@mingcute/react'
 import { AnimatePresence, motion } from 'motion/react'
-import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 
 import { Alert, AlertDescription, AlertTitle } from '~/components/ui/alert'
 import { Badge } from '~/components/ui/badge'
@@ -160,10 +158,10 @@ export function ConfigTab({ ctx }: ConfigTabProps) {
     <ScrollArea className="h-full" viewportClassName="max-h-full">
       <div className="mx-auto flex max-w-2xl flex-col gap-2 p-6">
         {/* Status section */}
-        <SettingsSectionHeader title="Status" description="Live snapshot from /status and the local config store." />
+        <SettingsSectionHeader title="Status" description="Current plugin configuration and secret availability." />
         <SettingsRow
           label="Plugin"
-          description={config.enabled ? 'Enabled — MCP registration runs on next sync.' : 'Disabled — /status skips the upstream probe.'}
+          description={config.enabled ? 'Enabled — MCP registration runs on next sync.' : 'Disabled — server routes stay configured, but upstream work is skipped.'}
         >
           <Badge variant={config.enabled ? 'secondary' : 'outline'} className="gap-1">
             <Building2Line className={cn('size-3', config.enabled && 'animate-pulse')} aria-hidden="true" />
@@ -263,7 +261,7 @@ export function ConfigTab({ ctx }: ConfigTabProps) {
         <SettingsDivider />
         <SettingsRow
           label="Enabled"
-          description="When off, /status skips the upstream probe and MCP registration is skipped on next activation."
+          description="When off, upstream work and MCP registration are skipped on next activation."
         >
           <div className="flex items-center gap-2">
             <Switch

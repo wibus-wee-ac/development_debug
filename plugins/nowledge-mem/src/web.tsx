@@ -1,20 +1,16 @@
-/* Web plugin entry — registers the Nowledge Mem workspace panel and wires
-   up the UI store. All UI lives under ./web/. */
+/* Web plugin entry — registers the Nowledge Mem settings panel. */
 
 import type { WebPluginContext } from '@cradle/plugin-sdk/web'
 import { BrainLine as BrainIcon } from '@mingcute/react'
 
-import { initNowledgeUiStore } from './web/store'
-import { NowledgeShell } from './web/shell'
+import { ConfigTab } from './web/tabs/config-tab'
 
 export function activate(ctx: WebPluginContext): void {
-  initNowledgeUiStore(ctx.storage)
-
   ctx.panels.register({
     id: 'config',
-    title: 'Nowledge Mem',
+    title: 'Nowledge Mem Settings',
     icon: BrainIcon,
-    component: props => <NowledgeShell {...props} ctx={ctx} />,
+    component: () => <ConfigTab ctx={ctx} />,
     location: 'sidebar',
   })
 

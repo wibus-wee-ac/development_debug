@@ -30,8 +30,8 @@
           "id": "panel.config",
           "type": "web-panel",
           "layer": "web",
-          "label": "Nowledge Mem",
-          "description": "Knowledge workspace surface: Today briefing, memory search, thread browsing, and connection config.",
+          "label": "Nowledge Mem Settings",
+          "description": "Connection and runtime settings for the Nowledge Mem adapter.",
           "permissions": []
         },
         {
