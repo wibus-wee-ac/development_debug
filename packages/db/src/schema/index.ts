@@ -1,5 +1,6 @@
 export * from './acp'
 export * from './agent-interaction'
+export * from './assets'
 export * from './automation'
 export * from './backend-control-plane'
 export * from './chat'
