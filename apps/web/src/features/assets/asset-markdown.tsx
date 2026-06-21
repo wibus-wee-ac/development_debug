@@ -5,10 +5,18 @@ import {
   type MarkdownComponents,
   type MarkdownUrlTransform,
 } from '@cradle/streamdown'
+import type { CSSProperties } from 'react'
 
 import { cn } from '~/lib/cn'
 
-import { isCradleAssetUrl, readAssetIdFromUrl, toAssetContentUrl } from './asset-url'
+import {
+  type AssetDisplaySize,
+  isCradleAssetUrl,
+  readAssetDisplaySizeFromUrl,
+  readAssetIdFromUrl,
+  toAssetContentUrl,
+  withAssetDisplaySize,
+} from './asset-url'
 
 interface AssetMarkdownProps {
   content: string
@@ -19,6 +27,8 @@ interface AssetMarkdownProps {
 interface AssetMarkdownImage {
   filename: string
   markdownUrl: string
+  width?: number | null
+  height?: number | null
 }
 
 const assetUrlTransform: MarkdownUrlTransform = (value) => {
@@ -30,29 +40,32 @@ const assetUrlTransform: MarkdownUrlTransform = (value) => {
 
 const components: MarkdownComponents = {
   img({ src, alt, className, node, ref, ...props }) {
-    const assetContentUrl = resolveAssetContentUrl(src)
+    const asset = resolveAssetReference(src)
     return (
       <img
         {...props}
-        src={assetContentUrl ?? src}
+        src={asset?.contentUrl ?? src}
         alt={alt ?? ''}
+        width={asset?.displaySize.width ?? undefined}
+        height={asset?.displaySize.height ?? undefined}
         loading="lazy"
         decoding="async"
-        data-cradle-asset-src={assetContentUrl ? src : undefined}
+        data-cradle-asset-src={asset ? src : undefined}
+        style={readAssetImageStyle(asset?.displaySize ?? null)}
         className={cn(
-          'my-2 max-h-[420px] max-w-full rounded-md border border-border object-contain',
+          'my-2 h-auto max-w-full rounded-md border border-border object-contain',
           className,
         )}
       />
     )
   },
   a({ href, children, node, ref, ...props }) {
-    const assetContentUrl = resolveAssetContentUrl(href)
+    const asset = resolveAssetReference(href)
     return (
       <MarkdownLink
         {...props}
-        href={assetContentUrl ?? href}
-        data-cradle-asset-href={assetContentUrl ? href : undefined}
+        href={asset?.contentUrl ?? href}
+        data-cradle-asset-href={asset ? href : undefined}
       >
         {children}
       </MarkdownLink>
@@ -60,12 +73,33 @@ const components: MarkdownComponents = {
   },
 }
 
-function resolveAssetContentUrl(value: string | undefined): string | null {
+function resolveAssetReference(value: string | undefined): {
+  contentUrl: string
+  displaySize: AssetDisplaySize
+} | null {
   if (!value) {
     return null
   }
   const assetId = readAssetIdFromUrl(value)
-  return assetId ? toAssetContentUrl(assetId) : null
+  if (!assetId) {
+    return null
+  }
+
+  return {
+    contentUrl: toAssetContentUrl(assetId),
+    displaySize: readAssetDisplaySizeFromUrl(value) ?? { width: null, height: null },
+  }
+}
+
+function readAssetImageStyle(displaySize: AssetDisplaySize | null): CSSProperties | undefined {
+  if (!displaySize?.width) {
+    return undefined
+  }
+
+  return {
+    width: displaySize.width,
+    aspectRatio: displaySize.height ? `${displaySize.width} / ${displaySize.height}` : undefined,
+  }
 }
 
 function escapeImageAlt(value: string): string {
@@ -73,7 +107,11 @@ function escapeImageAlt(value: string): string {
 }
 
 export function toAssetImageMarkdown(asset: AssetMarkdownImage): string {
-  return `![${escapeImageAlt(asset.filename)}](${asset.markdownUrl})`
+  const markdownUrl = withAssetDisplaySize(asset.markdownUrl, {
+    width: asset.width,
+    height: asset.height,
+  })
+  return `![${escapeImageAlt(asset.filename)}](${markdownUrl})`
 }
 
 export function AssetMarkdown({ content, className, as }: AssetMarkdownProps) {

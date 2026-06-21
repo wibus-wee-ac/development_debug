@@ -11,6 +11,7 @@ import { useCallback, useEffect, useRef, useState } from 'react'
 import { Markdown } from 'tiptap-markdown'
 
 import { toastManager } from '~/components/ui/toast'
+import { withAssetDisplaySize } from '~/features/assets/asset-url'
 import { cn } from '~/lib/cn'
 
 import { AssetImage } from './asset-image-extension'
@@ -50,7 +51,13 @@ interface MarkdownEditorProps {
     onOpen?: (attrs: SmartMentionAttrs) => void
   }
   assetImages?: {
-    upload: (file: File) => Promise<{ id: string, filename: string, markdownUrl: string }>
+    upload: (file: File) => Promise<{
+      id: string
+      filename: string
+      markdownUrl: string
+      width?: number | null
+      height?: number | null
+    }>
   }
 }
 
@@ -137,10 +144,19 @@ export function MarkdownEditor({
     try {
       for (const file of files) {
         const asset = await uploader.upload(file)
+        const markdownUrl = withAssetDisplaySize(asset.markdownUrl, {
+          width: asset.width,
+          height: asset.height,
+        })
         currentEditor
           .chain()
           .focus()
-          .setImage({ src: asset.markdownUrl, alt: asset.filename })
+          .setImage({
+            src: markdownUrl,
+            alt: asset.filename,
+            width: asset.width ?? undefined,
+            height: asset.height ?? undefined,
+          })
           .run()
       }
     }
@@ -196,7 +212,15 @@ export function MarkdownEditor({
         openOnClick: false,
         autolink: true,
       }),
-      AssetImage,
+      AssetImage.configure({
+        resize: {
+          enabled: true,
+          directions: ['bottom-left', 'bottom-right', 'top-left', 'top-right'],
+          minWidth: 96,
+          minHeight: 48,
+          alwaysPreserveAspectRatio: true,
+        },
+      }),
       SlashCommand,
       ...(smartMentionsEnabled
         ? [
@@ -336,7 +360,7 @@ export function MarkdownEditor({
           'prose-code:text-[13px] prose-code:font-mono',
           'prose-pre:bg-muted prose-pre:rounded-lg prose-pre:border prose-pre:border-border',
           'prose-a:text-foreground prose-a:underline prose-a:underline-offset-4 prose-a:decoration-border hover:prose-a:decoration-foreground',
-          'prose-img:rounded-lg',
+          'prose-img:rounded-lg prose-img:border prose-img:border-border',
           'prose-li:text-[15px]',
           '[&_.is-editor-empty:first-child::before]:text-muted-foreground/40 [&_.is-editor-empty:first-child::before]:content-[attr(data-placeholder)] [&_.is-editor-empty:first-child::before]:float-left [&_.is-editor-empty:first-child::before]:h-0 [&_.is-editor-empty:first-child::before]:pointer-events-none',
         )}

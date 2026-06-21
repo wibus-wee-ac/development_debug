@@ -2,6 +2,8 @@
 
 Cradle-owned reusable asset storage. This module owns local file bytes, image validation, image compression, metadata rows, content serving, and asset deletion. Feature modules such as Issue may reference assets by ID or by `cradle-asset://{id}` Markdown URLs, but they do not own compression policy or file lifecycle.
 
+Image display dimensions belong to each Markdown reference, not to the stored asset row. Renderers may append query parameters such as `cradle-asset://{id}?width=640&height=360` when a user resizes an image in an editor. The asset row continues to record the final stored file's intrinsic width and height.
+
 Files are stored under the server data directory in the `assets/` namespace. The database stores only metadata and a data-directory-relative `storagePath`; it must not store absolute paths or binary payloads.
 
 ## Files
