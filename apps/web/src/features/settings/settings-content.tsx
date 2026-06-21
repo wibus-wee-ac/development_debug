@@ -11,6 +11,7 @@ import { DesktopUpdateSettings } from './desktop-update-settings'
 import { ExternalIssueSourceSettings } from './external-issue-source-settings'
 import { ExternalWorkImportSettings } from './external-work-import-settings'
 import { FeatureSettings } from './feature-settings'
+import { IntegrationsSettings } from './integrations-settings'
 import { JarvisSettings } from './jarvis-settings'
 import { ModelRegistrySettings } from './model-registry-settings'
 import { PluginsSettings } from './plugins-settings'
@@ -28,6 +29,7 @@ const SECTION_MAP: Record<string, React.ComponentType> = {
   jarvis: JarvisSettings,
   plugins: PluginsSettings,
   chronicle: ChronicleSettings,
+  integrations: IntegrationsSettings,
   shortcut: ShortcutSettings,
   serverEndpoint: ServerEndpointSettings,
   desktop: DesktopUpdateSettings,
@@ -38,7 +40,7 @@ const SECTION_MAP: Record<string, React.ComponentType> = {
   about: AboutSettings,
 }
 
-const FIXED_HEIGHT_SECTIONS = new Set(['import', 'providers', 'agents'])
+const FIXED_HEIGHT_SECTIONS = new Set(['import', 'providers', 'agents', 'integrations'])
 
 interface SettingsContentProps {
   section: string

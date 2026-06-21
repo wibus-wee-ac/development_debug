@@ -138,7 +138,7 @@ export function ClaudeModelMatrixEditor({
                 <span className="w-[3.5rem] shrink-0 text-[11px] font-medium uppercase tracking-wide text-muted-foreground">
                   {tier.label}
                 </span>
-                <div className="flex min-w-0 flex-1 items-center gap-1 overflow-x-auto">
+                <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
                   <TierChip
                     active={isPassthrough}
                     onClick={() => setAlias(tier.key, CURRENT_MODEL_VALUE)}

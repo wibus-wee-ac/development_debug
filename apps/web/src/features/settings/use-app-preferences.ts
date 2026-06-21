@@ -11,6 +11,7 @@ export interface AppPreferences {
     localAuthForDangerousActions: boolean
     continueBlockedCodexGoals: boolean
     blockCodexAppServerLogInserts: boolean
+    nativeProviderSkillProjection: boolean
   }
 }
 
@@ -22,11 +23,13 @@ const AppPreferencesSchema = z.object({
     localAuthForDangerousActions: z.boolean().default(false),
     continueBlockedCodexGoals: z.boolean().default(false),
     blockCodexAppServerLogInserts: z.boolean().default(false),
+    nativeProviderSkillProjection: z.boolean().default(false),
   }).default({
     multiWorkspacePoc: false,
     localAuthForDangerousActions: false,
     continueBlockedCodexGoals: false,
     blockCodexAppServerLogInserts: false,
+    nativeProviderSkillProjection: false,
   }),
 })
 

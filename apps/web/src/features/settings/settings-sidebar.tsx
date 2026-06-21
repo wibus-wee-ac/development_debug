@@ -9,6 +9,7 @@ import {
   InformationLine as InfoIcon,
   KeyboardLine as KeyboardIcon,
   LifebuoyLine as LifeBuoyIcon,
+  Link3Line as LinkIcon,
   Message1Line as MessageSquareIcon,
   MonitorLine as MonitorIcon,
   PaletteLine as PaletteIcon,
@@ -57,6 +58,7 @@ const SETTINGS_SECTIONS: SettingsSection[] = [
       { id: 'await', labelKey: 'nav.await', icon: HourglassIcon },
       { id: 'jarvis', labelKey: 'nav.jarvis', icon: MousePointer2Icon },
       { id: 'plugins', labelKey: 'nav.plugins', icon: PlugIcon },
+      { id: 'integrations', labelKey: 'nav.integrations', icon: LinkIcon },
       ...(import.meta.env.DEV
         ? [{ id: 'chronicle', labelKey: 'nav.chronicle', icon: ActivityIcon } satisfies SettingsNavItem]
         : []),

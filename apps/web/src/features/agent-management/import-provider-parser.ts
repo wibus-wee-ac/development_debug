@@ -18,7 +18,7 @@ export interface ParseResult {
   providers: ParsedProvider[]
 }
 
-const URL_RE = /https?:\/\/[^\s,;，；)、）"'“”‘’]+/g
+const URL_RE = /https?:\/\/[A-Za-z0-9._~:/?#[\]@!$&()*+,;=%-]+/g
 
 const ENV_VAR_DEFS: { prefix: string, providerKind: ApiProviderKind }[] = [
   { prefix: 'ANTHROPIC_', providerKind: 'anthropic' },
@@ -185,6 +185,8 @@ const COMMON_WORDS = new Set([
 'api_key',
 ])
 
+const KNOWN_API_KEY_RE = /(?:^|[^\w-])((?:sk-ant-|sk-|tp-|ak-|key-|api-)[A-Za-z0-9][A-Za-z0-9._+/=-]{5,})/i
+
 function candidateTokens(text: string): string[] {
   const withoutUrls = text.replace(URL_RE, ' ')
   const tokens = withoutUrls.split(/[\s,.;:：；，。、]+/).filter(Boolean)
@@ -197,6 +199,9 @@ function candidateTokens(text: string): string[] {
 }
 
 function detectFreeToken(text: string): string | null {
+  const knownKeyMatch = text.match(KNOWN_API_KEY_RE)
+  if (knownKeyMatch?.[1]) { return knownKeyMatch[1] }
+
   const tokens = candidateTokens(text)
   const scored = tokens
     .map(t => ({ token: t, score: isKeyLike(t) }))
@@ -234,6 +239,17 @@ function tryDecodeBase64(token: string): string {
  catch {
     return token
   }
+}
+
+function tryDecodeBase64Config(text: string): string | null {
+  const trimmed = text.trim()
+  if (!BASE64_RE.test(trimmed) || trimmed.length < 16) { return null }
+
+  const decoded = tryDecodeBase64(trimmed)
+  if (decoded === trimmed) { return null }
+  if (!decoded.includes('http') && !decoded.includes('{') && !decoded.includes('export ')) { return null }
+
+  return decoded
 }
 
 // ── JSON snippet parsing ──
@@ -287,7 +303,7 @@ function extractFromJsonObject(obj: JsonObject): { apiKey?: string, baseUrl?: st
 
 // ── main ──
 
-export function parseProviderConfig(text: string): ParseResult {
+function parseProviderConfigText(text: string): ParseResult {
   // 0. Try JSON snippet first (most structured)
   const jsonObj = tryParseJsonSnippet(text)
   if (jsonObj) {
@@ -359,4 +375,16 @@ export function parseProviderConfig(text: string): ParseResult {
   }
 
   return { token: bestToken, urls, providers }
+}
+
+export function parseProviderConfig(text: string): ParseResult {
+  const decodedConfig = tryDecodeBase64Config(text)
+  if (decodedConfig) {
+    const decodedResult = parseProviderConfigText(decodedConfig)
+    if (decodedResult.token || decodedResult.urls.length > 0 || decodedResult.providers.length > 0) {
+      return decodedResult
+    }
+  }
+
+  return parseProviderConfigText(text)
 }

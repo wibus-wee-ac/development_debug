@@ -1,15 +1,14 @@
 import {
-  RobotLine as BotIcon,
-  FolderLine as FolderIcon,
   DriveLine as HardDriveIcon,
+  FolderLine as FolderIcon,
   Key2Line as KeyRoundIcon,
+  RobotLine as BotIcon,
   SafeAlertLine as ShieldAlertIcon,
-  TerminalLine as TerminalIcon
+  TerminalLine as TerminalIcon,
 } from '@mingcute/react'
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
-import { Badge } from '~/components/ui/badge'
 import { isElectron, nativeIpc } from '~/lib/electron'
 
 import { SettingsGroup, SettingsPage } from './settings-container'
@@ -41,6 +40,12 @@ const EXTERNAL_ACCESS_ROWS: Array<{
     labelKey: 'about.external.skills.label',
     descriptionKey: 'about.external.skills.description',
     pathKey: 'about.external.skills.path',
+  },
+  {
+    icon: HardDriveIcon,
+    labelKey: 'about.external.nativeSkillRoots.label',
+    descriptionKey: 'about.external.nativeSkillRoots.description',
+    pathKey: 'about.external.nativeSkillRoots.path',
   },
   {
     icon: TerminalIcon,

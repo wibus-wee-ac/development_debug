@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query'
 import { useQueryClient } from '@tanstack/react-query'
+import type { UIMessageChunk } from 'ai'
 import { useEffect } from 'react'
 
 import { getChatSessionsBySessionIdMessagesQueryKey, getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
@@ -33,6 +34,10 @@ function invalidateChatSessionRuntimeQueries(queryClient: QueryClient, sessionId
   void queryClient.invalidateQueries({ queryKey: runtimeUiSlotStatesQueryKey(sessionId) })
   void queryClient.invalidateQueries({ queryKey: runtimeSettingsQueryKey(sessionId) })
   void queryClient.invalidateQueries({ predicate: query => isSessionsQueryKey(query.queryKey) })
+}
+
+function isClaudeEnterPlanModeChunk(chunk: UIMessageChunk): boolean {
+  return chunk.type === 'tool-input-start' && chunk.toolName === 'EnterPlanMode'
 }
 
 export function useGlobalEventListeners() {
@@ -145,10 +150,14 @@ export function useGlobalEventListeners() {
 
   useEffect(() => {
     return onAnyChatRunEvent(({ chatSessionId, chunk }) => {
-      if (chunk.type !== 'start') {
+      if (chunk.type === 'start') {
+        invalidateChatSessionRuntimeQueries(queryClient, chatSessionId)
         return
       }
-      invalidateChatSessionRuntimeQueries(queryClient, chatSessionId)
+      if (isClaudeEnterPlanModeChunk(chunk)) {
+        void queryClient.invalidateQueries({ queryKey: runtimeSettingsQueryKey(chatSessionId) })
+        void queryClient.invalidateQueries({ queryKey: runtimeSessionStatusQueryKey(chatSessionId) })
+      }
     })
   }, [queryClient])
 }

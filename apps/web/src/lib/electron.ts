@@ -78,7 +78,7 @@ export interface DesktopChatStartResponseRequest {
     files?: unknown[]
     messages?: unknown[]
     providerTargetId?: string
-    modelId?: string
+    modelId?: string | null
     thinkingEffort?: ChatThinkingEffort
     runtimeSettings?: {
       accessMode?: ChatRuntimeAccessMode
