@@ -45,12 +45,19 @@ import { register as registerChatTraceRun } from './chat/trace/run'
 import { register as registerChatTraceSession } from './chat/trace/session'
 import { register as registerChronicleAccessibilityEventsList } from './chronicle/accessibility-events/list'
 import { register as registerChronicleAccessibilitySnapshotsList } from './chronicle/accessibility-snapshots/list'
+import { register as registerChronicleActivityMonitorStatus } from './chronicle/activity-monitor/status'
 import { register as registerChronicleActivityPipelineTick } from './chronicle/activity-pipeline/tick'
 import { register as registerChronicleActivitySegmentsCrystallize } from './chronicle/activity-segments/crystallize'
 import { register as registerChronicleActivitySegmentsGet } from './chronicle/activity-segments/get'
 import { register as registerChronicleActivitySegmentsList } from './chronicle/activity-segments/list'
 import { register as registerChronicleActivitySegmentsSummarize } from './chronicle/activity-segments/summarize'
 import { register as registerChronicleActivitySegmentsTriage } from './chronicle/activity-segments/triage'
+import { register as registerChronicleActivitySessionsGet } from './chronicle/activity-sessions/get'
+import { register as registerChronicleActivitySessionsList } from './chronicle/activity-sessions/list'
+import { register as registerChronicleActivitySessionsSnapshots } from './chronicle/activity-sessions/snapshots'
+import { register as registerChronicleActivitySnapshotsGet } from './chronicle/activity-snapshots/get'
+import { register as registerChronicleActivitySnapshotsOcr } from './chronicle/activity-snapshots/ocr'
+import { register as registerChronicleActivityStorageStats } from './chronicle/activity-storage/stats'
 import { register as registerChronicleAudioRawSegmentsList } from './chronicle/audio-raw-segments/list'
 import { register as registerChronicleAudioRawSegmentsProcessingResult } from './chronicle/audio-raw-segments/processing-result'
 import { register as registerChronicleAudioTranscriptsList } from './chronicle/audio-transcripts/list'
@@ -73,6 +80,7 @@ import { register as registerChronicleMemoriesGet } from './chronicle/memories/g
 import { register as registerChronicleMemoriesList } from './chronicle/memories/list'
 import { register as registerChronicleMemoriesSearch } from './chronicle/memories/search'
 import { register as registerChronicleMemoriesUpdate } from './chronicle/memories/update'
+import { register as registerChronicleMemoryStatus } from './chronicle/memory/status'
 import { register as registerChronicleMessageSourcesCreate } from './chronicle/message-sources/create'
 import { register as registerChronicleMessageSourcesList } from './chronicle/message-sources/list'
 import { register as registerChronicleMessageSourcesSync } from './chronicle/message-sources/sync'
@@ -209,6 +217,7 @@ import { register as registerWorkspaceDiffsAgentFixCreate } from './workspace/di
 import { register as registerWorkspaceDiffsAgentFixRerun } from './workspace/diffs/agent-fix/rerun'
 import { register as registerWorkspaceDiffsAgentFixStart } from './workspace/diffs/agent-fix/start'
 import { register as registerWorkspaceDiffsBranchCompare } from './workspace/diffs/branch-compare'
+import { register as registerWorkspaceDiffsClose } from './workspace/diffs/close'
 import { register as registerWorkspaceDiffsCommit } from './workspace/diffs/commit'
 import { register as registerWorkspaceDiffsCommitPlanApply } from './workspace/diffs/commit-plan/apply'
 import { register as registerWorkspaceDiffsCommitPlanCreate } from './workspace/diffs/commit-plan/create'
@@ -295,12 +304,19 @@ export function registerGeneratedCommands(program: Command): void {
   registerChatTraceSession(program)
   registerChronicleAccessibilityEventsList(program)
   registerChronicleAccessibilitySnapshotsList(program)
+  registerChronicleActivityMonitorStatus(program)
   registerChronicleActivityPipelineTick(program)
   registerChronicleActivitySegmentsCrystallize(program)
   registerChronicleActivitySegmentsGet(program)
   registerChronicleActivitySegmentsList(program)
   registerChronicleActivitySegmentsSummarize(program)
   registerChronicleActivitySegmentsTriage(program)
+  registerChronicleActivitySessionsGet(program)
+  registerChronicleActivitySessionsList(program)
+  registerChronicleActivitySessionsSnapshots(program)
+  registerChronicleActivitySnapshotsGet(program)
+  registerChronicleActivitySnapshotsOcr(program)
+  registerChronicleActivityStorageStats(program)
   registerChronicleAudioRawSegmentsList(program)
   registerChronicleAudioRawSegmentsProcessingResult(program)
   registerChronicleAudioTranscriptsList(program)
@@ -323,6 +339,7 @@ export function registerGeneratedCommands(program: Command): void {
   registerChronicleMemoriesList(program)
   registerChronicleMemoriesSearch(program)
   registerChronicleMemoriesUpdate(program)
+  registerChronicleMemoryStatus(program)
   registerChronicleMessageSourcesCreate(program)
   registerChronicleMessageSourcesList(program)
   registerChronicleMessageSourcesSync(program)
@@ -459,6 +476,7 @@ export function registerGeneratedCommands(program: Command): void {
   registerWorkspaceDiffsAgentFixRerun(program)
   registerWorkspaceDiffsAgentFixStart(program)
   registerWorkspaceDiffsBranchCompare(program)
+  registerWorkspaceDiffsClose(program)
   registerWorkspaceDiffsCommit(program)
   registerWorkspaceDiffsCommitPlanApply(program)
   registerWorkspaceDiffsCommitPlanCreate(program)

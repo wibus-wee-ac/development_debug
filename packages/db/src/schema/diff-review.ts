@@ -303,6 +303,7 @@ export const diffReviewEvents = sqliteTable('diff_review_events', {
       'comment_created',
       'thread_resolved',
       'review_submitted',
+      'review_closed',
       'revision_updated',
       'file_viewed',
       'preferences_updated',

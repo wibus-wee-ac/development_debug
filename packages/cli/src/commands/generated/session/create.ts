@@ -61,6 +61,18 @@ const spec = {
       "type": "json"
     },
     {
+      "name": "thinkingEffort",
+      "required": false,
+      "target": "body.thinkingEffort",
+      "type": "string",
+      "values": [
+        "low",
+        "medium",
+        "high",
+        "xhigh"
+      ]
+    },
+    {
       "name": "id",
       "required": false,
       "target": "body.id",

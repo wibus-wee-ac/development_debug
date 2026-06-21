@@ -40,6 +40,12 @@ const spec = {
       "required": false,
       "target": "body.modelId",
       "type": "string"
+    },
+    {
+      "name": "thinkingEffort",
+      "required": false,
+      "target": "body.thinkingEffort",
+      "type": "string"
     }
   ],
   "method": "patch",

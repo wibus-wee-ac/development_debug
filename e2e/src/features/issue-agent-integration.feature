@@ -42,5 +42,6 @@
     当 我重新运行当前 Issue 的 Agent 会话
     那么 当前 Issue 的 Agent 会话状态应显示"Done"
     而且 当前 Issue 的 Agent 会话应显示可重新运行
+    而且 Activity 时间线应显示"Agent session re-run"
     而且 我可以打开当前 Issue 的 Agent 聊天会话
     而且 最后一条 AI 消息应包含"Hello from mock LLM!"
