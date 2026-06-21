@@ -148,6 +148,35 @@ describe('mapClaudeAgentMessageToChunks', () => {
     expect(second.capturedPlans).toEqual([])
   })
 
+  it('captures Claude EnterPlanMode as a Cradle interaction mode update once', async () => {
+    const state = createClaudeAgentChunkMapperState('text-1')
+    const message = {
+      type: 'assistant',
+      session_id: 'claude-session-plan',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_enter_plan_1',
+            name: 'EnterPlanMode',
+          },
+        ],
+      },
+    } as unknown as SDKMessage
+
+    const first = await mapClaudeAgentMessageToChunks(message, state)
+    const second = await mapClaudeAgentMessageToChunks(message, state)
+
+    expect(first.chunks).toEqual([
+      { type: 'tool-input-start', toolCallId: 'toolu_enter_plan_1', toolName: 'EnterPlanMode' },
+    ])
+    expect(first.capturedInteractionModes).toEqual([
+      { toolCallId: 'toolu_enter_plan_1', interactionMode: 'plan' },
+    ])
+    expect(second.chunks).toEqual([])
+    expect(second.capturedInteractionModes).toEqual([])
+  })
+
   it('ignores the Claude ExitPlanMode denial result after capturing the plan', async () => {
     const state = createClaudeAgentChunkMapperState('text-1')
     await mapClaudeAgentMessageToChunks({
@@ -267,6 +296,123 @@ describe('mapClaudeAgentMessageToChunks', () => {
           { id: 'todo-1', content: 'Inspect', status: 'todo', sourceStatus: 'pending' },
           { id: 'todo-2', content: 'Patching', status: 'processing', sourceStatus: 'in_progress' },
           { id: 'todo-3', content: 'Verify', status: 'completed', sourceStatus: 'completed' },
+        ],
+      },
+    ])
+  })
+
+  it('captures structured TaskCreate and TaskUpdate results as progress state', async () => {
+    const state = createClaudeAgentChunkMapperState('text-1')
+
+    await mapClaudeAgentMessageToChunks({
+      type: 'assistant',
+      session_id: 'claude-session-task-progress',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_task_create_1',
+            name: 'TaskCreate',
+            input: {
+              subject: 'Map modules',
+              description: 'List user-facing modules',
+              activeForm: 'Mapping modules',
+            },
+          },
+        ],
+      },
+    } as unknown as SDKMessage, state)
+
+    const createResult = await mapClaudeAgentMessageToChunks({
+      type: 'user',
+      session_id: 'claude-session-task-progress',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_task_create_1',
+            content: 'Task #1 created successfully: Map modules',
+          },
+        ],
+      },
+      tool_use_result: {
+        task: { id: '1', subject: 'Map modules' },
+      },
+    } as unknown as SDKMessage, state)
+
+    expect(createResult.capturedTodos).toEqual([
+      {
+        toolCallId: 'toolu_task_create_1',
+        source: 'Task',
+        todos: [
+          { id: '1', content: 'Map modules', status: 'todo', sourceStatus: 'pending' },
+        ],
+      },
+    ])
+    expect(createResult.chunks).toEqual([
+      {
+        type: 'tool-output-available',
+        toolCallId: 'toolu_task_create_1',
+        output: {
+          type: 'cradle.builtin-tool-call.result.v1',
+          identifier: 'claude-code',
+          apiName: 'TaskCreate',
+          args: {
+            subject: 'Map modules',
+            description: 'List user-facing modules',
+            activeForm: 'Mapping modules',
+          },
+          result: {
+            task: { id: '1', subject: 'Map modules' },
+          },
+        },
+      },
+    ])
+
+    await mapClaudeAgentMessageToChunks({
+      type: 'assistant',
+      session_id: 'claude-session-task-progress',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_task_update_1',
+            name: 'TaskUpdate',
+            input: {
+              taskId: '1',
+              status: 'in_progress',
+            },
+          },
+        ],
+      },
+    } as unknown as SDKMessage, state)
+
+    const updateResult = await mapClaudeAgentMessageToChunks({
+      type: 'user',
+      session_id: 'claude-session-task-progress',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_task_update_1',
+            content: 'Updated task #1 status',
+          },
+        ],
+      },
+      tool_use_result: {
+        success: true,
+        taskId: '1',
+        updatedFields: ['status'],
+        statusChange: { from: 'pending', to: 'in_progress' },
+      },
+    } as unknown as SDKMessage, state)
+
+    expect(updateResult.capturedTodos).toEqual([
+      {
+        toolCallId: 'toolu_task_update_1',
+        source: 'Task',
+        todos: [
+          { id: '1', content: 'Mapping modules', status: 'processing', sourceStatus: 'in_progress' },
         ],
       },
     ])

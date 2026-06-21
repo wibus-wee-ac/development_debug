@@ -290,8 +290,11 @@ export function readClaudeAgentModelId(
   input: Pick<StreamTurnInput | GetCapabilitiesInput, 'modelId' | 'runtimeSession'>,
   config: ReturnType<typeof readTrustedClaudeAgentConfig>,
 ): string | undefined {
+  if (input.modelId !== undefined) {
+    return input.modelId ?? undefined
+  }
   const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
-  return input.modelId ?? snapshot.models.currentModelId ?? config.model
+  return snapshot.models.currentModelId ?? config.model
 }
 
 function formatClaudeAgentHistory(history: UIMessage[] | undefined, scope: 'full' | 'recentCradleLocal'): string | null {

@@ -4,6 +4,15 @@ import { mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
 import { dirname, join } from 'node:path'
 
+import { getPluginSkillProjectionSources } from '../../../plugins/skill-registry'
+import { isAppFeatureFlagEnabled } from '../../preferences/service'
+import {
+  createAgentNativeSkillProjectionTarget,
+  createClaudeGlobalNativeSkillProjectionTarget,
+  getBuiltinSkillProjectionSources,
+  reconcileNativeSkillProjections,
+  registerNativeSkillProjectionTarget,
+} from '../../skills/native-skill-projection'
 import { ensureAgentRuntimeHome } from '../../skills/skills-paths'
 
 export interface ClaudeAgentRuntimeContext {
@@ -16,6 +25,12 @@ export interface ClaudeAgentRuntimeContext {
 export function resolveClaudeAgentRuntimeContext(workspacePath: string | undefined, agentId?: string | null): ClaudeAgentRuntimeContext {
   const resolvedWorkspacePath = workspacePath || process.cwd()
   const agentHome = agentId ? ensureAgentRuntimeHome(agentId) : null
+  if (agentHome) {
+    registerAgentNativeSkillProjectionTarget(agentHome)
+  }
+  else if (isAppFeatureFlagEnabled('nativeProviderSkillProjection')) {
+    registerClaudeGlobalNativeSkillProjectionTarget()
+  }
 
   return {
     cwd: agentHome ?? resolvedWorkspacePath,
@@ -25,6 +40,23 @@ export function resolveClaudeAgentRuntimeContext(workspacePath: string | undefin
     ]),
     agentHome,
   }
+}
+
+function registerAgentNativeSkillProjectionTarget(agentHome: string): void {
+  registerNativeSkillProjectionTarget(createAgentNativeSkillProjectionTarget(agentHome))
+  reconcileRuntimeNativeSkillProjections()
+}
+
+function registerClaudeGlobalNativeSkillProjectionTarget(): void {
+  registerNativeSkillProjectionTarget(createClaudeGlobalNativeSkillProjectionTarget())
+  reconcileRuntimeNativeSkillProjections()
+}
+
+function reconcileRuntimeNativeSkillProjections(): void {
+  reconcileNativeSkillProjections([
+    ...getBuiltinSkillProjectionSources(),
+    ...getPluginSkillProjectionSources(),
+  ])
 }
 
 export function resolveClaudeAgentSdkConfigDir(input: {

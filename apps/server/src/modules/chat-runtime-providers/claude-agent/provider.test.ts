@@ -522,6 +522,50 @@ describe('claudeAgentProvider MCP integration', () => {
     ])
   })
 
+  it('writes Cradle interaction mode when Claude requests EnterPlanMode', async () => {
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-enter-plan',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'toolu_enter_plan_1',
+              name: 'EnterPlanMode',
+            },
+          ],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-session-enter-plan',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ]))
+
+    const updateSessionRuntimeSettings = vi.fn().mockResolvedValue(undefined)
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+      updateSessionRuntimeSettings,
+    })
+
+    for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-enter-plan',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Plan first'),
+      workspaceId: 'workspace-1',
+    })) {
+      // Drain stream.
+    }
+
+    expect(updateSessionRuntimeSettings).toHaveBeenCalledWith({
+      sessionId: 'chat-session-1',
+      patch: { interactionMode: 'plan' },
+    })
+  })
+
   it('projects captured TodoWrite state into progress UI slot state', async () => {
     sdkMocks.query.mockReturnValue(createAsyncQuery([
       {
@@ -611,6 +655,137 @@ describe('claudeAgentProvider MCP integration', () => {
           { id: 'todo-1', label: 'Inspect', status: 'pending', sourceStatus: 'pending' },
           { id: 'todo-2', label: 'Patching', status: 'inProgress', sourceStatus: 'in_progress' },
           { id: 'todo-3', label: 'Verify', status: 'completed', sourceStatus: 'completed' },
+        ],
+      }),
+      expect.objectContaining({
+        kind: 'compact',
+        slotId: 'claude-agent:compact',
+      }),
+    ])
+  })
+
+  it('projects structured Task state into progress UI slot state', async () => {
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-task-progress',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'toolu_task_create_1',
+              name: 'TaskCreate',
+              input: {
+                subject: 'Map modules',
+                description: 'List user-facing modules',
+                activeForm: 'Mapping modules',
+              },
+            },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        session_id: 'claude-session-task-progress',
+        message: {
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'toolu_task_create_1',
+              content: 'Task #1 created successfully: Map modules',
+            },
+          ],
+        },
+        tool_use_result: {
+          task: { id: '1', subject: 'Map modules' },
+        },
+      },
+      {
+        type: 'assistant',
+        session_id: 'claude-session-task-progress',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'toolu_task_update_1',
+              name: 'TaskUpdate',
+              input: {
+                taskId: '1',
+                status: 'in_progress',
+              },
+            },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        session_id: 'claude-session-task-progress',
+        message: {
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'toolu_task_update_1',
+              content: 'Updated task #1 status',
+            },
+          ],
+        },
+        tool_use_result: {
+          success: true,
+          taskId: '1',
+          updatedFields: ['status'],
+          statusChange: { from: 'pending', to: 'in_progress' },
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-session-task-progress',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const runtimeSession = createRuntimeSession()
+    for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-task-progress',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Work through task progress'),
+      workspaceId: 'workspace-1',
+    })) {
+      // Drain stream.
+    }
+
+    expect(JSON.parse(runtimeSession.providerStateSnapshot!).claudeAgent.progress).toEqual(expect.objectContaining({
+      threadId: 'chat-session-1',
+      turnId: 'toolu_task_update_1',
+      source: 'Task',
+      items: [
+        { id: '1', content: 'Mapping modules', status: 'processing', sourceStatus: 'in_progress' },
+      ],
+      updatedAt: expect.any(Number),
+    }))
+
+    const slotStates = await provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+    })
+
+    expect(slotStates).toEqual([
+      expect.objectContaining({
+        kind: 'progress',
+        slotId: 'claude-agent:progress',
+        threadId: 'chat-session-1',
+        turnId: 'toolu_task_update_1',
+        source: 'Task',
+        currentItem: 'Mapping modules',
+        pendingCount: 0,
+        inProgressCount: 1,
+        completedCount: 0,
+        items: [
+          { id: '1', label: 'Mapping modules', status: 'inProgress', sourceStatus: 'in_progress' },
         ],
       }),
       expect.objectContaining({

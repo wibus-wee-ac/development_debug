@@ -27,10 +27,12 @@ interface ClaudeAgentProgressSnapshot {
   updatedAt: number
 }
 
+export const CLAUDE_AGENT_RUNTIME_DEFAULT_MODEL_SWITCH_ID = '__cradle_claude_runtime_default__'
+
 export function resolveClaudeAgentPendingModelSwitchId(snapshot: WorkspaceProviderStateSnapshot, requestedModelId: string | null): string | null {
   const existingPendingModelSwitchId = readClaudeAgentPendingModelSwitchId(snapshot)
-  if (!requestedModelId) {
-    return existingPendingModelSwitchId
+  if (requestedModelId === null) {
+    return snapshot.models.currentModelId === null ? null : CLAUDE_AGENT_RUNTIME_DEFAULT_MODEL_SWITCH_ID
   }
   if (requestedModelId !== snapshot.models.currentModelId) {
     return requestedModelId
@@ -128,7 +130,7 @@ export function writeClaudeAgentProgress(runtimeSession: RuntimeSession, progres
     progress: {
       threadId: runtimeSession.chatSessionId,
       turnId: progress.toolCallId,
-      source: 'TodoWrite',
+      source: progress.source ?? 'TodoWrite',
       items: progress.todos,
       updatedAt,
     } satisfies ClaudeAgentProgressSnapshot,

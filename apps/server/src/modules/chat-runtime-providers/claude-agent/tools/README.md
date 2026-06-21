@@ -8,4 +8,5 @@ This directory maps Claude Agent SDK `tool_use` / `tool_result` data into Cradle
 
 - `identity.ts`: Claude Code tool identifier and canonical API names.
 - `mapper.ts`: Claude Code tool input/result envelope constructors.
+- `task-progress-state.ts`: Structured TaskCreate/TaskUpdate/TaskList projection into Cradle's provider progress state without parsing display strings.
 - `todo-plugin-state.ts`: TodoWrite input projection into Cradle's persisted todo plugin state.

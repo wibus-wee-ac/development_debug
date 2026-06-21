@@ -14,9 +14,9 @@ Stored Cradle chats with a provider session id pass SDK `resume`, allowing Claud
 
 Stored turns pass the resolved model through SDK query options and model alias environment variables. When a persisted SDK session is resumed and the requested model differs from the snapshot model, the provider applies the switch through SDK `setModel()`.
 
-Claude SDK `ExitPlanMode` remains available in SDK plan mode as the provider-owned signal for submitting a proposed plan. Cradle captures that tool input into its existing tool chunk envelope, stores the latest captured plan in the Claude Agent provider snapshot, exposes it through the runtime-neutral `plan` UI slot, projects a synthetic `plan_implementation` approval so the renderer can submit `PLEASE IMPLEMENT THIS PLAN:` as an ordinary follow-up, denies the native exit action, and keeps runtime interaction state changes owned by Chat Runtime settings.
+Claude SDK `EnterPlanMode` is intercepted as a provider-owned request to switch Cradle's session `interactionMode` to `plan` through Chat Runtime settings, so composer state and the active SDK permission mode share one owner. Claude SDK `ExitPlanMode` remains available in SDK plan mode as the provider-owned signal for submitting a proposed plan. Cradle captures that tool input into its existing tool chunk envelope, stores the latest captured plan in the Claude Agent provider snapshot, exposes it through the runtime-neutral `plan` UI slot, projects a synthetic `plan_implementation` approval so the renderer can submit `PLEASE IMPLEMENT THIS PLAN:` as an ordinary follow-up, denies the native exit action, and keeps runtime interaction state changes owned by Chat Runtime settings.
 
-Claude SDK `TodoWrite` remains a Claude-owned tool, but the adapter also projects the latest normalized todo list into the Claude Agent provider snapshot and exposes it as the runtime-neutral `progress` UI slot. The tool result payload still carries `result.pluginState.todos` for transcript rendering; the provider snapshot is the source for composer-adjacent live progress state.
+Claude SDK `TodoWrite` remains a Claude-owned tool, but the adapter also projects the latest normalized todo list into the Claude Agent provider snapshot and exposes it as the runtime-neutral `progress` UI slot. Claude SDK `TaskCreate`, `TaskUpdate`, and `TaskList` also feed the same progress slot when the SDK provides structured task input/output such as `tool_use_result`; the adapter does not parse human-facing task result strings for IDs. The tool result payload still carries `result.pluginState.todos` for TodoWrite transcript rendering; the provider snapshot is the source for composer-adjacent live progress state.
 
 ## Files
 
@@ -28,8 +28,8 @@ Claude SDK `TodoWrite` remains a Claude-owned tool, but the adapter also project
 - `input-projector.ts`: Projects Cradle message input, history, selected Skills, provider config, and environment into Claude Agent SDK content and query options.
 - `context-usage-projector.ts`: Projects Claude Agent SDK context usage control responses into Chat Runtime context usage details and compact UI slot state.
 - `async-input-stream.ts`: Claude Agent SDK async user-message input stream built on shared provider queue infrastructure.
-- `state-projector.ts`: Projects Claude Agent provider snapshot state such as pending resumed-session model switches, captured plan UI slot state, and captured TodoWrite progress state.
+- `state-projector.ts`: Projects Claude Agent provider snapshot state such as pending resumed-session model switches, captured plan UI slot state, and captured TodoWrite/Task progress state.
 - `event-to-chunk-mapper.ts`: Maps Claude Agent SDK messages into AI SDK `UIMessageChunk` events.
 - `subagent-projector.ts`: Projects forwarded subagent chunk streams into nested Cradle subagent output tool payloads.
 - `event-to-chunk-mapper.test.ts`: Mapper-level regression tests.
-- `tools/`: Claude Code tool identity, todo state projection, and tool envelope mapping.
+- `tools/`: Claude Code tool identity, todo/task progress projection, and tool envelope mapping.

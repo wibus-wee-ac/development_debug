@@ -91,9 +91,15 @@ export async function generateClaudeSessionTitle(input: {
       }
 
       if (message.type === 'assistant') {
-        const text = (message as any).text
-        if (typeof text === 'string') {
-          titleCollector.append(text)
+        const assistantMessage = (message as { message?: { content?: unknown } }).message
+        const content = assistantMessage?.content
+        if (Array.isArray(content)) {
+          for (const block of content) {
+            const textBlock = block as { type?: unknown, text?: unknown }
+            if (textBlock.type === 'text' && typeof textBlock.text === 'string') {
+              titleCollector.append(textBlock.text)
+            }
+          }
         }
       }
 

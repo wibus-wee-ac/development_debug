@@ -55,6 +55,7 @@ import { activateClaudeAgentSdkConfigDir, resolveClaudeAgentRuntimeContext } fro
 import {
   clearClaudeAgentCapturedPlan,
   clearClaudeAgentPendingModelSwitch,
+  CLAUDE_AGENT_RUNTIME_DEFAULT_MODEL_SWITCH_ID,
   projectClaudeAgentPlanUiSlotState,
   projectClaudeAgentProgressUiSlotState,
   readClaudeAgentPendingModelSwitchId,
@@ -140,8 +141,8 @@ export class ClaudeAgentProvider implements ChatRuntime {
     const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
     const agentId = input.agentId ?? snapshot.agentId ?? null
     const runtimeContext = resolveClaudeAgentRuntimeContext(input.workspacePath, agentId)
-    const pendingModelSwitchId = CLAUDE_AGENT_SDK_PERSIST_SESSION
-      ? resolveClaudeAgentPendingModelSwitchId(snapshot, input.modelId ?? null)
+    const pendingModelSwitchId = CLAUDE_AGENT_SDK_PERSIST_SESSION && input.modelId !== undefined
+      ? resolveClaudeAgentPendingModelSwitchId(snapshot, input.modelId)
       : null
     const nextSnapshot = writeClaudeAgentPendingModelSwitch({
       ...snapshot,
@@ -150,7 +151,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
       agentHome: runtimeContext.agentHome,
       models: {
         ...snapshot.models,
-        currentModelId: input.modelId ?? snapshot.models.currentModelId,
+        currentModelId: input.modelId !== undefined ? input.modelId : snapshot.models.currentModelId,
       },
     }, pendingModelSwitchId)
     return {
@@ -347,7 +348,11 @@ export class ClaudeAgentProvider implements ChatRuntime {
 
     try {
       if (shouldResumeProviderSession && pendingModelSwitchId) {
-        await activeQuery.setModel(pendingModelSwitchId)
+        await activeQuery.setModel(
+          pendingModelSwitchId === CLAUDE_AGENT_RUNTIME_DEFAULT_MODEL_SWITCH_ID
+            ? undefined
+            : pendingModelSwitchId,
+        )
         clearClaudeAgentPendingModelSwitch(input.runtimeSession)
       }
       if (resumedProviderSessionId) {
@@ -382,6 +387,9 @@ export class ClaudeAgentProvider implements ChatRuntime {
         }
         for (const progress of result.capturedTodos) {
           writeClaudeAgentProgress(input.runtimeSession, progress)
+        }
+        for (const mode of result.capturedInteractionModes) {
+          await this.requestRuntimeInteractionModeUpdate(input.runtimeSession, mode.interactionMode)
         }
 
         if (isChatStreamTraceEnabled()) {
@@ -453,7 +461,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
               profile: titleGeneration.profile,
               mainSessionId: nextProviderSessionId,
               promptText: userPromptText,
-              modelId: titleGeneration.modelId,
+              modelId: titleGeneration.modelId ?? titleGeneration.fallbackModel,
               fallbackModel: titleGeneration.fallbackModel,
               thinkingEffort: titleGeneration.thinkingEffort,
               workspacePath: input.workspacePath ?? snapshot.workspacePath ?? '',
@@ -592,6 +600,29 @@ export class ClaudeAgentProvider implements ChatRuntime {
       return
     }
     entry.query.setPermissionMode(input.mode)
+  }
+
+  private async requestRuntimeInteractionModeUpdate(
+    runtimeSession: RuntimeSession,
+    interactionMode: 'plan',
+  ): Promise<void> {
+    if (!this.deps.updateSessionRuntimeSettings) {
+      return
+    }
+
+    try {
+      await this.deps.updateSessionRuntimeSettings({
+        sessionId: runtimeSession.chatSessionId,
+        patch: { interactionMode },
+      })
+    }
+    catch (error) {
+      this.deps.logger?.warn?.('Claude Agent runtime interaction mode update failed', {
+        error,
+        sessionId: runtimeSession.chatSessionId,
+        interactionMode,
+      })
+    }
   }
 
   private async answerClaudeAgentUserQuestion(
