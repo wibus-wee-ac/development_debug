@@ -2,10 +2,11 @@
  * Unit tests for scripts/check.ts
  *
  * Copy this file to scripts/check.test.ts in the target design-system package.
- * Run with: tsx --test scripts/check.test.ts
+ * Run with: vitest run scripts/check.test.ts
  */
 
 import assert from 'node:assert/strict'
+import { it } from 'vitest'
 
 import {
   extractCheatsheetHex,
