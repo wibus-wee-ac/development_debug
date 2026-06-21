@@ -1,19 +1,21 @@
 import {
   CheckCircleLine as CheckCircleIcon,
   CloseLine as XIcon,
+  DeleteLine as TrashIcon,
   LoadingLine as Loader2Icon,
   PlayCircleLine as PlayCircleIcon,
   Refresh1Line as RefreshCwIcon,
   Message3Line as MessageCircleIcon,
   RobotLine as BotIcon,
+  Settings3Line as SettingsIcon,
 } from '@mingcute/react'
 import { useMemo, useState } from 'react'
 
 import { Button } from '~/components/ui/button'
 import { Textarea } from '~/components/ui/textarea'
-import { ProviderModelSelector, useComposerState } from '~/features/composer-toolbar'
+import { AgentSelector, useComposerState } from '~/features/composer-toolbar'
 import { cn } from '~/lib/cn'
-import { openChatSession } from '~/navigation/navigation-commands'
+import { openChatSession, openSettingsSection } from '~/navigation/navigation-commands'
 
 import { formatTimestamp } from '../shared/diff-items'
 import type { CradleDiffReview, ReviewAgentFix, ReviewThreadAnchorInput } from '../shared/types'
@@ -26,24 +28,24 @@ interface AgentRailProps {
   startPending: boolean
   cancelPending: boolean
   rerunPending: boolean
+  deletePending: boolean
   onCreate: (input: {
     anchor?: ReviewThreadAnchorInput | null
     threadId?: string | null
     instruction: string
-    profileId?: string | null
+    agentId?: string | null
     expectedOutput: 'commit' | 'working-tree-change' | 'patch-artifact'
   }) => Promise<CradleDiffReview>
   onStart: (input: {
     agentFixId: string
-    providerTargetId?: string | null
-    modelId?: string | null
+    agentId?: string | null
   }) => Promise<CradleDiffReview>
   onCancel: (agentFixId: string) => void
   onRerun: (input: {
     agentFixId: string
-    providerTargetId?: string | null
-    modelId?: string | null
+    agentId?: string | null
   }) => Promise<CradleDiffReview>
+  onDelete: (agentFixId: string) => void
   onCollapse: () => void
   width: number
 }
@@ -70,23 +72,24 @@ export function AgentRail({
   startPending,
   cancelPending,
   rerunPending,
+  deletePending,
   onCreate,
   onStart,
   onCancel,
   onRerun,
+  onDelete,
   onCollapse,
   width,
 }: AgentRailProps) {
-  const composer = useComposerState({ context: 'new-chat' })
+  const composer = useComposerState({ context: 'new-chat', enableAgents: true })
   const [instruction, setInstruction] = useState('')
   const [scope, setScope] = useState<'selection' | 'review'>(selectedAnchor ? 'selection' : 'review')
   const [error, setError] = useState<string | null>(null)
 
   const targetAnchor = scope === 'selection' ? selectedAnchor : null
-  const profileId = composer.selection.profileId
-  const modelId = composer.selection.modelId
+  const agentId = composer.selection.agentId
   const busy = createPending || startPending
-  const canRun = Boolean(profileId) && Boolean(instruction.trim()) && !busy
+  const canRun = Boolean(agentId) && Boolean(instruction.trim()) && !busy
 
   const sortedFixes = useMemo(
     () => [...review.agentFixes].sort((left, right) => right.createdAt - left.createdAt),
@@ -95,7 +98,7 @@ export function AgentRail({
 
   const createAndStart = async () => {
     const body = instruction.trim()
-    if (!body || !profileId || busy) {
+    if (!body || !agentId || busy) {
       return
     }
     setError(null)
@@ -104,7 +107,7 @@ export function AgentRail({
       const createdReview = await onCreate({
         anchor: targetAnchor,
         instruction: body,
-        profileId,
+        agentId,
         expectedOutput: 'working-tree-change',
       })
       const created = latestAgentFix(createdReview, beforeIds)
@@ -113,8 +116,7 @@ export function AgentRail({
       }
       const startedReview = await onStart({
         agentFixId: created.id,
-        providerTargetId: profileId,
-        modelId,
+        agentId,
       })
       const started = startedReview.agentFixes.find(fix => fix.id === created.id)
       if (started?.sessionId) {
@@ -171,20 +173,26 @@ export function AgentRail({
             />
           </div>
 
-          <ProviderModelSelector
-            profiles={composer.profiles}
-            selectedProfileId={profileId}
-            selectedModelId={modelId}
-            models={composer.models}
-            modelsByProfileId={composer.modelsByProfileId}
-            loadingProfileIds={composer.loadingProfileIds}
-            thinkingEffort={composer.selection.thinkingEffort}
-            isLoadingModels={composer.isLoadingModels}
-            requestProfileModels={composer.requestProfileModels}
-            onSelectProfile={composer.setProfileId}
-            onSelectModel={composer.setModelId}
-            onSelectThinkingEffort={composer.setThinkingEffort}
+          <AgentSelector
+            agents={composer.agents}
+            selectedAgentId={agentId}
+            runtimeOptions={composer.runtimeOptions}
+            onSelectAgent={composer.setAgentId}
           />
+
+          {composer.agents.length === 0 && (
+            <div className="rounded-md border border-dashed border-current/15 bg-muted/30 px-2.5 py-2 text-[11px] leading-relaxed text-muted-foreground/80">
+              <p>No agent is configured yet.</p>
+              <button
+                type="button"
+                onClick={() => openSettingsSection('agents')}
+                className="mt-1.5 inline-flex items-center gap-1 font-medium text-foreground/80 underline-offset-2 hover:underline"
+              >
+                <SettingsIcon className="size-3" />
+                Configure one in Agents
+              </button>
+            </div>
+          )}
 
           {error && (
             <p className="rounded-md bg-red-500/10 px-2 py-1.5 text-[11px] leading-relaxed text-red-600 dark:text-red-400">
@@ -219,11 +227,12 @@ export function AgentRail({
                   startPending={startPending}
                   cancelPending={cancelPending}
                   rerunPending={rerunPending}
-                  providerTargetId={profileId}
-                  modelId={modelId}
+                  deletePending={deletePending}
+                  agentId={agentId}
                   onStart={onStart}
                   onCancel={onCancel}
                   onRerun={onRerun}
+                  onDelete={onDelete}
                 />
               ))}
         </div>
@@ -263,25 +272,32 @@ function AgentFixRow({
   startPending,
   cancelPending,
   rerunPending,
-  providerTargetId,
-  modelId,
+  deletePending,
+  agentId,
   onStart,
   onCancel,
   onRerun,
+  onDelete,
 }: {
   fix: ReviewAgentFix
   startPending: boolean
   cancelPending: boolean
   rerunPending: boolean
-  providerTargetId: string | null
-  modelId: string | null
+  deletePending: boolean
+  agentId: string | null
   onStart: AgentRailProps['onStart']
   onCancel: AgentRailProps['onCancel']
   onRerun: AgentRailProps['onRerun']
+  onDelete: AgentRailProps['onDelete']
 }) {
-  const canStart = fix.status === 'pending' && Boolean(providerTargetId)
+  const canStart = fix.status === 'pending' && Boolean(agentId)
   const canCancel = fix.status === 'running'
   const canRerun = fix.status === 'completed' || fix.status === 'failed' || fix.status === 'cancelled'
+  const hasRerunTarget = Boolean(agentId) || Boolean(fix.profileId)
+  // Only terminal-state work orders can be removed from the rail — pending
+  // and running work orders must be started or cancelled first to keep the
+  // audit trail consistent.
+  const canDelete = fix.status === 'completed' || fix.status === 'failed' || fix.status === 'cancelled'
 
   return (
     <div className="border-b border-border/40 px-3 py-2">
@@ -311,7 +327,7 @@ function AgentFixRow({
             size="sm"
             className="h-6 gap-1 px-2 text-[11px]"
             disabled={startPending}
-            onClick={() => onStart({ agentFixId: fix.id, providerTargetId, modelId })}
+            onClick={() => onStart({ agentFixId: fix.id, agentId })}
           >
             {startPending ? <Loader2Icon className="size-3 animate-spin" /> : <PlayCircleIcon className="size-3" />}
             Start
@@ -336,11 +352,25 @@ function AgentFixRow({
             variant="ghost"
             size="sm"
             className="h-6 gap-1 px-2 text-[11px]"
-            disabled={rerunPending || !providerTargetId}
-            onClick={() => onRerun({ agentFixId: fix.id, providerTargetId, modelId })}
+            disabled={rerunPending || !hasRerunTarget}
+            onClick={() => onRerun({ agentFixId: fix.id, agentId })}
           >
             <RefreshCwIcon className="size-3" />
             Rerun
+          </Button>
+        )}
+        {canDelete && (
+          <Button
+            type="button"
+            variant="ghost"
+            size="sm"
+            className="h-6 gap-1 px-2 text-[11px] text-muted-foreground/70 hover:text-red-600 dark:hover:text-red-400"
+            disabled={deletePending}
+            onClick={() => onDelete(fix.id)}
+            aria-label="Delete agent fix work order"
+          >
+            {deletePending ? <Loader2Icon className="size-3 animate-spin" /> : <TrashIcon className="size-3" />}
+            Delete
           </Button>
         )}
         {fix.status === 'completed' && (
