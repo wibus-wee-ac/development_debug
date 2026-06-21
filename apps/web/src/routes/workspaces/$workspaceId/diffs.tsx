@@ -1,7 +1,9 @@
 import { WorkerPoolContextProvider } from '@pierre/diffs/react'
 import { createFileRoute } from '@tanstack/react-router'
 import { useMemo } from 'react'
+import { useTranslation } from 'react-i18next'
 
+import { BetaNotice } from '~/components/common/beta-notice'
 import { useRegisterLayoutSlots } from '~/components/layout/use-layout-slots'
 import { CommitPlanPage } from '~/features/diff-review/commit-plan-page'
 import { GuideView } from '~/features/diff-review/review-detail/guide-view'
@@ -30,6 +32,7 @@ export const Route = createFileRoute('/workspaces/$workspaceId/diffs')({
 function WorkspaceDiffsRoute() {
   const { workspaceId } = Route.useParams()
   const { repo, path, review, view } = Route.useSearch()
+  const { t } = useTranslation('diff-review')
 
   useRegisterLayoutSlots(`workspace-diffs:${workspaceId}`, useMemo(() => ({
     asideWorkspaceId: workspaceId,
@@ -43,13 +46,18 @@ function WorkspaceDiffsRoute() {
   // is never initialized — see shared/diff-items.ts for the option constants.
   return (
     <WorkerPoolContextProvider poolOptions={WORKER_POOL_OPTIONS} highlighterOptions={WORKER_HIGHLIGHTER_OPTIONS}>
-      <WorkspaceDiffsContent
-        workspaceId={workspaceId}
-        repo={repo}
-        path={path}
-        review={review}
-        view={view}
-      />
+      <div className="flex h-full min-h-0 w-full flex-col overflow-hidden bg-background">
+        <BetaNotice title={t('beta.title')} description={t('beta.description')} />
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <WorkspaceDiffsContent
+            workspaceId={workspaceId}
+            repo={repo}
+            path={path}
+            review={review}
+            view={view}
+          />
+        </div>
+      </div>
     </WorkerPoolContextProvider>
   )
 }

@@ -6,6 +6,7 @@ import chrome from './chrome'
 import chronicle from './chronicle'
 import common from './common'
 import devtool from './devtool'
+import diffReview from './diff-review'
 import filesystem from './filesystem'
 import git from './git'
 import home from './home'
@@ -28,6 +29,7 @@ const resources = {
   chrome,
   common,
   devtool,
+  'diff-review': diffReview,
   filesystem,
   git,
   home,

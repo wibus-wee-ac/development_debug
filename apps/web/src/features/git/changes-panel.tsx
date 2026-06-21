@@ -64,8 +64,6 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
   const openWorkspaceDiffTab = useBrowserPanelStore(state => state.openWorkspaceDiffTab)
   const requestScrollToFilePath = useBrowserPanelStore(state => state.requestScrollToFilePath)
   const setBrowserPanelOpen = useLayoutStore(state => state.setBrowserPanelOpen)
-  // Diffs review is a very early implementation — only reachable in dev until it's further along.
-  const canOpenReview = import.meta.env.DEV
   const handleReviewRepository = (repository: GitRepository) => {
     if (!workspaceId) {
       return
@@ -118,13 +116,13 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
           workspacePath={workspacePath ?? undefined}
           onFileClick={path => handlePreviewFile(repository, path)}
         />
-        )
+      )
       : (
         <ChangesTypeView
           sections={groupGitFileStatuses(repository.files)}
           onFileClick={path => handlePreviewFile(repository, path)}
         />
-        )
+      )
   }
   else {
     changesContent = (
@@ -133,7 +131,6 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
         viewMode={viewMode}
         workspaceId={workspaceId}
         workspacePath={workspacePath ?? undefined}
-        canOpenReview={canOpenReview}
         onFileClick={handlePreviewFile}
         onReviewRepository={handleReviewRepository}
       />
@@ -190,7 +187,7 @@ export function ChangesPanel({ workspaceId, workspacePath }: ChangesPanelProps) 
         >
           {changedFileCount}
         </span>
-        {canOpenReview && changedFileCount > 0 && gitRepositories.length === 1 && (
+        {changedFileCount > 0 && gitRepositories.length === 1 && (
           <button
             type="button"
             onClick={() => handleReviewRepository(gitRepositories[0]!)}
@@ -242,7 +239,6 @@ function ChangesRepositoryList({
   viewMode,
   workspaceId,
   workspacePath,
-  canOpenReview,
   onFileClick,
   onReviewRepository,
 }: {
@@ -250,7 +246,6 @@ function ChangesRepositoryList({
   viewMode: ChangesViewMode
   workspaceId: string | null | undefined
   workspacePath?: string
-  canOpenReview: boolean
   onFileClick: (repository: GitRepository, path: string) => void
   onReviewRepository: (repository: GitRepository) => void
 }) {
@@ -282,17 +277,15 @@ function ChangesRepositoryList({
                 )}
               </div>
             </div>
-            {canOpenReview && (
-              <button
-                type="button"
-                onClick={() => onReviewRepository(repository)}
-                className="flex h-5 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] font-medium text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
-                data-testid="changes-repository-review"
-              >
-                <ScanEyeIcon className="size-3" aria-hidden />
-                Review
-              </button>
-            )}
+            <button
+              type="button"
+              onClick={() => onReviewRepository(repository)}
+              className="flex h-5 shrink-0 items-center gap-1 rounded px-1.5 text-[10px] font-medium text-muted-foreground/70 transition-colors hover:bg-accent hover:text-foreground"
+              data-testid="changes-repository-review"
+            >
+              <ScanEyeIcon className="size-3" aria-hidden />
+              Review
+            </button>
           </div>
           <div className="min-h-0 overflow-hidden rounded-md border border-border/35 bg-background/30">
             {viewMode === 'tree'
@@ -306,13 +299,13 @@ function ChangesRepositoryList({
                     onFileClick={path => onFileClick(repository, path)}
                   />
                 </div>
-                )
+              )
               : (
                 <ChangesTypeView
                   sections={groupGitFileStatuses(repository.files)}
                   onFileClick={path => onFileClick(repository, path)}
                 />
-                )}
+              )}
           </div>
         </section>
       ))}
