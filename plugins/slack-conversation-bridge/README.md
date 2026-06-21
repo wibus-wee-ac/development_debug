@@ -6,10 +6,11 @@ The plugin owns Slack protocol behavior only: Socket Mode startup, `/cradle` sla
 
 The adapter registers these Slack controls over Socket Mode:
 
-- `/cradle bind workspace <workspace-id>`
+- `/cradle bind workspace`
+- `/cradle bind workspace <workspace-id>` for direct binding when the id is already known
 - `/cradle status`
 - `/cradle unbind`
-- Runtime and model selectors rendered in the status/bind response.
+- Workspace, runtime, and model selectors rendered in the status/bind response.
 
 Connection secrets are resolved by the server bridge supervisor and passed to this adapter as plaintext only at runtime. A Slack connection expects these secret keys:
 

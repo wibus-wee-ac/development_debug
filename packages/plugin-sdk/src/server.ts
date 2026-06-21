@@ -192,6 +192,7 @@ export interface ConversationBridgeAdapterCapabilities {
 
 export const CONVERSATION_BRIDGE_STATUS_REFRESH_ACTION = 'cradle_status_refresh'
 export const CONVERSATION_BRIDGE_CHANNEL_UNBIND_ACTION = 'cradle_channel_unbind'
+export const CONVERSATION_BRIDGE_WORKSPACE_SELECT_ACTION = 'cradle_workspace_select'
 export const CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION = 'cradle_session_target_select'
 export const CONVERSATION_BRIDGE_SESSION_MODEL_SELECT_ACTION = 'cradle_session_model_select'
 

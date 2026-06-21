@@ -17,6 +17,7 @@ import {
   CONVERSATION_BRIDGE_SESSION_MODEL_SELECT_ACTION,
   CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION,
   CONVERSATION_BRIDGE_STATUS_REFRESH_ACTION,
+  CONVERSATION_BRIDGE_WORKSPACE_SELECT_ACTION,
   type ConversationBridgeControlBlock,
   type ConversationBridgeControlElement,
   type ConversationBridgeControlOption,
@@ -118,6 +119,12 @@ interface SessionTargetSummary {
 interface ProviderModelSummary {
   id: string
   label: string
+}
+
+interface WorkspaceSummary {
+  id: string
+  name: string
+  path: string
 }
 
 interface StatusConversation {
@@ -388,6 +395,45 @@ function sessionModelOption(model: ProviderModelSummary | null): ConversationBri
   }
 }
 
+function workspaceOption(workspace: WorkspaceSummary): ConversationBridgeControlOption {
+  return {
+    label: truncatePresentationText(workspace.name || workspace.id, 75),
+    description: truncatePresentationText(workspace.path || workspace.id, 75),
+    value: workspace.id,
+  }
+}
+
+function buildWorkspaceSelectBlocks(input: {
+  binding: ConversationBridgeChannelBindingView | null
+  prompt: string
+  workspaces: WorkspaceSummary[]
+}): ConversationBridgeControlBlock[] {
+  const options = input.workspaces.slice(0, CONTROL_OPTION_LIMIT).map(workspaceOption)
+  if (!options.length) {
+    return [
+      sectionBlock(`${input.prompt}\n\nNo Cradle workspaces are available. Create or import a workspace in Cradle first.`),
+    ]
+  }
+
+  const selectedWorkspace = input.binding
+    ? input.workspaces.find(workspace => workspace.id === input.binding?.cradleWorkspaceId) ?? null
+    : null
+  const blocks: ConversationBridgeControlBlock[] = [
+    sectionBlock(input.prompt),
+    actionsBlock([{
+      type: 'static_select',
+      actionId: CONVERSATION_BRIDGE_WORKSPACE_SELECT_ACTION,
+      placeholder: 'Choose Cradle workspace',
+      options,
+      ...(selectedWorkspace ? { initialOption: workspaceOption(selectedWorkspace) } : {}),
+    }]),
+  ]
+  if (input.workspaces.length > CONTROL_OPTION_LIMIT) {
+    blocks.push(contextBlock(`Showing the first ${CONTROL_OPTION_LIMIT} workspaces. Use \`/cradle bind workspace <workspace-id>\` for workspaces not shown here.`))
+  }
+  return blocks
+}
+
 function buildSessionModelSelectBlocks(input: {
   binding: ConversationBridgeChannelBindingView | null
   models: ProviderModelSummary[]
@@ -532,7 +578,7 @@ function buildStatusResponse(input: {
       : '*Not connected yet.* Bind this channel to a Cradle workspace before starting new Cradle-backed conversations.'),
     contextBlock(input.binding
       ? `Workspace: \`${escapePresentationText(input.binding.cradleWorkspaceId)}\` | Runtime: ${sessionTargetText} | Model: ${sessionModelText}`
-      : 'Run `/cradle bind workspace <workspace-id>` to connect this channel.'),
+      : 'Run `/cradle bind workspace` to choose a workspace for this channel.'),
     dividerBlock(),
   ]
 
@@ -565,6 +611,14 @@ function buildStatusResponse(input: {
       targets: input.sessionTargets,
       models: input.models,
       prompt: '*Default runtime for new external threads*',
+    }))
+  }
+  else {
+    blocks.push(dividerBlock())
+    blocks.push(...buildWorkspaceSelectBlocks({
+      binding: input.binding,
+      workspaces: Workspace.list(),
+      prompt: '*Workspace for new external threads*',
     }))
   }
 
@@ -788,34 +842,84 @@ function bindExistingChannelWithDefaults(input: {
   })
 }
 
+function bindWorkspaceForControl(input: {
+  control: NormalizedConversationControl
+  workspace: WorkspaceSummary
+}): ConversationBridgeChannelBindingView {
+  const existing = getChannelBinding(
+    input.control.connectionId,
+    input.control.externalWorkspaceId,
+    input.control.externalChannelId,
+  )
+  return bindChannel({
+    connectionId: input.control.connectionId,
+    externalWorkspaceId: input.control.externalWorkspaceId,
+    externalChannelId: input.control.externalChannelId,
+    cradleWorkspaceId: input.workspace.id,
+    sessionAgentId: existing?.sessionAgentId ?? null,
+    sessionProviderTargetId: existing?.sessionProviderTargetId ?? null,
+    sessionRuntimeKind: existing?.sessionRuntimeKind ?? null,
+    sessionModelId: existing?.sessionModelId ?? null,
+    boundByExternalActorId: input.control.externalActorId ?? existing?.boundByExternalActorId ?? null,
+    metadata: existing?.metadata ?? { source: 'conversation-bridge-control' },
+  })
+}
+
+function bindWorkspaceResponse(input: {
+  control: NormalizedConversationControl
+  workspace: WorkspaceSummary
+  visibility: ConversationBridgeControlResponse['visibility']
+  replaceOriginal?: boolean
+}): ConversationBridgeControlResponse {
+  const binding = bindWorkspaceForControl({
+    control: input.control,
+    workspace: input.workspace,
+  })
+  const sessionTargets = listSessionTargets()
+  const models = listModelsForBinding(binding, sessionTargets)
+  return {
+    text: `Bound this external channel to Cradle workspace ${input.workspace.id}. Choose the default Cradle runtime for new external threads.`,
+    blocks: buildSessionTargetSelectBlocks({
+      binding,
+      targets: sessionTargets,
+      models,
+      prompt: `Bound this external channel to Cradle workspace \`${escapePresentationText(input.workspace.id)}\`. Choose the default Cradle runtime for new external threads.`,
+    }),
+    visibility: input.visibility,
+    replaceOriginal: input.replaceOriginal,
+  }
+}
+
+function workspaceSelectResponse(input: NormalizedConversationControl, replaceOriginal?: boolean): ConversationBridgeControlResponse {
+  const binding = getChannelBinding(input.connectionId, input.externalWorkspaceId, input.externalChannelId)
+  return {
+    text: 'Choose a Cradle workspace for this external channel.',
+    blocks: buildWorkspaceSelectBlocks({
+      binding,
+      workspaces: Workspace.list(),
+      prompt: '*Choose a Cradle workspace for this external channel*',
+    }),
+    visibility: 'ephemeral',
+    replaceOriginal,
+  }
+}
+
 async function handleCommandControl(input: NormalizedConversationControl): Promise<ConversationBridgeControlResponse> {
   const [action, subject, value] = parseControlCommand(input.text)
 
-  if (action === 'bind' && subject === 'workspace' && value) {
+  if (action === 'bind' && subject === 'workspace') {
+    if (!value) {
+      return workspaceSelectResponse(input)
+    }
     const workspace = Workspace.get(value)
     if (!workspace) {
       return ephemeralControlResponse(`Workspace ${value} was not found in Cradle.`)
     }
-    const binding = bindChannel({
-      connectionId: input.connectionId,
-      externalWorkspaceId: input.externalWorkspaceId,
-      externalChannelId: input.externalChannelId,
-      cradleWorkspaceId: workspace.id,
-      boundByExternalActorId: input.externalActorId,
-      metadata: { source: 'conversation-bridge-control' },
-    })
-    const sessionTargets = listSessionTargets()
-    const models = listModelsForBinding(binding, sessionTargets)
-    return {
-      text: `Bound this external channel to Cradle workspace ${workspace.id}. Choose the default Cradle runtime for new external threads.`,
-      blocks: buildSessionTargetSelectBlocks({
-        binding,
-        targets: sessionTargets,
-        models,
-        prompt: `Bound this external channel to Cradle workspace \`${escapePresentationText(workspace.id)}\`. Choose the default Cradle runtime for new external threads.`,
-      }),
+    return bindWorkspaceResponse({
+      control: input,
+      workspace,
       visibility: 'in_channel',
-    }
+    })
   }
 
   if (action === 'unbind') {
@@ -830,7 +934,23 @@ async function handleCommandControl(input: NormalizedConversationControl): Promi
     return statusResponseForChannel(input)
   }
 
-  return ephemeralControlResponse('Usage: /cradle bind workspace <workspace-id>, /cradle unbind, or /cradle status')
+  return ephemeralControlResponse('Usage: /cradle bind workspace, /cradle bind workspace <workspace-id>, /cradle unbind, or /cradle status')
+}
+
+async function handleWorkspaceSelectControl(input: NormalizedConversationControl): Promise<ConversationBridgeControlResponse> {
+  if (!input.selectedValue) {
+    return ephemeralControlResponse('Selected Cradle workspace was invalid.')
+  }
+  const workspace = Workspace.get(input.selectedValue)
+  if (!workspace) {
+    return ephemeralControlResponse('Selected Cradle workspace is no longer available.')
+  }
+  return bindWorkspaceResponse({
+    control: input,
+    workspace,
+    visibility: 'ephemeral',
+    replaceOriginal: true,
+  })
 }
 
 async function handleSessionTargetSelectControl(input: NormalizedConversationControl): Promise<ConversationBridgeControlResponse> {
@@ -905,6 +1025,8 @@ async function handleActionControl(input: NormalizedConversationControl): Promis
     case CONVERSATION_BRIDGE_CHANNEL_UNBIND_ACTION:
       unbindChannel(input.connectionId, input.externalWorkspaceId, input.externalChannelId)
       return statusResponseForChannel({ ...input, replaceOriginal: true })
+    case CONVERSATION_BRIDGE_WORKSPACE_SELECT_ACTION:
+      return await handleWorkspaceSelectControl(input)
     case CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION:
       return await handleSessionTargetSelectControl(input)
     case CONVERSATION_BRIDGE_SESSION_MODEL_SELECT_ACTION:

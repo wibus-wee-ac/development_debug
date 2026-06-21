@@ -13,7 +13,10 @@ import {
   sessions,
   workspaces,
 } from '@cradle/db'
-import type { ConversationBridgeDeliveryInput } from '@cradle/plugin-sdk/server'
+import {
+  CONVERSATION_BRIDGE_WORKSPACE_SELECT_ACTION,
+  type ConversationBridgeDeliveryInput,
+} from '@cradle/plugin-sdk/server'
 import { eq } from 'drizzle-orm'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 
@@ -194,18 +197,52 @@ describe('conversation bridge service', () => {
       enabled: true,
     })
 
-    const bindResponse = await ConversationBridge.handleControl({
+    const workspaceSelectResponse = await ConversationBridge.handleControl({
       connectionId: connection.id,
       externalWorkspaceId: 'external-workspace-1',
       externalChannelId: 'external-channel-1',
       externalActorId: 'external-user-1',
       kind: 'command',
       command: '/cradle',
-      text: 'bind workspace workspace-1',
+      text: 'bind workspace',
+    })
+
+    expect(workspaceSelectResponse).toMatchObject({
+      visibility: 'ephemeral',
+      text: expect.stringContaining('Choose a Cradle workspace'),
+    })
+    expect(workspaceSelectResponse.blocks).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        type: 'actions',
+        elements: expect.arrayContaining([
+          expect.objectContaining({
+            type: 'static_select',
+            actionId: CONVERSATION_BRIDGE_WORKSPACE_SELECT_ACTION,
+            options: expect.arrayContaining([
+              expect.objectContaining({
+                label: 'Workspace 1',
+                value: 'workspace-1',
+              }),
+            ]),
+          }),
+        ]),
+      }),
+    ]))
+    expect(db().select().from(conversationBridgeChannelBindings).all()).toHaveLength(0)
+
+    const bindResponse = await ConversationBridge.handleControl({
+      connectionId: connection.id,
+      externalWorkspaceId: 'external-workspace-1',
+      externalChannelId: 'external-channel-1',
+      externalActorId: 'external-user-1',
+      kind: 'action',
+      actionId: CONVERSATION_BRIDGE_WORKSPACE_SELECT_ACTION,
+      selectedValue: 'workspace-1',
     })
 
     expect(bindResponse).toMatchObject({
-      visibility: 'in_channel',
+      visibility: 'ephemeral',
+      replaceOriginal: true,
       text: expect.stringContaining('workspace-1'),
     })
     expect(db().select().from(conversationBridgeChannelBindings).all()).toEqual([

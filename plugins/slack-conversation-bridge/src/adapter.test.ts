@@ -1,6 +1,7 @@
 import type { ConversationBridgeHost } from '@cradle/plugin-sdk/server'
 import {
   CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION,
+  CONVERSATION_BRIDGE_WORKSPACE_SELECT_ACTION,
 } from '@cradle/plugin-sdk/server'
 import { describe, expect, it, vi } from 'vitest'
 
@@ -287,6 +288,27 @@ describe('Slack conversation bridge adapter', () => {
       kind: 'action',
       actionId: CONVERSATION_BRIDGE_SESSION_TARGET_SELECT_ACTION,
       selectedValue: 'provider-target:standard:target-1',
+    }))
+
+    await fake.actions[CONVERSATION_BRIDGE_WORKSPACE_SELECT_ACTION]?.({
+      body: {
+        team: { id: 'T1' },
+        channel: { id: 'C1' },
+        user: { id: 'U1' },
+        actions: [{
+          action_id: CONVERSATION_BRIDGE_WORKSPACE_SELECT_ACTION,
+          selected_option: { value: 'workspace-1' },
+        }],
+      },
+      ack,
+      respond,
+    })
+
+    expect(ack).toHaveBeenCalledTimes(3)
+    expect(control).toHaveBeenLastCalledWith(expect.objectContaining({
+      kind: 'action',
+      actionId: CONVERSATION_BRIDGE_WORKSPACE_SELECT_ACTION,
+      selectedValue: 'workspace-1',
     }))
   })
 })
