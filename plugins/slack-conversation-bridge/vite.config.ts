@@ -14,7 +14,6 @@ export default defineConfig({
     rollupOptions: {
       external: [
         /^node:/,
-        '@cradle/plugin-sdk/server',
         // @slack/bolt is CJS; bundling it forces rolldown to emit `__require("node:...")`
         // calls inside a CJS wrapper, which throw in our pure-ESM runtime. Letting Node's
         // native CJS↔ESM interop load it avoids the `Calling require for ...` error.
