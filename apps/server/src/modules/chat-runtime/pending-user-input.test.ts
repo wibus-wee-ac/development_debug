@@ -30,6 +30,7 @@ describe('pending runtime user input', () => {
           question: 'Which scope should I use?',
           isOther: false,
           isSecret: false,
+          multiSelect: false,
           options: [{ label: 'Small', description: 'Limit the change' }],
         },
       ],

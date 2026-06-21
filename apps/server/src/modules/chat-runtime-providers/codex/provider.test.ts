@@ -694,6 +694,8 @@ describe('codexProvider app-server integration', () => {
         expect.objectContaining({ id: 'codex:compact', name: 'compact', iconKey: 'compact', surfaces: ['slashCommand', 'runtimePanel'] }),
         expect.objectContaining({ id: 'codex:model', name: 'model', iconKey: 'model', surfaces: ['toolbarPicker', 'runtimePanel'] }),
         expect.objectContaining({ id: 'codex:reasoning', name: 'reasoning', iconKey: 'reasoning', surfaces: ['toolbarPicker', 'runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:approvals', name: 'approvals', iconKey: 'approvals', surfaces: ['runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:user-input', name: 'ask-user', iconKey: 'user-input', surfaces: ['composerState', 'runtimePanel', 'streamEvidence'] }),
         expect.objectContaining({ id: 'codex:alerts', name: 'alerts', iconKey: 'alert', surfaces: ['runtimePanel'] }),
         expect.objectContaining({ id: 'codex:status', name: 'status', iconKey: 'status', surfaces: ['runtimePanel'] }),
       ]),
@@ -840,6 +842,8 @@ describe('codexProvider app-server integration', () => {
         expect.objectContaining({ id: 'codex:compact', name: 'compact', iconKey: 'compact', surfaces: ['slashCommand', 'runtimePanel'] }),
         expect.objectContaining({ id: 'codex:review', name: 'review', iconKey: 'code-review', surfaces: ['slashCommand'] }),
         expect.objectContaining({ id: 'codex:quick-question', name: 'btw', iconKey: 'quick-question', surfaces: ['slashCommand', 'composerState'] }),
+        expect.objectContaining({ id: 'codex:approvals', name: 'approvals', iconKey: 'approvals', surfaces: ['runtimePanel'] }),
+        expect.objectContaining({ id: 'codex:user-input', name: 'ask-user', iconKey: 'user-input', surfaces: ['composerState', 'runtimePanel', 'streamEvidence'] }),
       ]),
     })
     expect(client.initialize).not.toHaveBeenCalled()
@@ -6283,6 +6287,7 @@ describe('codexProvider app-server integration', () => {
           question: 'Which scope should I use?',
           isOther: false,
           isSecret: false,
+          multiSelect: false,
           options: [
             { label: 'Small', description: 'Limit the change' },
             { label: 'Broad', description: 'Include related cleanup' },
@@ -6421,6 +6426,7 @@ describe('codexProvider app-server integration', () => {
           question: 'Repository name',
           isOther: false,
           isSecret: false,
+          multiSelect: false,
           options: null,
         },
         {
@@ -6429,6 +6435,7 @@ describe('codexProvider app-server integration', () => {
           question: 'Access level',
           isOther: false,
           isSecret: false,
+          multiSelect: false,
           options: [
             { label: 'read', description: '' },
             { label: 'write', description: '' },

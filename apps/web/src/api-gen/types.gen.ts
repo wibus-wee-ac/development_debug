@@ -13190,6 +13190,7 @@ export type GetChatSessionsBySessionIdUiSlotStatesResponses = {
                 question: string;
                 isOther: boolean;
                 isSecret: boolean;
+                multiSelect: boolean;
                 options: Array<{
                     label: string;
                     description: string;

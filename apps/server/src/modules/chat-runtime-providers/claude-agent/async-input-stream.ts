@@ -18,11 +18,12 @@ export class ClaudeAgentInputStream implements AsyncIterable<SDKUserMessage> {
     }
   }
 
-  push(content: ClaudeAgentUserContent): void {
+  push(content: ClaudeAgentUserContent, options: { parentToolUseId?: string | null, toolUseResult?: unknown } = {}): void {
     this.queue.push({
       type: 'user',
       message: { role: 'user', content },
-      parent_tool_use_id: null,
+      parent_tool_use_id: options.parentToolUseId ?? null,
+      ...(options.toolUseResult !== undefined ? { tool_use_result: options.toolUseResult } : {}),
       priority: 'now',
     })
   }

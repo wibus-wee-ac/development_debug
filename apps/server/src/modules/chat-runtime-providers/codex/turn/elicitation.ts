@@ -31,6 +31,7 @@ export function readCodexUserInputQuestions(params: unknown): RuntimeUserInputQu
       question: readString(question.question, ''),
       isOther: question.isOther === true,
       isSecret: question.isSecret === true,
+      multiSelect: false,
       options
     }
   })
@@ -48,6 +49,7 @@ export function readCodexMcpElicitationQuestions(params: unknown): RuntimeUserIn
         question: message || readString(record.url, 'Open the requested URL?'),
         isOther: false,
         isSecret: false,
+        multiSelect: false,
         options: [
           { label: 'accept', description: readString(record.url, '') },
           { label: 'decline', description: 'Decline this MCP elicitation' }
@@ -67,6 +69,7 @@ export function readCodexMcpElicitationQuestions(params: unknown): RuntimeUserIn
         question: message || 'MCP server requested user input.',
         isOther: false,
         isSecret: false,
+        multiSelect: false,
         options: null
       }
     ]
@@ -80,6 +83,7 @@ export function readCodexMcpElicitationQuestions(params: unknown): RuntimeUserIn
       question: readString(property.description, message || id),
       isOther: false,
       isSecret: readString(property.format, '') === 'password',
+      multiSelect: property.type === 'array',
       options: readMcpElicitationOptions(property)
     }
   })

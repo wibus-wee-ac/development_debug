@@ -279,6 +279,7 @@ const runtimeUserInputQuestionSchema = t.Object({
   question: t.String(),
   isOther: t.Boolean(),
   isSecret: t.Boolean(),
+  multiSelect: t.Boolean(),
   options: t.Union([
     t.Array(
       t.Object({

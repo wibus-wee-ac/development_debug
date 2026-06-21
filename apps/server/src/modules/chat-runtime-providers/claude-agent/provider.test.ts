@@ -7,7 +7,7 @@ import type { UIMessage, UIMessageChunk } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
 import { addHostMcpServer, removeHostMcpServer } from '../../../plugins/mcp-registry'
-import type { RuntimeProviderTargetProfile, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
+import type { RuntimeProviderTargetProfile, RuntimeSession, RuntimeUserInputRequest } from '../../chat-runtime/runtime-provider-types'
 import { ClaudeAgentProvider } from './provider'
 
 const sdkMocks = vi.hoisted(() => ({
@@ -843,6 +843,15 @@ describe('claudeAgentProvider MCP integration', () => {
           iconKey: 'progress',
           surfaces: ['composerState', 'runtimePanel'],
         },
+        {
+          id: 'claude-agent:user-input',
+          name: 'ask-user',
+          label: 'Ask user',
+          description: 'Show pending runtime questions for the user.',
+          argumentHint: '',
+          iconKey: 'user-input',
+          surfaces: ['composerState', 'runtimePanel', 'streamEvidence'],
+        },
       ],
       skills: [],
     })
@@ -873,6 +882,105 @@ describe('claudeAgentProvider MCP integration', () => {
       }),
     }))
     await expect(readPromptText(1)).resolves.toBe('/review src/app.ts')
+  })
+
+  it('bridges Claude AskUserQuestion tool calls to runtime pending user input', async () => {
+    const questionInput = {
+      questions: [
+        {
+          question: 'Which library should we use?',
+          header: 'Library',
+          options: [
+            { label: 'Zod', description: 'Use the existing schema library.' },
+            { label: 'TypeBox', description: 'Use the server schema library.' },
+          ],
+          multiSelect: false,
+        },
+      ],
+    }
+    const requestUserInput = vi.fn(async (request: RuntimeUserInputRequest) => ({
+      requestId: request.providerRequestId,
+      answers: { 'question-1': ['Zod'] },
+    }))
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-ask-user',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'toolu_question_1',
+              name: 'ask_user_question',
+              input: questionInput,
+            },
+          ],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-session-ask-user',
+        usage: { input_tokens: 2, output_tokens: 1 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+      requestUserInput,
+    })
+    const chunks: UIMessageChunk[] = []
+    for await (const chunk of provider.streamTurn({
+      runId: 'run-claude-agent-ask-user',
+      runtimeSession: createRuntimeSession(),
+      profile: createProfile(),
+      message: createUserMessage('Choose a validation library'),
+      workspaceId: 'workspace-1',
+    })) {
+      chunks.push(chunk)
+    }
+
+    expect(chunks).toEqual(expect.arrayContaining([
+      { type: 'tool-input-start', toolCallId: 'toolu_question_1', toolName: 'ask_user_question' },
+      expect.objectContaining({
+        type: 'tool-input-available',
+        toolCallId: 'toolu_question_1',
+        toolName: 'ask_user_question',
+      }),
+    ]))
+    expect(requestUserInput).toHaveBeenCalledWith(expect.objectContaining({
+      sessionId: 'chat-session-1',
+      runId: 'run-claude-agent-ask-user',
+      providerRequestId: 'toolu_question_1',
+      providerMethod: 'askUserQuestion',
+      toolCallId: 'toolu_question_1',
+      questions: [
+        {
+          id: 'question-1',
+          header: 'Library',
+          question: 'Which library should we use?',
+          isOther: true,
+          isSecret: false,
+          multiSelect: false,
+          options: [
+            { label: 'Zod', description: 'Use the existing schema library.' },
+            { label: 'TypeBox', description: 'Use the server schema library.' },
+          ],
+        },
+      ],
+    }))
+    await expect(readPromptText(0)).resolves.toBe('Choose a validation library')
+
+    const toolResultContent = await readPromptContent(0)
+    expect(toolResultContent).toEqual([
+      {
+        type: 'tool_result',
+        tool_use_id: 'toolu_question_1',
+        content: JSON.stringify({
+          questions: questionInput.questions,
+          answers: { 'Which library should we use?': 'Zod' },
+        }),
+      },
+    ])
   })
 
   it('streams quick questions without persisting SDK sessions or loading tools', async () => {

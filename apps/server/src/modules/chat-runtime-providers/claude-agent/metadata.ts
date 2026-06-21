@@ -80,11 +80,27 @@ const CLAUDE_AGENT_PROGRESS_SLOT: RuntimeUiSlot = {
   surfaces: ['composerState', 'runtimePanel'],
 }
 
+const CLAUDE_AGENT_USER_INPUT_SLOT: RuntimeUiSlot = {
+  id: 'claude-agent:user-input',
+  name: 'ask-user',
+  label: 'Ask user',
+  description: 'Show pending runtime questions for the user.',
+  argumentHint: '',
+  iconKey: 'user-input',
+  surfaces: ['composerState', 'runtimePanel', 'streamEvidence'],
+}
+
 export function projectClaudeAgentPresentation(slashCommands: SlashCommand[]): RuntimePresentationCapabilities {
   return {
     runtimeKind: CLAUDE_AGENT_RUNTIME_KIND,
     slashCommands: slashCommands.map(toRuntimeSlashCommand),
-    uiSlots: [CLAUDE_AGENT_COMPACT_SLOT, CLAUDE_AGENT_QUICK_QUESTION_SLOT, CLAUDE_AGENT_PLAN_SLOT, CLAUDE_AGENT_PROGRESS_SLOT],
+    uiSlots: [
+      CLAUDE_AGENT_COMPACT_SLOT,
+      CLAUDE_AGENT_QUICK_QUESTION_SLOT,
+      CLAUDE_AGENT_PLAN_SLOT,
+      CLAUDE_AGENT_PROGRESS_SLOT,
+      CLAUDE_AGENT_USER_INPUT_SLOT,
+    ],
     skills: [],
   }
 }

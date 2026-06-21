@@ -76,6 +76,8 @@ interface CodexUiSlotDefinition extends Omit<RuntimeUiSlot, 'surfaces'> {
   surfaces?: RuntimeUiSlot['surfaces']
   requiredMethods?: string[]
   anyMethods?: string[]
+  requiredServerRequests?: string[]
+  anyServerRequests?: string[]
   requiredNotifications?: string[]
   anyNotifications?: string[]
 }
@@ -176,7 +178,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     argumentHint: '',
     iconKey: 'approvals',
     commandText: '/approvals ',
-    anyMethods: [
+    anyServerRequests: [
       'item/commandExecution/requestApproval',
       'item/fileChange/requestApproval',
       'item/permissions/requestApproval',
@@ -271,7 +273,7 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
     iconKey: 'user-input',
     commandText: '/ask-user ',
     surfaces: ['composerState', 'runtimePanel', 'streamEvidence'],
-    anyMethods: ['item/tool/requestUserInput', 'mcpServer/elicitation/request']
+    anyServerRequests: ['item/tool/requestUserInput', 'mcpServer/elicitation/request']
   },
   {
     id: 'codex:crew',
@@ -435,16 +437,19 @@ const CODEX_UI_SLOT_DEFINITIONS: CodexUiSlotDefinition[] = [
 
 export function projectCodexUiSlots(manifest: CodexAppServerCapabilityManifest): RuntimeUiSlot[] {
   const methodNames = new Set(manifest.clientMethods.map((method) => method.method))
+  const serverRequestNames = new Set(manifest.serverRequests.map((request) => request.method))
   const notificationNames = new Set(
     manifest.serverNotifications.map((notification) => notification.method)
   )
 
   return CODEX_UI_SLOT_DEFINITIONS.filter((slot) =>
-    supportsSlot(slot, methodNames, notificationNames)
+    supportsSlot(slot, methodNames, serverRequestNames, notificationNames)
   ).map(
     ({
       requiredMethods: _requiredMethods,
       anyMethods: _anyMethods,
+      requiredServerRequests: _requiredServerRequests,
+      anyServerRequests: _anyServerRequests,
       requiredNotifications: _requiredNotifications,
       anyNotifications: _anyNotifications,
       surfaces,
@@ -459,15 +464,25 @@ export function projectCodexUiSlots(manifest: CodexAppServerCapabilityManifest):
 function supportsSlot(
   slot: CodexUiSlotDefinition,
   methodNames: Set<string>,
+  serverRequestNames: Set<string>,
   notificationNames: Set<string>
 ): boolean {
   if (slot.requiredMethods?.some((method) => !methodNames.has(method))) {
+    return false
+  }
+  if (slot.requiredServerRequests?.some((request) => !serverRequestNames.has(request))) {
     return false
   }
   if (slot.requiredNotifications?.some((notification) => !notificationNames.has(notification))) {
     return false
   }
   if (slot.anyMethods && !slot.anyMethods.some((method) => methodNames.has(method))) {
+    return false
+  }
+  if (
+    slot.anyServerRequests &&
+    !slot.anyServerRequests.some((request) => serverRequestNames.has(request))
+  ) {
     return false
   }
   if (

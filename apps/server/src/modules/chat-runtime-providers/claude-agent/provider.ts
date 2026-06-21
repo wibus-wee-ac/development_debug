@@ -33,6 +33,7 @@ import { createBoundedTextCollector } from '../bounded-text-collector'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import { ClaudeAgentInputStream, emptyClaudeAgentInput } from './async-input-stream'
 import { projectClaudeAgentCompactState, projectClaudeAgentContextUsage } from './context-usage-projector'
+import type { ClaudeAgentCapturedUserQuestion } from './event-to-chunk-mapper'
 import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from './event-to-chunk-mapper'
 import {
   buildClaudeAgentTurnContent,
@@ -63,6 +64,11 @@ import {
   writeClaudeAgentPendingModelSwitch,
 } from './state-projector'
 import type { ClaudeAgentProviderDeps, ClaudeAgentSessionInfo, ClaudeTitleGenerationThinkingEffort } from './types'
+import {
+  CLAUDE_AGENT_ASK_USER_QUESTION_METHOD,
+  buildClaudeAgentAskUserQuestionOutput,
+  projectClaudeAgentUserInputQuestions,
+} from './user-question'
 
 type ActiveClaudeQuery = {
   query: Query
@@ -426,6 +432,10 @@ export class ClaudeAgentProvider implements ChatRuntime {
           yield chunk
         }
 
+        for (const userQuestion of result.capturedUserQuestions) {
+          await this.answerClaudeAgentUserQuestion(input, userQuestion, inputStream)
+        }
+
         if (nextProviderSessionId) {
           await this.reportClaudeSessionTitle({
             sessionId: nextProviderSessionId,
@@ -582,6 +592,53 @@ export class ClaudeAgentProvider implements ChatRuntime {
       return
     }
     entry.query.setPermissionMode(input.mode)
+  }
+
+  private async answerClaudeAgentUserQuestion(
+    input: StreamTurnInput,
+    request: ClaudeAgentCapturedUserQuestion,
+    inputStream: ClaudeAgentInputStream,
+  ): Promise<void> {
+    if (!this.deps.requestUserInput) {
+      throw new ProviderRuntimeError(
+        ProviderErrors.requestFailed(
+          this.runtimeKind,
+          CLAUDE_AGENT_ASK_USER_QUESTION_METHOD,
+          'Chat Runtime does not expose pending user input handling',
+        ),
+      )
+    }
+
+    const resolution = await this.deps.requestUserInput({
+      sessionId: input.runtimeSession.chatSessionId,
+      runId: input.runId,
+      providerRequestId: request.toolCallId,
+      providerKind: input.profile.providerKind,
+      runtimeKind: this.runtimeKind,
+      providerMethod: CLAUDE_AGENT_ASK_USER_QUESTION_METHOD,
+      toolCallId: request.toolCallId,
+      questions: projectClaudeAgentUserInputQuestions(request.input),
+      metadata: {
+        params: request.input,
+      },
+    })
+    const output = buildClaudeAgentAskUserQuestionOutput({
+      request: request.input,
+      answers: resolution.answers,
+    })
+    inputStream.push(
+      [
+        {
+          type: 'tool_result',
+          tool_use_id: request.toolCallId,
+          content: JSON.stringify(output),
+        },
+      ],
+      {
+        parentToolUseId: request.parentToolUseId,
+        toolUseResult: output,
+      },
+    )
   }
 
   async updateRuntimeSettings(input: UpdateRuntimeSettingsInput): Promise<void> {

@@ -611,6 +611,7 @@ export interface RuntimeUserInputQuestion {
   question: string
   isOther: boolean
   isSecret: boolean
+  multiSelect: boolean
   options: RuntimeUserInputOption[] | null
 }
 
