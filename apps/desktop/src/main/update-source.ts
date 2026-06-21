@@ -1,4 +1,5 @@
 import { z } from 'zod'
+import { compare, valid } from 'semver'
 
 import type {
   DesktopUpdateArtifact,
@@ -62,12 +63,12 @@ export class DesktopUpdateSource {
 
     if (
       manifest.minSupportedVersion
-      && compareNumericVersion(this.currentVersion, manifest.minSupportedVersion) < 0
+      && compareVersion(this.currentVersion, manifest.minSupportedVersion) < 0
     ) {
       throw new Error(`Current version ${this.currentVersion} is older than the supported update floor ${manifest.minSupportedVersion}`)
     }
 
-    if (compareNumericVersion(manifest.version, this.currentVersion) <= 0) {
+    if (compareVersion(manifest.version, this.currentVersion) <= 0) {
       return null
     }
 
@@ -84,7 +85,7 @@ export class DesktopUpdateSource {
     })
 
     if (!response.ok) {
-      throw new Error(`Update manifest request failed with HTTP ${response.status}`)
+      throw new Error(`Update manifest request failed with HTTP ${response.status}: ${this.manifestUrl}`)
     }
 
     const parsed = updateManifestSchema.safeParse(await response.json())
@@ -154,26 +155,13 @@ function projectUpdateFile(file: DesktopUpdateArtifact): DesktopUpdateFile {
   }
 }
 
-function compareNumericVersion(left: string, right: string): number {
-  const leftParts = parseNumericVersion(left)
-  const rightParts = parseNumericVersion(right)
-  const maxLength = Math.max(leftParts.length, rightParts.length)
+function compareVersion(left: string, right: string): number {
+  const normalizedLeft = valid(left)
+  const normalizedRight = valid(right)
 
-  for (let index = 0; index < maxLength; index++) {
-    const leftPart = leftParts[index] ?? 0
-    const rightPart = rightParts[index] ?? 0
-    if (leftPart !== rightPart) {
-      return leftPart > rightPart ? 1 : -1
-    }
+  if (!normalizedLeft || !normalizedRight) {
+    throw new Error(`Desktop updates require SemVer-compatible versions, received "${left}" and "${right}"`)
   }
 
-  return 0
-}
-
-function parseNumericVersion(version: string): number[] {
-  const parts = version.split('.')
-  if (!parts.every(part => /^\d+$/.test(part))) {
-    throw new Error(`Desktop updates require numeric dot versions, received "${version}"`)
-  }
-  return parts.map(part => Number.parseInt(part, 10))
+  return compare(normalizedLeft, normalizedRight)
 }

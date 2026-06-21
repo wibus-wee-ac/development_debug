@@ -75,12 +75,46 @@ describe('DesktopUpdateSource', () => {
     await expect(source.checkForUpdates()).resolves.toBeNull()
   })
 
-  it('rejects non-numeric versions instead of guessing ordering', async () => {
+  it('includes the resolved manifest URL when the manifest request fails', async () => {
+    const source = new DesktopUpdateSource({
+      currentVersion: '1.2.3',
+      updateFeedUrl: 'https://updates.example.com/cradle',
+      fetchFn: async () => new Response('not found', { status: 404 }),
+    })
+
+    await expect(source.checkForUpdates()).rejects.toThrow(
+      'Update manifest request failed with HTTP 404: https://updates.example.com/cradle/macos/manifest.json',
+    )
+  })
+
+  it('accepts SemVer prerelease dev versions', async () => {
+    const source = new DesktopUpdateSource({
+      currentVersion: '0.0.0-dev.20260620.1',
+      updateFeedUrl: 'https://updates.example.com/cradle/manifest.json',
+      fetchFn: async () => createManifestResponse({
+        version: '0.0.0-dev.20260621.1',
+        files: [
+          {
+            url: 'https://updates.example.com/cradle/Cradle.zip',
+            arch: 'universal',
+          },
+        ],
+      }),
+    })
+
+    await expect(source.checkForUpdates()).resolves.toMatchObject({
+      info: {
+        version: '0.0.0-dev.20260621.1',
+      },
+    })
+  })
+
+  it('rejects invalid versions instead of guessing ordering', async () => {
     const source = new DesktopUpdateSource({
       currentVersion: '1.2.3',
       updateFeedUrl: 'https://updates.example.com/cradle/macos/manifest.json',
       fetchFn: async () => createManifestResponse({
-        version: '1.2.4-beta.1',
+        version: '2026.06.invalid',
         files: [
           {
             url: 'https://updates.example.com/cradle/macos/Cradle-1.2.4-universal.zip',
@@ -90,6 +124,6 @@ describe('DesktopUpdateSource', () => {
       }),
     })
 
-    await expect(source.checkForUpdates()).rejects.toThrow('numeric dot versions')
+    await expect(source.checkForUpdates()).rejects.toThrow('SemVer-compatible versions')
   })
 })
