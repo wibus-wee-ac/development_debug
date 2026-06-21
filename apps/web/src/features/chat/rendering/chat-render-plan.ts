@@ -58,6 +58,10 @@ export interface SegmentExecutionPhaseSplit {
   finalItems: ChatRenderSegment[]
 }
 
+export interface ExecutionPhaseSplitOptions {
+  describeToolKind: (part: RenderableToolPart) => ToolUiKind | null
+}
+
 export interface GroupMessagePartsInput {
   parts: MessagePart[]
   messageId: string
@@ -222,6 +226,7 @@ export function groupMessageParts(input: GroupMessagePartsInput): ChatRenderItem
 }
 
 const GROUPABLE_KINDS = new Set<ToolUiKind>(['terminal', 'file-read', 'search', 'file-diff'])
+const FINAL_REPLY_TOOL_KINDS = new Set<ToolUiKind>(['plan', 'plan-implementation'])
 
 function groupConsecutiveToolCalls(
   items: ChatRenderItem[],
@@ -302,28 +307,39 @@ function groupConsecutiveToolCalls(
   return result
 }
 
-export function hasFinalReply(items: ChatRenderItem[]): boolean {
-  return splitExecutionPhase(items) !== null
+export function hasFinalReply(
+  items: ChatRenderItem[],
+  options: ExecutionPhaseSplitOptions
+): boolean {
+  return splitExecutionPhase(items, options) !== null
 }
 
-export function splitExecutionPhase(items: ChatRenderItem[]): ExecutionPhaseSplit | null {
+export function splitExecutionPhase(
+  items: ChatRenderItem[],
+  options: ExecutionPhaseSplitOptions
+): ExecutionPhaseSplit | null {
   for (let index = items.length - 1; index >= 0; index--) {
     const item = items[index]
     if (item.kind !== 'text' || item.text.trim().length === 0) {
       continue
     }
 
-    const hasToolBeforeFinalText = items
-      .slice(0, index)
-      .some((candidate) => candidate.kind === 'tool-call' || candidate.kind === 'tool-group')
+    const previousItems = items.slice(0, index)
+    const hasExecutionToolBeforeFinalText = previousItems
+      .some(candidate => isExecutionPhaseToolItem(candidate, options))
 
-    if (!hasToolBeforeFinalText) {
+    if (!hasExecutionToolBeforeFinalText) {
       continue
     }
 
+    const retainedFinalItems = previousItems.filter(candidate =>
+      shouldKeepToolWithFinalReply(candidate, options))
+    const executionItems = previousItems.filter(candidate =>
+      !shouldKeepToolWithFinalReply(candidate, options))
+
     return {
-      executionItems: items.slice(0, index),
-      finalItems: items.slice(index)
+      executionItems,
+      finalItems: [...retainedFinalItems, ...items.slice(index)]
     }
   }
 
@@ -331,7 +347,8 @@ export function splitExecutionPhase(items: ChatRenderItem[]): ExecutionPhaseSpli
 }
 
 export function splitSegmentExecutionPhase(
-  items: ChatRenderSegment[]
+  items: ChatRenderSegment[],
+  options: ExecutionPhaseSplitOptions
 ): SegmentExecutionPhaseSplit | null {
   for (let index = items.length - 1; index >= 0; index--) {
     const item = items[index]
@@ -339,19 +356,48 @@ export function splitSegmentExecutionPhase(
       continue
     }
 
-    const hasToolBeforeFinalText = items
-      .slice(0, index)
-      .some((candidate) => candidate.kind === 'tool-call' || candidate.kind === 'tool-group')
+    const previousItems = items.slice(0, index)
+    const hasExecutionToolBeforeFinalText = previousItems
+      .some(candidate => isExecutionPhaseToolItem(candidate, options))
 
-    if (!hasToolBeforeFinalText) {
+    if (!hasExecutionToolBeforeFinalText) {
       continue
     }
 
+    const retainedFinalItems = previousItems.filter(candidate =>
+      shouldKeepToolWithFinalReply(candidate, options))
+    const executionItems = previousItems.filter(candidate =>
+      !shouldKeepToolWithFinalReply(candidate, options))
+
     return {
-      executionItems: items.slice(0, index),
-      finalItems: items.slice(index)
+      executionItems,
+      finalItems: [...retainedFinalItems, ...items.slice(index)]
     }
   }
 
   return null
+}
+
+function isExecutionPhaseToolItem(
+  item: ChatRenderItem | ChatRenderSegment,
+  options: ExecutionPhaseSplitOptions
+): boolean {
+  if (item.kind !== 'tool-call' && item.kind !== 'tool-group') {
+    return false
+  }
+  return !shouldKeepToolWithFinalReply(item, options)
+}
+
+function shouldKeepToolWithFinalReply(
+  item: ChatRenderItem | ChatRenderSegment,
+  options: ExecutionPhaseSplitOptions
+): boolean {
+  if (item.kind === 'tool-call') {
+    const kind = options.describeToolKind(item.part)
+    return kind !== null && FINAL_REPLY_TOOL_KINDS.has(kind)
+  }
+  if (item.kind === 'tool-group') {
+    return FINAL_REPLY_TOOL_KINDS.has(item.uiKind)
+  }
+  return false
 }

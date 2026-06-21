@@ -1,11 +1,11 @@
-import type { FileContents, MultiFileDiffProps } from '@pierre/diffs/react'
-import { MultiFileDiff } from '@pierre/diffs/react'
 import {
-  RightSmallLine as ChevronRightIcon,
   Columns2Line as Columns2Icon,
   FileLine as FilePenLineIcon,
-  Rows3Line as Rows3Icon
+  RightSmallLine as ChevronRightIcon,
+  Rows3Line as Rows3Icon,
 } from '@mingcute/react'
+import type { FileContents, MultiFileDiffProps } from '@pierre/diffs/react'
+import { MultiFileDiff } from '@pierre/diffs/react'
 import { m } from 'motion/react'
 import { useState } from 'react'
 
@@ -18,6 +18,8 @@ interface EditFileBlockProps {
   filePath: string
   oldContent: string
   newContent: string
+  /** Detail mode is already owned by the surrounding tool row. @default 'preview' */
+  presentation?: 'preview' | 'detail'
   /** Whether the diff viewer is open initially. @default false */
   defaultOpen?: boolean
 }
@@ -40,7 +42,7 @@ function diffCacheKey(prefix: string, filePath: string, content: string): string
   return `${prefix}:${filePath}:${content.length}:${content.slice(0, 64)}:${content.slice(-64)}`
 }
 
-/** Line-level change stats — approximate, for visual indicator only. */
+/** Line-level change stats, approximate for visual indicator only. */
 function computeChangeStats(oldContent: string, newContent: string) {
   const oldLines = oldContent.split('\n').filter(l => l.trim())
   const newLines = newContent.split('\n').filter(l => l.trim())
@@ -52,7 +54,77 @@ function computeChangeStats(oldContent: string, newContent: string) {
   }
 }
 
-export function EditFileBlock({ filePath, oldContent, newContent, defaultOpen = false }: EditFileBlockProps) {
+function EditFileDiffPane({
+  filePath,
+  oldFile,
+  newFile,
+  diffOptions,
+  layout,
+  showFilePath,
+  onLayoutChange,
+}: {
+  filePath: string
+  oldFile: FileContents
+  newFile: FileContents
+  diffOptions: DiffOptions
+  layout: DiffLayout
+  showFilePath: boolean
+  onLayoutChange: (layout: DiffLayout) => void
+}) {
+  return (
+    <>
+      <div
+        className={cn(
+          'flex items-center bg-muted/30 px-2 py-1',
+          showFilePath ? 'justify-between' : 'justify-end',
+        )}
+      >
+        {showFilePath && (
+          <span className="truncate font-mono text-[10px] text-muted-foreground/40" title={filePath}>
+            {filePath}
+          </span>
+        )}
+        <ToggleGroup
+          type="single"
+          value={layout}
+          onValueChange={(v) => {
+            if (v === 'split' || v === 'stacked') {
+              onLayoutChange(v)
+            }
+          }}
+          variant="outline"
+          size="sm"
+          className="h-5 shrink-0 gap-px"
+          aria-label="Diff layout"
+        >
+          <ToggleGroupItem value="split" aria-label="Split" className="h-5 gap-1 px-1.5 text-[10px]">
+            <Columns2Icon className="size-2.5" />
+            Split
+          </ToggleGroupItem>
+          <ToggleGroupItem value="stacked" aria-label="Stacked" className="h-5 gap-1 px-1.5 text-[10px]">
+            <Rows3Icon className="size-2.5" />
+            Stacked
+          </ToggleGroupItem>
+        </ToggleGroup>
+      </div>
+
+      <MultiFileDiff
+        oldFile={oldFile}
+        newFile={newFile}
+        options={diffOptions}
+        className="max-h-128 overflow-auto [--diffs-font-size:11px] [--diffs-line-height:18px]"
+      />
+    </>
+  )
+}
+
+export function EditFileBlock({
+  filePath,
+  oldContent,
+  newContent,
+  presentation = 'preview',
+  defaultOpen = false,
+}: EditFileBlockProps) {
   const [open, setOpen] = useState(defaultOpen)
   const [layout, setLayout] = useState<DiffLayout>('split')
 
@@ -62,30 +134,52 @@ export function EditFileBlock({ filePath, oldContent, newContent, defaultOpen = 
   const fileName = segments.at(-1) ?? filePath
   const dirPath = segments.length > 1 ? `${segments.slice(0, -1).join('/')}/` : ''
 
-  const oldFile: FileContents = ({
-      name: filePath,
-      contents: oldContent,
-      cacheKey: diffCacheKey('old', filePath, oldContent),
-    })
+  const oldFile: FileContents = {
+    name: filePath,
+    contents: oldContent,
+    cacheKey: diffCacheKey('old', filePath, oldContent),
+  }
 
-  const newFile: FileContents = ({
-      name: filePath,
-      contents: newContent,
-      cacheKey: diffCacheKey('new', filePath, newContent),
-    })
+  const newFile: FileContents = {
+    name: filePath,
+    contents: newContent,
+    cacheKey: diffCacheKey('new', filePath, newContent),
+  }
 
-  const diffOptions: DiffOptions = ({
-      theme: DIFF_THEMES,
-      themeType: 'system',
-      diffStyle: layoutDiffStyles[layout],
-      disableFileHeader: true,
-      disableBackground: false,
-      diffIndicators: 'bars',
-      hunkSeparators: 'line-info-basic',
-      lineDiffType: 'word' as const,
-      overflow: 'scroll' as const,
-      parseDiffOptions: { context: 3 },
-    })
+  const diffOptions: DiffOptions = {
+    theme: DIFF_THEMES,
+    themeType: 'system',
+    diffStyle: layoutDiffStyles[layout],
+    disableFileHeader: true,
+    disableBackground: false,
+    diffIndicators: 'bars',
+    hunkSeparators: 'line-info-basic',
+    lineDiffType: 'word' as const,
+    overflow: 'scroll' as const,
+    parseDiffOptions: { context: 3 },
+  }
+
+  if (presentation === 'detail') {
+    return (
+      <m.div
+        initial={{ opacity: 0, y: 3 }}
+        animate={{ opacity: 1, y: 0 }}
+        transition={{ duration: 0.18, ease: [0.25, 0.1, 0.25, 1] }}
+        data-testid="chat-edit-file-block"
+        className="overflow-hidden rounded-md border border-border/60 bg-background/60"
+      >
+        <EditFileDiffPane
+          filePath={filePath}
+          oldFile={oldFile}
+          newFile={newFile}
+          diffOptions={diffOptions}
+          layout={layout}
+          showFilePath
+          onLayoutChange={setLayout}
+        />
+      </m.div>
+    )
+  }
 
   return (
     <m.div
@@ -96,7 +190,6 @@ export function EditFileBlock({ filePath, oldContent, newContent, defaultOpen = 
       className="overflow-hidden rounded-md"
     >
       <Collapsible open={open} onOpenChange={setOpen}>
-        {/* ── Trigger row ── */}
         <CollapsibleTrigger asChild>
           <button
             type="button"
@@ -152,43 +245,16 @@ export function EditFileBlock({ filePath, oldContent, newContent, defaultOpen = 
           </button>
         </CollapsibleTrigger>
 
-        {/* ── Diff pane ── */}
         {open && (
           <CollapsibleContent className="overflow-hidden rounded-b-md">
-            {/* Controls bar */}
-            <div className="flex items-center justify-between bg-muted/30 px-2 py-1">
-              <span className="truncate font-mono text-[10px] text-muted-foreground/40" title={filePath}>
-                {filePath}
-              </span>
-              <ToggleGroup
-                type="single"
-                value={layout}
-                onValueChange={(v) => {
-                  if (v === 'split' || v === 'stacked') {
-                    setLayout(v)
-                  }
-                }}
-                variant="outline"
-                size="sm"
-                className="h-5 shrink-0 gap-px"
-                aria-label="Diff layout"
-              >
-                <ToggleGroupItem value="split" aria-label="Split" className="h-5 gap-1 px-1.5 text-[10px]">
-                  <Columns2Icon className="size-2.5" />
-                  Split
-                </ToggleGroupItem>
-                <ToggleGroupItem value="stacked" aria-label="Stacked" className="h-5 gap-1 px-1.5 text-[10px]">
-                  <Rows3Icon className="size-2.5" />
-                  Stacked
-                </ToggleGroupItem>
-              </ToggleGroup>
-            </div>
-
-            <MultiFileDiff
+            <EditFileDiffPane
+              filePath={filePath}
               oldFile={oldFile}
               newFile={newFile}
-              options={diffOptions}
-              className="max-h-128 overflow-auto [--diffs-font-size:11px] [--diffs-line-height:18px]"
+              diffOptions={diffOptions}
+              layout={layout}
+              showFilePath={false}
+              onLayoutChange={setLayout}
             />
           </CollapsibleContent>
         )}

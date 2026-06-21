@@ -889,6 +889,7 @@ function classifyCanonicalToolKind(identity: BuiltinToolCallIdentity): ToolUiKin
     case 'claude-code/TodoWrite':
       return 'todo'
 
+    case 'claude-code/EnterPlanMode':
     case 'claude-code/ExitPlanMode':
     case 'codex/plan':
       return 'plan'

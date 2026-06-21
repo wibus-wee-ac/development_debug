@@ -2,14 +2,14 @@ import { useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import type { RuntimeKind } from '~/features/agent-runtime/types'
-import type { ClaudeMatrixSlot, ClaudeAgentMatrixProviderOption } from '~/features/chat/runtime/claude-session-model-matrix-control'
+import type { ClaudeAgentMatrixProviderOption, ClaudeMatrixSlot } from '~/features/chat/runtime/claude-session-model-matrix-control'
 import { ClaudeAgentMatrixSelector } from '~/features/chat/runtime/claude-session-model-matrix-control'
 
 import { AgentSelector } from './agent-selector'
 import { ChatAgentIdentity } from './chat-agent-identity'
 import { ProviderModelSelector, useProviderThinkingOptions } from './provider-model-selector'
 import { RuntimeSelector } from './runtime-selector'
-import { filterThinkingOptionsForModel } from './constants'
+import { ThinkingEffortButton } from './thinking-effort-button'
 import type { ComposerContext } from './types'
 import type { ComposerStateResult } from './use-composer-state'
 
@@ -69,12 +69,7 @@ export function ComposerToolbar({ context, state, claudeMatrix }: ComposerToolba
   const isClaudeAgent = selection.targetMode === 'provider'
     && selection.runtimeKind === 'claude-agent'
     && !!claudeMatrix
-  const selectedModel = models.find(model => model.id === selection.modelId) ?? null
   const thinkingOptions = useProviderThinkingOptions()
-  const selectedThinkingOptions = useMemo(
-    () => filterThinkingOptionsForModel(selectedModel, thinkingOptions),
-    [selectedModel, thinkingOptions],
-  )
   const matrixProfiles: ClaudeAgentMatrixProviderOption[] = useMemo(
     () => profiles.flatMap((profile) => {
       if (profile.providerKind === 'cli-tool') {
@@ -90,17 +85,18 @@ export function ComposerToolbar({ context, state, claudeMatrix }: ComposerToolba
     [profiles],
   )
 
-  return (
-    <div className="flex items-center gap-1">
-      <RuntimeSelector
-        value={runtimeSelectorValue}
-        onChange={handleRuntimeChange}
-        readOnly={context === 'chat'}
-        options={runtimeSelectorOptions}
-        occludeNativeBrowserSurface
-      />
-      {boundChatAgent && <ChatAgentIdentity agent={boundChatAgent} />}
-      {context === 'new-chat' && selection.targetMode === 'agent' && (
+  const runtimeControl = (
+    <RuntimeSelector
+      value={runtimeSelectorValue}
+      onChange={handleRuntimeChange}
+      readOnly={context === 'chat'}
+      options={runtimeSelectorOptions}
+      occludeNativeBrowserSurface
+    />
+  )
+  const agentIdentity = boundChatAgent ? <ChatAgentIdentity agent={boundChatAgent} /> : null
+  const agentSelector = context === 'new-chat' && selection.targetMode === 'agent'
+    ? (
         <AgentSelector
           agents={agents}
           selectedAgentId={selection.agentId}
@@ -108,41 +104,57 @@ export function ComposerToolbar({ context, state, claudeMatrix }: ComposerToolba
           onSelectAgent={setAgentId}
           occludeNativeBrowserSurface
         />
-      )}
-      {isClaudeAgent
-        ? (
-            <ClaudeAgentMatrixSelector
-              profiles={matrixProfiles}
-              selectedProfileId={selection.profileId}
-              models={models}
-              selectedModelId={selection.modelId}
-              matrix={claudeMatrix!.slot}
-              loadingModels={isLoadingModels || claudeMatrix!.providerSettingsLoading}
-              thinkingEffort={selection.thinkingEffort}
-              thinkingOptions={selectedThinkingOptions}
-              onSelectProfile={setProfileId}
-              onSelectThinkingEffort={setThinkingEffort}
-              occludeNativeBrowserSurface
-            />
-          )
-        : selection.targetMode === 'provider' && selection.runtimeKind !== 'cli-tui'
-          ? (
-              <ProviderModelSelector
-                profiles={profiles}
-                selectedProfileId={selection.profileId}
-                selectedModelId={selection.modelId}
-                models={models}
-                modelsByProfileId={modelsByProfileId}
-                loadingProfileIds={loadingProfileIds}
-                thinkingEffort={selection.thinkingEffort}
-                isLoadingModels={isLoadingModels}
-                requestProfileModels={requestProfileModels}
-                onSelectProfile={setProfileId}
-                onSelectModel={setModelId}
-                onSelectThinkingEffort={setThinkingEffort}
-              />
-            )
-          : null}
+      )
+    : null
+  const claudeMatrixSelector = isClaudeAgent
+    ? (
+        <ClaudeAgentMatrixSelector
+          profiles={matrixProfiles}
+          selectedProfileId={selection.profileId}
+          models={models}
+          selectedModelId={selection.modelId}
+          matrix={claudeMatrix!.slot}
+          loadingModels={isLoadingModels || claudeMatrix!.providerSettingsLoading}
+          onSelectProfile={setProfileId}
+          occludeNativeBrowserSurface
+        />
+      )
+    : null
+  const thinkingControl = isClaudeAgent
+    ? (
+        <ThinkingEffortButton
+          thinkingEffort={selection.thinkingEffort}
+          thinkingOptions={thinkingOptions}
+          onSelect={setThinkingEffort}
+          occludeNativeBrowserSurface
+        />
+      )
+    : null
+  const providerSelector = selection.targetMode === 'provider' && selection.runtimeKind !== 'cli-tui' && !isClaudeAgent
+    ? (
+        <ProviderModelSelector
+          profiles={profiles}
+          selectedProfileId={selection.profileId}
+          selectedModelId={selection.modelId}
+          models={models}
+          modelsByProfileId={modelsByProfileId}
+          loadingProfileIds={loadingProfileIds}
+          thinkingEffort={selection.thinkingEffort}
+          isLoadingModels={isLoadingModels}
+          requestProfileModels={requestProfileModels}
+          onSelectProfile={setProfileId}
+          onSelectModel={setModelId}
+          onSelectThinkingEffort={setThinkingEffort}
+        />
+      )
+    : null
+  const targetControl = agentIdentity ?? agentSelector ?? claudeMatrixSelector ?? providerSelector
+
+  return (
+    <div className="flex min-w-0 items-center gap-1">
+      {runtimeControl}
+      {targetControl}
+      {thinkingControl}
     </div>
   )
 }

@@ -1506,7 +1506,11 @@ const MessageBubbleSegmentsView = ({
   const isFirstAppearance = trackSeenMessageId(frame.id)
   const activeStreamingSegmentKey = isStreaming ? readActiveStreamingSegmentKey(segments) : null
   const streamingTailSegmentKey = isStreaming ? readStreamingTailSegmentKey(segments) : null
-  const executionPhaseSplit = isStreaming ? null : splitSegmentExecutionPhase(segments)
+  const executionPhaseSplit = isStreaming
+    ? null
+    : splitSegmentExecutionPhase(segments, {
+        describeToolKind: part => describeToolCall(part).kind,
+      })
 
   const [lightboxOpen, setLightboxOpen] = useState(false)
   const [lightboxIndex, setLightboxIndex] = useState(0)
@@ -1810,7 +1814,11 @@ function MessageBubbleView({
   const activeStreamingItemKey = isStreaming ? readActiveStreamingItemKey(groupedItems) : null
   const streamingTailItemKey = isStreaming ? readStreamingTailItemKey(groupedItems) : null
 
-  const executionPhaseSplit = isStreaming ? null : splitExecutionPhase(groupedItems)
+  const executionPhaseSplit = isStreaming
+    ? null
+    : splitExecutionPhase(groupedItems, {
+        describeToolKind: part => describeToolCall(part).kind,
+      })
   const hasActiveProgress = hasActiveNonTextProgress(groupedItems)
   const showThinkingPlaceholder
     = isAssistant

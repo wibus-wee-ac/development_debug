@@ -4,7 +4,8 @@ import { lazy, Suspense, useCallback, useEffect, useLayoutEffect, useRef, useSta
 
 import { getSessionsByIdQueryKey } from '~/api-gen/@tanstack/react-query.gen'
 import { getSkills, patchSessionsById } from '~/api-gen/sdk.gen'
-import type { RuntimeKind } from '~/features/agent-runtime/types'
+import type { ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
+import { CLAUDE_AGENT_ALIAS_KEYS } from '~/features/agent-runtime/claude-agent-config'
 import type { MentionItem } from '~/features/chat'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import type { SkillInventoryEntry } from '~/features/skills/types'
@@ -23,6 +24,25 @@ type SessionProviderModelPatch = {
   providerTargetId?: string
   modelId?: string | null
   thinkingEffort?: SendMessageOptions['thinkingEffort'] | null
+}
+
+function isClaudeAgentTierModelId(value: string | null | undefined): value is (typeof CLAUDE_AGENT_ALIAS_KEYS)[number] {
+  return CLAUDE_AGENT_ALIAS_KEYS.some(key => key === value)
+}
+
+function resolveClaudeAgentTierModel(input: {
+  modelId: string | null
+  aliases: ReturnType<typeof useProviderTargetClaudeMatrix>['aliases']
+  models: ModelDescriptor[]
+}): ModelDescriptor | null {
+  if (!isClaudeAgentTierModelId(input.modelId)) {
+    return null
+  }
+  const resolvedModelId = input.aliases[input.modelId].trim()
+  if (!resolvedModelId) {
+    return null
+  }
+  return input.models.find(model => model.id === resolvedModelId) ?? null
 }
 
 interface SessionProviderModelSaveState {
@@ -122,16 +142,18 @@ export function ChatRuntimeView({
 
   const sendOverridesRef = useRef({
     providerTargetId: undefined as string | undefined,
-    modelId: undefined as string | undefined,
+    modelId: undefined as string | null | undefined,
     thinkingEffort: undefined as SendMessageOptions['thinkingEffort'],
   })
   useLayoutEffect(() => {
     sendOverridesRef.current = {
       providerTargetId: composerState.selection.profileId ?? undefined,
-      modelId: composerState.selection.modelId ?? undefined,
+      modelId: composerState.selection.runtimeKind === 'claude-agent'
+        ? composerState.selection.modelId
+        : composerState.selection.modelId ?? undefined,
       thinkingEffort: composerState.selection.thinkingEffort ?? undefined,
     }
-  }, [composerState.selection.modelId, composerState.selection.profileId, composerState.selection.thinkingEffort])
+  }, [composerState.selection.modelId, composerState.selection.profileId, composerState.selection.runtimeKind, composerState.selection.thinkingEffort])
 
   const persistSessionProviderModel = useCallback((body: SessionProviderModelPatch) => {
     const targetSessionId = sessionId
@@ -212,14 +234,16 @@ export function ChatRuntimeView({
       return
     }
     const nextModels = modelsByProfileId[pendingProviderTargetId] ?? []
-    if (nextModels.length === 0) {
+    if (runtimeKind !== 'claude-agent' && nextModels.length === 0) {
       if (successfulProfileIds.has(pendingProviderTargetId)) {
         resetManualSelection()
         setPendingProviderTargetId(null)
       }
       return
     }
-    const nextModelId = nextModels[0]!.id
+    const nextModelId = runtimeKind === 'claude-agent'
+      ? null
+      : nextModels[0]!.id
     setModelId(nextModelId, pendingProviderTargetId)
     void persistSessionProviderModel({ providerTargetId: pendingProviderTargetId, modelId: nextModelId })
     setPendingProviderTargetId(null)
@@ -231,6 +255,7 @@ export function ChatRuntimeView({
     selectedProfileId,
     setModelId,
     successfulProfileIds,
+    runtimeKind,
   ])
 
   const sessionComposerState = ({
@@ -239,8 +264,10 @@ export function ChatRuntimeView({
       composerState.setProfileId(id)
       composerState.requestProfileModels(id)
       const nextModels = composerState.modelsByProfileId[id] ?? []
-      const nextModelId = nextModels[0]?.id ?? null
-      if (!nextModelId) {
+      const nextModelId = runtimeKind === 'claude-agent'
+        ? null
+        : nextModels[0]?.id ?? null
+      if (runtimeKind !== 'claude-agent' && !nextModelId) {
         setPendingProviderTargetId(id)
         return
       }
@@ -248,7 +275,7 @@ export function ChatRuntimeView({
       setPendingProviderTargetId(null)
       void persistSessionProviderModel({ providerTargetId: id, modelId: nextModelId })
     },
-    setModelId: (id: string, profileId?: string) => {
+    setModelId: (id: string | null, profileId?: string) => {
       composerState.setModelId(id, profileId)
       setPendingProviderTargetId(null)
       const resolvedProfileId = profileId ?? composerState.selection.profileId
@@ -282,6 +309,13 @@ export function ChatRuntimeView({
   const claudeMatrix = claudeMatrixSlot
     ? { slot: claudeMatrixSlot, providerSettingsLoading: providerTargetMatrix.isLoading }
     : null
+  const resolvedComposerModel = runtimeKind === 'claude-agent'
+    ? resolveClaudeAgentTierModel({
+        modelId: sessionComposerState.selection.modelId,
+        aliases: claudeMatrixSlot?.aliases ?? providerTargetMatrix.aliases,
+        models: sessionComposerState.models,
+      }) ?? sessionComposerState.effectiveModel
+    : sessionComposerState.effectiveModel
 
   const composerToolbar = (
     <ComposerToolbar context="chat" state={sessionComposerState} claudeMatrix={claudeMatrix} />
@@ -306,7 +340,7 @@ export function ChatRuntimeView({
         composerToolbarAddon={composerToolbarAddons}
         composerContextBar={composerContextBar}
         sendOverridesRef={sendOverridesRef}
-        composerModel={sessionComposerState.effectiveModel}
+        composerModel={resolvedComposerModel}
         placeholder={placeholder}
         messageTextTransform={messageTextTransform}
         prepareSend={prepareSend}

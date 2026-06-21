@@ -69,4 +69,22 @@ describe('selectChatThinkingEffort', () => {
       preferredThinkingEffort: 'xhigh',
     })).toBeNull()
   })
+
+  it('keeps the preferred effort for claude-agent even when the tier model is unresolved', () => {
+    // claude-agent selects a tier alias (fast/balanced/powerful), so the
+    // effective model is null — capability filtering must not clamp to null.
+    expect(selectChatThinkingEffort({
+      effectiveModel: null,
+      preferredThinkingEffort: 'xhigh',
+      runtimeKind: 'claude-agent',
+    })).toBe('xhigh')
+  })
+
+  it('falls back to high for claude-agent when the preferred effort is unset', () => {
+    expect(selectChatThinkingEffort({
+      effectiveModel: null,
+      preferredThinkingEffort: null,
+      runtimeKind: 'claude-agent',
+    })).toBe('high')
+  })
 })

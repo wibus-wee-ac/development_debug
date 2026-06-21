@@ -1,5 +1,5 @@
-import type { FileUIPart } from 'ai'
 import { Settings2Line as SettingsIcon } from '@mingcute/react'
+import type { FileUIPart } from 'ai'
 import { m } from 'motion/react'
 import type { ReactNode } from 'react'
 import { useEffect, useState } from 'react'
@@ -8,9 +8,9 @@ import { useTranslation } from 'react-i18next'
 import { getSkills } from '~/api-gen/sdk.gen'
 import { Button } from '~/components/ui/button'
 import { toastManager } from '~/components/ui/toast'
-import type { ClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
-import { hasClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
-import type { ApiProviderKind, RuntimeKind } from '~/features/agent-runtime/types'
+import type { ClaudeAgentAliasKey, ClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
+import { CLAUDE_AGENT_ALIAS_KEYS, hasClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
+import type { ApiProviderKind, ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
 import { ComposerToolbar, useComposerState } from '~/features/composer-toolbar'
 import type { ComposerStateResult } from '~/features/composer-toolbar/use-composer-state'
 import type { SkillInventoryEntry } from '~/features/skills/types'
@@ -56,13 +56,33 @@ const PLACEHOLDER_HINT_KEYS = [
   'placeholder.refactor',
 ] as const
 
+function readClaudeAgentTier(value: string | null): ClaudeAgentAliasKey | null {
+  return CLAUDE_AGENT_ALIAS_KEYS.find(key => key === value) ?? null
+}
+
+function resolveClaudeAgentTierModel(input: {
+  modelId: string | null
+  aliases: ClaudeAgentModelAliases
+  models: ModelDescriptor[]
+}): ModelDescriptor | null {
+  const tier = readClaudeAgentTier(input.modelId)
+  if (!tier) {
+    return null
+  }
+  const resolvedModelId = input.aliases[tier].trim()
+  if (!resolvedModelId) {
+    return null
+  }
+  return input.models.find(model => model.id === resolvedModelId) ?? null
+}
+
 export interface DraftChatComposerSubmitOptions {
   runtimeKind: RuntimeKind
   agentId?: string
   agentName?: string
   providerTargetId?: string
   providerTargetName?: string
-  modelId?: string
+  modelId?: string | null
   thinkingEffort?: ChatThinkingEffort
   runtimeSettings: DraftChatRuntimeSettings
 }
@@ -139,34 +159,6 @@ function DraftChatComposerContent({
 
   const placeholderHints = PLACEHOLDER_HINT_KEYS.map(key => t(key))
   const placeholder = useRotatingPlaceholder(placeholderHints, active)
-  const supportsAttachments = modelSupportsAttachments(effectiveModel)
-  const appshotRuntime = useComposerAppshotCapture({
-    active,
-    supportsAttachments,
-  })
-  const cradleSlashCommands = (() => {
-    const appshotCommand = (() => {
-      if (!isElectron || platform !== 'darwin') {
-        return withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, {
-          enabled: false,
-          reason: 'Requires the macOS desktop app.',
-        })
-      }
-      if (!supportsAttachments) {
-        return withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, {
-          enabled: false,
-          reason: 'Requires an image-capable model.',
-        })
-      }
-      return withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, undefined)
-    })()
-
-    return [appshotCommand]
-  })()
-  const slashCommands = useRuntimeComposerSlashCommands(selection.runtimeKind, cradleSlashCommands)
-  const sendDisabled = selection.targetMode === 'agent'
-    ? !effectiveAgent || sending
-    : !effectiveProfile || sending
 
   const readinessNotice = (() => {
     if (
@@ -271,16 +263,67 @@ function DraftChatComposerContent({
   const claudeMatrix = claudeMatrixSlot
     ? { slot: claudeMatrixSlot, providerSettingsLoading: providerTargetMatrix.isLoading }
     : null
+  const resolvedComposerModel = selection.runtimeKind === 'claude-agent'
+    ? resolveClaudeAgentTierModel({
+        modelId: selection.modelId,
+        aliases: claudeMatrixSlot?.aliases ?? providerTargetMatrix.aliases,
+        models: composerState.models,
+      }) ?? effectiveModel
+    : effectiveModel
+  const supportsAttachments = modelSupportsAttachments(resolvedComposerModel)
+  const appshotRuntime = useComposerAppshotCapture({
+    active,
+    supportsAttachments,
+  })
+  const cradleSlashCommands = (() => {
+    const appshotCommand = (() => {
+      if (!isElectron || platform !== 'darwin') {
+        return withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, {
+          enabled: false,
+          reason: 'Requires the macOS desktop app.',
+        })
+      }
+      if (!supportsAttachments) {
+        return withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, {
+          enabled: false,
+          reason: 'Requires an image-capable model.',
+        })
+      }
+      return withSlashCommandAvailability(CRADLE_APPSHOT_SLASH_COMMAND, undefined)
+    })()
+
+    return [appshotCommand]
+  })()
+  const slashCommands = useRuntimeComposerSlashCommands(selection.runtimeKind, cradleSlashCommands)
+  const sendDisabled = selection.targetMode === 'agent'
+    ? !effectiveAgent || sending
+    : !effectiveProfile || sending
 
   const toolbar = (
     <div className="flex min-w-0 items-center gap-1">
-      <RuntimeSettingsControl
-        settings={runtimeSettings}
-        applied
-        disabled={sending}
-        onChange={updateRuntimeSettings}
+      <ComposerToolbar
+        context="new-chat"
+        state={composerState}
+        claudeMatrix={claudeMatrix}
       />
-      <ComposerToolbar context="new-chat" state={composerState} claudeMatrix={claudeMatrix} />
+    </div>
+  )
+  const footer = (
+    <div className="flex w-full min-w-0 items-center justify-between gap-3 text-muted-foreground">
+      <div className="shrink-0">
+        <RuntimeSettingsControl
+          settings={runtimeSettings}
+          applied
+          disabled={sending}
+          showInteractionLabel={false}
+          onChange={updateRuntimeSettings}
+        />
+      </div>
+      {contextBar && (
+        <div className="flex min-w-0 justify-end">
+          {contextBar}
+        </div>
+      )}
     </div>
   )
 
@@ -315,7 +358,9 @@ function DraftChatComposerContent({
         : {
             providerTargetId: effectiveProfile?.id,
             providerTargetName: effectiveProfile?.name,
-            modelId: selection.modelId ?? effectiveModel?.id,
+            modelId: selection.runtimeKind === 'claude-agent'
+              ? selection.modelId ?? undefined
+              : selection.modelId ?? effectiveModel?.id,
             thinkingEffort: selection.thinkingEffort ?? undefined,
           }),
       runtimeSettings: submitRuntimeSettings,
@@ -446,7 +491,7 @@ function DraftChatComposerContent({
         }}
         slots={{
           toolbar,
-          contextBar,
+          footer,
         }}
         externalSignals={{
           replaceText,

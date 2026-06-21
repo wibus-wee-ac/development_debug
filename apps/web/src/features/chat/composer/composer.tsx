@@ -1,11 +1,11 @@
-import type { FileUIPart } from 'ai'
 import {
   LoadingLine as LoaderCircleIcon,
   RouteLine as RouteIcon,
   SendPlaneLine as SendHorizonalIcon,
   SquareLine as SquareIcon,
-  TerminalBoxLine as SquareTerminalIcon
+  TerminalBoxLine as SquareTerminalIcon,
 } from '@mingcute/react'
+import type { FileUIPart } from 'ai'
 import type { ChangeEvent } from 'react'
 import { useCallback, useEffect, useLayoutEffect, useMemo, useReducer, useRef, useState } from 'react'
 
@@ -95,6 +95,7 @@ export interface ComposerAttachmentIntegration {
 export interface ComposerSlots {
   toolbar?: React.ReactNode
   contextBar?: React.ReactNode
+  footer?: React.ReactNode
 }
 
 export interface ComposerExternalSignals {
@@ -740,6 +741,7 @@ export function Composer({
   const onActionTargetElementChange = attachments?.onActionTargetElementChange
   const toolbar = slots?.toolbar
   const contextBar = slots?.contextBar
+  const footer = slots?.footer
   const replaceText = externalSignals?.replaceText
   const replaceTextKey = externalSignals?.replaceTextKey
   const appendText = externalSignals?.appendText
@@ -1229,10 +1231,22 @@ export function Composer({
             'dark:border-amber-300/55 dark:shadow-[0_0_0_1px_rgba(252,211,77,0.16),0_18px_40px_-30px_rgba(251,191,36,0.48)]',
             'dark:focus-within:border-amber-300/80 dark:focus-within:shadow-[0_0_0_1px_rgba(252,211,77,0.26),0_22px_44px_-32px_rgba(251,191,36,0.56)]',
           ],
+          footer && [
+            'border-0 bg-transparent shadow-none ring-0',
+            'focus-within:border-transparent focus-within:shadow-none',
+          ],
         )}
         data-testid={actionTargetTestId}
         data-composer-action-target
       >
+        <div
+          className={cn(
+            footer && [
+              'relative z-10 overflow-hidden rounded-2xl border border-border/60 bg-background shadow-[0_1px_2px_rgb(0_0_0_/_0.04),0_8px_24px_-20px_rgb(0_0_0_/_0.28)]',
+              'focus-within:border-ring/50',
+            ],
+          )}
+        >
         {!inputCollapsed && (
           <ComposerAttachmentInput
             fileInputRef={attachmentController.fileInputRef}
@@ -1294,10 +1308,10 @@ export function Composer({
         >
           {/* Left: custom toolbar from parent */}
           <div className={cn('min-w-0 flex-1', toolbarClassName)}>
-            <div className="relative h-7 min-w-0 overflow-hidden">
+            <div className="grid min-w-0 overflow-hidden">
               <div
                 className={cn(
-                  'absolute inset-x-0 top-1/2 flex min-w-0 -translate-y-1/2 items-center gap-1 transition-[opacity,transform,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none',
+                  'col-start-1 row-start-1 flex min-w-0 items-center gap-1 transition-[opacity,transform,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none',
                   isBangMode && 'pointer-events-none translate-y-2 opacity-0 blur-[3px]',
                 )}
               >
@@ -1305,9 +1319,9 @@ export function Composer({
               </div>
               <div
                 className={cn(
-                  'pointer-events-none absolute inset-x-0 top-1/2 flex min-w-0 items-center transition-[opacity,transform,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none',
+                  'pointer-events-none col-start-1 row-start-1 flex min-w-0 items-center transition-[opacity,transform,filter] duration-200 ease-[cubic-bezier(0.2,0,0,1)] motion-reduce:transition-none',
                   isBangMode
-                    ? '-translate-y-1/2 opacity-100 blur-0'
+                    ? 'translate-y-0 opacity-100 blur-0'
                     : 'translate-y-2 opacity-0 blur-[3px]',
                 )}
               >
@@ -1350,6 +1364,12 @@ export function Composer({
             stopButtonTestId={stopButtonTestId}
           />
         </div>
+        </div>
+        {footer && (
+          <div className="relative -mt-2 flex min-h-11 min-w-0 items-center rounded-b-2xl bg-muted/45 px-2.5 pb-1 pt-3 text-[13px] shadow-[inset_0_1px_0_rgb(255_255_255_/_0.55),0_8px_18px_-18px_rgb(0_0_0_/_0.32)]">
+            {footer}
+          </div>
+        )}
       </div>
     </div>
   )

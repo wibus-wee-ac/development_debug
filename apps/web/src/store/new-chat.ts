@@ -25,7 +25,7 @@ interface NewChatState {
   setLastRuntimeKind: (kind: RuntimeKind | null) => void
   setLastAgentId: (id: string | null) => void
   setLastAgentProfileId: (id: string | null) => void
-  setLastModelForProfile: (profileId: string, modelId: string) => void
+  setLastModelForProfile: (profileId: string, modelId: string | null) => void
   setLastClaudeAgentForProfile: (profileId: string, config: NewChatClaudeAgentConfig | null) => void
   setLastThinkingEffort: (effort: PersistedThinkingEffort) => void
   setLastRuntimeSettings: (settings: ChatRuntimeSettings) => void
@@ -84,6 +84,14 @@ export const useNewChatStore = create<NewChatState>()(
       },
       setLastModelForProfile: (profileId, modelId) => {
         set((state) => {
+          if (modelId === null) {
+            if (!(profileId in state.lastModelByProfile)) {
+              return state
+            }
+            const next = { ...state.lastModelByProfile }
+            delete next[profileId]
+            return { lastModelByProfile: next }
+          }
           if (state.lastModelByProfile[profileId] === modelId) {
             return state
           }

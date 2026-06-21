@@ -31,7 +31,7 @@ interface StartOptimisticChatResponseInput {
     files?: FileUIPart[]
     contextParts?: ChatContextPart[]
     providerTargetId?: string
-    modelId?: string
+    modelId?: string | null
     thinkingEffort?: ChatResponseRequestBody['thinkingEffort']
     runtimeSettings?: ChatRuntimeSettingsPatch
   }

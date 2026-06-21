@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 
 import { useProviderTargetModelMap } from '~/features/agent-runtime/use-agent-models'
+import { CLAUDE_AGENT_ALIAS_KEYS } from '~/features/agent-runtime/claude-agent-config'
 import type { Agent } from '~/features/agent-runtime/use-agents'
 import { useAgents } from '~/features/agent-runtime/use-agents'
 import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
@@ -36,7 +37,7 @@ export interface ComposerStateResult {
   selection: ComposerSelection
   setAgentId: (id: string | null) => void
   setProfileId: (id: string) => void
-  setModelId: (id: string, profileId?: string) => void
+  setModelId: (id: string | null, profileId?: string) => void
   setThinkingEffort: (effort: ThinkingEffort) => void
   setRuntimeKind: (kind: RuntimeKind) => void
   setTargetMode: (mode: ComposerTargetMode) => void
@@ -59,6 +60,10 @@ export interface ComposerStateResult {
 }
 
 const EMPTY_MODELS: ModelDescriptor[] = []
+
+function isClaudeAgentTierModelId(value: string | null | undefined): value is (typeof CLAUDE_AGENT_ALIAS_KEYS)[number] {
+  return CLAUDE_AGENT_ALIAS_KEYS.some(key => key === value)
+}
 
 function readChatThinkingEffort(value: Agent['thinkingEffort'] | ThinkingEffort | null | undefined): ThinkingEffort {
   switch (value) {
@@ -104,9 +109,19 @@ export function selectChatThinkingEffort(input: {
   effectiveModel: ModelDescriptor | null
   preferredThinkingEffort: ThinkingEffort
   thinkingOptions?: Array<ThinkingOption<ThinkingEffort>>
+  /**
+   * When the runtime is claude-agent, the selected "model" is a tier alias
+   * (fast/balanced/powerful) rather than a real model descriptor, so
+   * `effectiveModel` is null and capability-based filtering would strip every
+   * option. Claude Agent supports the full reasoning range regardless of tier,
+   * so skip the filter in that case.
+   */
+  runtimeKind?: RuntimeKind
 }): ThinkingEffort {
   const thinkingOptions = input.thinkingOptions ?? THINKING_EFFORTS
-  const supportedOptions = filterThinkingOptionsForModel(input.effectiveModel, thinkingOptions)
+  const supportedOptions = input.runtimeKind === 'claude-agent'
+    ? thinkingOptions
+    : filterThinkingOptionsForModel(input.effectiveModel, thinkingOptions)
   if (supportedOptions.some(option => option.value === input.preferredThinkingEffort)) {
     return input.preferredThinkingEffort
   }
@@ -313,8 +328,24 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     if (effectiveManualModelId && models.some(m => m.id === effectiveManualModelId)) {
       return effectiveManualModelId
     }
+    if (runtimeKind === 'claude-agent' && isClaudeAgentTierModelId(effectiveManualModelId)) {
+      return effectiveManualModelId
+    }
     if (selectedNewChatAgent?.modelId) {
       return selectedNewChatAgent.modelId
+    }
+    if (runtimeKind === 'claude-agent') {
+      if (context === 'chat' && isClaudeAgentTierModelId(boundModelId)) {
+        return boundModelId
+      }
+      if (context === 'chat' && boundModelId) {
+        return boundModelId
+      }
+      const persisted = profileId ? lastModelByProfile[profileId] : undefined
+      if (isClaudeAgentTierModelId(persisted)) {
+        return persisted
+      }
+      return null
     }
     if (context === 'chat') {
       return resolveChatModelId({
@@ -355,8 +386,9 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     return selectChatThinkingEffort({
       effectiveModel,
       preferredThinkingEffort: thinkingEffort,
+      runtimeKind,
     })
-  }, [effectiveModel, thinkingEffort])
+  }, [effectiveModel, thinkingEffort, runtimeKind])
 
   const selection = useMemo((): ComposerSelection => ({
     agentId,
@@ -415,7 +447,7 @@ export function useComposerState(config: ComposerStateConfig): ComposerStateResu
     setManualModelId(null) // reset manual model when profile changes
   }
 
-  const setModelId = (id: string, nextProfileId?: string) => {
+  const setModelId = (id: string | null, nextProfileId?: string) => {
     const targetProfileId = nextProfileId ?? profileId
     if (!targetProfileId) {
       return

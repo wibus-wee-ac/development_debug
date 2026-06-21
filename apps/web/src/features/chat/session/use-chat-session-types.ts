@@ -23,7 +23,7 @@ export type { ChatContinuationMode, ChatQueueItem }
 
 export interface SendMessageOptions {
   providerTargetId?: string
-  modelId?: string
+  modelId?: string | null
   thinkingEffort?: ChatThinkingEffort | null | undefined
   runtimeSettings?: ChatRuntimeSettingsPatch
   continuationMode?: ChatContinuationMode

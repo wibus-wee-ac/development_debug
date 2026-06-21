@@ -125,7 +125,7 @@ export interface ChatViewProps {
   /** Ref to read per-message overrides (modelId, thinkingEffort) before sending */
   sendOverridesRef?: React.MutableRefObject<{
     providerTargetId?: string
-    modelId?: string
+    modelId?: string | null
     thinkingEffort?: SendMessageOptions['thinkingEffort']
   }>
   /** Currently selected composer model, including provider-switched chat sessions before the first run persists. */
@@ -164,7 +164,6 @@ function ChatTranscriptContent({
   keepMountedIndices,
   onVirtualScroll,
   onToolApprovalResponse,
-  composerStack,
   messageTextTransform,
 }: {
   sessionId: string | null
@@ -178,7 +177,6 @@ function ChatTranscriptContent({
   keepMountedIndices: ChatScrollRuntime['keepMountedIndices']
   onVirtualScroll: ChatScrollRuntime['handleVirtualScroll']
   onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
-  composerStack: React.ReactNode
   messageTextTransform?: MessageTextTransform
 }) {
   const { t } = useTranslation('chat')
@@ -200,7 +198,10 @@ function ChatTranscriptContent({
       ref={viewportRef}
       className="h-full overflow-x-hidden overflow-y-auto outline-none [scrollbar-gutter:stable]"
     >
-      <div className="mx-auto flex min-h-full max-w-[90%] flex-col px-4 pr-12 pt-4">
+      <div
+        className="mx-auto flex min-h-full max-w-[90%] flex-col px-4 pr-12 pt-4"
+        style={{ paddingBottom: 'var(--chat-composer-inset, 0px)' }}
+      >
         <div className="flex-1">
           {messageCount === 0 && isReady && (
             <div className="flex h-full items-center justify-center py-32">
@@ -240,10 +241,6 @@ function ChatTranscriptContent({
             </m.div>
           )}
         </div>
-
-        <div className="pointer-events-none sticky bottom-0 z-10 pt-4 pb-3">
-          {composerStack}
-        </div>
       </div>
     </div>
   )
@@ -258,6 +255,7 @@ function ChatMessageListPane({
   isReady,
   scrollContainerRef,
   viewportRef,
+  composerOverlayRef,
   virtualizerRef,
   minimapRef,
   keepMountedIndices,
@@ -277,6 +275,7 @@ function ChatMessageListPane({
   isReady: boolean
   scrollContainerRef: ChatScrollRuntime['scrollContainerRef']
   viewportRef: ChatScrollRuntime['viewportRef']
+  composerOverlayRef: ChatScrollRuntime['composerOverlayRef']
   virtualizerRef: ChatScrollRuntime['virtualizerRef']
   minimapRef: ChatScrollRuntime['minimapRef']
   keepMountedIndices: ChatScrollRuntime['keepMountedIndices']
@@ -302,9 +301,14 @@ function ChatMessageListPane({
         keepMountedIndices={keepMountedIndices}
         onVirtualScroll={onVirtualScroll}
         onToolApprovalResponse={onToolApprovalResponse}
-        composerStack={composerStack}
         messageTextTransform={messageTextTransform}
       />
+
+      <div ref={composerOverlayRef} className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
+        <div className="mx-auto max-w-[90%] px-4 pr-12 pt-4 pb-3">
+          {composerStack}
+        </div>
+      </div>
 
       <ChatMinimap
         ref={minimapRef}
@@ -564,7 +568,7 @@ function ChatComposerSection({
         const tabId = openPlanRefineTab({
           sessionId,
           requestId,
-          title: 'Refine plan',
+          title: 'Plan',
           text: content,
           ownerId: activeBrowserPanelOwnerId,
         })
@@ -1106,6 +1110,7 @@ export function ChatView({
         isReady={isReady}
         scrollContainerRef={scrollRuntime.scrollContainerRef}
         viewportRef={scrollRuntime.viewportRef}
+        composerOverlayRef={scrollRuntime.composerOverlayRef}
         virtualizerRef={scrollRuntime.virtualizerRef}
         minimapRef={scrollRuntime.minimapRef}
         keepMountedIndices={scrollRuntime.keepMountedIndices}

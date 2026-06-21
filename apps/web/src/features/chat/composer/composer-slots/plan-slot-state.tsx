@@ -7,8 +7,8 @@
 import {
   CheckLine as CheckIcon,
   DownSmallLine as ChevronDownIcon,
+  ExternalLinkLine as OpenPlanIcon,
   ListCheckLine as ListChecksIcon,
-  PencilLine as PencilIcon,
   TargetLine as TargetIcon,
   CloseLine as XIcon
 } from '@mingcute/react'
@@ -23,13 +23,15 @@ import {
   DropdownMenuRadioItem,
   DropdownMenuTrigger,
 } from '~/components/ui/dropdown-menu'
+import { cn } from '~/lib/cn'
 
 import type { ChatRuntimePlanUiSlotState } from '../../capabilities/chat-capabilities'
 import { ComposerSlotIconAction, ComposerSlotShell } from './composer-slot-shell'
+import styles from './plan-slot-state.module.css'
 import type { ComposerPlanSlotActions } from './types'
 
 type PrimaryPlanAction = 'implement' | 'makeGoal'
-type PlanAction = PrimaryPlanAction | 'refine'
+type PlanAction = PrimaryPlanAction | 'open'
 
 const PRIMARY_PLAN_ACTION_STORAGE_KEY = 'cradle:chat:plan-slot:primary-action:v1'
 
@@ -62,10 +64,10 @@ export function PlanSlotState({
   }, [primaryAction])
 
   return (
-    <ComposerSlotShell stateName="plan" testId="plan-slot" className={className}>
+    <ComposerSlotShell stateName="plan" testId="plan-slot" className={cn(styles.shell, className)}>
       <div className="flex min-h-7 min-w-0 items-center gap-2">
         <ListChecksIcon className="size-3.5 shrink-0 !text-primary/75" aria-hidden="true" />
-        <div className="flex min-w-0 flex-1 items-baseline gap-1.5">
+        <div className="flex min-w-0 flex-1 items-baseline gap-1.5 overflow-hidden">
           <span className="shrink-0 font-medium text-foreground/80">Plan ready</span>
           {summary && (
             <>
@@ -82,13 +84,14 @@ export function PlanSlotState({
               type="button"
               size="xs"
               disabled={disabled || !primaryHandler}
+              aria-label={primaryActionConfig.label}
               onClick={() => {
                 void runPlanAction(primaryAction, state, primaryHandler, setPendingAction, onDismiss)
               }}
-              className="h-6 gap-1 px-2"
+              className={cn('h-6 gap-1 px-2', styles.actionButton)}
             >
               <PrimaryIcon className="size-3" aria-hidden="true" />
-              <span>{primaryActionConfig.label}</span>
+              <span className={styles.actionLabel}>{primaryActionConfig.label}</span>
             </Button>
             <DropdownMenu>
               <DropdownMenuTrigger asChild>
@@ -128,13 +131,14 @@ export function PlanSlotState({
             variant="outline"
             size="xs"
             disabled={disabled || !actions?.onRefine}
+            aria-label="Open Plan"
             onClick={() => {
-              void runPlanAction('refine', state, actions?.onRefine, setPendingAction, onDismiss)
+              void runPlanAction('open', state, actions?.onRefine, setPendingAction, onDismiss)
             }}
-            className="h-6 gap-1 px-2"
+            className={cn('h-6 gap-1 px-2', styles.actionButton)}
           >
-            <PencilIcon className="size-3" aria-hidden="true" />
-            <span>Refine Plan</span>
+            <OpenPlanIcon className="size-3" aria-hidden="true" />
+            <span className={styles.actionLabel}>Open Plan</span>
           </Button>
           <ComposerSlotIconAction
             label="Dismiss plan"

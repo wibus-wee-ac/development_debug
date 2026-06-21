@@ -16,7 +16,7 @@ export interface ChatResponseRequestBody {
   contextParts?: ChatContextPart[]
   messages?: UIMessage[]
   providerTargetId?: string
-  modelId?: string
+  modelId?: string | null
   thinkingEffort?: ChatThinkingEffort
   runtimeSettings?: ChatRuntimeSettingsPatch
 }
@@ -254,7 +254,7 @@ export async function executeBangCommand(args: {
 export async function createSideChat(args: {
   sessionId: string
   providerTargetId?: string
-  modelId?: string
+  modelId?: string | null
   signal?: AbortSignal
 }): Promise<SideChatResult> {
   const res = await fetch(`${SERVER_BASE}/chat/sessions/${args.sessionId}/side-chat`, {

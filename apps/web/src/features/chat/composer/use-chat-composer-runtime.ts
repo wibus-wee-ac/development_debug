@@ -31,7 +31,7 @@ import { modelSupportsAttachments } from './composer-attachment-state'
 
 interface ChatComposerSendOverrides {
   providerTargetId?: string
-  modelId?: string
+  modelId?: string | null
   thinkingEffort?: SendMessageOptions['thinkingEffort']
 }
 

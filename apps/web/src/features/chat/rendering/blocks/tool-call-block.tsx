@@ -221,7 +221,7 @@ function readStreamingInputText(input: ToolPayload): string | null {
 }
 
 function readEditTarget(input: ToolPayload, output: ToolPayload): string | null {
-  return input.filePath ?? output.filePath
+  return input.filePath ?? output.filePath ?? input.filenames[0] ?? output.filenames[0] ?? null
 }
 
 function readEditPayloadSize(input: ToolPayload): number {
@@ -581,12 +581,14 @@ function DiffSummary({
   input,
   output,
   state,
-  defaultOpen = false
+  defaultOpen = false,
+  presentation = 'preview',
 }: {
   input: ToolPayload
   output: ToolPayload
   state: ToolState
   defaultOpen?: boolean
+  presentation?: 'preview' | 'detail'
 }) {
   const editPreview = readEditDiffPreview(input, output)
   if (editPreview) {
@@ -595,6 +597,7 @@ function DiffSummary({
         filePath={editPreview.filePath}
         oldContent={editPreview.oldContent}
         newContent={editPreview.newContent}
+        presentation={presentation}
         defaultOpen={defaultOpen}
       />
     )
@@ -668,7 +671,12 @@ export function FileDiffExecutionDetails({
         </DetailSection>
       )}
       {hasFileDiffPayloadContent(inputPayload, outputPayload) && (
-        <DiffSummary input={inputPayload} output={outputPayload} state={state} defaultOpen />
+        <DiffSummary
+          input={inputPayload}
+          output={outputPayload}
+          state={state}
+          presentation="detail"
+        />
       )}
     </div>
   )
@@ -999,7 +1007,7 @@ function FileDiffDetails({ input, output }: { input: ToolPayload; output: ToolPa
           filePath={editPreview.filePath}
           oldContent={editPreview.oldContent}
           newContent={editPreview.newContent}
-          defaultOpen
+          presentation="detail"
         />
       )}
     </div>

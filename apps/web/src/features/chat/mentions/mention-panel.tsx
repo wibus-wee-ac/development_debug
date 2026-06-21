@@ -160,29 +160,12 @@ function mentionSection(item: MentionPanelItem): 'Plugins' | 'Files' {
 
 function MentionPanelRow({ item, positions }: { item: MentionPanelItem, positions: Set<number> }) {
   if (isPluginMentionItem(item)) {
-    const capabilityLabels = item.mcpServers.length > 0
-      ? item.mcpServers.map(server => `mcp:${server}`)
-      : item.capabilities.slice(0, 2).map(capability => capability.type)
     return (
       <span className="flex min-w-0 flex-1 items-center gap-2.5">
         <PluginMentionIcon iconUrl={item.iconUrl} />
-        <span className="flex min-w-0 flex-1 flex-col gap-0.5">
-          <span className="truncate font-medium">
-            <HighlightedAutocompleteText text={item.displayName} positions={positions} />
-          </span>
-          <span className="truncate text-[11px] text-muted-foreground">
-            {item.description ?? item.pluginName}
-          </span>
+        <span className="min-w-0 flex-1 truncate font-medium">
+          <HighlightedAutocompleteText text={item.displayName} positions={positions} />
         </span>
-        {capabilityLabels.length > 0 && (
-          <span className="flex max-w-36 shrink-0 gap-1 overflow-hidden">
-            {capabilityLabels.slice(0, 2).map(label => (
-              <span key={label} className="truncate rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                {label}
-              </span>
-            ))}
-          </span>
-        )}
       </span>
     )
   }

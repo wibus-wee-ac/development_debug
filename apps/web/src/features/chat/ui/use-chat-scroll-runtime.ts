@@ -17,6 +17,7 @@ export interface ChatScrollMetrics {
 export interface ChatScrollRuntime {
   scrollContainerRef: React.RefObject<HTMLDivElement | null>
   viewportRef: React.RefObject<HTMLDivElement | null>
+  composerOverlayRef: React.RefObject<HTMLDivElement | null>
   virtualizerRef: React.RefObject<VirtualizerHandle | null>
   minimapRef: React.RefObject<ChatMinimapHandle | null>
   keepMountedIndices?: number[]
@@ -70,6 +71,7 @@ export function useChatScrollRuntime({
 }: UseChatScrollRuntimeOptions): ChatScrollRuntime {
   const scrollContainerRef = useRef<HTMLDivElement>(null)
   const viewportRef = useRef<HTMLDivElement>(null)
+  const composerOverlayRef = useRef<HTMLDivElement>(null)
   const virtualizerRef = useRef<VirtualizerHandle>(null)
   const minimapRef = useRef<ChatMinimapHandle>(null)
   const isAtBottomRef = useRef(true)
@@ -78,6 +80,7 @@ export function useChatScrollRuntime({
   const messageIdsRef = useRef(messageIds)
   const sessionIdRef = useRef(sessionId)
   const metricsRef = useRef<ChatScrollMetrics>(EMPTY_SCROLL_METRICS)
+  const composerInsetHeightRef = useRef(0)
   const minimapRafIdRef = useRef(0)
   const followBottomRafIdRef = useRef(0)
   const initialBottomRafIdRef = useRef(0)
@@ -85,6 +88,7 @@ export function useChatScrollRuntime({
   const isProgrammaticScrollRef = useRef(false)
   const lastScrollOffsetRef = useRef(0)
   const lastTouchYRef = useRef<number | null>(null)
+  const wasActiveRef = useRef(active)
   const [metrics, setMetrics] = useState<ChatScrollMetrics>(EMPTY_SCROLL_METRICS)
 
   useEffect(() => {
@@ -155,7 +159,16 @@ export function useChatScrollRuntime({
     })
   }, [])
 
-  const readCachedScrollMetrics = useCallback((offset: number): ChatScrollMetrics | null => {
+  const readScrollMetricsForOffset = useCallback((offset: number): ChatScrollMetrics | null => {
+    const viewport = viewportRef.current
+    if (viewport) {
+      return normalizeScrollMetrics({
+        offset,
+        scrollHeight: viewport.scrollHeight,
+        viewportHeight: viewport.clientHeight,
+      })
+    }
+
     const cachedMetrics = metricsRef.current
     if (cachedMetrics.scrollHeight > 0 || cachedMetrics.viewportHeight > 0) {
       return normalizeScrollMetrics({
@@ -167,6 +180,24 @@ export function useChatScrollRuntime({
     return readScrollMetrics()
   }, [readScrollMetrics])
 
+  const syncComposerInsetHeight = useCallback((): boolean => {
+    const nextHeight = Math.ceil(composerOverlayRef.current?.getBoundingClientRect().height ?? 0)
+    if (nextHeight === composerInsetHeightRef.current) {
+      return false
+    }
+
+    composerInsetHeightRef.current = nextHeight
+    scrollContainerRef.current?.style.setProperty('--chat-composer-inset', `${nextHeight}px`)
+    return true
+  }, [])
+
+  useLayoutEffect(() => {
+    if (!active) {
+      return
+    }
+    syncComposerInsetHeight()
+  }, [active, syncComposerInsetHeight])
+
   const writeChatAttentionSnapshot = useCallback((nextMetrics: ChatScrollMetrics | null) => {
     const currentSessionId = sessionIdRef.current
     const currentMessageIds = messageIdsRef.current
@@ -175,12 +206,16 @@ export function useChatScrollRuntime({
       return
     }
 
+    const visibleViewportHeight = Math.max(
+      nextMetrics.viewportHeight - composerInsetHeightRef.current,
+      0,
+    )
     const virtualizer = virtualizerRef.current
     const firstVisibleIndex = virtualizer
       ? Math.max(0, Math.min(currentMessageIds.length - 1, virtualizer.findItemIndex(nextMetrics.offset)))
       : null
     const lastVisibleIndex = virtualizer
-      ? Math.max(0, Math.min(currentMessageIds.length - 1, virtualizer.findItemIndex(nextMetrics.offset + nextMetrics.viewportHeight)))
+      ? Math.max(0, Math.min(currentMessageIds.length - 1, virtualizer.findItemIndex(nextMetrics.offset + visibleViewportHeight)))
       : null
 
     updateChatAttentionSnapshot(currentSessionId, {
@@ -323,12 +358,12 @@ export function useChatScrollRuntime({
       }
 
       scrollToBottom()
-      const nextMetrics = readCachedScrollMetrics(lastScrollOffsetRef.current)
+      const nextMetrics = readScrollMetrics()
       if (nextMetrics) {
         commitScrollMetrics(nextMetrics, { source: 'programmatic' })
       }
     })
-  }, [active, commitScrollMetrics, readCachedScrollMetrics, scrollToBottom])
+  }, [active, commitScrollMetrics, readScrollMetrics, scrollToBottom])
 
   useEffect(() => {
     if (active) {
@@ -376,12 +411,12 @@ export function useChatScrollRuntime({
     if (!active) {
       return
     }
-    const nextMetrics = readCachedScrollMetrics(offset)
+    const nextMetrics = readScrollMetricsForOffset(offset)
     if (!nextMetrics) {
       return
     }
     commitScrollMetrics(nextMetrics, { source: 'scroll' })
-  }, [active, commitScrollMetrics, readCachedScrollMetrics])
+  }, [active, commitScrollMetrics, readScrollMetricsForOffset])
 
   const syncCurrentMetrics = useCallback(() => {
     if (!active) {
@@ -404,6 +439,33 @@ export function useChatScrollRuntime({
 
     syncCurrentMetrics()
   }, [active, scheduleFollowBottom, syncCurrentMetrics])
+
+  useLayoutEffect(() => {
+    const wasActive = wasActiveRef.current
+    wasActiveRef.current = active
+    if (!active) {
+      return
+    }
+    if (wasActive || messageIds.length === 0) {
+      return
+    }
+
+    syncComposerInsetHeight()
+    if (!shouldFollowBottomRef.current && !isAtBottomRef.current) {
+      syncCurrentMetrics()
+      return
+    }
+
+    scrollToBottom()
+    scheduleFollowBottom()
+  }, [
+    active,
+    messageIds.length,
+    scheduleFollowBottom,
+    scrollToBottom,
+    syncComposerInsetHeight,
+    syncCurrentMetrics,
+  ])
 
   useLayoutEffect(() => {
     if (!active || !initialScrollDoneRef.current) {
@@ -437,6 +499,7 @@ export function useChatScrollRuntime({
 
     let lastScrollHeight = viewport.scrollHeight
     let observedTranscriptContent: HTMLElement | null = null
+    let observedComposerOverlay: HTMLElement | null = null
     let transcriptMutationFrameId = 0
 
     const onWheel = (event: WheelEvent) => {
@@ -465,17 +528,18 @@ export function useChatScrollRuntime({
     }
 
     const onScroll = () => {
-      const nextMetrics = readCachedScrollMetrics(viewport.scrollTop)
+      const nextMetrics = readScrollMetricsForOffset(viewport.scrollTop)
       if (nextMetrics) {
         commitScrollMetrics(nextMetrics, { source: 'scroll' })
       }
     }
 
     const onResize = () => {
+      const composerInsetChanged = syncComposerInsetHeight()
       const scrollHeight = viewport.scrollHeight
       const viewportHeight = viewport.clientHeight
 
-      if (scrollHeight !== lastScrollHeight) {
+      if (scrollHeight !== lastScrollHeight || composerInsetChanged) {
         handleTranscriptLayoutChange()
       }
       lastScrollHeight = scrollHeight
@@ -499,9 +563,24 @@ export function useChatScrollRuntime({
       }
     }
 
+    const observeComposerOverlay = () => {
+      const composerOverlay = composerOverlayRef.current
+      if (composerOverlay === observedComposerOverlay) {
+        return
+      }
+      if (observedComposerOverlay) {
+        resizeObserver.unobserve(observedComposerOverlay)
+      }
+      observedComposerOverlay = composerOverlay
+      if (observedComposerOverlay) {
+        resizeObserver.observe(observedComposerOverlay)
+      }
+    }
+
     const flushTranscriptMutation = () => {
       transcriptMutationFrameId = 0
       observeTranscriptContent()
+      observeComposerOverlay()
       handleTranscriptLayoutChange()
     }
 
@@ -518,7 +597,9 @@ export function useChatScrollRuntime({
     viewport.addEventListener('keydown', onKeyDown, { capture: true })
     viewport.addEventListener('scroll', onScroll, { passive: true })
     resizeObserver.observe(viewport)
+    syncComposerInsetHeight()
     observeTranscriptContent()
+    observeComposerOverlay()
 
     const mutationObserver = new MutationObserver(onTranscriptMutation)
     mutationObserver.observe(viewport, {
@@ -549,7 +630,8 @@ export function useChatScrollRuntime({
     detachFromBottomFollow,
     getTranscriptContentElement,
     handleTranscriptLayoutChange,
-    readCachedScrollMetrics,
+    readScrollMetricsForOffset,
+    syncComposerInsetHeight,
     syncCurrentMetrics,
   ])
 
@@ -600,6 +682,7 @@ export function useChatScrollRuntime({
   return {
     scrollContainerRef,
     viewportRef,
+    composerOverlayRef,
     virtualizerRef,
     minimapRef,
     keepMountedIndices,

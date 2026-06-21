@@ -1,20 +1,17 @@
+import { CheckLine as CheckLineIcon } from '@mingcute/react'
 import { useQuery } from '@tanstack/react-query'
-import { useEffect, useMemo, useState } from 'react'
+import { useMemo } from 'react'
 
-import {
-  BrainLine as BrainLineIcon,
-  CheckLine as CheckLineIcon,
-} from '@mingcute/react'
-import { Button } from '~/components/ui/button'
-import { Menu, MenuItem, MenuPopup, MenuSeparator, MenuTrigger } from '~/components/ui/menu'
-import { toastManager } from '~/components/ui/toast'
 import { ProviderIcon } from '~/components/common/provider-icons'
+import { Button } from '~/components/ui/button'
+import { Menu, MenuItem, MenuPopup, MenuTrigger } from '~/components/ui/menu'
+import { toastManager } from '~/components/ui/toast'
 import { ClaudeModelMatrixEditor } from '~/features/agent-management/claude-model-matrix-editor'
+import { presetForProviderKind, providerTargetDisplayIconSlug } from '~/features/agent-management/provider-settings-utils'
 import {
   claudeAgentAliasesFromConfig,
   loadProviderTargetModelSettings,
 } from '~/features/agent-management/provider-target-model-settings'
-import { presetForProviderKind, providerTargetDisplayIconSlug } from '~/features/agent-management/provider-settings-utils'
 import type { ClaudeAgentModelAliases } from '~/features/agent-runtime/claude-agent-config'
 import {
   DEFAULT_CLAUDE_AGENT_ALIASES,
@@ -22,8 +19,6 @@ import {
 } from '~/features/agent-runtime/claude-agent-config'
 import type { ApiProviderKind, ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
 import { BROWSER_NATIVE_SURFACE_OCCLUSION_PROPS } from '~/features/browser/native-surface-occlusion'
-import type { ThinkingOption } from '~/features/composer-toolbar/provider-model-menu'
-import type { ThinkingEffort } from '~/features/composer-toolbar/types'
 import { cn } from '~/lib/cn'
 
 import { useRuntimeSettings } from './use-runtime-settings'
@@ -181,10 +176,7 @@ export function ClaudeAgentMatrixSelector({
   selectedModelId,
   matrix,
   loadingModels,
-  thinkingEffort,
-  thinkingOptions,
   onSelectProfile,
-  onSelectThinkingEffort,
   occludeNativeBrowserSurface,
 }: {
   profiles: ClaudeAgentMatrixProviderOption[]
@@ -193,10 +185,7 @@ export function ClaudeAgentMatrixSelector({
   selectedModelId: string | null
   matrix: ClaudeMatrixSlot | null
   loadingModels?: boolean
-  thinkingEffort: ThinkingEffort
-  thinkingOptions: Array<ThinkingOption<ThinkingEffort>>
   onSelectProfile: (id: string) => void
-  onSelectThinkingEffort: (effort: ThinkingEffort) => void
   occludeNativeBrowserSurface?: boolean
 }) {
   const selectedProfile = profiles.find(p => p.id === selectedProfileId) ?? null
@@ -207,7 +196,6 @@ export function ClaudeAgentMatrixSelector({
   const modelLabel = selectedModel?.label
     ?? selectedModelId
     ?? (loadingModels ? 'Loading…' : 'Matrix')
-  const thinkingLabel = thinkingOptions.find(option => option.value === thinkingEffort)?.label ?? null
 
   return (
     <Menu>
@@ -249,12 +237,6 @@ export function ClaudeAgentMatrixSelector({
         >
           matrix
         </span>
-        {thinkingLabel && (
-          <>
-            <span className="shrink-0 text-muted-foreground/40">·</span>
-            <span className="shrink-0 text-muted-foreground/70">{thinkingLabel}</span>
-          </>
-        )}
       </MenuTrigger>
       <MenuPopup
         side="top"
@@ -268,7 +250,7 @@ export function ClaudeAgentMatrixSelector({
               Provider
             </div>
             <div className="max-h-[29rem] overflow-y-auto px-1">
-              {profiles.map(profile => {
+              {profiles.map((profile) => {
                 const isActive = profile.id === selectedProfileId
                 const profilePreset = presetForProviderKind(profile.providerKind)
                 return (
@@ -308,34 +290,6 @@ export function ClaudeAgentMatrixSelector({
                   onChange={matrix.onChange}
                 />
               </div>
-            )}
-
-            {thinkingOptions.length > 0 && (
-              <>
-                <MenuSeparator className="my-2" />
-                <div className="min-w-0">
-                  <div className="flex items-center gap-1.5 px-2 pb-1 text-[11px] font-medium text-muted-foreground/70">
-                    <BrainLineIcon className="size-3.5 shrink-0" />
-                    <span>Thinking effort</span>
-                  </div>
-                  <div className="grid gap-0.5">
-                    {thinkingOptions.map(option => (
-                      <MenuItem
-                        key={option.value ?? 'none'}
-                        closeOnClick={false}
-                        onClick={() => onSelectThinkingEffort(option.value)}
-                        className={cn('flex-col items-start', thinkingEffort === option.value && 'text-primary font-medium')}
-                      >
-                        <div className="flex w-full items-center gap-2">
-                          <span className="font-medium">{option.label}</span>
-                          <CheckLineIcon className={cn('ml-auto size-3.5 shrink-0', thinkingEffort === option.value ? '!text-primary' : '!text-transparent')} />
-                        </div>
-                        <span className="text-[11px] text-muted-foreground/60">{option.description}</span>
-                      </MenuItem>
-                    ))}
-                  </div>
-                </div>
-              </>
             )}
           </div>
         </div>
