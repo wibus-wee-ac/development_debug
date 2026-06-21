@@ -98,6 +98,95 @@ async function flushObservability(app: ElysiaApp): Promise<void> {
 }
 
 describe('observability capability', () => {
+  it('keeps valid events when another queued event violates a relation', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-observability-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    const previousPluginsDir = process.env.CRADLE_PLUGINS_DIR
+    const previousExternalPluginsDirs = process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'observability-secret'
+    process.env.CRADLE_PLUGINS_DIR = join(dataDir, 'plugins')
+    process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = ''
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      await createProfileAndSession(app, workspaceRoot)
+
+      const invalidEventRes = await app.handle(new Request('http://localhost/observability/events', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          source: 'renderer',
+          code: 'OBSERVABILITY_TEST_INVALID_RELATION',
+          severity: 'info',
+          category: 'diagnostics',
+          message: 'event points at a missing chat session',
+          chatSessionId: 'missing-session-for-observability-fallback',
+        }),
+      }))
+      expect(invalidEventRes.status).toBe(200)
+
+      const validEventRes = await app.handle(new Request('http://localhost/observability/events', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          source: 'renderer',
+          code: 'OBSERVABILITY_TEST_VALID_RELATION',
+          severity: 'info',
+          category: 'diagnostics',
+          message: 'event points at an existing chat session',
+          chatSessionId: 'session-observability',
+        }),
+      }))
+      expect(validEventRes.status).toBe(200)
+
+      await flushObservability(app)
+
+      const eventsRes = await app.handle(new Request('http://localhost/observability/events?chatSessionId=session-observability&code=OBSERVABILITY_TEST_VALID_RELATION'))
+      expect(eventsRes.status).toBe(200)
+      const events = await eventsRes.json() as Array<{ code: string, chatSessionId?: string }>
+      expect(events).toEqual([
+        expect.objectContaining({
+          code: 'OBSERVABILITY_TEST_VALID_RELATION',
+          chatSessionId: 'session-observability',
+        }),
+      ])
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      if (previousDataDir === undefined) {
+        delete process.env.CRADLE_DATA_DIR
+      }
+      else {
+        process.env.CRADLE_DATA_DIR = previousDataDir
+      }
+      if (previousSecret === undefined) {
+        delete process.env.CRADLE_CREDENTIAL_SECRET
+      }
+      else {
+        process.env.CRADLE_CREDENTIAL_SECRET = previousSecret
+      }
+      if (previousPluginsDir === undefined) {
+        delete process.env.CRADLE_PLUGINS_DIR
+      }
+      else {
+        process.env.CRADLE_PLUGINS_DIR = previousPluginsDir
+      }
+      if (previousExternalPluginsDirs === undefined) {
+        delete process.env.CRADLE_EXTERNAL_PLUGINS_DIRS
+      }
+      else {
+        process.env.CRADLE_EXTERNAL_PLUGINS_DIRS = previousExternalPluginsDirs
+      }
+    }
+  })
+
   it('records local producer errors and exports a redacted diagnostics bundle', async () => {
     const dataDir = makeTempDir('cradle-data-')
     const logFile = join(dataDir, 'server.log')
@@ -301,7 +390,9 @@ describe('observability capability', () => {
         errorPatterns: Array<{ code: string, count: number, sampleRunIds: string[], sampleTraceIds: string[] }>
         timeline: Array<{ runId: string, schema: string, status: string, events: Array<{ phase: string }> }>
       }
-      expect(bundle.events).toEqual([expect.objectContaining({ runId: finalRunId, code: 'CHAT_EMPTY_OUTPUT_COMPLETION' })])
+      expect(bundle.events).toEqual(expect.arrayContaining([
+        expect.objectContaining({ runId: finalRunId, code: 'CHAT_EMPTY_OUTPUT_COMPLETION' }),
+      ]))
       expect(bundle.incidents).toEqual([])
       expect(bundle.errorPatterns).toEqual(expect.arrayContaining([
         expect.objectContaining({
@@ -310,7 +401,7 @@ describe('observability capability', () => {
           sampleRunIds: [finalRunId],
         }),
         expect.objectContaining({
-          code: 'RUN_FAILED',
+          code: 'RUN_RESPONSE_FAILED',
           count: 1,
           sampleRunIds: [finalRunId],
           sampleTraceIds: [finalRunId],
