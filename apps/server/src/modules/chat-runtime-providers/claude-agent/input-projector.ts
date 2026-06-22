@@ -152,6 +152,7 @@ export function buildClaudeQueryOptions(input: {
   const permissionMode = (providerOptions
     ? projectRuntimeSettingsToClaudePermissionMode(providerOptions.runtimeSettings)
     : undefined) ?? config.permissionMode
+  const supportsRuntimePermissionSwitch = input.attachPermissionHandler
 
   if (!apiKey) {
     throw new ProviderRuntimeError(ProviderErrors.authFailed(CLAUDE_AGENT_RUNTIME_KIND))
@@ -168,6 +169,7 @@ export function buildClaudeQueryOptions(input: {
     cwd: runtimeContext.cwd,
     permissionMode,
     allowDangerouslySkipPermissions: permissionMode === 'bypassPermissions'
+      || supportsRuntimePermissionSwitch
       ? true
       : config.allowDangerouslySkipPermissions,
     maxTurns: config.maxTurns,

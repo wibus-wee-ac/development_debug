@@ -423,6 +423,10 @@ describe('claudeAgentProvider MCP integration', () => {
     }
 
     const options = readQueryOptions(0)
+    expect(options).toEqual(expect.objectContaining({
+      permissionMode: 'plan',
+      allowDangerouslySkipPermissions: true,
+    }))
     expect(options.disallowedTools).toEqual([])
     expect(options.disallowedTools).not.toContain('AskUserQuestion')
     expect(options.disallowedTools).not.toContain('EnterPlanMode')
@@ -438,6 +442,43 @@ describe('claudeAgentProvider MCP integration', () => {
       behavior: 'deny',
       message: 'Cradle captured the proposed plan. Stop here and wait for the user to refine or implement it in a later turn.',
     })
+  })
+
+  it('surfaces active permission mode update failures to the caller', async () => {
+    const activeQuery = createPendingQuery()
+    const permissionError = new Error('Cannot set permission mode to bypassPermissions')
+    activeQuery.setPermissionMode.mockRejectedValue(permissionError)
+    sdkMocks.query.mockReturnValue(activeQuery)
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const runtimeSession = createRuntimeSession()
+    const stream = provider.streamTurn({
+      runId: 'run-claude-agent-permission-update-failure',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Plan the change'),
+      workspaceId: 'workspace-1',
+      providerOptions: {
+        runtimeSettings: { accessMode: 'approval-required', interactionMode: 'plan' },
+      },
+    })
+    const pendingNext = stream.next()
+
+    await vi.waitFor(() => {
+      expect(sdkMocks.query).toHaveBeenCalledOnce()
+    })
+
+    await expect(provider.updateRuntimeSettings({
+      runtimeSession,
+      profile: createProfile(),
+      settings: { accessMode: 'full-access', interactionMode: 'default' },
+    })).rejects.toThrow('Cannot set permission mode to bypassPermissions')
+    expect(activeQuery.setPermissionMode).toHaveBeenCalledWith('bypassPermissions')
+
+    activeQuery.close()
+    await pendingNext
   })
 
   it('projects captured ExitPlanMode plans into composer UI slot state', async () => {

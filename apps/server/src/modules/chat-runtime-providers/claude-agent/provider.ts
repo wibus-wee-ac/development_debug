@@ -601,7 +601,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     if (!entry) {
       return
     }
-    entry.query.setPermissionMode(input.mode)
+    await entry.query.setPermissionMode(input.mode)
   }
 
   private async requestRuntimeInteractionModeUpdate(
