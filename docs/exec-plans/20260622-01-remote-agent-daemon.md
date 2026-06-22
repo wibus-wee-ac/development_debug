@@ -25,6 +25,7 @@ The most important architectural outcome is dependency direction. `apps/agentd` 
 - [x] (2026-06-22 20:20 +0800) Added `apps/server/src/modules/remote-runtime-hosts` with DB-backed host registry, remote session links, OpenSSH tunnel lifecycle, Unix-socket daemon client, host routes, and explicit transport-vs-stream failure handling.
 - [x] (2026-06-22 20:20 +0800) Added `apps/server/src/modules/chat-runtime-providers/remote-mock/provider.ts` and registered it behind `CRADLE_REMOTE_AGENT_DEV=1`. A focused server test proves a mock remote chat turn streams through existing `/chat/sessions/:sessionId/response` persistence and projection, with assistant text derived from the user input.
 - [x] (2026-06-22 20:20 +0800) Defined the provider adapter extraction boundary through `ProviderContext` in `packages/chat-runtime-contracts`. Real Codex and Claude Agent adapter extraction is deliberately deferred until after this transport proof, because moving their server-local dependencies is a separate migration phase.
+- [x] (2026-06-22 23:38 +0800) Added structured SSH profile support to `apps/server/src/modules/remote-runtime-hosts`. Create and update routes now accept `sshProfile`, `transport`, `localSocketPath`, and `connectTimeoutMs`; the service normalizes those fields into `connectionConfigJson`, derives the legacy `sshTarget` column from `user@hostName`, defaults `remoteSocketPath` to `~/.cradle/agentd/agent.sock` when omitted, and generates OpenSSH `-p` and `-i` argv entries only at connect time.
 
 ## Surprises & Discoveries
 
@@ -71,6 +72,10 @@ The most important architectural outcome is dependency direction. `apps/agentd` 
 
 - Decision: Use system OpenSSH for tunnels instead of adding a JavaScript SSH client library.
   Rationale: OpenSSH is the mature implementation users already configure through `~/.ssh/config`, SSH agents, keys, jump hosts, ControlMaster, ProxyJump, and known_hosts. Cradle should spawn `ssh` for tunnel lifecycle and use the daemon socket through the tunnel. This avoids reimplementing SSH feature compatibility in Node.
+  Date/Author: 2026-06-22 / Codex
+
+- Decision: Make structured SSH profiles the primary server API for remote host registry rows.
+  Rationale: The frontend should send user-facing fields such as display name, host name, optional user, optional port, and auth mode instead of constructing raw OpenSSH argument arrays. The `remote-runtime-hosts` module owns this shape, stores it in Cradle's `remote_runtime_hosts.connection_config_json`, derives the legacy `ssh_target` display/search column from the profile, and turns the profile into OpenSSH argv only inside the SSH tunnel launcher path. This keeps host identity out of provider target namespace and keeps raw `sshArgs` as an advanced/internal escape hatch rather than the product API.
   Date/Author: 2026-06-22 / Codex
 
 - Decision: Use WebSocket over Unix domain sockets plus JSON-RPC-style frames for the daemon protocol.
@@ -147,7 +152,7 @@ The current provider contract is `ChatRuntime` in `apps/server/src/modules/chat-
 
 The database table `backend_session_bindings` is defined in `packages/db/src/schema/backend-control-plane.ts`. It stores the provider session id and provider snapshot for a Cradle chat session. It does not store remote host identity. A robust remote implementation needs a separate remote host registry and remote session reference instead of pretending that `providerTargetId` or `runtimeKind` identifies a host.
 
-The remote host registry for this plan is local Cradle data. It lives in new Drizzle tables under `packages/db/src/schema/remote-runtime-host.ts` and is served by `apps/server/src/modules/remote-runtime-hosts`. The table `remote_runtime_hosts` stores configured SSH targets and daemon socket paths. The table `remote_runtime_session_links` stores the link from a Cradle chat session to a specific remote host and remote agent id. The daemon does not own this registry; it only reports live state when connected.
+The remote host registry for this plan is local Cradle data. It lives in new Drizzle tables under `packages/db/src/schema/remote-runtime-host.ts` and is served by `apps/server/src/modules/remote-runtime-hosts`. The table `remote_runtime_hosts` stores configured SSH targets, daemon socket paths, and structured connection profile JSON. Structured SSH profile JSON contains the host name, optional SSH user, optional port, auth mode, and optional identity file path. The service derives the legacy `sshTarget` column from that profile as `user@hostName` or `hostName`, while `port` and identity file become OpenSSH argv entries at connect time. The table `remote_runtime_session_links` stores the link from a Cradle chat session to a specific remote host and remote agent id. The daemon does not own this registry; it only reports live state when connected.
 
 The monorepo uses pnpm workspaces. `pnpm-workspace.yaml` includes `packages/*` and `apps/*`, so new packages and apps added in those directories are automatically part of the workspace. Shared packages should export TypeScript sources through their `package.json`, following the pattern in `packages/ipc/package.json`.
 
@@ -653,6 +658,13 @@ The required package interfaces are:
           export function readRemoteRuntimeHostHealth(hostId: string): Promise<RemoteRuntimeHostHealthView>
           export function readRemoteRuntimeSessionLink(chatSessionId: string): RemoteRuntimeSessionLink | null
           export function upsertRemoteRuntimeSessionLink(input: UpsertRemoteRuntimeSessionLinkInput): RemoteRuntimeSessionLink
+          export function buildSshProfileLaunchConfig(profile: RemoteRuntimeHostSshProfile): SshProfileLaunchConfig
+
+        Structured SSH create/update inputs accepted by this service include:
+          transport?: 'ssh' | 'direct-socket'
+          sshProfile?: { hostName: string; user?: string | null; port?: number | null; auth?: 'default' | 'identityFile'; identityFilePath?: string | null }
+          localSocketPath?: string
+          connectTimeoutMs?: number
 
 The long-term provider extraction interface is the existing `ProviderContext`, moved into `packages/chat-runtime-contracts`. It must stay dependency-injected. Server and daemon provide implementations; provider adapters must not reach sideways into server modules.
 
@@ -661,3 +673,5 @@ Revision note, 2026-06-22: Initial plan created after deciding that the remote d
 Revision note, 2026-06-22: Revised after design review to remove six ambiguities. Host registry and remote session links are now DB-backed tables; transport disconnects and stream errors have separate semantics; ProviderContext fields are explicit; `agent/turn` has concrete params and stream event types; `RemoteChatRuntime` lives under `chat-runtime-providers/remote-mock`; and daemon PTY sessions are independent host-level shells for the first implementation.
 
 Revision note, 2026-06-22: Updated after implementation. The mock remote daemon path, shared packages, DB schema, server host module, remote-mock provider, route registration, focused tests, PTY tests, and validation results are now recorded. Real Codex and Claude Agent provider extraction remains a documented follow-up phase rather than part of the completed mock transport proof.
+
+Revision note, 2026-06-22: Added the structured SSH profile backend decision and implementation details. The server route contract now exposes user-facing SSH profile fields, while connection-time OpenSSH argv generation remains owned by `remote-runtime-hosts`.
