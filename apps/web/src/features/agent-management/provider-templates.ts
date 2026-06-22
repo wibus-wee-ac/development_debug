@@ -22,7 +22,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: 'anthropic',
     name: 'Anthropic',
-    tagline: 'Official Claude API',
+    tagline: 'Official Claude API or Anthropic message API',
     providerKind: 'anthropic',
     accent: 'orange',
     fields: [
@@ -34,7 +34,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: 'openai',
     name: 'OpenAI',
-    tagline: 'Official OpenAI API',
+    tagline: 'OpenAI Responses API or Official Codex account',
     providerKind: 'openai-compatible',
     accent: 'emerald',
     fields: [
@@ -46,7 +46,7 @@ export const PROVIDER_PRESETS: ProviderPreset[] = [
   {
     id: 'universal',
     name: 'Universal',
-    tagline: 'Custom endpoint with auto-detection',
+    tagline: 'Custom endpoint with OpenAI and Anthropic supported',
     providerKind: 'universal',
     accent: 'violet',
     fields: [
