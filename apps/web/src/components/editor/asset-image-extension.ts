@@ -79,6 +79,36 @@ export const AssetImage = Image.extend({
     ]
   },
 
+  addNodeView() {
+    const baseNodeView = (this.parent as (() => any) | undefined)?.call(this)
+    if (!baseNodeView) {
+      return null
+    }
+
+    return (nodeViewProps) => {
+      const view = baseNodeView(nodeViewProps)
+      const attrs = nodeViewProps.node.attrs as AssetImageAttributes
+
+      if (typeof attrs.src === 'string') {
+        const assetId = readAssetIdFromUrl(attrs.src)
+        if (assetId) {
+          const contentUrl = toAssetContentUrl(assetId)
+          const img = (view as { dom?: HTMLElement }).dom
+          if (img instanceof HTMLImageElement) {
+            img.src = contentUrl
+          } else if (img) {
+            const inner = img.querySelector('img')
+            if (inner) {
+              inner.src = contentUrl
+            }
+          }
+        }
+      }
+
+      return view
+    }
+  },
+
   addProseMirrorPlugins() {
     return [
       new Plugin({
