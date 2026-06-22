@@ -45,6 +45,7 @@ export function projectClaudeAgentInput(message: RuntimeMessageInput, runtimeLab
     return text
   }
 
+  const skillCommands: string[] = []
   const blocks: ClaudeAgentContentBlock[] = []
   const unsupportedParts: string[] = []
   for (const part of message.parts) {
@@ -65,6 +66,10 @@ export function projectClaudeAgentInput(message: RuntimeMessageInput, runtimeLab
       continue
     }
     if (isChatSkillContextPart(part)) {
+      const skillPart = readChatSkillContextPart(part)
+      if (skillPart) {
+        skillCommands.push(describeSkillMentionForText(skillPart))
+      }
       continue
     }
     const pluginPart = readChatPluginContextPart(part)
@@ -78,6 +83,12 @@ export function projectClaudeAgentInput(message: RuntimeMessageInput, runtimeLab
   if (unsupportedParts.length > 0) {
     throw claudeAgentRequestError('projectInput', `${runtimeLabel} only supports text, image, skill, and plugin mention input; unsupported parts: ${unsupportedParts.join(', ')}`)
   }
+
+  // Prepend skill slash commands to the beginning so SDK can process them
+  if (skillCommands.length > 0) {
+    blocks.unshift({ type: 'text', text: skillCommands.join('\n') })
+  }
+
   if (blocks.length === 0) {
     throw claudeAgentRequestError('projectInput', `${runtimeLabel} requires non-empty text or image input`)
   }
@@ -92,6 +103,10 @@ function describePluginMentionForText(plugin: NonNullable<ReturnType<typeof read
   const mcpServers = plugin.mcpServers.length > 0 ? ` MCP servers: ${plugin.mcpServers.join(', ')}.` : ''
   const description = plugin.description ? ` ${plugin.description}` : ''
   return `Selected Cradle plugin @${plugin.displayName}.${description}${capabilities ? ` Capabilities: ${capabilities}.` : ''}${mcpServers}`
+}
+
+function describeSkillMentionForText(skill: NonNullable<ReturnType<typeof readChatSkillContextPart>>): string {
+  return `/${skill.name}`
 }
 
 export function buildClaudeAgentTurnContent(input: {
