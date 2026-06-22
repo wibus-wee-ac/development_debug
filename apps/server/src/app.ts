@@ -30,6 +30,7 @@ import { preferences } from './modules/preferences'
 import { profiles } from './modules/profiles'
 import { providers } from './modules/provider-catalog'
 import { providerTargets } from './modules/provider-targets'
+import { remoteRuntimeHosts } from './modules/remote-runtime-hosts'
 import { registerPtyRoutes } from './modules/pty'
 import { search } from './modules/search'
 import { secrets } from './modules/secrets'
@@ -123,6 +124,7 @@ export async function createServerContractApp(options: CreateServerContractAppOp
   app.use(usage)
   app.use(profiles)
   app.use(providerTargets)
+  app.use(remoteRuntimeHosts)
   app.use(externalIssueSources)
   app.use(externalProviderSources)
   app.use(externalWorkImport)

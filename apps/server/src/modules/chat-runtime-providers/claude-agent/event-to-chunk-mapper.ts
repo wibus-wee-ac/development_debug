@@ -376,6 +376,11 @@ async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState):
             if (isCapturedExitPlanModeError(b.tool_use_id, errorText, state)) {
               continue
             }
+            if (isCapturedAskUserQuestionError(b.tool_use_id, state)) {
+              // Skip the SDK auto-generated error for AskUserQuestion.
+              // The provider will answer via inputStream.push() after the user responds.
+              continue
+            }
             chunks.push({ type: 'tool-output-error', toolCallId: b.tool_use_id, errorText })
           }
           else {
@@ -855,6 +860,15 @@ function isCapturedExitPlanModeError(
   return toolName !== undefined
     && isExitPlanModeToolName(toolName)
     && errorText === CLAUDE_EXIT_PLAN_MODE_CAPTURED_MESSAGE
+}
+
+function isCapturedAskUserQuestionError(
+  toolCallId: string,
+  state: ClaudeAgentChunkMapperState,
+): boolean {
+  const toolName = state.toolNamesByToolCallId.get(toolCallId)
+  return toolName !== undefined
+    && normalizeClaudeCodeToolApiName(toolName) === ClaudeCodeToolName.AskUserQuestion
 }
 
 function appendToolInputText(

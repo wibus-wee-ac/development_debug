@@ -388,6 +388,71 @@ export const zPatchProviderTargetsByProviderTargetIdCustomModelsPath = z.object(
     providerTargetId: z.string().min(1)
 });
 
+export const zPostRemoteRuntimeHostsBody = z.object({
+    id: z.string().min(1).regex(/.*\S.*/).optional(),
+    displayName: z.string().min(1).regex(/.*\S.*/),
+    sshTarget: z.string().min(1).regex(/.*\S.*/),
+    remoteSocketPath: z.string().min(1).regex(/.*\S.*/),
+    enabled: z.boolean().optional(),
+    connectionConfig: z.record(z.string(), z.unknown()).optional()
+});
+
+export const zDeleteRemoteRuntimeHostsByHostIdPath = z.object({
+    hostId: z.string().min(1)
+});
+
+export const zPatchRemoteRuntimeHostsByHostIdBody = z.object({
+    displayName: z.string().min(1).regex(/.*\S.*/).optional(),
+    sshTarget: z.string().min(1).regex(/.*\S.*/).optional(),
+    remoteSocketPath: z.string().min(1).regex(/.*\S.*/).optional(),
+    enabled: z.boolean().optional(),
+    connectionConfig: z.record(z.string(), z.unknown()).optional()
+});
+
+export const zPatchRemoteRuntimeHostsByHostIdPath = z.object({
+    hostId: z.string().min(1)
+});
+
+export const zPostRemoteRuntimeHostsByHostIdConnectPath = z.object({
+    hostId: z.string().min(1)
+});
+
+export const zPostRemoteRuntimeHostsByHostIdDisconnectPath = z.object({
+    hostId: z.string().min(1)
+});
+
+export const zGetRemoteRuntimeHostsByHostIdHealthPath = z.object({
+    hostId: z.string().min(1)
+});
+
+export const zGetRemoteRuntimeHostsByHostIdRuntimesPath = z.object({
+    hostId: z.string().min(1)
+});
+
+export const zGetRemoteRuntimeHostsByHostIdWorkspacesPath = z.object({
+    hostId: z.string().min(1)
+});
+
+export const zGetRemoteRuntimeHostsByHostIdWorkspacesQuery = z.object({
+    root: z.string().optional()
+});
+
+export const zGetRemoteRuntimeHostsByHostIdAgentsPath = z.object({
+    hostId: z.string().min(1)
+});
+
+export const zPostRemoteRuntimeHostsByHostIdAgentsBody = z.object({
+    runtimeKind: z.string().min(1).regex(/.*\S.*/),
+    workspacePath: z.string().min(1).regex(/.*\S.*/),
+    chatSessionId: z.string().nullish(),
+    providerSessionId: z.string().nullish(),
+    modelId: z.string().nullish()
+});
+
+export const zPostRemoteRuntimeHostsByHostIdAgentsPath = z.object({
+    hostId: z.string().min(1)
+});
+
 export const zGetExternalIssueSourcesBindingsQuery = z.object({
     workspaceId: z.string().optional(),
     sourceKey: z.string().optional()

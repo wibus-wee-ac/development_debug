@@ -1787,6 +1787,329 @@ export type PatchProviderTargetsByProviderTargetIdCustomModelsResponses = {
 
 export type PatchProviderTargetsByProviderTargetIdCustomModelsResponse = PatchProviderTargetsByProviderTargetIdCustomModelsResponses[keyof PatchProviderTargetsByProviderTargetIdCustomModelsResponses];
 
+export type GetRemoteRuntimeHostsData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/remote-runtime-hosts';
+};
+
+export type GetRemoteRuntimeHostsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        displayName: string;
+        sshTarget: string;
+        remoteSocketPath: string;
+        enabled: boolean;
+        lastDaemonHostId: string | null;
+        lastDaemonVersion: string | null;
+        lastPlatform: string | null;
+        lastArch: string | null;
+        lastSeenAt: number | null;
+        connectionConfigJson: string;
+        createdAt: number;
+        updatedAt: number;
+        connectionState: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'offline';
+        lastError: string | null;
+    }>;
+};
+
+export type GetRemoteRuntimeHostsResponse = GetRemoteRuntimeHostsResponses[keyof GetRemoteRuntimeHostsResponses];
+
+export type PostRemoteRuntimeHostsData = {
+    body: {
+        id?: string;
+        displayName: string;
+        sshTarget: string;
+        remoteSocketPath: string;
+        enabled?: boolean;
+        connectionConfig?: {
+            [key: string]: unknown;
+        };
+    };
+    path?: never;
+    query?: never;
+    url: '/remote-runtime-hosts';
+};
+
+export type PostRemoteRuntimeHostsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        displayName: string;
+        sshTarget: string;
+        remoteSocketPath: string;
+        enabled: boolean;
+        lastDaemonHostId: string | null;
+        lastDaemonVersion: string | null;
+        lastPlatform: string | null;
+        lastArch: string | null;
+        lastSeenAt: number | null;
+        connectionConfigJson: string;
+        createdAt: number;
+        updatedAt: number;
+        connectionState: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'offline';
+        lastError: string | null;
+    };
+};
+
+export type PostRemoteRuntimeHostsResponse = PostRemoteRuntimeHostsResponses[keyof PostRemoteRuntimeHostsResponses];
+
+export type DeleteRemoteRuntimeHostsByHostIdData = {
+    body?: never;
+    path: {
+        hostId: string;
+    };
+    query?: never;
+    url: '/remote-runtime-hosts/{hostId}';
+};
+
+export type DeleteRemoteRuntimeHostsByHostIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type DeleteRemoteRuntimeHostsByHostIdResponse = DeleteRemoteRuntimeHostsByHostIdResponses[keyof DeleteRemoteRuntimeHostsByHostIdResponses];
+
+export type PatchRemoteRuntimeHostsByHostIdData = {
+    body: {
+        displayName?: string;
+        sshTarget?: string;
+        remoteSocketPath?: string;
+        enabled?: boolean;
+        connectionConfig?: {
+            [key: string]: unknown;
+        };
+    };
+    path: {
+        hostId: string;
+    };
+    query?: never;
+    url: '/remote-runtime-hosts/{hostId}';
+};
+
+export type PatchRemoteRuntimeHostsByHostIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        displayName: string;
+        sshTarget: string;
+        remoteSocketPath: string;
+        enabled: boolean;
+        lastDaemonHostId: string | null;
+        lastDaemonVersion: string | null;
+        lastPlatform: string | null;
+        lastArch: string | null;
+        lastSeenAt: number | null;
+        connectionConfigJson: string;
+        createdAt: number;
+        updatedAt: number;
+        connectionState: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'offline';
+        lastError: string | null;
+    };
+};
+
+export type PatchRemoteRuntimeHostsByHostIdResponse = PatchRemoteRuntimeHostsByHostIdResponses[keyof PatchRemoteRuntimeHostsByHostIdResponses];
+
+export type PostRemoteRuntimeHostsByHostIdConnectData = {
+    body?: never;
+    path: {
+        hostId: string;
+    };
+    query?: never;
+    url: '/remote-runtime-hosts/{hostId}/connect';
+};
+
+export type PostRemoteRuntimeHostsByHostIdConnectResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        hostId: string;
+        state: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'offline';
+        localSocketPath: string | null;
+        daemonHostId: string | null;
+        daemonVersion: string | null;
+        platform: string | null;
+        arch: string | null;
+        lastError: string | null;
+    };
+};
+
+export type PostRemoteRuntimeHostsByHostIdConnectResponse = PostRemoteRuntimeHostsByHostIdConnectResponses[keyof PostRemoteRuntimeHostsByHostIdConnectResponses];
+
+export type PostRemoteRuntimeHostsByHostIdDisconnectData = {
+    body?: never;
+    path: {
+        hostId: string;
+    };
+    query?: never;
+    url: '/remote-runtime-hosts/{hostId}/disconnect';
+};
+
+export type PostRemoteRuntimeHostsByHostIdDisconnectResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type PostRemoteRuntimeHostsByHostIdDisconnectResponse = PostRemoteRuntimeHostsByHostIdDisconnectResponses[keyof PostRemoteRuntimeHostsByHostIdDisconnectResponses];
+
+export type GetRemoteRuntimeHostsByHostIdHealthData = {
+    body?: never;
+    path: {
+        hostId: string;
+    };
+    query?: never;
+    url: '/remote-runtime-hosts/{hostId}/health';
+};
+
+export type GetRemoteRuntimeHostsByHostIdHealthResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        hostId: string;
+        status: 'ok' | 'offline';
+        daemonVersion: string | null;
+        daemonHostId: string | null;
+        uptimeSeconds: number | null;
+        connectionState: 'idle' | 'connecting' | 'connected' | 'disconnected' | 'offline';
+        lastError: string | null;
+    };
+};
+
+export type GetRemoteRuntimeHostsByHostIdHealthResponse = GetRemoteRuntimeHostsByHostIdHealthResponses[keyof GetRemoteRuntimeHostsByHostIdHealthResponses];
+
+export type GetRemoteRuntimeHostsByHostIdRuntimesData = {
+    body?: never;
+    path: {
+        hostId: string;
+    };
+    query?: never;
+    url: '/remote-runtime-hosts/{hostId}/runtimes';
+};
+
+export type GetRemoteRuntimeHostsByHostIdRuntimesResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        runtimes: Array<{
+            runtimeKind: string;
+            label: string;
+            status: 'available' | 'unavailable';
+            detail: string | null;
+        }>;
+    };
+};
+
+export type GetRemoteRuntimeHostsByHostIdRuntimesResponse = GetRemoteRuntimeHostsByHostIdRuntimesResponses[keyof GetRemoteRuntimeHostsByHostIdRuntimesResponses];
+
+export type GetRemoteRuntimeHostsByHostIdWorkspacesData = {
+    body?: never;
+    path: {
+        hostId: string;
+    };
+    query?: {
+        root?: string;
+    };
+    url: '/remote-runtime-hosts/{hostId}/workspaces';
+};
+
+export type GetRemoteRuntimeHostsByHostIdWorkspacesResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        workspaces: Array<{
+            id: string;
+            name: string;
+            path: string;
+            reason: string;
+        }>;
+        message: string | null;
+    };
+};
+
+export type GetRemoteRuntimeHostsByHostIdWorkspacesResponse = GetRemoteRuntimeHostsByHostIdWorkspacesResponses[keyof GetRemoteRuntimeHostsByHostIdWorkspacesResponses];
+
+export type GetRemoteRuntimeHostsByHostIdAgentsData = {
+    body?: never;
+    path: {
+        hostId: string;
+    };
+    query?: never;
+    url: '/remote-runtime-hosts/{hostId}/agents';
+};
+
+export type GetRemoteRuntimeHostsByHostIdAgentsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        agents: Array<{
+            agentId: string;
+            runtimeKind: string;
+            workspacePath: string;
+            status: 'idle' | 'running' | 'failed';
+            providerSessionId: string | null;
+            createdAt: number;
+            updatedAt: number;
+        }>;
+    };
+};
+
+export type GetRemoteRuntimeHostsByHostIdAgentsResponse = GetRemoteRuntimeHostsByHostIdAgentsResponses[keyof GetRemoteRuntimeHostsByHostIdAgentsResponses];
+
+export type PostRemoteRuntimeHostsByHostIdAgentsData = {
+    body: {
+        runtimeKind: string;
+        workspacePath: string;
+        chatSessionId?: string | null;
+        providerSessionId?: string | null;
+        modelId?: string | null;
+    };
+    path: {
+        hostId: string;
+    };
+    query?: never;
+    url: '/remote-runtime-hosts/{hostId}/agents';
+};
+
+export type PostRemoteRuntimeHostsByHostIdAgentsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        agent: {
+            agentId: string;
+            runtimeKind: string;
+            workspacePath: string;
+            status: 'idle' | 'running' | 'failed';
+            providerSessionId: string | null;
+            createdAt: number;
+            updatedAt: number;
+        };
+    };
+};
+
+export type PostRemoteRuntimeHostsByHostIdAgentsResponse = PostRemoteRuntimeHostsByHostIdAgentsResponses[keyof PostRemoteRuntimeHostsByHostIdAgentsResponses];
+
 export type GetExternalIssueSourcesData = {
     body?: never;
     path?: never;

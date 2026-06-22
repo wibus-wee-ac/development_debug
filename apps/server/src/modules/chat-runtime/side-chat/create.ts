@@ -10,6 +10,7 @@ import {
   registerSideConversation,
   reserveSideConversationHostLease
 } from '../../provider-runtime/side-conversation-registry'
+import { ProviderRuntimeLease } from '../../provider-runtime/host-manager'
 import type { RuntimeKind } from '../../provider-contracts/types'
 import type {
   ChatRuntime,
@@ -129,7 +130,7 @@ export async function createSideChat(
             modelId: requestedModelId
           })
 
-    sideHostLease = childRuntimeSession.providerRuntimeLease
+    sideHostLease = childRuntimeSession.providerRuntimeLease instanceof ProviderRuntimeLease
       ? {
           sideConversationId,
           providerTargetId: context.providerTarget.id,

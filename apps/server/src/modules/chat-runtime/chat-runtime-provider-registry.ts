@@ -8,6 +8,7 @@ import { createClaudeAgentProvider } from '../chat-runtime-providers/claude-agen
 import { createCodexProvider } from '../chat-runtime-providers/codex/provider'
 import { createMockClaudeAgentProvider } from '../chat-runtime-providers/mock-claude-agent/provider'
 import { createStandardProvider } from '../chat-runtime-providers/openai-compatible/provider'
+import { createRemoteMockProvider } from '../chat-runtime-providers/remote-mock/provider'
 import { createSystemAgentProvider } from '../chat-runtime-providers/system-agent/provider'
 import * as ModelRegistry from '../model-registry/service'
 import { record as recordObservability } from '../observability/service'
@@ -370,6 +371,9 @@ export function getRuntimeRegistry(): RuntimeRegistry {
         }
       },
     }))
+    if (process.env.CRADLE_REMOTE_AGENT_DEV === '1') {
+      registry.register(createRemoteMockProvider(ctx))
+    }
     registry.register(createSystemAgentProvider(ctx))
   }
   return registry
