@@ -1,5 +1,5 @@
 // Renders persisted Composer bang command results as terminal-style chat context.
-import { DownSmallLine as ChevronDownIcon, TerminalBoxLine as SquareTerminalIcon } from '@mingcute/react'
+import { RightSmallLine as ChevronRightIcon, TerminalBoxLine as SquareTerminalIcon } from '@mingcute/react'
 import { useState } from 'react'
 
 import { Badge } from '~/components/ui/badge'
@@ -38,6 +38,7 @@ export function BangCommandBlock({ result }: { result: BangResultMetadata }) {
       <Button
         type="button"
         variant="ghost"
+        aria-expanded={expanded}
         onClick={() => setExpanded(value => !value)}
         className="h-auto min-w-0 justify-start gap-2 px-1 py-0.5 text-left hover:bg-transparent"
       >
@@ -57,8 +58,8 @@ export function BangCommandBlock({ result }: { result: BangResultMetadata }) {
         <span className="shrink-0 font-mono text-[10px] text-muted-foreground tabular-nums">
           {formatShortDurationMs(result.durationMs)}
         </span>
-        <ChevronDownIcon
-          className={cn('size-3.5 shrink-0 !text-muted-foreground transition-transform', expanded && 'rotate-180')}
+        <ChevronRightIcon
+          className={cn('size-3.5 shrink-0 !text-muted-foreground transition-transform', expanded && 'rotate-90')}
           aria-hidden="true"
         />
       </Button>

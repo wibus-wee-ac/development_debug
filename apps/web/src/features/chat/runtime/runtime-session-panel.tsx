@@ -303,7 +303,7 @@ function ProgressTaskRow({ item }: { item: ProgressTaskItem }) {
       <Icon
         className={cn(
           'mt-0.5 size-3.5 shrink-0',
-          item.status === 'completed' && '!text-emerald-500',
+          item.status === 'completed' && '!text-emerald-600 dark:!text-emerald-400',
           item.status === 'inProgress' && 'animate-spin !text-primary',
           item.status === 'pending' && '!text-muted-foreground'
         )}

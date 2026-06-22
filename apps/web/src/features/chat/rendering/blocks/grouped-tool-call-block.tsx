@@ -1,32 +1,20 @@
 import {
-  RobotLine as BotIcon,
-  CheckCircleLine as CheckCircle2Icon,
-  RightSmallLine as ChevronRightIcon,
   AlertLine as CircleAlertIcon,
+  CheckCircleLine as CheckCircle2Icon,
   ClockLine as ClockIcon,
-  CodeLine as Code2Icon,
-  GitCompareLine as DiffIcon,
-  FileSearchLine as FileSearchIcon,
-  FileLine as FileTextIcon,
-  GitBranchLine as GitBranchIcon,
-  GlobeLine as GlobeIcon,
-  QuestionLine as HelpCircleIcon,
-  ListCheckLine as ListChecksIcon,
-  ToDoLine as ListTodoIcon,
-  Notebook2Line as NotebookTabsIcon,
-  LayoutTopLine as PanelTopIcon,
-  ServerLine as ServerIcon,
-  TerminalBoxLine as SquareTerminalIcon
+  RightSmallLine as ChevronRightIcon,
 } from '@mingcute/react'
 import { m } from 'motion/react'
-import type { ComponentType } from 'react'
 import { useState } from 'react'
 
+import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
 
 import { hasTerminalDetails } from '../terminal-tool-details'
+import { PLURAL_TITLES, STATUS_LABELS, TOOL_ICON_MAP } from '../tool-block-constants'
+import { basename, readFirstLine } from '../tool-block-utils'
 import type { RenderableToolPart, ToolState, ToolUiKind } from '../tool-ui-classifier'
 import { describeToolCall, readToolInputPayload, readToolPayload } from '../tool-ui-classifier'
 import {
@@ -37,43 +25,12 @@ import {
   TerminalExecutionDetails,
 } from './tool-call-block'
 
-const BACKSLASH_PATTERN = /\\/g
-const LINE_BREAK_PATTERN = /\r?\n/
-
-type IconComponent = ComponentType<{ 'className'?: string, 'aria-hidden'?: boolean }>
-
 interface ToolCallItem {
   key: string
   part: RenderableToolPart
 }
 
-const TOOL_ICON_MAP: Record<ToolUiKind, IconComponent> = {
-  'file-read': FileTextIcon,
-  'file-diff': DiffIcon,
-  'notebook-diff': NotebookTabsIcon,
-  'terminal': SquareTerminalIcon,
-  'search': FileSearchIcon,
-  'web': GlobeIcon,
-  'subagent': BotIcon,
-  'task-control': ClockIcon,
-  'todo': ListTodoIcon,
-  'plan': PanelTopIcon,
-  'plan-implementation': ListChecksIcon,
-  'question': HelpCircleIcon,
-  'mcp': ServerIcon,
-  'worktree': GitBranchIcon,
-  'generic': Code2Icon,
-}
-
 const FILE_KINDS = new Set<ToolUiKind>(['file-read', 'file-diff', 'search', 'notebook-diff'])
-
-const PLURAL_TITLES: Partial<Record<ToolUiKind, string>> = {
-  'terminal': 'Run commands',
-  'file-read': 'Read files',
-  'file-diff': 'Edit files',
-  'search': 'Search files',
-  'notebook-diff': 'Edit notebooks',
-}
 
 function isDiffKind(uiKind: ToolUiKind): boolean {
   return uiKind === 'file-diff' || uiKind === 'notebook-diff'
@@ -91,17 +48,6 @@ function hasExpandableDetails(part: RenderableToolPart, uiKind: ToolUiKind): boo
     return hasFileDiffInlineContent(payload.input, payload.output)
   }
   return false
-}
-
-function basename(value: string): string {
-  return value.replace(BACKSLASH_PATTERN, '/').split('/').filter(Boolean).pop() ?? value
-}
-
-function readFirstLine(value: string | null): string | null {
-  if (!value) {
-    return null
-  }
-  return value.split(LINE_BREAK_PATTERN, 1)[0] ?? value
 }
 
 function getItemLabel(part: RenderableToolPart, target: string | null, uiKind: ToolUiKind): string {
@@ -217,7 +163,14 @@ export function GroupedToolCallBlock({
           <span className="shrink-0 rounded-full bg-muted/60 px-1.5 py-0.5 text-[10px] tabular-nums text-muted-foreground">
             {items.length}
           </span>
-          <OverallStatusIcon state={overallState} animated={animated} />
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <span className="flex shrink-0 items-center">
+                <OverallStatusIcon state={overallState} animated={animated} />
+              </span>
+            </TooltipTrigger>
+            <TooltipContent>{STATUS_LABELS[overallState]}</TooltipContent>
+          </Tooltip>
         </div>
         {isRunning && (
           <div className="h-px overflow-hidden bg-muted">
@@ -294,7 +247,14 @@ export function GroupedToolCallBlock({
                 >
                   {label}
                 </span>
-                <ItemStatusIcon state={item.part.state} animated={animated} />
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <span className="flex shrink-0 items-center">
+                      <ItemStatusIcon state={item.part.state} animated={animated} />
+                    </span>
+                  </TooltipTrigger>
+                  <TooltipContent>{STATUS_LABELS[item.part.state]}</TooltipContent>
+                </Tooltip>
               </button>
               {expandable && expanded && (
                 <div className="mt-1 pr-1.5">
