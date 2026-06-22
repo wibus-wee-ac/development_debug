@@ -32,6 +32,7 @@
     "@cradle/browser-use": "workspace:*",
     "@cradle/ipc": "workspace:*",
     "@cradle/plugin-sdk": "workspace:*",
+    "electron-updater": "^6.8.9",
     "electron-window-state": "^5.0.3",
     "extract-zip": "^2.0.1",
     "get-port": "^7.1.0",

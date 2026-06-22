@@ -396,6 +396,21 @@ function requestDesktopExit(input: { reason: string, exitCode: number, stopServe
     })
 }
 
+async function prepareDesktopExitForExternalQuit(input: { reason: string, stopServerRuntime: boolean }): Promise<void> {
+  if (shutdownPromise) {
+    await shutdownPromise
+    return
+  }
+
+  console.warn(`[desktop] preparing runtime shutdown: ${input.reason}`)
+  isQuitting = true
+  shutdownPromise = shutdownDesktopRuntime({ stopServerRuntime: input.stopServerRuntime })
+    .catch((error) => {
+      console.error('[desktop] runtime shutdown failed:', error)
+    })
+  await shutdownPromise
+}
+
 function registerProcessShutdownHandlers(): void {
   const handleSignal = (signal: NodeJS.Signals) => {
     quitGuard.allowNextQuit()
@@ -496,6 +511,13 @@ export async function startDesktopApp(): Promise<void> {
   }
 
   updateManager = new DesktopUpdateManager({
+    prepareQuitForUpdate: async () => {
+      quitGuard.allowNextQuit()
+      await prepareDesktopExitForExternalQuit({
+        reason: 'desktop update',
+        stopServerRuntime: true,
+      })
+    },
     requestQuitForUpdate: () => {
       quitGuard.allowNextQuit()
       requestDesktopExit({

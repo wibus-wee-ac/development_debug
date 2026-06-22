@@ -30,8 +30,9 @@
 - `native-appshot-codex-assets.test.ts`：覆盖 Codex temp asset reader 的 root 边界、image 类型过滤、baseline inventory 过滤，以及 observer 对新产物的识别。
 - `native-appshot-target.ts`：拥有 desktop-owned Appshot research target synthesis，在没有 renderer composer frame 时生成 composer-like destination，避免 parity probe 退回到 source-equals-destination geometry。
 - `native-services.test.ts`：覆盖 Appshot parity target synthesis，确保 research probe 的默认 destination 不等于 frontmost window fallback。
-- `update-manager.ts`：拥有 renderer-visible Desktop Updates workflow；编排 manifest 检查、下载、staging、安装触发和状态事件。
-- `update-manager.test.ts`：覆盖 Desktop Updates 手动 Check/Download/Apply 编排、installer launch、quit hook，以及没有 prepared update 时的 apply error。
+- `update-manager.ts`：拥有 renderer-visible Desktop Updates workflow；按平台编排 macOS manifest updater 或 Windows NSIS updater 的检查、下载、安装触发和状态事件。
+- `update-manager.test.ts`：覆盖 Desktop Updates 手动 Check/Download/Apply 编排、macOS installer launch、Windows NSIS updater apply、quit hook，以及没有 prepared update 时的 apply error。
+- `windows-update-adapter.ts`：拥有 Windows `electron-updater` adapter，把 GitHub release feed 中的 `latest.yml`、NSIS installer 和 blockmap 投影到统一的 desktop update 状态模型。
 - `update-source.ts`：拥有 desktop update manifest 读取、schema 校验、版本比较和 artifact 选择。
 - `update-source.test.ts`：覆盖 desktop update manifest URL 解析、renderer-visible 状态投影、版本比较，以及非 numeric dot version 的拒绝行为。
 - `update-downloader.ts`：拥有 update artifact 流式下载、进度投影和 SHA-256 校验。
@@ -63,9 +64,11 @@
 
 ## Desktop update ownership
 
-`update-manager.ts` owns the renderer-visible Desktop Updates workflow. The explicit user flow is Check, Download, then Restart. Check reads the Cradle desktop update manifest and updates status; it does not implicitly download in the manual flow. When desktop preferences enable automatic checks, the main process checks every 5 minutes in the background; when automatic download is also enabled, an available update starts downloading, prepares the staged `.app`, and broadcasts progress through `desktop-update:status-changed`.
+`update-manager.ts` owns the renderer-visible Desktop Updates workflow. The explicit user flow is Check, Download, then Restart. Check reads the platform update feed and updates status; it does not implicitly download in the manual flow. When desktop preferences enable automatic checks, the main process checks every 5 minutes in the background; when automatic download is also enabled, an available update starts downloading and broadcasts progress through `desktop-update:status-changed`.
 
-Updates are available only in packaged macOS builds with `CRADLE_DESKTOP_UPDATE_URL` configured. The feed URL can point directly at a manifest JSON file or at a feed root that contains `macos/manifest.json`. Restart spawns the detached installer script first, shuts down the desktop-owned server runtime, replaces the current `.app` bundle, and relaunches Cradle with `open -n`. If the target app directory is not writable, the installer uses macOS administrator privileges for the replacement step.
+Updates are available only in packaged macOS and Windows builds with `CRADLE_DESKTOP_UPDATE_URL` configured. macOS uses the Cradle-owned JSON manifest and zip replacement path; the feed URL can point directly at `manifest.json` or at a feed root that contains `macos/manifest.json`. Restart spawns the detached installer script first, shuts down the desktop-owned server runtime, replaces the current `.app` bundle, and relaunches Cradle with `open -n`. If the target app directory is not writable, the installer uses macOS administrator privileges for the replacement step.
+
+Windows uses `electron-updater` with the NSIS target. The same `CRADLE_DESKTOP_UPDATE_URL` may point at the macOS `manifest.json`; Windows strips that filename and reads `latest.yml` from the feed directory. Restart prepares the desktop runtime shutdown, then delegates quit/install/relaunch to the downloaded NSIS installer through `quitAndInstall`.
 
 ## Mac Bridge ownership
 

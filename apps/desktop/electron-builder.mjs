@@ -32,9 +32,19 @@ function getPublishConfig() {
   return [
     {
       provider: 'generic',
-      url: updateServerUrl,
+      url: resolveElectronUpdaterFeedUrl(updateServerUrl),
     },
   ]
+}
+
+function resolveElectronUpdaterFeedUrl(url) {
+  if (url.endsWith('/manifest.json')) {
+    return url.slice(0, -'manifest.json'.length)
+  }
+  if (url.endsWith('.json')) {
+    return url.slice(0, url.lastIndexOf('/') + 1)
+  }
+  return url.endsWith('/') ? url : `${url}/`
 }
 
 async function removeUnusedMacFrameworkLocales(context) {

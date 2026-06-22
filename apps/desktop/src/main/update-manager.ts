@@ -12,6 +12,7 @@ import type {
   DesktopUpdateStatus,
 } from './update-types'
 import { readErrorMessage } from './update-types'
+import { WindowsDesktopUpdateAdapter } from './windows-update-adapter'
 
 export type {
   DesktopUpdateFile,
@@ -33,6 +34,7 @@ type DesktopUpdateEventName = keyof DesktopUpdateManagerEvents
 export type DesktopUpdateManagerOptions = {
   updateFeedUrl?: string | null
   preferences?: Partial<DesktopUpdatePreferences>
+  prepareQuitForUpdate?: () => void | Promise<void>
   requestQuitForUpdate?: () => void | Promise<void>
 }
 
@@ -65,10 +67,12 @@ async function retryWithBackoff<T>(
 
 export class DesktopUpdateManager {
   private readonly events = new EventEmitter()
+  private readonly prepareQuitForUpdate: (() => void | Promise<void>) | null
   private readonly requestQuitForUpdate: (() => void | Promise<void>) | null
   private readonly source: DesktopUpdateSource | null
   private readonly downloader: DesktopUpdateDownloader | null
-  private readonly installer: DesktopUpdateInstaller
+  private readonly installer: DesktopUpdateInstaller | null
+  private readonly windowsUpdater: WindowsDesktopUpdateAdapter | null
   private preferences: DesktopUpdatePreferences
   private statusSnapshot: DesktopUpdateStatus
   private backgroundTimer: NodeJS.Timeout | null = null
@@ -80,16 +84,24 @@ export class DesktopUpdateManager {
     const currentVersion = app.getVersion()
     const updateFeedUrl = options.updateFeedUrl ?? readUpdateFeedUrl()
     const unsupportedReason = readUnsupportedReason(updateFeedUrl)
+    const updatePlatform = unsupportedReason ? null : readUpdatePlatform()
 
+    this.prepareQuitForUpdate = options.prepareQuitForUpdate ?? null
     this.requestQuitForUpdate = options.requestQuitForUpdate ?? null
-    this.source = unsupportedReason
-      ? null
-      : new DesktopUpdateSource({
+    this.source = updatePlatform === 'darwin'
+      ? new DesktopUpdateSource({
           updateFeedUrl,
           currentVersion,
         })
-    this.downloader = unsupportedReason ? null : new DesktopUpdateDownloader()
-    this.installer = new DesktopUpdateInstaller()
+      : null
+    this.downloader = updatePlatform === 'darwin' ? new DesktopUpdateDownloader() : null
+    this.installer = updatePlatform === 'darwin' ? new DesktopUpdateInstaller() : null
+    this.windowsUpdater = updatePlatform === 'win32'
+      ? new WindowsDesktopUpdateAdapter({
+          updateFeedUrl: updateFeedUrl!,
+          onStatusChanged: patch => this.setStatus(patch),
+        })
+      : null
     this.preferences = {
       autoCheckForUpdates: options.preferences?.autoCheckForUpdates ?? true,
       autoDownloadUpdates: options.preferences?.autoDownloadUpdates ?? false,
@@ -106,7 +118,9 @@ export class DesktopUpdateManager {
       errorMessage: unsupportedReason,
     }
 
-    void this.loadLastApplyResult()
+    if (this.installer) {
+      void this.loadLastApplyResult()
+    }
   }
 
   get status(): DesktopUpdateStatus {
@@ -131,7 +145,7 @@ export class DesktopUpdateManager {
 
   startBackgroundChecks(): void {
     if (
-      !this.source
+      (!this.source && !this.windowsUpdater)
       || this.backgroundTimer
       || this.backgroundCheckRunning
       || !this.preferences.autoCheckForUpdates
@@ -179,6 +193,10 @@ export class DesktopUpdateManager {
   }
 
   async checkForUpdates(options: CheckForUpdatesOptions = {}): Promise<DesktopUpdateStatus> {
+    if (this.windowsUpdater) {
+      return await this.checkForWindowsUpdates(options)
+    }
+
     if (!this.source || this.statusSnapshot.isCheckingForUpdates || this.statusSnapshot.isDownloadingUpdate) {
       return this.statusSnapshot
     }
@@ -217,13 +235,21 @@ export class DesktopUpdateManager {
   }
 
   async downloadUpdate(): Promise<DesktopUpdateStatus> {
+    if (this.windowsUpdater) {
+      return await this.downloadWindowsUpdate()
+    }
+
     if (
       !this.downloader
+      || !this.installer
       || this.statusSnapshot.isDownloadingUpdate
       || !this.availableUpdate
     ) {
       return this.statusSnapshot
     }
+    const downloader = this.downloader
+    const installer = this.installer
+    const availableUpdate = this.availableUpdate
 
     this.setStatus({
       isDownloadingUpdate: true,
@@ -234,13 +260,13 @@ export class DesktopUpdateManager {
     })
 
     try {
-      const download = await retryWithBackoff(() => this.downloader!.download(this.availableUpdate!, (progress) => {
+      const download = await retryWithBackoff(() => downloader.download(availableUpdate, (progress) => {
         this.setStatus({
           isDownloadingUpdate: true,
           downloadingProgress: progress.percent,
         })
       }))
-      const plan = await this.installer.prepare(download, this.availableUpdate.info.version)
+      const plan = await installer.prepare(download, availableUpdate.info.version)
       this.installerPlan = plan
       this.setStatus({
         isDownloadingUpdate: false,
@@ -263,6 +289,11 @@ export class DesktopUpdateManager {
   }
 
   async applyUpdate(): Promise<void> {
+    if (this.windowsUpdater) {
+      await this.applyWindowsUpdate()
+      return
+    }
+
     if (!this.installerPlan) {
       this.setStatus({
         errorMessage: 'No prepared desktop update is available',
@@ -277,7 +308,7 @@ export class DesktopUpdateManager {
     }
 
     try {
-      this.installer.launch(this.installerPlan)
+      this.installer!.launch(this.installerPlan)
       await this.requestQuitForUpdate()
     }
     catch (error) {
@@ -288,7 +319,7 @@ export class DesktopUpdateManager {
   }
 
   private async loadLastApplyResult(): Promise<void> {
-    const result = await this.installer.readLastResult()
+    const result = await this.installer!.readLastResult()
     if (!result || result.ok) {
       return
     }
@@ -305,17 +336,119 @@ export class DesktopUpdateManager {
     }
     this.events.emit('statusChanged', this.statusSnapshot)
   }
+
+  private async checkForWindowsUpdates(options: CheckForUpdatesOptions): Promise<DesktopUpdateStatus> {
+    if (this.statusSnapshot.isCheckingForUpdates || this.statusSnapshot.isDownloadingUpdate) {
+      return this.statusSnapshot
+    }
+
+    this.setStatus({
+      isCheckingForUpdates: true,
+      errorMessage: null,
+    })
+
+    try {
+      const updateInfo = await retryWithBackoff(() => this.windowsUpdater!.checkForUpdates())
+      this.availableUpdate = null
+      this.installerPlan = null
+      this.setStatus({
+        isCheckingForUpdates: false,
+        updateInfo,
+        updateDownloaded: false,
+        downloadedFilePath: null,
+        downloadingProgress: 0,
+      })
+    }
+    catch (error) {
+      this.setStatus({
+        isCheckingForUpdates: false,
+        updateInfo: null,
+        updateDownloaded: false,
+        downloadedFilePath: null,
+        downloadingProgress: 0,
+        errorMessage: options.quiet ? this.statusSnapshot.errorMessage : readErrorMessage(error),
+      })
+    }
+
+    return this.statusSnapshot
+  }
+
+  private async downloadWindowsUpdate(): Promise<DesktopUpdateStatus> {
+    if (this.statusSnapshot.isDownloadingUpdate || !this.statusSnapshot.updateInfo) {
+      return this.statusSnapshot
+    }
+
+    this.setStatus({
+      isDownloadingUpdate: true,
+      updateDownloaded: false,
+      downloadedFilePath: null,
+      downloadingProgress: 0,
+      errorMessage: null,
+    })
+
+    try {
+      const downloadedFilePath = await retryWithBackoff(() => this.windowsUpdater!.downloadUpdate())
+      this.setStatus({
+        isDownloadingUpdate: false,
+        downloadingProgress: 100,
+        updateDownloaded: true,
+        downloadedFilePath,
+      })
+    }
+    catch (error) {
+      this.setStatus({
+        isDownloadingUpdate: false,
+        updateDownloaded: false,
+        downloadedFilePath: null,
+        errorMessage: readErrorMessage(error),
+      })
+    }
+
+    return this.statusSnapshot
+  }
+
+  private async applyWindowsUpdate(): Promise<void> {
+    if (!this.statusSnapshot.updateDownloaded) {
+      this.setStatus({
+        errorMessage: 'No prepared desktop update is available',
+      })
+      return
+    }
+    if (!this.prepareQuitForUpdate) {
+      this.setStatus({
+        errorMessage: 'Desktop update quit hook is not configured',
+      })
+      return
+    }
+
+    try {
+      await this.prepareQuitForUpdate()
+      this.windowsUpdater!.applyUpdate()
+    }
+    catch (error) {
+      this.setStatus({
+        errorMessage: readErrorMessage(error),
+      })
+    }
+  }
 }
 
 function readUnsupportedReason(updateFeedUrl: string | null): string | null {
-  if (process.platform !== 'darwin') {
-    return 'Desktop self-updates are only available on macOS'
+  if (process.platform !== 'darwin' && process.platform !== 'win32') {
+    return 'Desktop self-updates are only available on macOS and Windows'
   }
   if (!updateFeedUrl) {
     return 'CRADLE_DESKTOP_UPDATE_URL is not configured'
   }
   if (!app.isPackaged && process.env.CRADLE_DESKTOP_ALLOW_DEV_UPDATES !== 'true') {
     return 'Desktop updates are only available in packaged builds'
+  }
+  return null
+}
+
+function readUpdatePlatform(): 'darwin' | 'win32' | null {
+  if (process.platform === 'darwin' || process.platform === 'win32') {
+    return process.platform
   }
   return null
 }

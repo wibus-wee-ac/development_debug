@@ -103,7 +103,57 @@ const updateInstallerMocks = vi.hoisted(() => {
   }
 })
 
+const electronUpdaterMocks = vi.hoisted(() => {
+  type Listener = (...args: object[]) => void
+
+  class FakeAutoUpdater {
+    autoDownload = true
+    autoInstallOnAppQuit = true
+    disableWebInstaller = false
+    logger: Console | null = null
+    readonly listeners = new Map<string, Listener[]>()
+    readonly setFeedURL = vi.fn()
+    readonly checkForUpdates = vi.fn()
+    readonly downloadUpdate = vi.fn()
+    readonly quitAndInstall = vi.fn()
+    readonly on = vi.fn((event: string, listener: Listener) => {
+      const eventListeners = this.listeners.get(event) ?? []
+      eventListeners.push(listener)
+      this.listeners.set(event, eventListeners)
+      return this
+    })
+
+    emit(event: string, ...args: object[]): void {
+      for (const listener of this.listeners.get(event) ?? []) {
+        listener(...args)
+      }
+    }
+
+    reset(): void {
+      this.autoDownload = true
+      this.autoInstallOnAppQuit = true
+      this.disableWebInstaller = false
+      this.logger = null
+      this.listeners.clear()
+      this.setFeedURL.mockReset()
+      this.checkForUpdates.mockReset()
+      this.downloadUpdate.mockReset()
+      this.quitAndInstall.mockReset()
+      this.on.mockClear()
+    }
+  }
+
+  const autoUpdater = new FakeAutoUpdater()
+
+  return {
+    autoUpdater,
+  }
+})
+
 vi.mock('electron', () => electronMocks)
+vi.mock('electron-updater', () => ({
+  autoUpdater: electronUpdaterMocks.autoUpdater,
+}))
 vi.mock('./update-source', () => ({
   DesktopUpdateSource: updateSourceMocks.DesktopUpdateSource,
   readUpdateFeedUrl: updateSourceMocks.state.readUpdateFeedUrl,
@@ -140,6 +190,24 @@ function createCandidate(): DesktopUpdateCandidate {
   }
 }
 
+function createWindowsUpdateInfo() {
+  return {
+    version: '1.2.3',
+    releaseName: 'Cradle 1.2.3',
+    releaseNotes: 'Windows release',
+    releaseDate: '2026-06-20T00:00:00.000Z',
+    path: 'Cradle-1.2.3-setup.exe',
+    sha512: 'b'.repeat(128),
+    files: [
+      {
+        url: 'Cradle-1.2.3-setup.exe',
+        size: 100,
+        sha512: 'b'.repeat(128),
+      },
+    ],
+  }
+}
+
 describe('DesktopUpdateManager', () => {
   const originalPlatform = process.platform
 
@@ -154,6 +222,7 @@ describe('DesktopUpdateManager', () => {
     updateSourceMocks.state.readUpdateFeedUrl.mockReturnValue('https://updates.example.com/cradle')
     updateDownloaderMocks.state.instances.length = 0
     updateInstallerMocks.state.instances.length = 0
+    electronUpdaterMocks.autoUpdater.reset()
   })
 
   afterEach(() => {
@@ -212,5 +281,72 @@ describe('DesktopUpdateManager', () => {
 
     expect(manager.status.errorMessage).toBe('No prepared desktop update is available')
     expect(updateInstallerMocks.state.instances[0]?.launch).not.toHaveBeenCalled()
+  })
+
+  it('checks, downloads, and applies Windows NSIS updates through electron-updater', async () => {
+    Object.defineProperty(process, 'platform', {
+      configurable: true,
+      value: 'win32',
+    })
+    const updateInfo = createWindowsUpdateInfo()
+    const downloadedFile = 'C:\\Users\\wibus\\AppData\\Local\\cradle-updater\\Cradle-1.2.3-setup.exe'
+    electronUpdaterMocks.autoUpdater.checkForUpdates.mockResolvedValue({
+      isUpdateAvailable: true,
+      updateInfo,
+      versionInfo: updateInfo,
+      downloadPromise: null,
+    })
+    electronUpdaterMocks.autoUpdater.downloadUpdate.mockImplementation(async () => {
+      electronUpdaterMocks.autoUpdater.emit('download-progress', { percent: 64 })
+      electronUpdaterMocks.autoUpdater.emit('update-downloaded', {
+        ...updateInfo,
+        downloadedFile,
+      })
+      return [downloadedFile]
+    })
+    const quitEvents: string[] = []
+
+    const { DesktopUpdateManager } = await import('./update-manager')
+    const manager = new DesktopUpdateManager({
+      updateFeedUrl: 'https://github.com/wibus-wee/cradle-app/releases/download/feed-dev/manifest.json',
+      prepareQuitForUpdate: async () => {
+        quitEvents.push('prepare')
+      },
+    })
+
+    expect(manager.status.unsupported).toBe(false)
+    expect(electronUpdaterMocks.autoUpdater.setFeedURL).toHaveBeenCalledWith(
+      'https://github.com/wibus-wee/cradle-app/releases/download/feed-dev/',
+    )
+    expect(electronUpdaterMocks.autoUpdater.autoDownload).toBe(false)
+    expect(electronUpdaterMocks.autoUpdater.autoInstallOnAppQuit).toBe(false)
+    expect(electronUpdaterMocks.autoUpdater.disableWebInstaller).toBe(true)
+    expect(updateSourceMocks.state.instances).toHaveLength(0)
+    expect(updateInstallerMocks.state.instances).toHaveLength(0)
+
+    await expect(manager.checkForUpdates()).resolves.toMatchObject({
+      updateInfo: {
+        version: '1.2.3',
+        releaseNotes: 'Windows release',
+        files: [
+          {
+            url: 'Cradle-1.2.3-setup.exe',
+            size: 100,
+          },
+        ],
+      },
+      updateDownloaded: false,
+    })
+
+    await expect(manager.downloadUpdate()).resolves.toMatchObject({
+      downloadingProgress: 100,
+      updateDownloaded: true,
+      downloadedFilePath: downloadedFile,
+    })
+
+    await manager.applyUpdate()
+
+    expect(quitEvents).toEqual(['prepare'])
+    expect(electronUpdaterMocks.autoUpdater.quitAndInstall).toHaveBeenCalledWith(false, true)
   })
 })
