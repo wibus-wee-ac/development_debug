@@ -122,6 +122,13 @@ export interface ChatViewProps {
   composerToolbar?: React.ReactNode
   /** Additional toolbar content rendered after the default composer toolbar */
   composerToolbarAddon?: React.ReactNode
+  /**
+   * Hide the runtime settings gear and the default composer toolbar
+   * (runtime/provider/model/thinking controls). Used by ambient hosts like
+   * Jarvis that surface only a Context toggle — runtime/model are chosen once
+   * in preferences, not per message. Only `composerToolbarAddon` remains.
+   */
+  hideRuntimeToolbar?: boolean
   /** Ref to read per-message overrides (modelId, thinkingEffort) before sending */
   sendOverridesRef?: React.MutableRefObject<{
     providerTargetId?: string
@@ -265,6 +272,7 @@ function ChatMessageListPane({
   onScrollToOffset,
   onToolApprovalResponse,
   composerStack,
+  hideMinimap,
   messageTextTransform,
 }: {
   sessionId: string | null
@@ -285,6 +293,7 @@ function ChatMessageListPane({
   onScrollToOffset: ChatScrollRuntime['scrollToOffset']
   onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
   composerStack: React.ReactNode
+  hideMinimap?: boolean
   messageTextTransform?: MessageTextTransform
 }) {
   return (
@@ -310,15 +319,19 @@ function ChatMessageListPane({
         </div>
       </div>
 
-      <ChatMinimap
-        ref={minimapRef}
-        sessionId={sessionId}
-        messageIds={messageIds}
-        scrollHeight={scrollMetrics.scrollHeight}
-        viewportHeight={scrollMetrics.viewportHeight}
-        onScrollToIndex={onScrollToMessageIndex}
-        onScrollTo={onScrollToOffset}
-      />
+      {hideMinimap
+        ? null
+        : (
+            <ChatMinimap
+              ref={minimapRef}
+              sessionId={sessionId}
+              messageIds={messageIds}
+              scrollHeight={scrollMetrics.scrollHeight}
+              viewportHeight={scrollMetrics.viewportHeight}
+              onScrollToIndex={onScrollToMessageIndex}
+              onScrollTo={onScrollToOffset}
+            />
+          )}
     </div>
   )
 }
@@ -669,6 +682,7 @@ export function ChatView({
   searchSkills,
   composerToolbar,
   composerToolbarAddon,
+  hideRuntimeToolbar = false,
   composerContextBar,
   sendOverridesRef,
   composerModel,
@@ -1031,6 +1045,17 @@ export function ChatView({
   )
 
   const runtimeSettingsToolbar = useMemo(() => {
+    if (hideRuntimeToolbar) {
+      // Ambient hosts (e.g. Jarvis) surface only their own context toggle via
+      // the context bar; the runtime gear and provider/model/thinking toolbar
+      // are noise on a per-message basis. Keep only the host-supplied addon
+      // (which renders nothing when there are no explicit attachments).
+      return (
+        <div className="flex min-w-0 items-center gap-1">
+          {composerToolbarAddon}
+        </div>
+      )
+    }
     if (!sessionId) {
       return (
         <div className="flex min-w-0 items-center gap-1">
@@ -1055,6 +1080,7 @@ export function ChatView({
   }, [
     composerToolbarAddon,
     composerToolbar,
+    hideRuntimeToolbar,
     isReady,
     runtimeSettings.applied,
     runtimeSettings.loaded,
@@ -1120,6 +1146,7 @@ export function ChatView({
         onScrollToOffset={scrollRuntime.scrollToOffset}
         onToolApprovalResponse={respondToToolApproval}
         messageTextTransform={messageTextTransform}
+        hideMinimap={hideRuntimeToolbar}
         composerStack={(
           <ChatComposerSection
             sessionId={sessionId}

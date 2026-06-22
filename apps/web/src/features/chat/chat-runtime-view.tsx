@@ -42,6 +42,7 @@ export function ChatRuntimeView({
   agentId,
   composerContextBar,
   composerToolbarAddon,
+  hideRuntimeToolbar = false,
   placeholder,
   messageTextTransform,
   prepareSend,
@@ -56,6 +57,7 @@ export function ChatRuntimeView({
   agentId: string | null
   composerContextBar?: ReactNode
   composerToolbarAddon?: ReactNode
+  hideRuntimeToolbar?: boolean
   placeholder?: string
   messageTextTransform?: ChatViewProps['messageTextTransform']
   prepareSend?: ChatViewProps['prepareSend']
@@ -285,9 +287,11 @@ export function ChatRuntimeView({
     ? { slot: claudeModelAliasesSlot, providerSettingsLoading: providerTargetAliases.isLoading }
     : null
 
-  const composerToolbar = (
-    <ComposerToolbar context="chat" state={sessionComposerState} claudeModelAliases={claudeModelAliases} />
-  )
+  const composerToolbar = hideRuntimeToolbar
+    ? null
+    : (
+        <ComposerToolbar context="chat" state={sessionComposerState} claudeModelAliases={claudeModelAliases} />
+      )
   const composerToolbarAddons = (
     <>
       {composerToolbarAddon}
@@ -307,6 +311,7 @@ export function ChatRuntimeView({
         composerToolbar={composerToolbar}
         composerToolbarAddon={composerToolbarAddons}
         composerContextBar={composerContextBar}
+        hideRuntimeToolbar={hideRuntimeToolbar}
         sendOverridesRef={sendOverridesRef}
         composerModel={sessionComposerState.effectiveModel}
         placeholder={placeholder}

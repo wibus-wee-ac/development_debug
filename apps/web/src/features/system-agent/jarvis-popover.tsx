@@ -348,6 +348,7 @@ function JarvisRuntimePanel({
         agentId={agentId}
         composerContextBar={composerContextBar}
         composerToolbarAddon={composerToolbarAddon}
+        hideRuntimeToolbar
         placeholder={placeholder}
         messageTextTransform={stripCradleContextForDisplay}
         prepareSend={prepareSend}
