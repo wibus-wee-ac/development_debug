@@ -90,6 +90,16 @@ const CLAUDE_AGENT_USER_INPUT_SLOT: RuntimeUiSlot = {
   surfaces: ['composerState', 'runtimePanel', 'streamEvidence'],
 }
 
+const CLAUDE_AGENT_CREW_SLOT: RuntimeUiSlot = {
+  id: 'claude-agent:crew',
+  name: 'crew',
+  label: 'Crew',
+  description: 'Show active sub-agents and crew status.',
+  argumentHint: '',
+  iconKey: 'crew',
+  surfaces: ['runtimePanel'],
+}
+
 export function projectClaudeAgentPresentation(slashCommands: SlashCommand[]): RuntimePresentationCapabilities {
   return {
     runtimeKind: CLAUDE_AGENT_RUNTIME_KIND,
@@ -100,6 +110,7 @@ export function projectClaudeAgentPresentation(slashCommands: SlashCommand[]): R
       CLAUDE_AGENT_PLAN_SLOT,
       CLAUDE_AGENT_PROGRESS_SLOT,
       CLAUDE_AGENT_USER_INPUT_SLOT,
+      CLAUDE_AGENT_CREW_SLOT,
     ],
     skills: [],
   }

@@ -10,6 +10,7 @@ import type { SDKAssistantMessage, SDKMessage, SDKPartialAssistantMessage, SDKRe
 import type { UIMessageChunk } from 'ai'
 
 import type { TokenUsage } from '../../chat-runtime-engine/ai-sdk-engine'
+import { ClaudeCodeToolName } from './tools/identity'
 import type { ClaudeAgentSubagentProjection } from './subagent-projector'
 import {
   compactClaudeAgentSubagentProjection,
@@ -18,7 +19,6 @@ import {
   projectClaudeAgentSubagentMessage,
   projectClaudeAgentSubagentOutputChunk,
 } from './subagent-projector'
-import { ClaudeCodeToolName } from './tools/identity'
 import { createClaudeCodeToolInputPayload, createClaudeCodeToolResultPayload, normalizeClaudeCodeToolApiName } from './tools/mapper'
 import {
   captureClaudeAgentTaskToolInput,
@@ -134,6 +134,17 @@ export interface ClaudeAgentCapturedUserQuestion {
   input: NonNullable<ReturnType<typeof readClaudeAgentAskUserQuestionInput>>
 }
 
+export interface ClaudeAgentCapturedCrewCall {
+  toolCallId: string
+  prompt: string | null
+  model: string | null
+  reasoningEffort: string | null
+  runInBackground: boolean
+  status: 'running' | 'completed' | 'failed'
+  startedAt: number
+  completedAt: number | null
+}
+
 export interface ClaudeAgentChunkMapperResult {
   chunks: UIMessageChunk[]
   sessionId: string | null
@@ -142,6 +153,7 @@ export interface ClaudeAgentChunkMapperResult {
   capturedTodos: ClaudeAgentCapturedTodos[]
   capturedInteractionModes: ClaudeAgentCapturedInteractionMode[]
   capturedUserQuestions: ClaudeAgentCapturedUserQuestion[]
+  capturedCrewCalls: ClaudeAgentCapturedCrewCall[]
 }
 
 export async function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: ClaudeAgentChunkMapperState): Promise<ClaudeAgentChunkMapperResult> {
@@ -162,6 +174,7 @@ export async function mapClaudeAgentMessageToChunks(msg: SDKMessage, state: Clau
       capturedPlans: [],
       capturedTodos: [],
       capturedInteractionModes: [],
+      capturedCrewCalls: [],
       capturedUserQuestions: result.capturedUserQuestions.map(question => ({
         ...question,
         parentToolUseId,
@@ -228,6 +241,7 @@ async function mapClaudeAgentMessageToChunksWithoutParentProjection(msg: SDKMess
     capturedTodos: [],
     capturedInteractionModes: [],
     capturedUserQuestions: [],
+    capturedCrewCalls: [],
   }
 
   switch (msg.type) {
@@ -302,6 +316,7 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
   const capturedTodos: ClaudeAgentCapturedTodos[] = []
   const capturedInteractionModes: ClaudeAgentCapturedInteractionMode[] = []
   const capturedUserQuestions: ClaudeAgentCapturedUserQuestion[] = []
+  const capturedCrewCalls: ClaudeAgentCapturedCrewCall[] = []
 
   const flushTextSegment = (text: string) => {
     if (text.length === 0) {
@@ -329,6 +344,7 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
       capturedTodos.push(...mapped.capturedTodos)
       capturedInteractionModes.push(...mapped.capturedInteractionModes)
       capturedUserQuestions.push(...mapped.capturedUserQuestions)
+      capturedCrewCalls.push(...mapped.capturedCrewCalls)
       state.hadToolCallSinceLastText = true
       continue
     }
@@ -345,6 +361,7 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
     capturedTodos.push(...mapped.capturedTodos)
     capturedInteractionModes.push(...mapped.capturedInteractionModes)
     capturedUserQuestions.push(...mapped.capturedUserQuestions)
+    capturedCrewCalls.push(...mapped.capturedCrewCalls)
   }
   flushTextSegment(pendingText)
 
@@ -356,12 +373,13 @@ function mapAssistant(msg: SDKAssistantMessage, state: ClaudeAgentChunkMapperSta
       }
     : null
 
-  return { chunks, sessionId: msg.session_id, usage, capturedPlans, capturedTodos, capturedInteractionModes, capturedUserQuestions }
+  return { chunks, sessionId: msg.session_id, usage, capturedPlans, capturedTodos, capturedInteractionModes, capturedUserQuestions, capturedCrewCalls }
 }
 
 async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState): Promise<ClaudeAgentChunkMapperResult> {
   const chunks: UIMessageChunk[] = []
   const capturedTodos: ClaudeAgentCapturedTodos[] = []
+  const capturedCrewCalls: ClaudeAgentCapturedCrewCall[] = []
   const content = msg.message.content
 
   // Extract tool_result blocks from user message content
@@ -370,6 +388,21 @@ async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState):
       if (typeof block === 'object' && block !== null && 'type' in block) {
         const b = block as { type: string, tool_use_id?: string, content?: unknown, is_error?: boolean }
         if (b.type === 'tool_result' && b.tool_use_id) {
+          // Capture Agent tool result as crew call completion
+          const toolName = state.toolNamesByToolCallId.get(b.tool_use_id)
+          if (toolName && normalizeClaudeCodeToolApiName(toolName) === ClaudeCodeToolName.Agent) {
+            capturedCrewCalls.push({
+              toolCallId: b.tool_use_id,
+              prompt: null,
+              model: null,
+              reasoningEffort: null,
+              runInBackground: false,
+              status: b.is_error ? 'failed' : 'completed',
+              startedAt: 0,
+              completedAt: Date.now(),
+            })
+          }
+
           const normalizedOutput = normalizeToolResultContent(readToolResultContent(msg, b))
           if (b.is_error) {
             const errorText = normalizeToolErrorText(normalizedOutput)
@@ -418,7 +451,7 @@ async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState):
     }
   }
 
-  return { chunks, sessionId: msg.session_id ?? null, usage: null, capturedPlans: [], capturedTodos, capturedInteractionModes: [], capturedUserQuestions: [] }
+  return { chunks, sessionId: msg.session_id ?? null, usage: null, capturedPlans: [], capturedTodos, capturedInteractionModes: [], capturedUserQuestions: [], capturedCrewCalls }
 }
 
 function mapContentBlock(
@@ -430,7 +463,9 @@ function mapContentBlock(
   capturedTodos: ClaudeAgentCapturedTodos[]
   capturedInteractionModes: ClaudeAgentCapturedInteractionMode[]
   capturedUserQuestions: ClaudeAgentCapturedUserQuestion[]
+  capturedCrewCalls: ClaudeAgentCapturedCrewCall[]
 } {
+  const emptyCrew: ClaudeAgentCapturedCrewCall[] = []
   switch (block.type) {
     case 'text': {
       const chunks: UIMessageChunk[] = []
@@ -441,7 +476,7 @@ function mapContentBlock(
       if (block.text) {
         chunks.push({ type: 'text-delta', id: state.textItemId, delta: block.text })
       }
-      return { chunks, capturedPlans: [], capturedTodos: [], capturedInteractionModes: [], capturedUserQuestions: [] }
+      return { chunks, capturedPlans: [], capturedTodos: [], capturedInteractionModes: [], capturedUserQuestions: [], capturedCrewCalls: emptyCrew }
     }
     case 'thinking': {
       const itemId = `thinking-${state.textItemId}`
@@ -452,15 +487,15 @@ function mapContentBlock(
         chunks.push({ type: 'reasoning-delta', id: itemId, delta: block.thinking })
       }
       chunks.push({ type: 'reasoning-end', id: itemId })
-      return { chunks, capturedPlans: [], capturedTodos: [], capturedInteractionModes: [], capturedUserQuestions: [] }
+      return { chunks, capturedPlans: [], capturedTodos: [], capturedInteractionModes: [], capturedUserQuestions: [], capturedCrewCalls: emptyCrew }
     }
     case 'tool_use':
       if (!block.id || !block.name) {
-        return { chunks: [], capturedPlans: [], capturedTodos: [], capturedInteractionModes: [], capturedUserQuestions: [] }
+        return { chunks: [], capturedPlans: [], capturedTodos: [], capturedInteractionModes: [], capturedUserQuestions: [], capturedCrewCalls: emptyCrew }
       }
       return emitToolUseChunks(block.id, block.name, block.input, state)
     default:
-      return { chunks: [], capturedPlans: [], capturedTodos: [], capturedInteractionModes: [], capturedUserQuestions: [] }
+      return { chunks: [], capturedPlans: [], capturedTodos: [], capturedInteractionModes: [], capturedUserQuestions: [], capturedCrewCalls: emptyCrew }
   }
 }
 
@@ -581,7 +616,7 @@ function mapStreamEvent(msg: SDKPartialAssistantMessage, state: ClaudeAgentChunk
     }
   }
 
-  return { chunks, sessionId: msg.session_id, usage, capturedPlans, capturedTodos, capturedInteractionModes, capturedUserQuestions }
+  return { chunks, sessionId: msg.session_id, usage, capturedPlans, capturedTodos, capturedInteractionModes, capturedUserQuestions, capturedCrewCalls: [] }
 }
 
 function ensureTextBlockStarted(state: ClaudeAgentChunkMapperState, blockIndex: number): UIMessageChunk[] {
@@ -657,6 +692,7 @@ function mapResult(msg: SDKResultMessage, state: ClaudeAgentChunkMapperState): C
     capturedTodos: [],
     capturedInteractionModes: [],
     capturedUserQuestions: [],
+    capturedCrewCalls: [],
   }
 }
 
@@ -717,6 +753,7 @@ function emitToolUseChunks(
   capturedTodos: ClaudeAgentCapturedTodos[]
   capturedInteractionModes: ClaudeAgentCapturedInteractionMode[]
   capturedUserQuestions: ClaudeAgentCapturedUserQuestion[]
+  capturedCrewCalls: ClaudeAgentCapturedCrewCall[]
 } {
   const current = state.emittedToolStateByToolCallId.get(toolCallId) ?? { started: false, inputAvailable: false }
   const chunks: UIMessageChunk[] = []
@@ -724,6 +761,7 @@ function emitToolUseChunks(
   const capturedTodos: ClaudeAgentCapturedTodos[] = []
   const capturedInteractionModes: ClaudeAgentCapturedInteractionMode[] = []
   const capturedUserQuestions: ClaudeAgentCapturedUserQuestion[] = []
+  const capturedCrewCalls: ClaudeAgentCapturedCrewCall[] = []
   state.toolNamesByToolCallId.set(toolCallId, toolName)
 
   if (!current.started) {
@@ -748,6 +786,21 @@ function emitToolUseChunks(
     const userQuestion = readClaudeAgentAskUserQuestionCapture(toolCallId, toolName, input)
     if (userQuestion) {
       capturedUserQuestions.push(userQuestion)
+    }
+
+    // Capture Agent tool calls as crew calls
+    if (normalizeClaudeCodeToolApiName(toolName) === ClaudeCodeToolName.Agent) {
+      const args = (input ?? {}) as Record<string, unknown>
+      capturedCrewCalls.push({
+        toolCallId,
+        prompt: typeof args.prompt === 'string' ? args.prompt : null,
+        model: typeof args.model === 'string' ? args.model : null,
+        reasoningEffort: typeof args.reasoningEffort === 'string' ? args.reasoningEffort : null,
+        runInBackground: args.run_in_background === true,
+        status: 'running',
+        startedAt: Date.now(),
+        completedAt: null,
+      })
     }
   }
 
@@ -775,7 +828,7 @@ function emitToolUseChunks(
   if (exitPlan) {
     chunks.push(...emitPlanImplementationApprovalChunks(toolCallId, exitPlan, state))
   }
-  return { chunks, capturedPlans, capturedTodos, capturedInteractionModes, capturedUserQuestions }
+  return { chunks, capturedPlans, capturedTodos, capturedInteractionModes, capturedUserQuestions, capturedCrewCalls }
 }
 
 function readClaudeAgentAskUserQuestionCapture(

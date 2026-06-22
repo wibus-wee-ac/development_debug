@@ -4,7 +4,7 @@
  * Position: Claude Agent provider package owner for providerStateSnapshot updates.
  */
 
-import type { RuntimePlanStepStatus, RuntimePlanUiSlotState, RuntimeProgressUiSlotState, RuntimeSession } from '../../chat-runtime/runtime-provider-types'
+import type { RuntimeCrewAgentItem, RuntimeCrewCallItem, RuntimeCrewUiSlotState, RuntimePlanStepStatus, RuntimePlanUiSlotState, RuntimeProgressUiSlotState, RuntimeSession, RuntimeToolActivityItem } from '../../chat-runtime/runtime-provider-types'
 import { readObjectRecord as readRecord } from '../../../helpers/json-record'
 import type { ClaudeAgentCapturedPlan, ClaudeAgentCapturedTodos } from './event-to-chunk-mapper'
 import type { TodoPluginItem, TodoPluginStatus } from './tools/todo-plugin-state'
@@ -296,4 +296,134 @@ function mapTodoPluginStatusToRuntimeStatus(status: TodoPluginStatus): RuntimePl
     default:
       return 'pending'
   }
+}
+
+// ── Crew State ────────────────────────────────────────────────────────────────
+
+interface ClaudeAgentCrewCallSnapshot {
+  id: string
+  tool: string
+  prompt: string | null
+  model: string | null
+  reasoningEffort: string | null
+  runInBackground: boolean
+  status: 'running' | 'completed' | 'failed'
+  startedAt: number
+  completedAt: number | null
+}
+
+export function writeClaudeAgentCrewCall(
+  runtimeSession: RuntimeSession,
+  call: ClaudeAgentCrewCallSnapshot,
+): void {
+  const snapshot = readWorkspaceProviderStateSnapshot(runtimeSession.providerStateSnapshot)
+  const claudeAgentState = { ...readRecord(snapshot.claudeAgent) }
+  const existingCalls = readClaudeAgentCrewCallsSnapshot(claudeAgentState.crewCalls)
+
+  // Upsert: update existing call or append new one
+  const index = existingCalls.findIndex(c => c.id === call.id)
+  if (index >= 0) {
+    existingCalls[index] = { ...existingCalls[index], ...call }
+  }
+  else {
+    existingCalls.push(call)
+  }
+
+  claudeAgentState.crewCalls = existingCalls
+  runtimeSession.providerStateSnapshot = JSON.stringify({
+    ...snapshot,
+    claudeAgent: claudeAgentState,
+  })
+}
+
+export function projectClaudeAgentCrewUiSlotState(
+  runtimeSession: RuntimeSession,
+): RuntimeCrewUiSlotState | null {
+  const snapshot = readWorkspaceProviderStateSnapshot(runtimeSession.providerStateSnapshot)
+  const calls = readClaudeAgentCrewCallsSnapshot(readRecord(snapshot.claudeAgent).crewCalls)
+  if (calls.length === 0) {
+    return null
+  }
+
+  const activeCount = calls.filter(c => c.status === 'running').length
+  const completedCount = calls.filter(c => c.status === 'completed').length
+  const failedCount = calls.filter(c => c.status === 'failed').length
+
+  const crewCalls: RuntimeCrewCallItem[] = calls.map(call => ({
+    id: call.id,
+    tool: call.tool,
+    status: call.status,
+    senderThreadId: runtimeSession.chatSessionId,
+    receiverThreadIds: [],
+    prompt: call.prompt,
+    model: call.model,
+    reasoningEffort: call.reasoningEffort,
+    agents: [],
+    startedAt: call.startedAt,
+    completedAt: call.completedAt,
+  }))
+
+  const recentItems: RuntimeToolActivityItem[] = calls.map(call => ({
+    id: call.id,
+    type: 'agentToolCall',
+    label: call.prompt ?? call.tool,
+    status: call.status,
+    startedAt: call.startedAt,
+    completedAt: call.completedAt,
+  }))
+
+  // Build agent list from calls — each running call is an agent
+  const agents: RuntimeCrewAgentItem[] = calls
+    .filter(call => call.status === 'running')
+    .map(call => ({
+      threadId: call.id,
+      status: 'running',
+      message: call.prompt,
+      name: null,
+      preview: call.prompt?.slice(0, 120) ?? null,
+      modelProvider: null,
+      agentNickname: null,
+      agentRole: null,
+    }))
+
+  return {
+    kind: 'crew',
+    slotId: 'claude-agent:crew',
+    threadId: runtimeSession.chatSessionId,
+    activeCount,
+    completedCount,
+    failedCount,
+    recentItems,
+    agents,
+    collaborationModeCount: 0,
+    collaborationModes: [],
+    calls: crewCalls,
+    updatedAt: Date.now(),
+  }
+}
+
+function readClaudeAgentCrewCallsSnapshot(value: unknown): ClaudeAgentCrewCallSnapshot[] {
+  if (!Array.isArray(value)) {
+    return []
+  }
+  return value.flatMap((item): ClaudeAgentCrewCallSnapshot[] => {
+    const record = readRecord(item)
+    const id = typeof record.id === 'string' ? record.id.trim() : ''
+    const tool = typeof record.tool === 'string' ? record.tool.trim() : ''
+    const status = record.status
+    if (!id || !tool || (status !== 'running' && status !== 'completed' && status !== 'failed')) {
+      return []
+    }
+    return [{
+      id,
+      tool,
+      prompt: typeof record.prompt === 'string' ? record.prompt : null,
+      model: typeof record.model === 'string' ? record.model : null,
+      reasoningEffort: typeof record.reasoningEffort === 'string' ? record.reasoningEffort : null,
+      runInBackground: record.runInBackground === true,
+      status,
+      startedAt: typeof record.startedAt === 'number' ? record.startedAt : 0,
+      completedAt: typeof record.completedAt === 'number' ? record.completedAt : null,
+    }]
+  })
 }

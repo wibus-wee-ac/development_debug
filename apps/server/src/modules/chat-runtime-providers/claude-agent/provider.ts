@@ -33,7 +33,7 @@ import { createBoundedTextCollector } from '../bounded-text-collector'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import { ClaudeAgentInputStream, emptyClaudeAgentInput } from './async-input-stream'
 import { projectClaudeAgentCompactState, projectClaudeAgentContextUsage } from './context-usage-projector'
-import type { ClaudeAgentCapturedUserQuestion } from './event-to-chunk-mapper'
+import type { ClaudeAgentCapturedCrewCall, ClaudeAgentCapturedUserQuestion } from './event-to-chunk-mapper'
 import { createClaudeAgentChunkMapperState, mapClaudeAgentMessageToChunks } from './event-to-chunk-mapper'
 import {
   buildClaudeAgentTurnContent,
@@ -56,11 +56,13 @@ import {
   clearClaudeAgentCapturedPlan,
   clearClaudeAgentPendingModelSwitch,
   CLAUDE_AGENT_RUNTIME_DEFAULT_MODEL_SWITCH_ID,
+  projectClaudeAgentCrewUiSlotState,
   projectClaudeAgentPlanUiSlotState,
   projectClaudeAgentProgressUiSlotState,
   readClaudeAgentPendingModelSwitchId,
   resolveClaudeAgentPendingModelSwitchId,
   writeClaudeAgentCapturedPlan,
+  writeClaudeAgentCrewCall,
   writeClaudeAgentProgress,
   writeClaudeAgentPendingModelSwitch,
 } from './state-projector'
@@ -184,6 +186,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
   async getUiSlotStates(input: GetUiSlotStatesInput): Promise<RuntimeUiSlotState[]> {
     const planState = projectClaudeAgentPlanUiSlotState(input.runtimeSession)
     const progressState = projectClaudeAgentProgressUiSlotState(input.runtimeSession)
+    const crewState = projectClaudeAgentCrewUiSlotState(input.runtimeSession)
     const compactState = await this.readCompactState(input)
     const states: RuntimeUiSlotState[] = []
     if (planState) {
@@ -191,6 +194,9 @@ export class ClaudeAgentProvider implements ChatRuntime {
     }
     if (progressState) {
       states.push(progressState)
+    }
+    if (crewState) {
+      states.push(crewState)
     }
     if (compactState) {
       states.push(compactState)
@@ -387,6 +393,9 @@ export class ClaudeAgentProvider implements ChatRuntime {
         }
         for (const progress of result.capturedTodos) {
           writeClaudeAgentProgress(input.runtimeSession, progress)
+        }
+        for (const crewCall of result.capturedCrewCalls) {
+          writeClaudeAgentCrewCall(input.runtimeSession, mapCrewCallToSnapshot(crewCall))
         }
         for (const mode of result.capturedInteractionModes) {
           await this.requestRuntimeInteractionModeUpdate(input.runtimeSession, mode.interactionMode)
@@ -849,4 +858,28 @@ export class ClaudeAgentProvider implements ChatRuntime {
 function normalizeClaudeSessionTitle(title: string | null | undefined): string | null {
   const normalized = title?.replace(/\s+/g, ' ').trim() ?? ''
   return normalized.length > 0 ? normalized : null
+}
+
+function mapCrewCallToSnapshot(call: ClaudeAgentCapturedCrewCall): {
+  id: string
+  tool: string
+  prompt: string | null
+  model: string | null
+  reasoningEffort: string | null
+  runInBackground: boolean
+  status: 'running' | 'completed' | 'failed'
+  startedAt: number
+  completedAt: number | null
+} {
+  return {
+    id: call.toolCallId,
+    tool: 'Agent',
+    prompt: call.prompt,
+    model: call.model,
+    reasoningEffort: call.reasoningEffort,
+    runInBackground: call.runInBackground,
+    status: call.status,
+    startedAt: call.startedAt,
+    completedAt: call.completedAt,
+  }
 }
