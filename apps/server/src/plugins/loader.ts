@@ -1,7 +1,7 @@
 import { existsSync } from 'node:fs'
 import { readFile } from 'node:fs/promises'
 import { basename, delimiter, dirname, resolve } from 'node:path'
-import { fileURLToPath } from 'node:url'
+import { fileURLToPath, pathToFileURL } from 'node:url'
 
 import type { Disposable, PluginDescriptor, PluginLayer, PluginManifest, PluginSourceDescriptor, PluginSourceKind } from '@cradle/plugin-sdk'
 import { evaluatePluginPermissionPolicy } from '@cradle/plugin-sdk/permissions'
@@ -237,7 +237,7 @@ async function activatePluginServerLayer(manifest: PluginManifest): Promise<void
   let subscriptions: Disposable[] = []
   try {
     setPluginLayerState(manifest.name, 'server', 'activating')
-    const mod = await import(entryPath)
+    const mod = await import(pathToFileURL(entryPath).href)
     validatePluginModule(mod, manifest.name, 'server')
 
     const ctx = createServerPluginContext(manifest, { routeSegment: descriptor.routeSegment })

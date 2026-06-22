@@ -6,7 +6,7 @@
  */
 import { spawnSync } from 'node:child_process'
 import { existsSync, lstatSync, mkdirSync, readdirSync, readFileSync, realpathSync, renameSync, rmSync, writeFileSync } from 'node:fs'
-import { dirname, join, relative, resolve } from 'node:path'
+import { dirname, isAbsolute, join, relative, resolve, sep } from 'node:path'
 import { fileURLToPath } from 'node:url'
 
 const scriptDir = dirname(fileURLToPath(import.meta.url))
@@ -33,9 +33,7 @@ rmSync(runtimeDir, { recursive: true, force: true })
 mkdirSync(dirname(tempDeployDir), { recursive: true })
 mkdirSync(dirname(runtimeDir), { recursive: true })
 
-const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
-const result = spawnSync(
-  command,
+const result = spawnPnpmSync(
   [
     '--config.inject-workspace-packages=true',
     '--filter',
@@ -165,7 +163,7 @@ function pruneExternalRuntimeDependencies() {
         continue
       }
       const resolvedDependencyPath = realpathSync(dependencyPath)
-      if (resolvedDependencyPath.startsWith(`${pnpmDir}/`)) {
+      if (isPathInsideDirectory(pnpmDir, resolvedDependencyPath)) {
         stack.push(resolvedDependencyPath)
       }
     }
@@ -204,11 +202,20 @@ function listPackageEntries(root) {
 
 function readPnpmEntryName(pnpmDir, packageRoot) {
   const relativePackageRoot = relative(pnpmDir, packageRoot)
-  if (relativePackageRoot.startsWith('..')) {
+  if (isRelativePathOutsideDirectory(relativePackageRoot)) {
     return null
   }
   const [entryName] = relativePackageRoot.split(/[\\/]/)
   return entryName || null
+}
+
+function isPathInsideDirectory(parentDir, candidatePath) {
+  const relativePath = relative(parentDir, candidatePath)
+  return !isRelativePathOutsideDirectory(relativePath)
+}
+
+function isRelativePathOutsideDirectory(relativePath) {
+  return !relativePath || relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)
 }
 
 function pruneTopLevelNodeModules(nodeModulesDir) {
@@ -268,4 +275,17 @@ function removePath(pathToRemove) {
     recursive: stat.isDirectory() && !stat.isSymbolicLink(),
     force: true,
   })
+}
+
+function spawnPnpmSync(args, options) {
+  if (process.platform !== 'win32') {
+    return spawnSync('pnpm', args, options)
+  }
+
+  const npmExecPath = process.env.npm_execpath
+  if (npmExecPath) {
+    return spawnSync(process.execPath, [npmExecPath, ...args], options)
+  }
+
+  return spawnSync('pnpm', args, { ...options, shell: true })
 }

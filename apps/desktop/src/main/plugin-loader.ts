@@ -1,4 +1,5 @@
 import { delimiter, resolve } from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 import type { Disposable, PluginCapabilityRecord, PluginDescriptor, PluginManifest } from '@cradle/plugin-sdk'
 import type { DesktopPluginContext, DesktopWebview } from '@cradle/plugin-sdk/desktop'
@@ -469,7 +470,7 @@ export async function activateDesktopPlugins(): Promise<void> {
     }
 
     try {
-      const mod = await import(entryPath)
+      const mod = await import(pathToFileURL(entryPath).href)
       validatePluginModule(mod, manifest.name)
 
       const ctx = createDesktopPluginContext(manifest)

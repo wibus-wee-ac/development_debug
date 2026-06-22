@@ -25,9 +25,7 @@ if (!existsSync(join(serverRuntimeDir, 'package.json')) || !existsSync(serverRun
   )
 }
 
-const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
-const result = spawnSync(
-  command,
+const result = spawnPnpmSync(
   [
     'exec',
     'electron-rebuild',
@@ -73,6 +71,19 @@ function readDesktopElectronVersion() {
     throw new Error(`Cannot parse desktop Electron version "${versionRange}" from ${desktopPackageJsonPath}`)
   }
   return version
+}
+
+function spawnPnpmSync(args, options) {
+  if (process.platform !== 'win32') {
+    return spawnSync('pnpm', args, options)
+  }
+
+  const npmExecPath = process.env.npm_execpath
+  if (npmExecPath) {
+    return spawnSync(process.execPath, [npmExecPath, ...args], options)
+  }
+
+  return spawnSync('pnpm', args, { ...options, shell: true })
 }
 
 function writeElectronRuntimeTarget() {

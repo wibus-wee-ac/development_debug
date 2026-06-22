@@ -18,7 +18,7 @@
   "scripts": {
     "dev": "nodemon",
     "build": "vite build",
-    "build:desktop-plugins": "pnpm --filter '../../plugins/*' build && node scripts/prepare-desktop-plugins.mjs",
+    "build:desktop-plugins": "pnpm --filter \"../../plugins/*\" build && node scripts/prepare-desktop-plugins.mjs",
     "build:desktop-runtime": "pnpm run build && node scripts/prepare-desktop-runtime.mjs && node scripts/rebuild-electron-runtime.mjs",
     "start": "node dist/main.js",
     "generate:codex-app-server-protocol": "node scripts/generate-codex-app-server-protocol.mjs && node scripts/generate-codex-app-server-capabilities.mjs",

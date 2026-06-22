@@ -216,9 +216,7 @@ function copyPluginRuntimeDependencies({ packageDir, pluginArtifactDir, packageJ
   rmSync(deployDir, { recursive: true, force: true })
   mkdirSync(tempRoot, { recursive: true })
 
-  const command = process.platform === 'win32' ? 'pnpm.cmd' : 'pnpm'
-  const result = spawnSync(
-    command,
+  const result = spawnPnpmSync(
     [
       '--offline',
       '--config.inject-workspace-packages=true',
@@ -254,6 +252,19 @@ function copyPluginRuntimeDependencies({ packageDir, pluginArtifactDir, packageJ
   cpSync(deployedNodeModules, targetNodeModules, { recursive: true, verbatimSymlinks: true })
   removeUnusedTopLevelDependencies(targetNodeModules, new Set(pluginLocalRuntimeDependencies))
   rmSync(deployDir, { recursive: true, force: true })
+}
+
+function spawnPnpmSync(args, options) {
+  if (process.platform !== 'win32') {
+    return spawnSync('pnpm', args, options)
+  }
+
+  const npmExecPath = process.env.npm_execpath
+  if (npmExecPath) {
+    return spawnSync(process.execPath, [npmExecPath, ...args], options)
+  }
+
+  return spawnSync('pnpm', args, { ...options, shell: true })
 }
 
 function collectRuntimePackageImports(packageDir, entryPaths) {
