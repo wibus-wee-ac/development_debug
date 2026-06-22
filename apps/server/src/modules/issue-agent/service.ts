@@ -123,7 +123,7 @@ function buildIssuePrompt(
   },
   rules: { global: string | null; agentSpecific: string | null }
 ): string {
-  const parts = [`# Issue: ${issue.title}`, '', `Issue ID: ${issue.id}`, '']
+  const parts = [`# Cradle Issue: ${issue.title}`, '', `Cradle Issue ID: ${issue.id}`, '']
 
   if (issue.description) {
     parts.push(issue.description, '')
@@ -155,7 +155,7 @@ function buildIssuePrompt(
 
   parts.push(
     '',
-    'Please work on this issue. When done, summarize what you changed. Send the summary as a comment on the issue. If you need to ask for more information, send a comment.'
+    'Please work on this issue. When done, summarize what you changed. Send the summary as a comment on the Cradle issue. If you need to ask for more information, send a comment on Cradle.'
   )
   return parts.join('\n')
 }
