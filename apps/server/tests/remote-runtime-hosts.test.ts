@@ -23,6 +23,7 @@ import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 import { getRuntimeRegistry } from '../src/modules/chat-runtime/chat-runtime-provider-registry'
 import { createRemoteMockProvider } from '../src/modules/chat-runtime-providers/remote-mock/provider'
+import { buildSshProfileLaunchConfig } from '../src/modules/remote-runtime-hosts/service'
 
 type ElysiaApp = Awaited<ReturnType<typeof createServerApp>>
 
@@ -62,6 +63,30 @@ describe('remote runtime hosts', () => {
     await fakeDaemon?.close()
     fakeDaemon = null
     shutdownInfra()
+  })
+
+  it('builds OpenSSH launch config from a structured SSH profile', () => {
+    expect(buildSshProfileLaunchConfig({
+      hostName: '127.0.0.1',
+      user: 'me',
+      port: 2222,
+      auth: 'identityFile',
+      identityFilePath: '/tmp/cradle-test-key',
+    })).toEqual({
+      sshTarget: 'me@127.0.0.1',
+      sshArgs: ['-p', '2222', '-i', '/tmp/cradle-test-key'],
+    })
+
+    expect(buildSshProfileLaunchConfig({
+      hostName: 'devbox',
+      user: null,
+      port: null,
+      auth: 'default',
+      identityFilePath: null,
+    })).toEqual({
+      sshTarget: 'devbox',
+      sshArgs: [],
+    })
   })
 
   it('stores host registry rows without writing provider targets', async () => {
@@ -114,6 +139,58 @@ describe('remote runtime hosts', () => {
       expect(deleteRes.status).toBe(200)
       expect(await deleteRes.json()).toEqual({ ok: true })
       expect(await (await app.handle(new Request('http://localhost/remote-runtime-hosts'))).json()).toEqual([])
+      expect(db().select().from(providerTargets).all()).toHaveLength(0)
+    }
+    finally {
+      rmSync(dataDir, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+    }
+  })
+
+  it('stores structured SSH profiles as remote host config without writing provider targets', async () => {
+    const dataDir = makeTempDir('cradle-remote-hosts-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    let app: ElysiaApp | undefined
+
+    try {
+      app = await createAppWithDataDir(dataDir)
+      expect(db().select().from(providerTargets).all()).toHaveLength(0)
+
+      const createRes = await app.handle(new Request('http://localhost/remote-runtime-hosts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          id: 'remote-host-ssh-profile',
+          displayName: 'SSH Profile Host',
+          sshProfile: {
+            hostName: '127.0.0.1',
+            user: 'me',
+            port: 2222,
+            auth: 'identityFile',
+            identityFilePath: '/tmp/cradle-test-key',
+          },
+          connectTimeoutMs: 5_000,
+        }),
+      }))
+      expect(createRes.status).toBe(200)
+      const created = await createRes.json() as {
+        sshTarget: string
+        remoteSocketPath: string
+        connectionConfigJson: string
+      }
+      expect(created.sshTarget).toBe('me@127.0.0.1')
+      expect(created.remoteSocketPath).toBe('~/.cradle/agentd/agent.sock')
+      expect(JSON.parse(created.connectionConfigJson)).toEqual({
+        transport: 'ssh',
+        ssh: {
+          hostName: '127.0.0.1',
+          user: 'me',
+          port: 2222,
+          auth: 'identityFile',
+          identityFilePath: '/tmp/cradle-test-key',
+        },
+        connectTimeoutMs: 5_000,
+      })
       expect(db().select().from(providerTargets).all()).toHaveLength(0)
     }
     finally {

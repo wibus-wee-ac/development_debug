@@ -9,6 +9,7 @@ export interface SshTunnelOptions {
   remoteSocketPath: string
   sshExecutable?: string
   sshArgs?: string[]
+  readyTimeoutMs?: number
 }
 
 export interface SshTunnelExit {
@@ -32,6 +33,12 @@ export async function startSshTunnel(options: SshTunnelOptions): Promise<SshTunn
   removeStaleLocalSocket(options.localSocketPath)
 
   const args = [
+    '-o',
+    'BatchMode=yes',
+    '-o',
+    'ExitOnForwardFailure=yes',
+    '-o',
+    'StreamLocalBindUnlink=yes',
     ...(options.sshArgs ?? []),
     '-N',
     '-L',
@@ -43,13 +50,14 @@ export async function startSshTunnel(options: SshTunnelOptions): Promise<SshTunn
   })
 
   const handle = new NodeSshTunnelHandle(options, child)
-  await handle.waitUntilSpawned()
+  await handle.waitUntilReady()
   return handle
 }
 
 class NodeSshTunnelHandle implements SshTunnelHandle {
   private stderrBuffer = ''
   private exited = false
+  private exit: SshTunnelExit | null = null
   private readonly exitListeners = new Set<(exit: SshTunnelExit) => void>()
   private readonly spawnPromise: Promise<void>
 
@@ -65,9 +73,9 @@ class NodeSshTunnelHandle implements SshTunnelHandle {
       child.once('error', reject)
       child.once('exit', (code, signal) => {
         this.exited = true
-        const exit = { code, signal }
+        this.exit = { code, signal }
         for (const listener of this.exitListeners) {
-          listener(exit)
+          listener(this.exit)
         }
         if (code !== null && code !== 0) {
           reject(new Error(`ssh tunnel exited before startup with code ${code}: ${this.stderr}`))
@@ -100,8 +108,22 @@ class NodeSshTunnelHandle implements SshTunnelHandle {
     return this.stderrBuffer.trim()
   }
 
-  waitUntilSpawned(): Promise<void> {
-    return this.spawnPromise
+  async waitUntilReady(): Promise<void> {
+    await this.spawnPromise
+    const deadline = Date.now() + (this.options.readyTimeoutMs ?? 10_000)
+    while (Date.now() <= deadline) {
+      if (existsSync(this.options.localSocketPath) && lstatSync(this.options.localSocketPath).isSocket()) {
+        return
+      }
+      if (this.exited) {
+        throw new Error(this.formatExitBeforeReady())
+      }
+      await new Promise(resolve => setTimeout(resolve, 50))
+    }
+    throw new Error(
+      `ssh tunnel did not create local socket ${this.options.localSocketPath} within timeout.`
+      + (this.stderr ? ` ssh stderr: ${this.stderr}` : ''),
+    )
   }
 
   onExit(listener: (exit: SshTunnelExit) => void): void {
@@ -126,6 +148,14 @@ class NodeSshTunnelHandle implements SshTunnelHandle {
       })
       this.child.kill('SIGTERM')
     })
+  }
+
+  private formatExitBeforeReady(): string {
+    const code = this.exit?.code ?? null
+    const signal = this.exit?.signal ?? null
+    return `ssh tunnel exited before creating local socket ${this.options.localSocketPath}`
+      + ` with code ${code ?? 'null'} signal ${signal ?? 'null'}`
+      + (this.stderr ? `: ${this.stderr}` : '')
   }
 }
 

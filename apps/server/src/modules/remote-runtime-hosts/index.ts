@@ -22,6 +22,10 @@ export const remoteRuntimeHosts = new Elysia({
     sshTarget: body.sshTarget,
     remoteSocketPath: body.remoteSocketPath,
     enabled: body.enabled,
+    transport: body.transport,
+    sshProfile: body.sshProfile,
+    localSocketPath: body.localSocketPath,
+    connectTimeoutMs: body.connectTimeoutMs,
     connectionConfig: body.connectionConfig,
   }), {
     detail: {
@@ -38,6 +42,10 @@ export const remoteRuntimeHosts = new Elysia({
     sshTarget: body.sshTarget,
     remoteSocketPath: body.remoteSocketPath,
     enabled: body.enabled,
+    transport: body.transport,
+    sshProfile: body.sshProfile,
+    localSocketPath: body.localSocketPath,
+    connectTimeoutMs: body.connectTimeoutMs,
     connectionConfig: body.connectionConfig,
   }), {
     detail: {

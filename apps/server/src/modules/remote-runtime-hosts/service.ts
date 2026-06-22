@@ -1,6 +1,6 @@
 import { randomUUID } from 'node:crypto'
 import { mkdirSync } from 'node:fs'
-import { dirname, join } from 'node:path'
+import { join } from 'node:path'
 
 import type { RemoteRuntimeHost } from '@cradle/db'
 import { remoteRuntimeHosts } from '@cradle/db'
@@ -22,7 +22,7 @@ import { asc, eq } from 'drizzle-orm'
 import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
-import { db, getServerConfig } from '../../infra'
+import { db } from '../../infra'
 import {
   createRemoteAgentDaemonClient,
   RemoteAgentRpcError,
@@ -48,9 +48,13 @@ export {
 export interface CreateRemoteRuntimeHostInput {
   id?: string
   displayName: string
-  sshTarget: string
-  remoteSocketPath: string
+  sshTarget?: string
+  remoteSocketPath?: string
   enabled?: boolean
+  transport?: RemoteRuntimeHostTransport
+  sshProfile?: RemoteRuntimeHostSshProfileInput | null
+  localSocketPath?: string
+  connectTimeoutMs?: number
   connectionConfig?: Record<string, unknown>
 }
 
@@ -59,7 +63,34 @@ export interface UpdateRemoteRuntimeHostInput {
   sshTarget?: string
   remoteSocketPath?: string
   enabled?: boolean
+  transport?: RemoteRuntimeHostTransport
+  sshProfile?: RemoteRuntimeHostSshProfileInput | null
+  localSocketPath?: string
+  connectTimeoutMs?: number
   connectionConfig?: Record<string, unknown>
+}
+
+export type RemoteRuntimeHostTransport = 'ssh' | 'direct-socket'
+
+export interface RemoteRuntimeHostSshProfileInput {
+  hostName: string
+  user?: string | null
+  port?: number | null
+  auth?: 'default' | 'identityFile'
+  identityFilePath?: string | null
+}
+
+export interface RemoteRuntimeHostSshProfile {
+  hostName: string
+  user: string | null
+  port: number | null
+  auth: 'default' | 'identityFile'
+  identityFilePath: string | null
+}
+
+export interface SshProfileLaunchConfig {
+  sshTarget: string
+  sshArgs: string[]
 }
 
 export interface RemoteRuntimeHostView extends RemoteRuntimeHost {
@@ -97,14 +128,84 @@ interface RemoteRuntimeHostConnectionRecord {
   tunnelExited: boolean
 }
 
+interface ConnectionConfigTransportFields {
+  transport?: RemoteRuntimeHostTransport
+  localSocketPath?: string
+  ssh?: RemoteRuntimeHostSshProfile
+}
+
+interface NormalizedRemoteRuntimeHostConnection {
+  sshTarget: string
+  remoteSocketPath: string
+  connectionConfigJson: string
+}
+
+interface RemoteRuntimeHostConnectionPatch {
+  sshTarget?: string
+  remoteSocketPath?: string
+  transport?: RemoteRuntimeHostTransport
+  sshProfile?: RemoteRuntimeHostSshProfileInput | null
+  localSocketPath?: string
+  connectTimeoutMs?: number
+  connectionConfig?: Record<string, unknown>
+}
+
+const nonBlankStringSchema = z.string().trim().min(1)
+const transportSchema = z.enum(['ssh', 'direct-socket'])
+const sshAuthSchema = z.enum(['default', 'identityFile'])
+const sshProfileSchema = z.object({
+  hostName: nonBlankStringSchema,
+  user: nonBlankStringSchema.nullable().optional(),
+  port: z.number().int().min(1).max(65_535).nullable().optional(),
+  auth: sshAuthSchema.default('default'),
+  identityFilePath: nonBlankStringSchema.nullable().optional(),
+}).superRefine((profile, ctx) => {
+  if (profile.auth === 'identityFile' && !profile.identityFilePath) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['identityFilePath'],
+      message: 'identityFilePath is required when SSH auth is identityFile.',
+    })
+  }
+  if (profile.auth === 'default' && profile.identityFilePath) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['identityFilePath'],
+      message: 'identityFilePath can only be set when SSH auth is identityFile.',
+    })
+  }
+}).transform(profile => ({
+  hostName: profile.hostName,
+  user: profile.user ?? null,
+  port: profile.port ?? null,
+  auth: profile.auth,
+  identityFilePath: profile.auth === 'identityFile' ? profile.identityFilePath ?? null : null,
+}))
+
 const connectionConfigSchema = z.object({
-  localSocketPath: z.string().trim().min(1).optional(),
-  sshExecutable: z.string().trim().min(1).optional(),
+  transport: transportSchema.optional(),
+  localSocketPath: nonBlankStringSchema.optional(),
+  ssh: sshProfileSchema.optional(),
+  sshExecutable: nonBlankStringSchema.optional(),
   sshArgs: z.array(z.string()).optional(),
   connectTimeoutMs: z.number().int().positive().max(120_000).optional(),
-}).passthrough()
+}).passthrough().superRefine((config, ctx) => {
+  if (inferConnectionTransport(config) === 'direct-socket' && !config.localSocketPath) {
+    ctx.addIssue({
+      code: z.ZodIssueCode.custom,
+      path: ['localSocketPath'],
+      message: 'localSocketPath is required when transport is direct-socket.',
+    })
+  }
+}).transform(config => ({
+  ...config,
+  transport: inferConnectionTransport(config),
+}))
 
 type RemoteRuntimeHostConnectionConfig = z.infer<typeof connectionConfigSchema>
+
+const DEFAULT_REMOTE_DAEMON_SOCKET_PATH = '~/.cradle/agentd/agent.sock'
+const UNIX_SOCKET_PATH_LIMIT = 100
 
 const connections = new Map<string, RemoteRuntimeHostConnectionRecord>()
 const connectPromises = new Map<string, Promise<RemoteRuntimeHostConnectionView>>()
@@ -124,15 +225,16 @@ export function readRemoteRuntimeHost(hostId: string): RemoteRuntimeHostView {
 
 export function createRemoteRuntimeHost(input: CreateRemoteRuntimeHostInput): RemoteRuntimeHostView {
   const now = currentUnixSeconds()
+  const normalized = normalizeRemoteRuntimeHostConnection(input, null)
   const row = db()
     .insert(remoteRuntimeHosts)
     .values({
       id: input.id ?? randomUUID(),
       displayName: input.displayName.trim(),
-      sshTarget: input.sshTarget.trim(),
-      remoteSocketPath: input.remoteSocketPath.trim(),
+      sshTarget: normalized.sshTarget,
+      remoteSocketPath: normalized.remoteSocketPath,
       enabled: input.enabled ?? true,
-      connectionConfigJson: JSON.stringify(input.connectionConfig ?? {}),
+      connectionConfigJson: normalized.connectionConfigJson,
       createdAt: now,
       updatedAt: now,
     })
@@ -142,7 +244,7 @@ export function createRemoteRuntimeHost(input: CreateRemoteRuntimeHostInput): Re
 }
 
 export function updateRemoteRuntimeHost(hostId: string, patch: UpdateRemoteRuntimeHostInput): RemoteRuntimeHostView {
-  requireRemoteRuntimeHost(hostId)
+  const current = requireRemoteRuntimeHost(hostId)
   const update: Partial<typeof remoteRuntimeHosts.$inferInsert> = {
     updatedAt: currentUnixSeconds(),
   }
@@ -158,8 +260,11 @@ export function updateRemoteRuntimeHost(hostId: string, patch: UpdateRemoteRunti
   if (patch.enabled !== undefined) {
     update.enabled = patch.enabled
   }
-  if (patch.connectionConfig !== undefined) {
-    update.connectionConfigJson = JSON.stringify(patch.connectionConfig)
+  if (hasConnectionPatch(patch)) {
+    const normalized = normalizeRemoteRuntimeHostConnection(patch, current)
+    update.sshTarget = normalized.sshTarget
+    update.remoteSocketPath = normalized.remoteSocketPath
+    update.connectionConfigJson = normalized.connectionConfigJson
   }
 
   const row = db()
@@ -304,18 +409,21 @@ async function connectRemoteRuntimeHostInner(hostId: string): Promise<RemoteRunt
 
   const connectionConfig = parseConnectionConfig(host.connectionConfigJson)
   const localSocketPath = connectionConfig.localSocketPath ?? defaultLocalSocketPath(host.id)
+  assertUnixSocketPathLength(localSocketPath)
   let tunnel: SshTunnelHandle | null = null
   let record: RemoteRuntimeHostConnectionRecord | null = null
 
   try {
-    if (!connectionConfig.localSocketPath) {
+    if (connectionConfig.transport === 'ssh') {
+      const sshLaunch = resolveHostSshLaunchConfig(host, connectionConfig)
       tunnel = await startSshTunnel({
         hostId: host.id,
-        sshTarget: host.sshTarget,
+        sshTarget: sshLaunch.sshTarget,
         localSocketPath,
         remoteSocketPath: host.remoteSocketPath,
-        sshExecutable: connectionConfig.sshExecutable,
-        sshArgs: connectionConfig.sshArgs,
+        sshExecutable: sshLaunch.sshExecutable,
+        sshArgs: sshLaunch.sshArgs,
+        readyTimeoutMs: connectionConfig.connectTimeoutMs ?? 10_000,
       })
     }
 
@@ -474,8 +582,47 @@ function persistDaemonIdentity(hostId: string, hello: RemoteAgentDaemonClient['h
 }
 
 function parseConnectionConfig(raw: string): RemoteRuntimeHostConnectionConfig {
+  let parsed: unknown
   try {
-    return connectionConfigSchema.parse(JSON.parse(raw))
+    parsed = JSON.parse(raw)
+  }
+  catch (error) {
+    throw new AppError({
+      code: 'invalid_remote_host_connection_config',
+      status: 400,
+      message: 'Remote runtime host connection config is invalid.',
+      details: {
+        error: error instanceof Error ? error.message : String(error),
+      },
+    })
+  }
+  return normalizeConnectionConfig(parsed)
+}
+
+function normalizeRemoteRuntimeHostConnection(
+  input: RemoteRuntimeHostConnectionPatch,
+  current: RemoteRuntimeHost | null,
+): NormalizedRemoteRuntimeHostConnection {
+  const baseConfig = input.connectionConfig !== undefined
+    ? input.connectionConfig
+    : current
+      ? parseConnectionConfig(current.connectionConfigJson)
+      : {}
+  const connectionConfig = normalizeConnectionConfig(mergeConnectionConfigInput(baseConfig, input))
+  return {
+    sshTarget: resolveStoredSshTarget({
+      explicitSshTarget: input.sshTarget,
+      connectionConfig,
+      currentSshTarget: current?.sshTarget ?? null,
+    }),
+    remoteSocketPath: normalizeRemoteSocketPath(input.remoteSocketPath, current),
+    connectionConfigJson: JSON.stringify(connectionConfig),
+  }
+}
+
+function normalizeConnectionConfig(raw: unknown): RemoteRuntimeHostConnectionConfig {
+  try {
+    return connectionConfigSchema.parse(raw)
   }
   catch (error) {
     throw new AppError({
@@ -489,12 +636,145 @@ function parseConnectionConfig(raw: string): RemoteRuntimeHostConnectionConfig {
   }
 }
 
+function mergeConnectionConfigInput(
+  base: Record<string, unknown>,
+  input: RemoteRuntimeHostConnectionPatch,
+): Record<string, unknown> {
+  const next: Record<string, unknown> = { ...base }
+  if (input.transport !== undefined) {
+    next.transport = input.transport
+  }
+  if (input.sshProfile !== undefined) {
+    if (input.sshProfile === null) {
+      delete next.ssh
+    }
+    else {
+      next.ssh = input.sshProfile
+    }
+  }
+  if (input.localSocketPath !== undefined) {
+    next.localSocketPath = input.localSocketPath
+  }
+  if (input.connectTimeoutMs !== undefined) {
+    next.connectTimeoutMs = input.connectTimeoutMs
+  }
+  return next
+}
+
+function resolveStoredSshTarget(input: {
+  explicitSshTarget?: string
+  connectionConfig: RemoteRuntimeHostConnectionConfig
+  currentSshTarget: string | null
+}): string {
+  const explicitSshTarget = input.explicitSshTarget?.trim()
+  if (explicitSshTarget) {
+    return explicitSshTarget
+  }
+  if (input.connectionConfig.ssh) {
+    return buildSshProfileLaunchConfig(input.connectionConfig.ssh).sshTarget
+  }
+  if (input.currentSshTarget) {
+    return input.currentSshTarget
+  }
+  if (input.connectionConfig.transport === 'direct-socket') {
+    return 'direct-socket'
+  }
+  throw new AppError({
+    code: 'remote_host_ssh_profile_required',
+    status: 400,
+    message: 'Remote runtime host requires either sshTarget or sshProfile for SSH transport.',
+  })
+}
+
+function normalizeRemoteSocketPath(
+  remoteSocketPath: string | undefined,
+  current: RemoteRuntimeHost | null,
+): string {
+  const explicitRemoteSocketPath = remoteSocketPath?.trim()
+  if (explicitRemoteSocketPath) {
+    return explicitRemoteSocketPath
+  }
+  return current?.remoteSocketPath ?? DEFAULT_REMOTE_DAEMON_SOCKET_PATH
+}
+
+function hasConnectionPatch(patch: UpdateRemoteRuntimeHostInput): boolean {
+  return patch.sshTarget !== undefined
+    || patch.remoteSocketPath !== undefined
+    || patch.transport !== undefined
+    || patch.sshProfile !== undefined
+    || patch.localSocketPath !== undefined
+    || patch.connectTimeoutMs !== undefined
+    || patch.connectionConfig !== undefined
+}
+
+function inferConnectionTransport(config: ConnectionConfigTransportFields): RemoteRuntimeHostTransport {
+  if (config.transport) {
+    return config.transport
+  }
+  if (config.localSocketPath && !config.ssh) {
+    return 'direct-socket'
+  }
+  return 'ssh'
+}
+
+export function buildSshProfileLaunchConfig(profile: RemoteRuntimeHostSshProfile): SshProfileLaunchConfig {
+  const sshArgs: string[] = []
+  if (profile.port !== null) {
+    sshArgs.push('-p', String(profile.port))
+  }
+  if (profile.auth === 'identityFile' && profile.identityFilePath) {
+    sshArgs.push('-i', profile.identityFilePath)
+  }
+  return {
+    sshTarget: profile.user ? `${profile.user}@${profile.hostName}` : profile.hostName,
+    sshArgs,
+  }
+}
+
+function resolveHostSshLaunchConfig(
+  host: RemoteRuntimeHost,
+  connectionConfig: RemoteRuntimeHostConnectionConfig,
+): {
+  sshTarget: string
+  sshExecutable?: string
+  sshArgs: string[]
+} {
+  const profileLaunch = connectionConfig.ssh
+    ? buildSshProfileLaunchConfig(connectionConfig.ssh)
+    : { sshTarget: host.sshTarget, sshArgs: [] }
+  return {
+    sshTarget: profileLaunch.sshTarget,
+    sshExecutable: connectionConfig.sshExecutable,
+    sshArgs: [
+      ...profileLaunch.sshArgs,
+      ...(connectionConfig.sshArgs ?? []),
+    ],
+  }
+}
+
 function defaultLocalSocketPath(hostId: string): string {
-  const config = getServerConfig()
-  const baseDir = config.dataDir ?? dirname(config.dbPath)
-  const dir = join(baseDir, 'remote-runtime-hosts')
+  const uid = typeof process.getuid === 'function' ? String(process.getuid()) : 'user'
+  const dir = join('/tmp', `cradle-rrh-${uid}`)
   mkdirSync(dir, { recursive: true })
   return join(dir, `${hostId}.sock`)
+}
+
+function assertUnixSocketPathLength(socketPath: string): void {
+  const byteLength = Buffer.byteLength(socketPath)
+  if (byteLength <= UNIX_SOCKET_PATH_LIMIT) {
+    return
+  }
+  throw new AppError({
+    code: 'remote_host_local_socket_path_too_long',
+    status: 400,
+    message: 'Remote runtime local Unix socket path is too long for this operating system.',
+    details: {
+      socketPath,
+      byteLength,
+      limit: UNIX_SOCKET_PATH_LIMIT,
+      suggestion: 'Use a shorter connectionConfig.localSocketPath such as /tmp/cradle-agentd.sock.',
+    },
+  })
 }
 
 function toAppError(error: unknown, fallbackCode: string): AppError {

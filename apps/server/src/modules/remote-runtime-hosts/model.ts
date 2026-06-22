@@ -3,6 +3,14 @@ import { t } from 'elysia'
 const nullableString = t.Union([t.String(), t.Null()])
 const nullableNumber = t.Union([t.Number(), t.Null()])
 const nonBlankString = t.String({ minLength: 1, pattern: '.*\\S.*' })
+const remoteRuntimeHostTransport = t.Union([
+  t.Literal('ssh'),
+  t.Literal('direct-socket'),
+])
+const sshAuth = t.Union([
+  t.Literal('default'),
+  t.Literal('identityFile'),
+])
 const connectionState = t.Union([
   t.Literal('idle'),
   t.Literal('connecting'),
@@ -10,6 +18,14 @@ const connectionState = t.Union([
   t.Literal('disconnected'),
   t.Literal('offline'),
 ])
+
+const sshProfile = t.Object({
+  hostName: nonBlankString,
+  user: t.Optional(nullableString),
+  port: t.Optional(t.Union([t.Integer({ minimum: 1, maximum: 65_535 }), t.Null()])),
+  auth: t.Optional(sshAuth),
+  identityFilePath: t.Optional(nullableString),
+}, { additionalProperties: false })
 
 const runtimeSummary = t.Object({
   runtimeKind: t.String(),
@@ -61,9 +77,13 @@ export const RemoteRuntimeHostsModel = {
   createHostBody: t.Object({
     id: t.Optional(nonBlankString),
     displayName: nonBlankString,
-    sshTarget: nonBlankString,
-    remoteSocketPath: nonBlankString,
+    sshTarget: t.Optional(nonBlankString),
+    remoteSocketPath: t.Optional(nonBlankString),
     enabled: t.Optional(t.Boolean()),
+    transport: t.Optional(remoteRuntimeHostTransport),
+    sshProfile: t.Optional(t.Union([sshProfile, t.Null()])),
+    localSocketPath: t.Optional(nonBlankString),
+    connectTimeoutMs: t.Optional(t.Integer({ minimum: 1, maximum: 120_000 })),
     connectionConfig: t.Optional(t.Record(t.String(), t.Unknown())),
   }, { additionalProperties: false }),
 
@@ -72,6 +92,10 @@ export const RemoteRuntimeHostsModel = {
     sshTarget: t.Optional(nonBlankString),
     remoteSocketPath: t.Optional(nonBlankString),
     enabled: t.Optional(t.Boolean()),
+    transport: t.Optional(remoteRuntimeHostTransport),
+    sshProfile: t.Optional(t.Union([sshProfile, t.Null()])),
+    localSocketPath: t.Optional(nonBlankString),
+    connectTimeoutMs: t.Optional(t.Integer({ minimum: 1, maximum: 120_000 })),
     connectionConfig: t.Optional(t.Record(t.String(), t.Unknown())),
   }, { additionalProperties: false }),
 
