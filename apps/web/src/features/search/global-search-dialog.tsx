@@ -1,15 +1,15 @@
-import { useQuery } from '@tanstack/react-query'
 import {
   ArrowDownLine as ArrowDownIcon,
   ArrowUpLine as ArrowUpIcon,
-  DotCircleLine as CircleDotIcon,
   CornerDownLeftLine as CornerDownLeftIcon,
+  DotCircleLine as CircleDotIcon,
   FileLine as FileIcon,
   Message1Line as MessageSquareIcon,
   Plugin2Line,
   Settings2Line as SettingsIcon,
-  TerminalLine as TerminalIcon
+  TerminalLine as TerminalIcon,
 } from '@mingcute/react'
+import { useQuery } from '@tanstack/react-query'
 import type { ComponentType } from 'react'
 import { useEffect, useEffectEvent, useLayoutEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
@@ -25,13 +25,12 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
+  CommandShortcut,
 } from '~/components/ui/command'
 import { Kbd, KbdGroup } from '~/components/ui/kbd'
 import { DelayedSpinner } from '~/components/ui/spinner'
 import { toastManager } from '~/components/ui/toast'
 import { useWorkspaceFiles } from '~/features/workspace/use-workspace-files'
-import { cn } from '~/lib/cn'
 import { rankFuzzyItems } from '~/lib/fuzzy-rank'
 import type { WebCommandRegistration } from '~/lib/plugin-store'
 import { usePluginStore } from '~/lib/plugin-store'
@@ -43,6 +42,7 @@ import { useLayoutStore } from '~/store/layout'
 import { useSettingsOverlayStore } from '~/store/settings-overlay'
 
 import { selectFileSearchResult } from './global-search-actions'
+import { HighlightedText } from './highlighted-text'
 
 interface GlobalSearchDialogProps {
   open: boolean
@@ -50,64 +50,32 @@ interface GlobalSearchDialogProps {
   onOpenChange: (open: boolean) => void
 }
 
-type SearchMessageKey = keyof typeof import('~/locales/default/search').default
-type PaletteModeId = 'command' | 'quickOpen' | 'symbol' | 'line' | 'workspaceSymbol'
+type PaletteModeId = 'command' | 'quickOpen' | 'files' | 'issues' | 'threads'
 type FileSearchAvailability = 'available' | 'unsupported-tab' | 'missing-workspace'
-
-interface PaletteMode {
-  id: PaletteModeId
-  prefix: string
-  labelKey: SearchMessageKey
-  descriptionKey: SearchMessageKey
-  placeholderKey: SearchMessageKey
-  query: string
-}
 
 const COMMAND_HISTORY_KEY = 'cradle.commandPalette.recentCommands'
 const COMMAND_HISTORY_LIMIT = 12
-const PALETTE_MODES = [
-  {
-    id: 'command',
-    prefix: '>',
-    labelKey: 'mode.command.label',
-    descriptionKey: 'mode.command.description',
-    placeholderKey: 'mode.command.placeholder',
-  },
-  {
-    id: 'quickOpen',
-    prefix: '',
-    labelKey: 'mode.quickOpen.label',
-    descriptionKey: 'mode.quickOpen.description',
-    placeholderKey: 'mode.quickOpen.placeholder',
-  },
-  {
-    id: 'symbol',
-    prefix: '@',
-    labelKey: 'mode.symbol.label',
-    descriptionKey: 'mode.symbol.description',
-    placeholderKey: 'mode.symbol.placeholder',
-  },
-  {
-    id: 'line',
-    prefix: ':',
-    labelKey: 'mode.line.label',
-    descriptionKey: 'mode.line.description',
-    placeholderKey: 'mode.line.placeholder',
-  },
-  {
-    id: 'workspaceSymbol',
-    prefix: '#',
-    labelKey: 'mode.workspaceSymbol.label',
-    descriptionKey: 'mode.workspaceSymbol.description',
-    placeholderKey: 'mode.workspaceSymbol.placeholder',
-  },
+
+const PLACEHOLDER_KEY = {
+  command: 'mode.command.placeholder',
+  quickOpen: 'mode.quickOpen.placeholder',
+  files: 'mode.files.placeholder',
+  issues: 'mode.issues.placeholder',
+  threads: 'mode.threads.placeholder',
+} as const satisfies Record<PaletteModeId, string>
+
+const SCOPE_PREFIXES = [
+  { prefix: '/', labelKey: 'group.files' },
+  { prefix: '#', labelKey: 'group.issues' },
+  { prefix: '@', labelKey: 'group.threads' },
+  { prefix: '>', labelKey: 'group.commands' },
 ] as const
+
 const SessionWorkspaceSchema = z
   .object({
     workspaceId: z.string().nullable(),
   })
   .passthrough()
-// ── Commands (static actions) ─────────────────────────────────────────────────
 
 interface CommandAction {
   id: string
@@ -120,12 +88,20 @@ interface CommandAction {
   handler: () => void | Promise<void>
 }
 
-function parsePaletteInput(input: string): PaletteMode {
-  const prefixedMode = PALETTE_MODES.find(mode => mode.prefix && input.startsWith(mode.prefix))
-  const mode = prefixedMode ?? PALETTE_MODES[1]
-  const query = prefixedMode ? input.slice(mode.prefix.length).trimStart() : input.trim()
-
-  return { ...mode, query }
+function parsePaletteInput(input: string): { id: PaletteModeId, query: string } {
+  if (input.startsWith('>')) {
+    return { id: 'command', query: input.slice(1).trimStart() }
+  }
+  if (input.startsWith('/')) {
+    return { id: 'files', query: input.slice(1).trimStart() }
+  }
+  if (input.startsWith('#')) {
+    return { id: 'issues', query: input.slice(1).trimStart() }
+  }
+  if (input.startsWith('@')) {
+    return { id: 'threads', query: input.slice(1).trimStart() }
+  }
+  return { id: 'quickOpen', query: input.trim() }
 }
 
 function readCommandHistory(): string[] {
@@ -221,92 +197,88 @@ function useCommands(close: () => void): CommandAction[] {
   const toggleSidebar = useLayoutStore(s => s.toggleSidebar)
   const pluginCommands = usePluginStore(s => s.commands)
 
-  return (() => {
-      const appCommands: CommandAction[] = [
-        {
-          id: 'new-chat',
-          label: t('command.newChat.label'),
-          keywords: t('command.newChat.keywords'),
-          icon: MessageSquareIcon,
-          source: 'app',
-          handler: () => {
-            close()
-            openNewChat()
-          },
-        },
-        {
-          id: 'open-settings',
-          label: t('command.openSettings.label'),
-          keywords: t('command.openSettings.keywords'),
-          icon: SettingsIcon,
-          shortcut: '⌘,',
-          source: 'app',
-          handler: () => {
-            close()
-            setSettingsSection('appearance')
-            openSettingsSection('appearance')
-          },
-        },
-        {
-          id: 'toggle-sidebar',
-          label: t('command.toggleSidebar.label'),
-          keywords: t('command.toggleSidebar.keywords'),
-          icon: TerminalIcon,
-          shortcut: '⌘B',
-          source: 'app',
-          handler: () => {
-            close()
-            toggleSidebar()
-          },
-        },
-        {
-          id: 'open-usage',
-          label: t('command.openUsage.label'),
-          keywords: t('command.openUsage.keywords'),
-          icon: CircleDotIcon,
-          source: 'app',
-          handler: () => {
-            close()
-            openUsage()
-          },
-        },
-      ]
+  const appCommands: CommandAction[] = [
+    {
+      id: 'new-chat',
+      label: t('command.newChat.label'),
+      keywords: t('command.newChat.keywords'),
+      icon: MessageSquareIcon,
+      source: 'app',
+      handler: () => {
+        close()
+        openNewChat()
+      },
+    },
+    {
+      id: 'open-settings',
+      label: t('command.openSettings.label'),
+      keywords: t('command.openSettings.keywords'),
+      icon: SettingsIcon,
+      shortcut: '⌘,',
+      source: 'app',
+      handler: () => {
+        close()
+        setSettingsSection('appearance')
+        openSettingsSection('appearance')
+      },
+    },
+    {
+      id: 'toggle-sidebar',
+      label: t('command.toggleSidebar.label'),
+      keywords: t('command.toggleSidebar.keywords'),
+      icon: TerminalIcon,
+      shortcut: '⌘B',
+      source: 'app',
+      handler: () => {
+        close()
+        toggleSidebar()
+      },
+    },
+    {
+      id: 'open-usage',
+      label: t('command.openUsage.label'),
+      keywords: t('command.openUsage.keywords'),
+      icon: CircleDotIcon,
+      source: 'app',
+      handler: () => {
+        close()
+        openUsage()
+      },
+    },
+  ]
 
-      const contributedCommands: CommandAction[] = pluginCommands.map(command => ({
-        id: command.id,
-        label: command.title,
-        description: command.description ?? command.category ?? command.owner,
-        keywords: [
-          command.owner,
-          command.localId,
-          command.title,
-          command.description ?? '',
-          command.category ?? '',
-          normalizeCommandKeywords(command.keywords),
-        ].join(' '),
-        icon: getPluginCommandIcon(command),
-        shortcut: command.keybinding,
-        source: 'plugin',
-        handler: async () => {
-          close()
-          try {
-            await command.execute()
-          }
-          catch (err) {
-            toastManager.add({
-              type: 'error',
-              title: `Plugin command failed: ${command.title}`,
-              description: err instanceof Error ? err.message : String(err),
-            })
-          }
-        },
-      }))
+  const contributedCommands: CommandAction[] = pluginCommands.map(command => ({
+    id: command.id,
+    label: command.title,
+    description: command.description ?? command.category ?? command.owner,
+    keywords: [
+      command.owner,
+      command.localId,
+      command.title,
+      command.description ?? '',
+      command.category ?? '',
+      normalizeCommandKeywords(command.keywords),
+    ].join(' '),
+    icon: getPluginCommandIcon(command),
+    shortcut: command.keybinding,
+    source: 'plugin',
+    handler: async () => {
+      close()
+      try {
+        await command.execute()
+      }
+      catch (err) {
+        toastManager.add({
+          type: 'error',
+          title: `Plugin command failed: ${command.title}`,
+          description: err instanceof Error ? err.message : String(err),
+        })
+      }
+    },
+  }))
 
-      return [...appCommands, ...contributedCommands]
-    })()
+  return [...appCommands, ...contributedCommands]
 }
-
-// ── File search hook ──────────────────────────────────────────────────────────
 
 function useFileSearch(query: string, enabled: boolean, workspaceId: string | null | undefined) {
   const { files: rawFiles, isPending: searchDebouncing } = useWorkspaceFiles(workspaceId ?? null, {
@@ -339,8 +311,6 @@ function useFileSearch(query: string, enabled: boolean, workspaceId: string | nu
   }
 }
 
-// ── Thread search hook ────────────────────────────────────────────────────────
-
 interface ThreadSearchHit {
   sessionId: string
   sessionTitle: string | null
@@ -369,8 +339,6 @@ function useThreadSearch(query: string, enabled: boolean) {
   }
 }
 
-// ── Issue search hook ─────────────────────────────────────────────────────────
-
 interface IssueSearchHit {
   id: string
   title: string
@@ -388,10 +356,7 @@ function useIssueSearch(query: string, enabled: boolean) {
   })
 
   const issues = (data ?? []) as IssueSearchHit[]
-
-  // Derive workspace IDs from search results to batch-fetch boards
   const workspaceIds = [...new Set(issues.map(issue => issue.workspaceId))]
-
   const firstWorkspaceId = workspaceIds[0] ?? null
 
   const { data: boardsData } = useQuery({
@@ -408,40 +373,6 @@ function useIssueSearch(query: string, enabled: boolean) {
     boardId,
   }
 }
-
-// ── Highlighted text renderer ─────────────────────────────────────────────────
-
-function HighlightedText({ text, ranges }: { text: string, ranges: Array<{ start: number, end: number }> }) {
-  if (!ranges || ranges.length === 0) {
-    return <>{text}</>
-  }
-
-  const parts: React.ReactNode[] = []
-  let cursor = 0
-
-  for (const range of ranges) {
-    if (range.start > cursor) {
-      parts.push(text.slice(cursor, range.start))
-    }
-    parts.push(
-      <mark
-        key={range.start}
-        className="rounded-[3px] bg-primary/10 px-0.5 font-semibold text-primary ring-1 ring-primary/10"
-      >
-        {text.slice(range.start, range.end)}
-      </mark>,
-    )
-    cursor = range.end
-  }
-
-  if (cursor < text.length) {
-    parts.push(text.slice(cursor))
-  }
-
-  return <>{parts}</>
-}
-
-// ── Main component ────────────────────────────────────────────────────────────
 
 export const GlobalSearchDialog = ({ open, initialQuery = '>', onOpenChange }: GlobalSearchDialogProps) => {
   if (!open) {
@@ -465,8 +396,6 @@ const GlobalSearchDialogContent = ({ open, initialQuery = '>', onOpenChange }: G
   const [query, setQuery] = useState('')
   const [commandHistory, setCommandHistory] = useState(readCommandHistory)
   const panelRef = useRef<HTMLDivElement>(null)
-  const requestedQueryRef = useRef('')
-  const measuredQueryRef = useRef('')
   const closeFromEscape = useEffectEvent(() => {
     onOpenChange(false)
   })
@@ -474,15 +403,10 @@ const GlobalSearchDialogContent = ({ open, initialQuery = '>', onOpenChange }: G
   useLayoutEffect(() => {
     if (!open) {
       setQuery('')
-      requestedQueryRef.current = ''
-      measuredQueryRef.current = ''
       return
     }
 
     setQuery(initialQuery)
-    requestedQueryRef.current = ''
-    measuredQueryRef.current = ''
-
     requestAnimationFrame(() => {
       const input = panelRef.current?.querySelector<HTMLInputElement>('[data-slot="command-input"]')
       input?.focus()
@@ -507,28 +431,14 @@ const GlobalSearchDialogContent = ({ open, initialQuery = '>', onOpenChange }: G
   }, [open])
 
   const close = () => onOpenChange(false)
-  const handleQueryChange = (nextQuery: string) => {
-      setQuery(nextQuery)
-
-      const nextTrimmed = nextQuery.trim()
-      if (!open || !nextTrimmed) {
-        requestedQueryRef.current = ''
-        measuredQueryRef.current = ''
-        return
-      }
-
-      requestedQueryRef.current = nextTrimmed
-      measuredQueryRef.current = ''
-    }
   const commands = useCommands(close)
-  const paletteMode = parsePaletteInput(query)
-  const trimmed = paletteMode.query.trim()
+  const { id: modeId, query: trimmed } = parsePaletteInput(query)
   const hasQuery = trimmed.length > 0
-  const isCommandMode = paletteMode.id === 'command'
-  const isQuickOpenMode = paletteMode.id === 'quickOpen'
-  const isUnsupportedMode = paletteMode.id === 'symbol'
-    || paletteMode.id === 'line'
-    || paletteMode.id === 'workspaceSymbol'
+  const isCommandMode = modeId === 'command'
+  const searchFiles = modeId === 'quickOpen' || modeId === 'files'
+  const searchThreads = modeId === 'quickOpen' || modeId === 'threads'
+  const searchIssues = modeId === 'quickOpen' || modeId === 'issues'
+  const fileUnavailable = searchFiles && fileSearchWorkspace.availability !== 'available'
 
   const {
     files,
@@ -536,21 +446,20 @@ const GlobalSearchDialogContent = ({ open, initialQuery = '>', onOpenChange }: G
     isPending: filesPending,
   } = useFileSearch(
     trimmed,
-    open && isQuickOpenMode && fileSearchWorkspace.availability === 'available',
+    open && searchFiles && fileSearchWorkspace.availability === 'available',
     fileSearchWorkspace.workspaceId,
   )
 
   const { threads, isPending: threadsPending } = useThreadSearch(
     trimmed,
-    open && isQuickOpenMode,
+    open && searchThreads,
   )
 
   const { issues, isPending: issuesPending, boardId } = useIssueSearch(
     trimmed,
-    open && isQuickOpenMode,
+    open && searchIssues,
   )
 
-  // Filter commands by query
   const filteredCommands = (() => {
     if (!isCommandMode) {
       return []
@@ -578,35 +487,7 @@ const GlobalSearchDialogContent = ({ open, initialQuery = '>', onOpenChange }: G
     }).map(result => result.item)
   })()
 
-  const isPending = isQuickOpenMode && (filesPending || threadsPending || issuesPending)
-  const hasResults = filteredCommands.length > 0 || files.length > 0 || threads.length > 0 || issues.length > 0
-  const showModeGuide = !hasQuery && isCommandMode
-  const showUnsupportedModeState = isUnsupportedMode && !isPending && !hasResults
-  const showFileSearchUnavailableState = isQuickOpenMode
-    && !hasResults
-    && !isPending
-    && fileSearchWorkspace.availability !== 'available'
-
-  useEffect(() => {
-    if (
-      !open
-      || !hasQuery
-      || isPending
-      || requestedQueryRef.current !== trimmed
-      || measuredQueryRef.current === trimmed
-    ) {
-      return
-    }
-
-    const measuredQuery = trimmed
-    requestAnimationFrame(() => {
-      if (requestedQueryRef.current !== measuredQuery) {
-        return
-      }
-
-      measuredQueryRef.current = measuredQuery
-    })
-  }, [hasQuery, isPending, open, trimmed])
+  const isPending = filesPending || threadsPending || issuesPending
 
   const handleSelectCommand = (command: CommandAction) => {
     setCommandHistory(writeCommandHistory(command.id))
@@ -614,39 +495,37 @@ const GlobalSearchDialogContent = ({ open, initialQuery = '>', onOpenChange }: G
   }
 
   const handleSelectFile = (filePath: string) => {
-      if (!fileWorkspaceId) {
-        return
-      }
-
-      selectFileSearchResult({
-        workspaceId: fileWorkspaceId,
-        filePath,
-        close,
-        openWorkspaceFile,
-        setBrowserPanelOpen,
-      })
+    if (!fileWorkspaceId) {
+      return
     }
+
+    selectFileSearchResult({
+      workspaceId: fileWorkspaceId,
+      filePath,
+      close,
+      openWorkspaceFile,
+      setBrowserPanelOpen,
+    })
+  }
 
   const handleSelectThread = (sessionId: string) => {
-      close()
-      openChatSession(sessionId)
-    }
+    close()
+    openChatSession(sessionId)
+  }
 
   const handleSelectIssue = (issueId: string) => {
-      close()
-      if (boardId) {
-        openKanbanBoard({ boardId, issueId })
-      }
+    close()
+    if (boardId) {
+      openKanbanBoard({ boardId, issueId })
     }
+  }
+
+  const placeholder = t(PLACEHOLDER_KEY[modeId])
 
   return createPortal(
     <div
       role="presentation"
-      className={cn(
-        'fixed inset-0 isolate z-50 flex items-start justify-center bg-black/10 px-4 pt-[18vh] supports-backdrop-filter:backdrop-blur-xs',
-        open ? 'visible pointer-events-auto opacity-100' : 'invisible pointer-events-none opacity-0',
-      )}
-      aria-hidden={open ? undefined : 'true'}
+      className="fixed inset-0 isolate z-50 flex items-start justify-center px-4 pt-[16vh]"
       onMouseDown={(event) => {
         if (event.target === event.currentTarget) {
           onOpenChange(false)
@@ -658,147 +537,109 @@ const GlobalSearchDialogContent = ({ open, initialQuery = '>', onOpenChange }: G
         role="dialog"
         aria-modal="true"
         aria-label={t('aria.dialog')}
-        className="w-full max-w-2xl overflow-hidden rounded-xl border-0 bg-popover p-0 text-popover-foreground shadow-[0_20px_80px_rgba(0,0,0,0.18),0_0_0_1px_rgba(0,0,0,0.08)] ring-1 ring-foreground/10 dark:shadow-[0_20px_80px_rgba(0,0,0,0.45),0_0_0_1px_rgba(255,255,255,0.1)]"
+        className="w-full max-w-2xl overflow-hidden rounded-2xl bg-popover text-popover-foreground shadow-[0_24px_80px_-12px_rgba(0,0,0,0.28),0_0_0_1px_rgba(0,0,0,0.06)] ring-1 ring-foreground/10 dark:shadow-[0_24px_80px_-12px_rgba(0,0,0,0.6),0_0_0_1px_rgba(255,255,255,0.08)]"
       >
         <Command shouldFilter={false} data-testid="global-search-dialog">
-          <div className="overflow-hidden rounded-xl!">
-            <div className="flex items-center justify-between border-b border-border/60 px-3 py-2">
-              <div className="flex min-w-0 items-center gap-2">
-                <span className="inline-flex h-5 min-w-5 shrink-0 items-center justify-center rounded bg-foreground/8 px-1.5 font-mono text-[11px] text-foreground/70">
-                  {paletteMode.prefix || '⌘P'}
-                </span>
-                <div className="min-w-0">
-                  <div className="truncate text-xs font-medium">{t(paletteMode.labelKey)}</div>
-                  <div className="truncate text-[11px] text-muted-foreground">{t(paletteMode.descriptionKey)}</div>
-                </div>
-              </div>
-              <DelayedSpinner active={isPending} className="size-3.5 shrink-0" />
-            </div>
+          <div className="relative">
             <CommandInput
-              placeholder={t(paletteMode.placeholderKey)}
+              placeholder={placeholder}
               value={query}
-              onValueChange={handleQueryChange}
+              onValueChange={setQuery}
               aria-label={t('aria.input')}
               data-testid="global-search-input"
             />
-            <div>
-              <CommandEmpty className="not-empty:py-12">
-                {isPending
-                  ? <LoadingState />
-                  : showUnsupportedModeState
-                    ? <ModeUnavailableState mode={paletteMode} />
-                    : showFileSearchUnavailableState
-                      ? <FileSearchUnavailableState availability={fileSearchWorkspace.availability} />
-                      : hasQuery
-                        ? <NoResults />
-                        : <IdleState />}
-              </CommandEmpty>
-              <CommandList>
-                {showModeGuide && (
-                  <>
-                    <CommandGroup>
-                      <GroupHeader label={t('group.modes')} count={PALETTE_MODES.length} />
-                      {PALETTE_MODES.map(mode => (
-                        <PaletteModeRow key={mode.id} mode={mode} onSelect={setQuery} />
-                      ))}
-                    </CommandGroup>
-                    {filteredCommands.length > 0 && <CommandSeparator />}
-                  </>
-                )}
+            <DelayedSpinner
+              active={isPending}
+              className="pointer-events-none absolute right-3 top-1/2 size-3.5 -translate-y-1/2"
+            />
+          </div>
 
-                {filteredCommands.length > 0 && (
-                  <>
-                    <CommandGroup>
-                      <GroupHeader label={t('group.commands')} count={filteredCommands.length} />
-                      {filteredCommands.map(cmd => (
-                        <CommandActionRow
-                          key={cmd.id}
-                          command={cmd}
-                          recent={commandHistory.includes(cmd.id)}
-                          onSelect={handleSelectCommand}
-                        />
-                      ))}
-                    </CommandGroup>
-                  </>
-                )}
+          <CommandList>
+            {filteredCommands.length > 0 && (
+              <CommandGroup>
+                <GroupHeader label={t('group.commands')} count={filteredCommands.length} />
+                {filteredCommands.map(cmd => (
+                  <CommandActionRow
+                    key={cmd.id}
+                    command={cmd}
+                    onSelect={handleSelectCommand}
+                  />
+                ))}
+              </CommandGroup>
+            )}
 
-                {files.length > 0 && (
-                  <CommandGroup>
-                    <GroupHeader label={t('group.files')} count={files.length} />
-                    {files.map(file => (
-                      <FileSearchCommandRow
-                        key={file.path}
-                        file={file}
-                        onSelect={handleSelectFile}
-                      />
-                    ))}
-                  </CommandGroup>
-                )}
+            {files.length > 0 && (
+              <CommandGroup>
+                <GroupHeader label={t('group.files')} count={files.length} />
+                {files.map(file => (
+                  <FileSearchCommandRow
+                    key={file.path}
+                    file={file}
+                    onSelect={handleSelectFile}
+                  />
+                ))}
+              </CommandGroup>
+            )}
 
-                {threads.length > 0 && (
-                  <CommandGroup>
-                    <GroupHeader label={t('group.threads')} count={threads.length} />
-                    {threads.map(thread => (
-                      <ThreadSearchResultRow
-                        key={thread.sessionId}
-                        thread={thread}
-                        onSelect={handleSelectThread}
-                      />
-                    ))}
-                  </CommandGroup>
-                )}
+            {threads.length > 0 && (
+              <CommandGroup>
+                <GroupHeader label={t('group.threads')} count={threads.length} />
+                {threads.map(thread => (
+                  <ThreadSearchResultRow
+                    key={thread.sessionId}
+                    thread={thread}
+                    onSelect={handleSelectThread}
+                  />
+                ))}
+              </CommandGroup>
+            )}
 
-                {issues.length > 0 && (
-                  <CommandGroup>
-                    <GroupHeader label={t('group.issues')} count={issues.length} />
-                    {issues.map(issue => (
-                      <IssueSearchResultRow
-                        key={issue.id}
-                        issue={issue}
-                        onSelect={handleSelectIssue}
-                      />
-                    ))}
-                  </CommandGroup>
-                )}
-              </CommandList>
-            </div>
+            {issues.length > 0 && (
+              <CommandGroup>
+                <GroupHeader label={t('group.issues')} count={issues.length} />
+                {issues.map(issue => (
+                  <IssueSearchResultRow
+                    key={issue.id}
+                    issue={issue}
+                    onSelect={handleSelectIssue}
+                  />
+                ))}
+              </CommandGroup>
+            )}
 
-            <div className="flex items-center justify-between border-t border-border px-3 py-2 text-muted-foreground text-xs">
-              <div className="flex items-center gap-4">
-                <div className="hidden items-center gap-1.5 sm:flex">
-                  <Kbd>⌘P</Kbd>
-                  <span>{t('footer.quickOpen')}</span>
-                </div>
-                <div className="hidden items-center gap-1.5 sm:flex">
-                  <Kbd>⌘⇧P</Kbd>
-                  <span>{t('footer.commands')}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <KbdGroup>
-                    <Kbd>
-                      <ArrowUpIcon />
-                    </Kbd>
-                    <Kbd>
-                      <ArrowDownIcon />
-                    </Kbd>
-                  </KbdGroup>
-                  <span>{t('footer.select')}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Kbd>
-                    <CornerDownLeftIcon />
-                  </Kbd>
-                  <span>{t('footer.open')}</span>
-                </div>
-                <div className="flex items-center gap-1.5">
-                  <Kbd>Esc</Kbd>
-                  <span>{t('footer.close')}</span>
-                </div>
-              </div>
-              <span className="hidden font-mono text-[10px] text-muted-foreground/60 sm:inline">
-                &gt; @ : #
-              </span>
-            </div>
+            <CommandEmpty className="py-12">
+              {isPending
+                ? <LoadingState />
+                : hasQuery
+                  ? <NoResults />
+                  : fileUnavailable
+                    ? <FileSearchUnavailableState availability={fileSearchWorkspace.availability} />
+                    : <IdleState />}
+            </CommandEmpty>
+          </CommandList>
+
+          <div className="flex items-center gap-4 border-t border-border/60 px-3 py-2 text-[11px] text-muted-foreground">
+            <span className="flex items-center gap-1.5">
+              <KbdGroup>
+                <Kbd>
+                  <ArrowUpIcon />
+                </Kbd>
+                <Kbd>
+                  <ArrowDownIcon />
+                </Kbd>
+              </KbdGroup>
+              {t('footer.select')}
+            </span>
+            <span className="flex items-center gap-1.5">
+              <Kbd>
+                <CornerDownLeftIcon />
+              </Kbd>
+              {t('footer.open')}
+            </span>
+            <span className="ml-auto flex items-center gap-1.5">
+              <Kbd>Esc</Kbd>
+              {t('footer.close')}
+            </span>
           </div>
         </Command>
       </div>
@@ -807,74 +648,29 @@ const GlobalSearchDialogContent = ({ open, initialQuery = '>', onOpenChange }: G
   )
 }
 
-// ── Shared sub-components ─────────────────────────────────────────────────────
-
-const PaletteModeRow = ({
-  mode,
-  onSelect,
-}: {
-  mode: (typeof PALETTE_MODES)[number]
-  onSelect: (query: string) => void
-}) => {
-  const { t } = useTranslation('search')
-  const selectMode = () => {
-    onSelect(mode.prefix)
-  }
-
-  return (
-    <CommandItem
-      value={`mode-${mode.id}`}
-      onSelect={selectMode}
-      className="flex items-center gap-2.5 px-2.5 py-1.5"
-      data-testid={`global-search-mode-${mode.id}`}
-    >
-      <span className="inline-flex size-6 shrink-0 items-center justify-center rounded bg-foreground/8 font-mono text-[11px] text-foreground/70">
-        {mode.prefix || '⌘P'}
-      </span>
-      <span className="min-w-0 flex-1 truncate text-sm">{t(mode.labelKey)}</span>
-      <span className="hidden shrink-0 text-[11px] text-muted-foreground sm:inline">
-        {t(mode.descriptionKey)}
-      </span>
-    </CommandItem>
-  )
-}
-
 const CommandActionRow = ({
   command,
-  recent,
   onSelect,
 }: {
   command: CommandAction
-  recent: boolean
   onSelect: (command: CommandAction) => void
 }) => {
-  const { t } = useTranslation('search')
-  const selectCommand = () => {
-    onSelect(command)
-  }
-
   return (
     <CommandItem
       value={command.id}
-      onSelect={selectCommand}
-      className="flex items-center gap-2.5 px-2.5 py-1.5"
+      onSelect={() => onSelect(command)}
+      className="gap-3 px-2.5"
       data-testid={`global-search-command-${command.id}`}
     >
-      <command.icon className="size-3.5 shrink-0 text-muted-foreground" />
+      <command.icon className="size-4 shrink-0 text-muted-foreground" />
       <span className="flex min-w-0 flex-1 flex-col">
-        <span className="truncate text-sm">{command.label}</span>
+        <span className="truncate text-[13px]">{command.label}</span>
         {command.description && (
           <span className="truncate text-[11px] text-muted-foreground">{command.description}</span>
         )}
       </span>
-      {command.source === 'plugin' && (
-        <span className="hidden shrink-0 text-[10px] text-muted-foreground sm:inline">Plugin</span>
-      )}
-      {recent && (
-        <span className="hidden text-[10px] text-muted-foreground sm:inline">{t('command.recent')}</span>
-      )}
       {command.shortcut && (
-        <span className="font-mono text-[10px] text-muted-foreground">{command.shortcut}</span>
+        <CommandShortcut>{command.shortcut}</CommandShortcut>
       )}
     </CommandItem>
   )
@@ -887,19 +683,24 @@ const FileSearchCommandRow = ({
   file: GlobalSearchFile
   onSelect: (filePath: string) => void
 }) => {
-  const selectFile = () => {
-    onSelect(file.path)
-  }
+  const dir = file.path.endsWith(file.name)
+    ? file.path.slice(0, file.path.length - file.name.length).replace(/\/$/, '')
+    : ''
 
   return (
     <CommandItem
       value={`file-${file.path}`}
-      onSelect={selectFile}
-      className="flex items-center gap-2.5 px-2.5 py-1.5"
+      onSelect={() => onSelect(file.path)}
+      className="min-h-7 gap-2 px-2.5 py-0.5"
       data-testid={`global-search-file-result-${file.path}`}
     >
-      <FileIcon className="size-3.5 shrink-0 !text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate font-mono text-xs">{file.path}</span>
+      <FileIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+      <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+        <span className="truncate text-[13px]">{file.name}</span>
+        {dir && (
+          <span className="truncate font-mono text-[11px] text-muted-foreground/45">{dir}</span>
+        )}
+      </span>
     </CommandItem>
   )
 }
@@ -912,40 +713,34 @@ const ThreadSearchResultRow = ({
   onSelect: (sessionId: string) => void
 }) => {
   const { t } = useTranslation('search')
-  const selectThread = () => {
-    onSelect(thread.sessionId)
-  }
-
   const title = thread.sessionTitle ?? thread.snippets[0]?.text ?? ''
   const snippet = thread.snippets[0]
 
   return (
     <CommandItem
       value={`thread-${thread.sessionId}`}
-      onSelect={selectThread}
-      className="flex items-start gap-2.5 px-2.5 py-1.5 text-left"
+      onSelect={() => onSelect(thread.sessionId)}
+      className="gap-3 px-2.5 text-left"
       data-testid={`global-search-thread-result-${thread.sessionId}`}
     >
-      <span className="mt-0.5 inline-flex size-5 shrink-0 items-center justify-center text-muted-foreground">
-        <MessageSquareIcon className="size-3.5" aria-hidden="true" />
-      </span>
-      <span className="flex min-w-0 flex-1 flex-col items-start gap-1">
+      <MessageSquareIcon className="mt-0.5 size-4 shrink-0 text-muted-foreground" aria-hidden="true" />
+      <span className="flex min-w-0 flex-1 flex-col gap-0.5">
         <span
-          className="w-full min-w-0 truncate text-sm"
+          className="w-full min-w-0 truncate text-[13px]"
           data-testid={`global-search-thread-title-${thread.sessionId}`}
         >
           <HighlightedText text={title} ranges={thread.titleRanges} />
         </span>
         {snippet && (
           <span
-            className="w-full min-w-0 truncate text-xs text-muted-foreground"
+            className="w-full min-w-0 truncate text-[11px] text-muted-foreground"
             data-testid={`global-search-thread-snippet-${thread.sessionId}`}
           >
             <HighlightedText text={snippet.text} ranges={snippet.ranges} />
           </span>
         )}
         {thread.snippets.length === 0 && (
-          <span className="text-[11px] text-muted-foreground">{t('thread.match.titleOnly')}</span>
+          <span className="text-[11px] text-muted-foreground/70">{t('thread.match.titleOnly')}</span>
         )}
       </span>
     </CommandItem>
@@ -959,32 +754,24 @@ const IssueSearchResultRow = ({
   issue: IssueSearchHit
   onSelect: (issueId: string) => void
 }) => {
-  const selectIssue = () => {
-    onSelect(issue.id)
-  }
-
   return (
     <CommandItem
       value={`issue-${issue.id}`}
-      onSelect={selectIssue}
-      className="flex items-center gap-2.5 px-2.5 py-1.5"
+      onSelect={() => onSelect(issue.id)}
+      className="gap-3 px-2.5"
       data-testid={`global-search-issue-result-${issue.title}`}
     >
-      <CircleDotIcon className="size-3.5 shrink-0 !text-muted-foreground" />
-      <span className="min-w-0 flex-1 truncate text-sm">{issue.title}</span>
+      <CircleDotIcon className="size-4 shrink-0 text-muted-foreground" />
+      <span className="min-w-0 flex-1 truncate text-[13px]">{issue.title}</span>
     </CommandItem>
   )
 }
 
 function GroupHeader({ label, count }: { label: string, count: number }) {
-  const { t } = useTranslation('search')
-
   return (
-    <div className="flex items-center justify-between px-2 py-1.5 text-xs text-muted-foreground">
-      <span className="font-medium">{label}</span>
-      <span className="text-[10px] text-muted-foreground">
-        {t('group.resultCount', { count })}
-      </span>
+    <div className="flex items-center gap-2 px-2.5 pb-1 pt-2">
+      <span className="text-[11px] font-medium tracking-wide text-muted-foreground/70 uppercase">{label}</span>
+      <span className="text-[10px] tabular-nums text-muted-foreground/40">{count}</span>
     </div>
   )
 }
@@ -1004,20 +791,7 @@ function NoResults() {
   const { t } = useTranslation('search')
 
   return (
-    <div className="flex flex-col items-center gap-2">
-      <span className="text-xs text-muted-foreground">{t('state.noResults')}</span>
-    </div>
-  )
-}
-
-function ModeUnavailableState({ mode }: { mode: PaletteMode }) {
-  const { t } = useTranslation('search')
-
-  return (
-    <div className="flex flex-col items-center gap-2 px-8">
-      <span className="text-xs font-medium text-foreground">{t(mode.labelKey)}</span>
-      <span className="text-center text-xs text-muted-foreground">{t('state.modeUnavailable')}</span>
-    </div>
+    <span className="text-xs text-muted-foreground">{t('state.noResults')}</span>
   )
 }
 
@@ -1028,10 +802,9 @@ function FileSearchUnavailableState({ availability }: { availability: FileSearch
     : t('state.fileSearchUnsupportedTab')
 
   return (
-    <div className="flex flex-col items-center gap-2 px-8">
-      <span className="text-xs font-medium text-foreground">{t('mode.quickOpen.label')}</span>
-      <span className="text-center text-xs text-muted-foreground">{message}</span>
-    </div>
+    <p className="mx-auto max-w-sm text-center text-xs leading-relaxed text-muted-foreground">
+      {message}
+    </p>
   )
 }
 
@@ -1039,8 +812,18 @@ function IdleState() {
   const { t } = useTranslation('search')
 
   return (
-    <div className="flex flex-col items-center gap-2">
-      <span className="text-xs text-muted-foreground">{t('state.idle')}</span>
+    <div className="flex flex-col items-center gap-3">
+      <span className="text-xs text-muted-foreground/70">{t('state.idle')}</span>
+      <div className="flex flex-wrap items-center justify-center gap-x-3 gap-y-1.5">
+        {SCOPE_PREFIXES.map(scope => (
+          <span key={scope.prefix} className="flex items-center gap-1 text-[11px] text-muted-foreground/60">
+            <kbd className="rounded bg-foreground/8 px-1 font-mono text-[10px] text-foreground/70">
+              {scope.prefix}
+            </kbd>
+            {t(scope.labelKey)}
+          </span>
+        ))}
+      </div>
     </div>
   )
 }
