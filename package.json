@@ -2,6 +2,9 @@
   "name": "cradle",
   "version": "0.0.1",
   "packageManager": "pnpm@11.2.2",
+  "pnpm": {
+    "approveBuilds": ["fs-xattr", "macos-alias"]
+  },
   "description": "Cradle - AI agent management platform",
   "author": "example.com",
   "bin": {
@@ -125,6 +128,7 @@
     "@types/react-dom": "^19.2.3",
     "@types/tar": "^7.0.87",
     "@vitejs/plugin-react": "^5.1.1",
+    "appdmg": "^0.6.6",
     "babel-plugin-react-compiler": "^1.0.0",
     "commander": "^14.0.3",
     "concurrently": "^9.2.1",

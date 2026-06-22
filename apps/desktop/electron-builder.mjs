@@ -190,12 +190,8 @@ const config = {
     hardenedRuntime: hasAppleSigningIdentity,
     ...(hasAppleSigningIdentity ? {} : { identity: null }),
     target: [
-      'dmg',
+      'dir',
     ],
-  },
-
-  dmg: {
-    writeUpdateInfo: false,
   },
 
   win: {
