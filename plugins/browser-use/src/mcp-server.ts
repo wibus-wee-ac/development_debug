@@ -2,7 +2,7 @@
  * Browser Use MCP Server
  *
  * Exposes browser control tools via MCP stdio protocol.
- * Connects to the Browser Backend (Electron main) via Unix Domain Socket.
+ * Connects to the Browser Backend (Electron main) via a local endpoint.
  */
 
 import { randomUUID } from 'node:crypto'
@@ -33,21 +33,39 @@ const BrowserEvalResultTextSchema = z.union([
   }),
 ])
 
-// ─── Socket Client ──────────────────────────────────────────────────────────
+// ─── Backend Client ─────────────────────────────────────────────────────────
+
+type BrowserBackendEndpoint =
+  | { kind: 'socket', path: string }
+  | { kind: 'tcp', host: string, port: number }
+
+function parseBackendEndpoint(value: string): BrowserBackendEndpoint {
+  if (value.startsWith('tcp://')) {
+    const url = new URL(value)
+    const port = Number.parseInt(url.port, 10)
+    if (!url.hostname || !Number.isInteger(port) || port <= 0) {
+      throw new Error(`Invalid browser backend TCP endpoint: ${value}`)
+    }
+    return { kind: 'tcp', host: url.hostname, port }
+  }
+  return { kind: 'socket', path: value }
+}
 
 class BrowserClient {
   private socket: Socket | null = null
   private decoder = new FrameDecoder()
   private pending = new Map<string, { resolve: (r: BrowserResponse) => void, reject: (e: Error) => void }>()
-  private socketPath: string
+  private endpoint: BrowserBackendEndpoint
 
-  constructor(socketPath: string) {
-    this.socketPath = socketPath
+  constructor(endpoint: string) {
+    this.endpoint = parseBackendEndpoint(endpoint)
   }
 
   async connect(): Promise<void> {
     return new Promise((resolve, reject) => {
-      this.socket = connect(this.socketPath)
+      this.socket = this.endpoint.kind === 'tcp'
+        ? connect({ host: this.endpoint.host, port: this.endpoint.port })
+        : connect(this.endpoint.path)
       this.socket.on('connect', () => resolve())
       this.socket.on('error', err => reject(err))
       this.socket.on('data', (chunk) => {
@@ -105,7 +123,7 @@ function discoverSocketPath(): string {
   // The socket lives in Electron's userData directory
   // On macOS: ~/Library/Application Support/Cradle/browser-backend.sock
   // On Linux: ~/.config/Cradle/browser-backend.sock
-  // On Windows: %APPDATA%/Cradle/browser-backend.sock
+  // On Windows, desktop injects a tcp://127.0.0.1:<port> endpoint via env.
   const platform = process.platform
   if (platform === 'darwin') {
     return join(homedir(), 'Library', 'Application Support', 'Cradle', 'browser-backend.sock')

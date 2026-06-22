@@ -1,5 +1,5 @@
 import { existsSync, unlinkSync } from 'node:fs'
-import type { Server, Socket } from 'node:net'
+import type { AddressInfo, Server, Socket } from 'node:net'
 import { createServer } from 'node:net'
 import { join } from 'node:path'
 
@@ -41,6 +41,7 @@ import { encodeFrame, FrameDecoder } from './protocol.js'
 
 let server: Server | null = null
 let socketPath = ''
+let backendEndpoint = ''
 
 interface WebviewEntry {
   webview: DesktopWebview
@@ -536,31 +537,77 @@ function handleConnection(socket: Socket): void {
   socket.on('error', () => {})
 }
 
-export function activate(ctx: DesktopPluginContext): void {
-  desktopContext = ctx
-  socketPath = join(ctx.userDataPath, 'browser-backend.sock')
+async function listenBrowserBackend(nextServer: Server, ctx: DesktopPluginContext): Promise<string> {
+  if (process.platform === 'win32') {
+    return new Promise((resolveEndpoint, reject) => {
+      const onError = (err: Error) => {
+        nextServer.off('listening', onListening)
+        reject(err)
+      }
+      const onListening = () => {
+        nextServer.off('error', onError)
+        const address = nextServer.address()
+        if (!address || typeof address === 'string') {
+          reject(new Error('Browser backend TCP listener did not expose a port.'))
+          return
+        }
+        resolveEndpoint(`tcp://127.0.0.1:${(address as AddressInfo).port}`)
+      }
+      nextServer.once('error', onError)
+      nextServer.once('listening', onListening)
+      nextServer.listen(0, '127.0.0.1')
+    })
+  }
 
-  // Clean up stale socket
+  socketPath = join(ctx.userDataPath, 'browser-backend.sock')
   if (existsSync(socketPath)) {
     unlinkSync(socketPath)
   }
 
-  // Start socket server
-  server = createServer(handleConnection)
-  server.listen(socketPath)
-  server.on('error', (err) => {
-    ctx.logger.error('Socket server error:', err)
+  return new Promise((resolveEndpoint, reject) => {
+    const onError = (err: Error) => {
+      nextServer.off('listening', onListening)
+      reject(err)
+    }
+    const onListening = () => {
+      nextServer.off('error', onError)
+      resolveEndpoint(socketPath)
+    }
+    nextServer.once('error', onError)
+    nextServer.once('listening', onListening)
+    nextServer.listen(socketPath)
+  })
+}
+
+export async function activate(ctx: DesktopPluginContext): Promise<void> {
+  desktopContext = ctx
+  const nextServer = createServer(handleConnection)
+  server = nextServer
+
+  try {
+    backendEndpoint = await listenBrowserBackend(nextServer, ctx)
+  }
+  catch (err) {
+    server = null
+    if (nextServer.listening) {
+      nextServer.close()
+    }
+    throw err
+  }
+
+  nextServer.on('error', (err) => {
+    ctx.logger.error('Browser backend server error:', err)
   })
 
   // Propagate socket path to server via shared config
-  ctx.sharedConfig.set('BROWSER_BACKEND_SOCKET', socketPath)
+  ctx.sharedConfig.set('BROWSER_BACKEND_SOCKET', backendEndpoint)
 
   // Listen for webview creation
   ctx.webviews.onCreated((webview, _tabId) => {
     registerWebview(webview)
   })
 
-  ctx.logger.info(`Browser backend started on ${socketPath}`)
+  ctx.logger.info(`Browser backend started on ${backendEndpoint}`)
 }
 
 export function deactivate(): void {
@@ -584,4 +631,6 @@ export function deactivate(): void {
   if (socketPath && existsSync(socketPath)) {
     unlinkSync(socketPath)
   }
+  socketPath = ''
+  backendEndpoint = ''
 }
