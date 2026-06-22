@@ -8,6 +8,11 @@ import { localeOptions, normalizeLocale } from '~/i18n/locales'
 import { cn } from '~/lib/cn'
 import type { ThemeMode } from '~/store/theme'
 import { useThemeStore } from '~/store/theme'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
+import {
+  SESSION_PREVIEW_LIMIT_OPTIONS,
+  useWorkspaceSidebarUiStore,
+} from '~/features/workspace/workspace-sidebar-ui-store'
 
 import { SettingsGroup, SettingsPage } from './settings-container'
 import { SettingsRow } from './settings-row'
@@ -158,8 +163,44 @@ export function AppearanceSettings() {
         </SettingsRow>
 
         <LanguageSettings />
+        <SessionPreviewSettings />
       </SettingsGroup>
     </SettingsPage>
+  )
+}
+
+function SessionPreviewSettings() {
+  const { t } = useTranslation('settings')
+  const sessionPreviewLimit = useWorkspaceSidebarUiStore(s => s.sessionPreviewLimit)
+  const setSessionPreviewLimit = useWorkspaceSidebarUiStore(s => s.setSessionPreviewLimit)
+
+  return (
+    <SettingsRow
+      label={t('appearance.sessionPreview.label')}
+      description={t('appearance.sessionPreview.description')}
+      info={t('appearance.sessionPreview.info')}
+    >
+      <Select
+        value={String(sessionPreviewLimit)}
+        onValueChange={(value) => setSessionPreviewLimit(Number(value))}
+      >
+        <SelectTrigger
+          size="sm"
+          className="w-28"
+          aria-label={t('appearance.sessionPreview.label')}
+          data-testid="appearance-session-preview-limit"
+        >
+          <SelectValue />
+        </SelectTrigger>
+        <SelectContent>
+          {SESSION_PREVIEW_LIMIT_OPTIONS.map((option) => (
+            <SelectItem key={option} value={String(option)}>
+              {option}
+            </SelectItem>
+          ))}
+        </SelectContent>
+      </Select>
+    </SettingsRow>
   )
 }
 

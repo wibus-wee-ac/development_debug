@@ -9,9 +9,15 @@ export type WorkspaceSidebarProjectSortKey = 'name' | 'updatedAt' | 'createdAt'
 export type WorkspaceSidebarProjectSortDirection = 'asc' | 'desc'
 export type WorkspaceSidebarProjectFilter = 'all' | 'pinned' | 'unpinned' | 'unread' | 'running' | 'recent'
 
+export const SESSION_PREVIEW_LIMIT_OPTIONS = [3, 5, 8, 10, 15, 20] as const
+export const DEFAULT_SESSION_PREVIEW_LIMIT = 5
+export const MIN_SESSION_PREVIEW_LIMIT = SESSION_PREVIEW_LIMIT_OPTIONS[0]
+export const MAX_SESSION_PREVIEW_LIMIT = SESSION_PREVIEW_LIMIT_OPTIONS[SESSION_PREVIEW_LIMIT_OPTIONS.length - 1]
+
 interface WorkspaceSidebarUiState {
   collapsedWorkspaceIds: WorkspaceSidebarFlagMap
   expandedSessionListWorkspaceIds: WorkspaceSidebarFlagMap
+  sessionPreviewLimit: number
   projectFilter: WorkspaceSidebarProjectFilter
   projectSortKey: WorkspaceSidebarProjectSortKey
   projectSortDirection: WorkspaceSidebarProjectSortDirection
@@ -20,6 +26,7 @@ interface WorkspaceSidebarUiState {
   setProjectSortKey: (sortKey: WorkspaceSidebarProjectSortKey) => void
   setProjectSortDirection: (sortDirection: WorkspaceSidebarProjectSortDirection) => void
   setProjectPinnedFirst: (pinnedFirst: boolean) => void
+  setSessionPreviewLimit: (limit: number) => void
   setWorkspaceExpanded: (workspaceId: string, expanded: boolean) => void
   toggleWorkspaceExpanded: (workspaceId: string) => void
   setWorkspaceSessionListExpanded: (workspaceId: string, expanded: boolean) => void
@@ -30,6 +37,7 @@ interface WorkspaceSidebarUiState {
 interface PersistedWorkspaceSidebarUiState {
   collapsedWorkspaceIds?: WorkspaceSidebarFlagMap
   expandedSessionListWorkspaceIds?: WorkspaceSidebarFlagMap
+  sessionPreviewLimit?: unknown
   projectFilter?: unknown
   projectSortKey?: unknown
   projectSortDirection?: unknown
@@ -103,11 +111,20 @@ function normalizeProjectSortDirection(value: unknown): WorkspaceSidebarProjectS
     : 'asc'
 }
 
+function normalizeSessionPreviewLimit(value: unknown): number {
+  if (typeof value !== 'number' || !Number.isFinite(value)) {
+    return DEFAULT_SESSION_PREVIEW_LIMIT
+  }
+  const clamped = Math.min(Math.max(Math.round(value), MIN_SESSION_PREVIEW_LIMIT), MAX_SESSION_PREVIEW_LIMIT)
+  return clamped
+}
+
 export const useWorkspaceSidebarUiStore = create<WorkspaceSidebarUiState>()(
   persist(
     set => ({
       collapsedWorkspaceIds: {},
       expandedSessionListWorkspaceIds: {},
+      sessionPreviewLimit: DEFAULT_SESSION_PREVIEW_LIMIT,
       projectFilter: 'all',
       projectSortKey: 'name',
       projectSortDirection: 'asc',
@@ -116,6 +133,10 @@ export const useWorkspaceSidebarUiStore = create<WorkspaceSidebarUiState>()(
       setProjectSortKey: projectSortKey => set(state => state.projectSortKey === projectSortKey ? state : { projectSortKey }),
       setProjectSortDirection: projectSortDirection => set(state => state.projectSortDirection === projectSortDirection ? state : { projectSortDirection }),
       setProjectPinnedFirst: projectPinnedFirst => set(state => state.projectPinnedFirst === projectPinnedFirst ? state : { projectPinnedFirst }),
+      setSessionPreviewLimit: limit => set(state => {
+        const normalized = normalizeSessionPreviewLimit(limit)
+        return state.sessionPreviewLimit === normalized ? state : { sessionPreviewLimit: normalized }
+      }),
       setWorkspaceExpanded: (workspaceId, expanded) => set((state) => {
         const collapsedWorkspaceIds = setFlag(state.collapsedWorkspaceIds, workspaceId, !expanded)
         return collapsedWorkspaceIds === state.collapsedWorkspaceIds ? state : { collapsedWorkspaceIds }
@@ -159,6 +180,7 @@ export const useWorkspaceSidebarUiStore = create<WorkspaceSidebarUiState>()(
       partialize: state => ({
         collapsedWorkspaceIds: state.collapsedWorkspaceIds,
         expandedSessionListWorkspaceIds: state.expandedSessionListWorkspaceIds,
+        sessionPreviewLimit: state.sessionPreviewLimit,
         projectFilter: state.projectFilter,
         projectSortKey: state.projectSortKey,
         projectSortDirection: state.projectSortDirection,
@@ -170,6 +192,7 @@ export const useWorkspaceSidebarUiStore = create<WorkspaceSidebarUiState>()(
           ...currentState,
           collapsedWorkspaceIds: normalizeFlags(persisted?.collapsedWorkspaceIds),
           expandedSessionListWorkspaceIds: normalizeFlags(persisted?.expandedSessionListWorkspaceIds),
+          sessionPreviewLimit: normalizeSessionPreviewLimit(persisted?.sessionPreviewLimit),
           projectFilter: normalizeProjectFilter(persisted?.projectFilter),
           projectSortKey: normalizeProjectSortKey(persisted?.projectSortKey),
           projectSortDirection: normalizeProjectSortDirection(persisted?.projectSortDirection),

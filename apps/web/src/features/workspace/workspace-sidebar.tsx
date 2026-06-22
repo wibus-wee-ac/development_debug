@@ -138,7 +138,6 @@ import type {
 import { useWorkspaceSidebarUiStore } from './workspace-sidebar-ui-store'
 
 type WorkspaceTranslation = TFunction<'workspace'>
-const SESSION_PREVIEW_LIMIT = 5
 const SESSION_REVEAL_BATCH_SIZE = 64
 const SESSION_REVEAL_DELAY_MS = 16
 const RECENT_SESSION_WINDOW_SECONDS = 60 * 60
@@ -1545,8 +1544,11 @@ function WorkspaceSessionListSection({
   const setWorkspaceSessionListExpanded = useWorkspaceSidebarUiStore(
     (state) => state.setWorkspaceSessionListExpanded
   )
+  const sessionPreviewLimit = useWorkspaceSidebarUiStore(
+    (state) => state.sessionPreviewLimit
+  )
   const [expandedSessionRenderCount, setExpandedSessionRenderCount] =
-    useState(SESSION_PREVIEW_LIMIT)
+    useState(sessionPreviewLimit)
   const requiredPreviewCount = useMemo(() => {
     let highestRequiredIndex = -1
     for (const [index, session] of sortedSessions.entries()) {
@@ -1560,7 +1562,7 @@ function WorkspaceSessionListSection({
     }
     return highestRequiredIndex + 1
   }, [locallyStreamingSessionIds, retainedSessionIds, sortedSessions])
-  const collapsedSessionPreviewLimit = Math.max(SESSION_PREVIEW_LIMIT, requiredPreviewCount)
+  const collapsedSessionPreviewLimit = Math.max(sessionPreviewLimit, requiredPreviewCount)
   const hasHiddenSessions = sortedSessions.length > collapsedSessionPreviewLimit
   const hiddenSessionCount = Math.max(sortedSessions.length - collapsedSessionPreviewLimit, 0)
   const renderedSessionCount = sessionListExpanded
