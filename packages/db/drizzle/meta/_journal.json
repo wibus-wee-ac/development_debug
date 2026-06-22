@@ -78,6 +78,13 @@
       "when": 1782022261000,
       "tag": "0010_drop_diff_review_rule_based_commit_plans",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "6",
+      "when": 1782128640000,
+      "tag": "0011_remote_runtime_hosts",
+      "breakpoints": true
     }
   ]
 }

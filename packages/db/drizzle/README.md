@@ -12,6 +12,7 @@ SQL 文件负责重放数据库结构，`meta/` 负责 journal 与 snapshot，�
 - **0001_cradle_diffs.sql**: Cradle Diffs / `diff-review` lifecycle schema.
 - **0002_diff_review_guides.sql**: Guided review generation persistence for `diff-review` revisions.
 - **0010_drop_diff_review_rule_based_commit_plans.sql**: Removes legacy rule-based Cradle Diffs commit plans.
+- **0011_remote_runtime_hosts.sql**: Remote runtime host registry and chat-session-to-remote-agent link tables.
 - **meta/**: Drizzle journal 与 schema snapshot，用于 tooling 和 migration 顺序管理；该目录必须保持 JSON-only，否则 `drizzle-kit generate` 会解析失败
 
 ## Regenerate Before Release Boundary
