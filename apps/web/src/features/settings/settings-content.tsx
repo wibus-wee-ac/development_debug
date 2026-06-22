@@ -15,6 +15,7 @@ import { IntegrationsSettings } from './integrations-settings'
 import { JarvisSettings } from './jarvis-settings'
 import { ModelRegistrySettings } from './model-registry-settings'
 import { PluginsSettings } from './plugins-settings'
+import { RemoteHostsSettings } from './remote-hosts-settings'
 import { ServerEndpointSettings } from './server-endpoint-settings'
 import { ShortcutSettings } from './shortcut-settings'
 import { SupportSettings } from './support-settings'
@@ -29,6 +30,7 @@ const SECTION_MAP: Record<string, React.ComponentType> = {
   jarvis: JarvisSettings,
   plugins: PluginsSettings,
   chronicle: ChronicleSettings,
+  remoteHosts: RemoteHostsSettings,
   integrations: IntegrationsSettings,
   shortcut: ShortcutSettings,
   serverEndpoint: ServerEndpointSettings,
@@ -47,7 +49,7 @@ interface SettingsContentProps {
 }
 
 export function SettingsContent({ section }: SettingsContentProps) {
-  const activeSection = !import.meta.env.DEV && (section === 'chronicle' || section === 'externalIssues') ? 'appearance' : section
+  const activeSection = !import.meta.env.DEV && (section === 'chronicle' || section === 'externalIssues' || section === 'remoteHosts') ? 'appearance' : section
   const ActiveSection = SECTION_MAP[activeSection] ?? AppearanceSettings
   const fixedHeight = FIXED_HEIGHT_SECTIONS.has(activeSection)
 
