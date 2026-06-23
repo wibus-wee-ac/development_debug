@@ -12,7 +12,7 @@
     "i18n": "tsx ./scripts/i18n-workflow/index.ts",
     "i18n:diff": "tsx ./scripts/i18n-workflow/gen-diff.ts",
     "i18n:gen-default": "tsx ./scripts/i18n-workflow/gen-default-locale-json.ts",
-    "i18n:check-baseline": "tsx ./scripts/i18n-workflow/gen-default-locale-json.ts && git diff --exit-code -- src/locales/en-US",
+    "i18n:check-baseline": "tsx ./scripts/i18n-workflow/gen-default-locale-json.ts --check",
     "i18n:check": "tsx ./scripts/i18n-workflow/check-translations.ts",
     "i18n:ci": "pnpm run i18n:check-baseline && pnpm run i18n:check && pnpm run i18n:check-hardcoded",
     "i18n:init-locale": "tsx ./scripts/i18n-workflow/init-locale.ts",

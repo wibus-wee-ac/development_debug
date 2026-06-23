@@ -160,6 +160,11 @@ const config = {
       filter: ['**/*'],
     },
     {
+      from: 'resources/relayd',
+      to: 'relayd',
+      filter: ['**/*'],
+    },
+    {
       from: '../../packages/db/drizzle',
       to: 'drizzle',
       filter: ['**/*'],

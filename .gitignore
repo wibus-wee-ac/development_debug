@@ -19,6 +19,9 @@ apps/desktop/release
 apps/desktop/resources/codex/**/codex
 apps/desktop/resources/codex/**/codex.exe
 apps/desktop/resources/codex/**/codex-runtime.json
+apps/desktop/resources/relayd/**/relayd
+apps/desktop/resources/relayd/**/relayd.exe
+apps/desktop/resources/relayd/**/relayd-runtime.json
 .cradle/
 apps/server/openapi.json
 apps/web/i18n-hardcoded-report.json

@@ -19,11 +19,20 @@ After this plan is implemented, a developer can start a Go relay service, start 
 - [x] (2026-06-23 00:00 +0800) Decided to add this as a new ExecPlan rather than rewriting the completed daemon proof, because relay is a second transport path with its own deployment and operational semantics.
 - [x] (2026-06-23 00:00 +0800) Drafted this self-contained plan for a Go relay service, Cradle Server token minting, agentd outbound relay mode, and server-side controller relay mode.
 - [x] (2026-06-23 00:16 +0800) Rechecked the plan against the available Go skills: `golang-how-to`, `golang-design-patterns`, `golang-error-handling`, `golang-security`, `golang-code-style`, `golang-safety`, and `golang-modernize`. Updated the plan to target the installed Go 1.25 toolchain and to call out Go 1.25-era style, safety, and validation requirements.
-- [ ] Create the `apps/relayd` Go module and implement health, pairing, WebSocket, routing, heartbeat, and metrics primitives.
-- [ ] Add a shared relay envelope contract and JSON fixtures so Go relay code and TypeScript server/agentd code stay wire-compatible.
-- [ ] Add agentd outbound relay mode that wraps existing remote-agent protocol frames in relay envelopes.
-- [ ] Add a Cradle Server relay controller path that claims pairings and speaks to agentd through the relay.
-- [ ] Validate local relay pairing and a mock remote chat turn through the existing Chat Runtime response projection.
+- [x] (2026-06-23 00:44 +0800) Created the standalone `apps/relayd` Go module with `go 1.25`, `net/http`, `github.com/coder/websocket`, health/readiness routes, pairing routes, host/controller WebSocket routes, in-memory rooms, heartbeat, bounded queues, metrics counters, and optional pprof.
+- [x] (2026-06-23 00:44 +0800) Added `packages/remote-relay-protocol` with TypeScript relay envelope schemas, JSON encode/parse helpers, relay control payload schemas, and fixtures mirrored under `apps/relayd/testdata` for Go fixture tests.
+- [x] (2026-06-23 00:44 +0800) Added `apps/agentd` outbound relay mode through `apps/agentd/src/relay-client.ts`, reused `AgentdDaemon` dispatch through `apps/agentd/src/protocol-dispatch.ts`, and kept the existing Unix-socket server mode intact.
+- [x] (2026-06-23 00:44 +0800) Added Cradle Server relay integration under `apps/server/src/modules/remote-runtime-hosts`: HMAC relay token minting, `/relay/pairing-token`, `/relay/claim`, relay transport config, and a controller WebSocket daemon client.
+- [x] (2026-06-23 00:54 +0800) Fixed an agentd relay first-frame race by registering relay socket message/close/error handlers before awaiting the WebSocket `open` event.
+- [x] (2026-06-23 00:57 +0800) Hardened the Go pairing and HTTP boundary after Go skills audit: pairing code hash comparison now uses `crypto/subtle.ConstantTimeCompare`, pairing codes use a non-confusing 32-character alphabet, and JSON request bodies are capped with `http.MaxBytesReader`.
+- [x] (2026-06-23 01:00 +0800) Added an automated server-side relay Chat Runtime test: a fake relay accepts `/ws/controller`, unwraps relay envelopes, simulates the daemon `host/hello` and `agent/turn` methods, wraps responses back into relay envelopes, and proves a remote mock assistant message is persisted through the normal projection path.
+- [x] (2026-06-23 01:00 +0800) Ran validation: `go vet ./...`, `go test ./...`, `go test -race ./...`, relay protocol typecheck/test, agentd typecheck/test, server remote-runtime-hosts test, and server typecheck all pass.
+- [x] (2026-06-23 01:11 +0800) Ran a real local process smoke with `go run ./cmd/relayd` and `pnpm --filter @cradle/agentd exec tsx src/main.ts relay`. The first attempt exposed a relay heartbeat bug: successful ping/pong did not refresh connection activity, so an otherwise healthy host was closed after idle timeout.
+- [x] (2026-06-23 01:12 +0800) Fixed relay heartbeat semantics by updating connection activity after successful `Ping`, added a regression test proving ping/pong keeps an idle-but-healthy WebSocket open, and serialized WebSocket data writes and pings with a per-connection write mutex.
+- [x] (2026-06-23 01:14 +0800) Fixed `agentd` relay host handling for relay control envelopes so `relay_peer_closed` and `relay_error` are not treated as malformed daemon frames and sent back to relay as remote-agent errors.
+- [x] (2026-06-23 01:16 +0800) Re-ran the live smoke after fixes. The controller claimed the displayed pairing code, connected to `/ws/controller`, sent `host/hello` through a relay envelope, and received a remote-agent `rpc.response` from the real `agentd` process through the Go relay.
+- [x] (2026-06-23 01:16 +0800) Re-ran final validation: Go `gofmt`, `go mod tidy`, `go vet`, `go test`, `go test -race`, relay protocol typecheck/test, agentd typecheck/test, server remote-runtime-hosts test, and server typecheck all pass.
+- [x] (2026-06-23 01:44 +0800) Reworked Cradle Server relay signing from env-only to Cradle-managed secret storage: when no explicit relay HMAC env override is set, Server now creates `system:remote-relay-hmac:v1` as an encrypted `agent_credentials` row and hides system-owned secrets from the public `/secrets` list.
 
 ## Surprises & Discoveries
 
@@ -35,6 +44,30 @@ After this plan is implemented, a developer can start a Go relay service, start 
 
 - Observation: The current daemon plan keeps server projection ownership local, which is exactly the right boundary for relay.
   Evidence: `docs/exec-plans/20260622-01-remote-agent-daemon.md` says `apps/server` owns local DB, sessions, messages, runs, queue, projections, SSH lifecycle, and daemon client; `apps/agentd` owns remote live agents, runtime processes, PTYs, and workspace discovery.
+
+- Observation: The `ws` package type shape differs under this repository's TypeScript bundler resolution from the Node runtime shape needed by `apps/agentd`.
+  Evidence: `apps/agentd/src/relay-client.ts` isolates the cast to a narrow local `RelayWebSocket` interface so the rest of the relay client can stay typed without importing browser-shaped WebSocket APIs.
+
+- Observation: Waiting for WebSocket `open` before binding the agentd relay message handler can drop an immediate first envelope from a fast relay peer.
+  Evidence: `pnpm --filter @cradle/agentd test` first timed out in `src/relay-client.test.ts`; after moving handler registration before awaiting `open`, the same command passed with 3 tests.
+
+- Observation: Cradle Server needs the room id before it can mint the final controller WebSocket token, but the relay must still make pairing claim one-time.
+  Evidence: `apps/relayd/internal/httpapi/server.go` treats `/pairing/claim` without `controllerToken` as a non-consuming discovery preflight and consumes the code only when a validated `controllerToken` is supplied.
+
+- Observation: Applying the Go security and safety skills turned up two hardening fixes after the first implementation already passed tests.
+  Evidence: `apps/relayd/internal/pairing/store.go` now compares pairing code hashes with `crypto/subtle.ConstantTimeCompare` and generates codes from an alphabet without `I`, `O`, `0`, or `1`; `apps/relayd/internal/httpapi/server.go` caps JSON bodies with `http.MaxBytesReader`.
+
+- Observation: The relay server projection can be tested without starting a real Go relay process by making a fake relay speak the outer relay envelope and the existing fake daemon speak the inner remote-agent protocol.
+  Evidence: `apps/server/tests/remote-runtime-hosts.test.ts` now includes `streams remote-mock output through relay transport projection`, and `pnpm --filter @cradle/server exec vitest run tests/remote-runtime-hosts.test.ts` passed with 8 tests.
+
+- Observation: A live relay process exposed a heartbeat bug not covered by the first fake-relay tests.
+  Evidence: The first real process smoke connected `agentd relay`, printed a pairing code, and successfully claimed the code, but the controller timed out waiting for `host/hello`. `relayd` logged that the host WebSocket closed with `heartbeat timeout` before the controller connected. The fix updates `lastSeenUnix` after successful `Ping`.
+
+- Observation: Heartbeat pings and data envelope writes must be serialized per WebSocket connection.
+  Evidence: A new Go regression test, `TestWebSocketHeartbeatKeepsIdleConnectionOpen`, initially failed with EOF while pings and forwarded data could overlap. Adding `connState.writeMu` around both `conn.Write` and `conn.Ping` made the test pass and `go test -race ./...` stayed clean.
+
+- Observation: Relay control envelopes are not daemon frames and must not be fed into `packages/remote-agent-protocol`.
+  Evidence: After the first successful smoke, closing the controller caused relay to send `relay_peer_closed` to agentd. Agentd parsed it as a daemon frame failure and wrote an invalid-frame response back to relay, producing a `peer not connected` relay log. `apps/agentd/src/relay-client.ts` now ignores non-`remote_agent_frame` envelopes on the host side.
 
 ## Decision Log
 
@@ -82,9 +115,45 @@ After this plan is implemented, a developer can start a Go relay service, start 
   Rationale: Relay is public network infrastructure. A slow controller or host must not consume unbounded memory. Each connection has a fixed envelope count and byte budget; when the writer queue is full, relay records a slow-consumer metric, sends a close reason when possible, and closes the connection.
   Date/Author: 2026-06-23 / Codex
 
+- Decision: Keep Cradle Server as the relay token issuer in the first implementation; relay validates tokens but does not mint user/session credentials.
+  Rationale: Cradle Server owns user auth, host registry rows, and session projection. Letting relay mint durable credentials would blur ownership and force relay to understand Cradle users. Server-managed HMAC signing material is encrypted in Cradle DB for the bundled/local path, while explicit env overrides remain available for development or external relay deployments. The Go service accepts HMAC tokens now through a validator interface that can later be backed by Ed25519 verification or another server-issued token format.
+  Date/Author: 2026-06-23 / Codex
+
+- Decision: Make `/pairing/claim` support a non-consuming room discovery preflight when `controllerToken` is omitted, and consume the pairing only when a valid `controllerToken` is supplied.
+  Rationale: Cradle Server needs the room id before it can mint a room-scoped controller WebSocket token. Consuming the code before that token exists creates a two-phase failure window. The preflight returns only room metadata; the second call validates and stores the controller token and marks the code claimed.
+  Date/Author: 2026-06-23 / Codex
+
+- Decision: Use `seq: 0` for relay-generated control envelopes such as `relay_peer_closed`.
+  Rationale: Client and daemon request sequencing belongs to the endpoint roles. Relay-generated control messages are transport events, not daemon frames, so `seq: 0` keeps them in a separate namespace without forcing relay to allocate role-specific daemon sequence numbers.
+  Date/Author: 2026-06-23 / Codex
+
+- Decision: Register agentd relay message handlers before awaiting WebSocket `open`.
+  Rationale: A relay or fake relay can send the first envelope immediately after accepting the WebSocket. Binding handlers only after `open` resolves can drop that frame in Node's event emitter path. The revised client constructs the connection, binds handlers, then awaits the open promise.
+  Date/Author: 2026-06-23 / Codex
+
+- Decision: Treat pairing codes as short-lived secrets for comparison and display.
+  Rationale: Even though pairing codes expire quickly, they authorize connecting a host to a controller. The store now hashes codes with a process key and per-code salt, compares hashes in constant time, and generates display codes from a 32-character alphabet that avoids common transcription mistakes.
+  Date/Author: 2026-06-23 / Codex
+
+- Decision: A successful WebSocket ping/pong refreshes relay connection activity.
+  Rationale: Idle timeout should close dead connections, not healthy connections with no data frames. The relay now treats a successful `Ping` call as proof of peer activity by updating `lastSeenUnix`, matching the plan's acceptance rule that active ping/pong traffic keeps a connection open.
+  Date/Author: 2026-06-23 / Codex
+
+- Decision: Serialize WebSocket data writes and heartbeat pings with a per-connection mutex.
+  Rationale: The relay has one reader loop, one writer loop, and one heartbeat loop per connection. Data writes and pings both write to the WebSocket. Serializing them avoids write interleaving and satisfies the Go safety requirement to protect shared connection state accessed by multiple goroutines.
+  Date/Author: 2026-06-23 / Codex
+
+- Decision: Agentd relay host ignores relay control envelopes instead of converting them into daemon protocol errors.
+  Rationale: `relay_peer_closed` and `relay_error` describe transport state. They are not `@cradle/remote-agent-protocol` frames and should not be sent back as `protocol/error` daemon notifications, especially when the peer has already disconnected.
+  Date/Author: 2026-06-23 / Codex
+
 ## Outcomes & Retrospective
 
-No implementation has been completed yet. The expected outcome is a small Go relay service plus TypeScript integration paths that make relay an alternate transport for the existing remote-agent protocol without changing Cradle's session, run, workspace, or provider ownership boundaries.
+The first relay implementation is complete for development validation. `apps/relayd` is a standalone Go 1.25 service that owns pairing, short-lived room state, WSS host/controller routing, heartbeat, bounded outbound queues, envelope validation, metrics, and optional pprof. `packages/remote-relay-protocol` owns the TypeScript envelope contract and fixtures. `apps/agentd` can run as a relay host client, print the displayed pairing code, and reuse the same `AgentdDaemon` method dispatch as the Unix-socket transport. `apps/server/src/modules/remote-runtime-hosts` can mint relay tokens, claim a pairing, store relay transport config, connect as a relay controller, and drive a remote mock chat turn through the normal Chat Runtime projection path.
+
+The strongest automated acceptance proof is `apps/server/tests/remote-runtime-hosts.test.ts`. It now includes both the original local fake-daemon chat projection test and a relay-specific fake WebSocket relay test. The relay test sends Cradle Server daemon requests inside relay envelopes, has the fake relay respond with remote-agent protocol frames inside relay envelopes, and verifies that the assistant message is persisted with `Remote mock response: Ping relay daemon`.
+
+The live process smoke now proves the real Go relay and real agentd relay client work together across HTTP pairing, WebSocket host/controller routing, displayed pairing code claim, and a `host/hello` daemon round trip. The automated server test proves Cradle Server's relay transport and Chat Runtime projection. Remaining production work is outside this first implementation: TLS/load-balancer deployment, process supervision, UI for entering the pairing code, production key rotation, and multi-instance Redis/sticky-routing behavior.
 
 ## Context and Orientation
 
@@ -228,7 +297,7 @@ Tenth validate end to end. Start `apps/relayd` locally, start `apps/agentd` in r
 
 17. Add Go tests. Unit tests cover token validation, pairing TTL and one-time claim, room duplicate role rejection, room routing, room mismatch rejection, malformed envelope rejection, heartbeat or idle close, and slow consumer close. Integration tests can use `httptest.Server` with WebSocket clients from `github.com/coder/websocket`. Use `t.Context()` for test contexts, table tests with initialized slices/maps, and assertions that check returned errors instead of panics. Run race tests because room maps and connection maps are shared across goroutines.
 
-18. Add TypeScript server token minting. Under `apps/server/src/modules/remote-runtime-hosts`, add a relay token service that can mint short-lived tokens for pairing start, pairing claim, host role, and controller role. For development HMAC tokens, load the signing secret from a Cradle server environment variable. The token shape and expiry must match relay validation. Production key rotation can be a later milestone, but the interface should not bake in only HMAC.
+18. Add TypeScript server token minting. Under `apps/server/src/modules/remote-runtime-hosts`, add a relay token service that can mint short-lived tokens for pairing start, pairing claim, host role, and controller role. It should prefer an explicit relay HMAC environment override for development or external deployments, but the normal Cradle path must use an encrypted, server-owned signing secret in Cradle DB so users do not manage relay signing material. The token shape and expiry must match relay validation. Production key rotation can be a later milestone, but the interface should not bake in only HMAC.
 
 19. Add server relay transport. Extend the remote runtime host connection config with a transport discriminator such as `{ type: 'relay', relayUrl, roomId?, pairedAt? }` alongside existing SSH/local socket config. Implement a daemon client transport that sends and receives existing `@cradle/remote-agent-protocol` frames by wrapping them in relay envelopes. Its public interface should match the existing daemon client: unary call, stream call, close, and connection status.
 
@@ -247,22 +316,24 @@ Tenth validate end to end. Start `apps/relayd` locally, start `apps/agentd` in r
         go test -race ./...
         cd ../..
         pnpm --filter @cradle/remote-relay-protocol exec tsc --noEmit --pretty false
+        pnpm --filter @cradle/remote-relay-protocol test
         pnpm --filter @cradle/agentd exec tsc --noEmit --pretty false
+        pnpm --filter @cradle/agentd test
         pnpm --filter @cradle/server exec vitest run tests/remote-runtime-hosts.test.ts
         pnpm --filter @cradle/server exec tsc --noEmit --pretty false
 
-   The Go commands are run from `apps/relayd` because the first version is a standalone Go module. If a later plan adds a root `go.work`, update this section with the new root-level commands.
+   The Go commands are run from `apps/relayd` because the first version is a standalone Go module. If a later plan adds a root `go.work`, update this section with the new root-level commands. As of 2026-06-23 01:00 +0800, the expected test counts are: relay protocol 4 tests passed, agentd 3 tests passed, and server `remote-runtime-hosts.test.ts` 8 tests passed.
 
 23. Perform a manual smoke. Start relay locally:
 
         cd /Users/wibus/dev/Cradle/apps/relayd
-        go run ./cmd/relayd --listen 127.0.0.1:8787 --dev-hmac-secret local-dev-secret
+        go run ./cmd/relayd --listen 127.0.0.1:8787
 
-   Start agentd in relay mode from another terminal with a development pairing token. Claim the displayed pairing code through a Cradle Server route or a small test CLI. Expected observation: relay logs one room with host and controller connected, Cradle Server receives `host/hello`, and a remote mock chat turn persists an assistant message through the normal Chat Runtime flow.
+   Start agentd in relay mode from another terminal with a development pairing token. Claim the displayed pairing code through a Cradle Server route or a small test CLI. Expected observation: relay logs one room with host and controller connected, the controller receives `host/hello`, and the automated Cradle Server relay transport test proves a remote mock chat turn persists an assistant message through the normal Chat Runtime flow. As of 2026-06-23 01:16 +0800, this live relay/agentd smoke has passed with a small controller CLI, and the server projection is covered by `apps/server/tests/remote-runtime-hosts.test.ts`.
 
 ## Validation and Acceptance
 
-The relay service is acceptable when it can be started independently with `go run ./cmd/relayd`, answers `/healthz` with HTTP 200 body `ok`, exposes `/readyz`, and shuts down cleanly on SIGINT or SIGTERM without leaking goroutines in tests.
+The relay service is acceptable when it can be started independently with `go run ./cmd/relayd` without local secret configuration, answers `/healthz` with HTTP 200 body `ok`, exposes `/readyz`, and shuts down cleanly on SIGINT or SIGTERM without leaking goroutines in tests.
 
 The Go implementation is acceptable when it follows the Go skills constraints used for this plan: `gofmt` produces no diff, `go vet ./...` passes, `go test -race ./...` passes, every returned error is checked or intentionally handled, errors are wrapped with context and lowercase messages, expected failures return errors rather than panics, maps and slices exposed in JSON responses are initialized rather than nil, exported accessors return defensive copies for mutable slices/maps, and slow or external operations are bounded by context deadlines or explicit timeouts.
 
@@ -295,6 +366,44 @@ If the first deployment needs more than one relay instance, use sticky sessions 
 If direct browser-to-relay control is required later, add a separate design pass. The first version keeps controller connections in Cradle Server so user auth, tokens, and chat projection stay server-owned.
 
 ## Artifacts and Notes
+
+Validation evidence from 2026-06-23 01:16 +0800:
+
+        cd /Users/wibus/dev/Cradle/apps/relayd
+        gofmt -w .
+        go mod tidy
+        go vet ./...
+        go test ./...
+        go test -race ./...
+
+   Result: `go vet` exited 0; `go test` and `go test -race` passed for `internal/httpapi`, `internal/pairing`, `internal/relay`, and `internal/token`. `internal/httpapi` includes `TestWebSocketHeartbeatKeepsIdleConnectionOpen`, which proves ping/pong activity keeps an otherwise idle connection open and that pings/data writes are serialized safely.
+
+        cd /Users/wibus/dev/Cradle
+        pnpm --filter @cradle/remote-relay-protocol exec tsc --noEmit --pretty false
+        pnpm --filter @cradle/remote-relay-protocol test
+        pnpm --filter @cradle/agentd exec tsc --noEmit --pretty false
+        pnpm --filter @cradle/agentd test
+        pnpm --filter @cradle/server exec vitest run tests/remote-runtime-hosts.test.ts
+        pnpm --filter @cradle/server exec tsc --noEmit --pretty false
+
+   Result: relay protocol tests passed with 4 tests, agentd tests passed with 3 tests, server remote-runtime-hosts tests passed with 8 tests, and both server and package typechecks exited 0. The server test command prints plugin activation logs during app startup; those logs are expected and do not indicate a relay failure.
+
+Live relay/agentd smoke evidence from 2026-06-23 01:16 +0800:
+
+        go run ./cmd/relayd --listen 127.0.0.1:18789 --public-url http://127.0.0.1:18789 --dev-hmac-secret relay-smoke-secret --heartbeat-interval 1s --idle-timeout 5s
+        pnpm --filter @cradle/agentd exec tsx src/main.ts relay --relay-url http://127.0.0.1:18789 --room-id room_smoke_... --pairing-token ... --host-token ...
+
+   The controller CLI used the printed pairing code to call `/pairing/claim`, connected to `/ws/controller`, sent a relay envelope containing a remote-agent `host/hello` request, and received:
+
+        claim 200 {"roomId":"room_smoke_e36e5b6d-6f90-4b90-880a-bc98a5cf4fd3", ...}
+        host hello daemonVersion=0.1.0 protocolVersion=1 methods=14
+
+   Agentd printed:
+
+        [agentd] relay pairing code Z2GX-3XQ6 expires at 2026-06-23T01:20:18.106847+08:00
+        [agentd] relay host connected for room room_smoke_e36e5b6d-6f90-4b90-880a-bc98a5cf4fd3
+
+   Relay printed startup and a normal controller close after the controller CLI finished. It did not close the host for heartbeat timeout and did not log a host-side `peer not connected` error after the agentd relay control-envelope fix.
 
 The intended ownership after this plan is:
 
@@ -378,12 +487,14 @@ Core Go interfaces:
 
         type PairingStore interface {
             Start(ctx context.Context, input pairing.StartInput) (pairing.Record, error)
-            Claim(ctx context.Context, code string, claimer token.Claims) (pairing.ClaimedRecord, error)
+            FindPending(ctx context.Context, code string) (pairing.Record, error)
+            Claim(ctx context.Context, input pairing.ClaimInput) (pairing.Record, error)
             Expire(ctx context.Context, now time.Time) int
         }
 
         type Hub interface {
-            Register(ctx context.Context, role relay.Role, claims token.Claims, conn *websocket.Conn) error
+            CreateRoom(ctx context.Context, roomID string, expiresAt time.Time) error
+            HandleConnection(ctx context.Context, role token.Role, claims token.Claims, conn *websocket.Conn) error
             CloseRoom(ctx context.Context, roomID string, reason string) error
         }
 
@@ -400,17 +511,25 @@ Core Go interfaces:
 TypeScript additions:
 
         packages/remote-relay-protocol/src/index.ts
-          exports RelayEnvelopeSchema, RelayEnvelope, RelayEnvelopeKind
+          exports REMOTE_RELAY_PROTOCOL_VERSION, relayEnvelopeSchema, RelayEnvelope,
+          RelayEnvelopeKind, RelayRole, parseRelayEnvelope, encodeRelayEnvelope,
+          relayPeerClosedPayloadSchema, and relayErrorPayloadSchema
 
         apps/server/src/modules/remote-runtime-hosts/relay-token-service.ts
-          mints short-lived relay tokens
+          exports createRelayRoomId() and mintRelayToken(input)
 
         apps/server/src/modules/remote-runtime-hosts/relay-transport.ts
-          implements daemon client transport over relay envelopes
+          exports createRelayRemoteAgentDaemonClient(options), implementing daemon
+          client transport over relay envelopes
 
         apps/agentd/src/relay-client.ts
-          connects to relay as host and dispatches payload frames through AgentdDaemon
+          exports startAgentdRelayClient(options), connects to relay as host, and
+          dispatches payload frames through AgentdDaemon
 
 Revision note 2026-06-23: Initial relay plan created after deciding that public WSS pairing should be a separate Go network service rather than part of the TypeScript daemon proof.
 
 Revision note 2026-06-23: Updated after Go skills review and local toolchain confirmation (`go version go1.25.8 darwin/arm64`); changed the planned module directive to `go 1.25` and added explicit Go style, safety, modernization, vet, gofmt, and race-test requirements.
+
+Revision note 2026-06-23: Updated after implementation. Recorded the completed Go relay service, shared relay protocol package, agentd relay host client, Cradle Server relay controller/token path, automated fake-relay Chat Runtime acceptance test, Go skills hardening changes, and validation results.
+
+Revision note 2026-06-23: Updated after live process smoke. Recorded and fixed the heartbeat activity bug, serialized WebSocket writes/pings, made agentd ignore relay control envelopes, added a heartbeat regression test, recorded the successful live relayd plus agentd relay `host/hello` smoke, and refreshed final validation evidence.
