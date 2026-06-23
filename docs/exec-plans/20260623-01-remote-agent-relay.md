@@ -33,6 +33,8 @@ After this plan is implemented, a developer can start a Go relay service, start 
 - [x] (2026-06-23 01:16 +0800) Re-ran the live smoke after fixes. The controller claimed the displayed pairing code, connected to `/ws/controller`, sent `host/hello` through a relay envelope, and received a remote-agent `rpc.response` from the real `agentd` process through the Go relay.
 - [x] (2026-06-23 01:16 +0800) Re-ran final validation: Go `gofmt`, `go mod tidy`, `go vet`, `go test`, `go test -race`, relay protocol typecheck/test, agentd typecheck/test, server remote-runtime-hosts test, and server typecheck all pass.
 - [x] (2026-06-23 01:44 +0800) Reworked Cradle Server relay signing from env-only to Cradle-managed secret storage: when no explicit relay HMAC env override is set, Server now creates `system:remote-relay-hmac:v1` as an encrypted `agent_credentials` row and hides system-owned secrets from the public `/secrets` list.
+- [x] (2026-06-23 02:20 +0800) Corrected the remote workspace ownership boundary. `workspace/list` remains only a legacy suggestion endpoint. New remote host capabilities are `fs/listDirectory`, `fs/stat`, and `git/probeRepository`, with Cradle Server exposing HTTP routes and generated web clients for remote directory browsing and repository probing.
+- [ ] Add a durable remote project/workspace projection schema and registration route. The existing `/workspaces` table and file APIs are local-path based and must not be reused for remote paths without a transport-aware schema change.
 
 ## Surprises & Discoveries
 
@@ -43,7 +45,7 @@ After this plan is implemented, a developer can start a Go relay service, start 
   Evidence: `apps/agentd/src/daemon.ts` exposes `AgentdDaemon.handleUnary()` and `AgentdDaemon.handleStream()` for remote-agent protocol methods, while `apps/agentd/src/server.ts` is only the Unix-socket WebSocket transport wrapper.
 
 - Observation: The current daemon plan keeps server projection ownership local, which is exactly the right boundary for relay.
-  Evidence: `docs/exec-plans/20260622-01-remote-agent-daemon.md` says `apps/server` owns local DB, sessions, messages, runs, queue, projections, SSH lifecycle, and daemon client; `apps/agentd` owns remote live agents, runtime processes, PTYs, and workspace discovery.
+  Evidence: `docs/exec-plans/20260622-01-remote-agent-daemon.md` says `apps/server` owns local DB, sessions, messages, runs, queue, projections, SSH lifecycle, and daemon client. The relay work preserves that boundary and narrows `apps/agentd` to remote live agents, runtime processes, PTYs, and primitive host capabilities.
 
 - Observation: The `ws` package type shape differs under this repository's TypeScript bundler resolution from the Node runtime shape needed by `apps/agentd`.
   Evidence: `apps/agentd/src/relay-client.ts` isolates the cast to a narrow local `RelayWebSocket` interface so the rest of the relay client can stay typed without importing browser-shaped WebSocket APIs.
@@ -68,6 +70,12 @@ After this plan is implemented, a developer can start a Go relay service, start 
 
 - Observation: Relay control envelopes are not daemon frames and must not be fed into `packages/remote-agent-protocol`.
   Evidence: After the first successful smoke, closing the controller caused relay to send `relay_peer_closed` to agentd. Agentd parsed it as a daemon frame failure and wrote an invalid-frame response back to relay, producing a `peer not connected` relay log. `apps/agentd/src/relay-client.ts` now ignores non-`remote_agent_frame` envelopes on the host side.
+
+- Observation: Having the daemon advertise workspaces with `workspace/list` makes the remote daemon look like the owner of Cradle projects, which is the wrong product model.
+  Evidence: The new implementation adds lower-level `fs/listDirectory`, `fs/stat`, and `git/probeRepository` methods in `packages/remote-agent-protocol/src/methods.ts`; implements them in `apps/agentd/src/filesystem.ts`; exposes them through `apps/server/src/modules/remote-runtime-hosts/index.ts`; and keeps `/remote-runtime-hosts/:hostId/workspaces` labeled as legacy suggestions.
+
+- Observation: The existing `workspaces` table is a local filesystem workspace model, not a remote project projection model.
+  Evidence: `packages/db/src/schema/shared.ts` defines `workspaces.path` as a unique local path string, and `apps/server/src/modules/workspace/service.ts` resolves, reads, watches, and writes files by using that path directly on the Cradle Server machine. Saving `/home/user/project` from a remote host into this table would make later workspace file APIs try to read `/home/user/project` locally.
 
 ## Decision Log
 
@@ -147,6 +155,14 @@ After this plan is implemented, a developer can start a Go relay service, start 
   Rationale: `relay_peer_closed` and `relay_error` describe transport state. They are not `@cradle/remote-agent-protocol` frames and should not be sent back as `protocol/error` daemon notifications, especially when the peer has already disconnected.
   Date/Author: 2026-06-23 / Codex
 
+- Decision: Cradle owns remote workspace projection; remote daemon methods expose primitive filesystem and git capabilities instead of authoritative workspace entities.
+  Rationale: A remote connection is a transport, and a remote host provides raw capabilities such as listing directories, reading file metadata, probing whether a path is inside a git repository, executing controlled probes, and starting provider runtimes. A Cradle workspace is local application state composed from `hostId`, `remotePath`, repository identity, display name, and saved project configuration. Treating `workspace/list` as authoritative would require users to preconfigure `CRADLE_AGENTD_WORKSPACE_ROOTS` before Cradle can discover a project and would blur daemon state with Cradle's project registry. The UI should connect to a host, browse/select a remote directory, probe git identity, and then register a Cradle-owned remote project. `workspace/list` stays only as a backward-compatible suggestion endpoint until callers are migrated.
+  Date/Author: 2026-06-23 / Codex
+
+- Decision: Do not store remote paths in the existing local `workspaces.path` column as a shortcut.
+  Rationale: That table is coupled to local file access, file watch, and workspace write APIs. A remote project needs an explicit transport-aware projection, either as a new remote project table keyed by `hostId + remotePath` or as a future workspace schema extension with a transport discriminator. Until that exists, the implemented server surface should stop at browsing and probing remote paths.
+  Date/Author: 2026-06-23 / Codex
+
 ## Outcomes & Retrospective
 
 The first relay implementation is complete for development validation. `apps/relayd` is a standalone Go 1.25 service that owns pairing, short-lived room state, WSS host/controller routing, heartbeat, bounded outbound queues, envelope validation, metrics, and optional pprof. `packages/remote-relay-protocol` owns the TypeScript envelope contract and fixtures. `apps/agentd` can run as a relay host client, print the displayed pairing code, and reuse the same `AgentdDaemon` method dispatch as the Unix-socket transport. `apps/server/src/modules/remote-runtime-hosts` can mint relay tokens, claim a pairing, store relay transport config, connect as a relay controller, and drive a remote mock chat turn through the normal Chat Runtime projection path.
@@ -155,13 +171,15 @@ The strongest automated acceptance proof is `apps/server/tests/remote-runtime-ho
 
 The live process smoke now proves the real Go relay and real agentd relay client work together across HTTP pairing, WebSocket host/controller routing, displayed pairing code claim, and a `host/hello` daemon round trip. The automated server test proves Cradle Server's relay transport and Chat Runtime projection. Remaining production work is outside this first implementation: TLS/load-balancer deployment, process supervision, UI for entering the pairing code, production key rotation, and multi-instance Redis/sticky-routing behavior.
 
+The remote project selection boundary has also been corrected. The daemon no longer needs to declare the user's projects before Cradle can see them. New code can browse the remote filesystem through Cradle Server and probe a selected path for git metadata. Existing `workspace/list` support remains for compatibility but should not drive new UI. Durable registration of the chosen path remains a separate schema/API step because the existing `/workspaces` model assumes local filesystem paths.
+
 ## Context and Orientation
 
 Cradle is a TypeScript monorepo rooted at `/Users/wibus/dev/Cradle`. The local Cradle Server app lives in `apps/server`. The remote daemon app lives in `apps/agentd`. Shared daemon wire protocol types live in `packages/remote-agent-protocol`. The daemon proof in `docs/exec-plans/20260622-01-remote-agent-daemon.md` added a local Unix-socket WebSocket server in `apps/agentd/src/server.ts` and server-side remote host code in `apps/server/src/modules/remote-runtime-hosts`.
 
 In this plan, relay means a public internet-facing service that accepts WSS connections from two roles: a host and a controller. The host is `cradle-agentd` running on the remote machine. The controller is Cradle Server, which has authenticated the user and owns the local chat/session projection. A room is a short-lived relay routing namespace. First version rooms contain exactly one host connection and one controller connection. An envelope is the outer JSON object relay understands enough to route and apply limits. The payload inside the envelope is opaque JSON, normally an encoded `@cradle/remote-agent-protocol` frame.
 
-Cradle Server owns user authentication, host registry rows, chat sessions, run rows, message persistence, UI projection, and relay token minting. The relay does not own users or Cradle DB state. The relay only validates that a token was minted by Cradle Server and has claims that permit the requested role and room. `apps/agentd` owns remote runtime processes, remote workspace discovery, remote credentials, daemon PTYs, and native provider sessions. If SSH is available, the existing SSH/Unix-socket transport remains valid; relay is an additional transport.
+Cradle Server owns user authentication, host registry rows, chat sessions, run rows, message persistence, UI projection, Cradle workspace projection, and relay token minting. The relay does not own users or Cradle DB state. The relay only validates that a token was minted by Cradle Server and has claims that permit the requested role and room. `apps/agentd` owns remote runtime processes, remote credentials, daemon PTYs, native provider sessions, and primitive host capabilities such as filesystem listing and git repository probing. If SSH is available, the existing SSH/Unix-socket transport remains valid; relay is an additional transport.
 
 The repository guidance in `AGENTS.md` emphasizes ownership and namespace. Applying that here: `apps/relayd` owns relay transport state and observability; `apps/server/src/modules/remote-runtime-hosts` owns server-side remote host configuration and relay token minting; `apps/agentd` owns host-side relay connection behavior; `packages/remote-agent-protocol` owns daemon RPC payloads; a new shared relay envelope package owns TypeScript envelope types and fixtures used by Go tests.
 
@@ -198,6 +216,8 @@ Eighth integrate Cradle Server. Add relay transport fields to the remote host re
 Ninth integrate `apps/agentd`. Add an outbound relay client mode, for example `cradle-agentd relay --relay-url wss://... --pairing-token ...`. This mode reuses `AgentdDaemon` dispatch from `apps/agentd/src/daemon.ts` instead of duplicating daemon logic. It connects as host, unwraps relay envelopes, parses the inner remote-agent protocol frame with `packages/remote-agent-protocol`, calls `handleUnary()` or `handleStream()`, and wraps responses/stream events back into relay envelopes. The existing Unix-socket server mode remains available for SSH and local smoke tests.
 
 Tenth validate end to end. Start `apps/relayd` locally, start `apps/agentd` in relay mode, claim the pairing from Cradle Server or a focused test harness, and run the existing remote mock chat runtime through the normal `/chat/sessions/:sessionId/response` flow. The acceptance proof is not merely that sockets connect; it must show a user message goes through Cradle Server, through relay envelopes, into `AgentdDaemon.handleStream('agent/turn')`, and back into persisted Cradle assistant messages.
+
+Eleventh correct remote project selection. Do not make the relay or daemon the source of truth for workspaces. Add primitive daemon methods for remote filesystem listing, path stat, and git repository probing. Expose them through Cradle Server so the UI can browse a connected host before a later transport-aware registration schema persists the selected remote path as Cradle-owned application state. Keep `workspace/list` for compatibility only, label it as legacy in API descriptions, and avoid depending on `CRADLE_AGENTD_WORKSPACE_ROOTS` for new project selection UI.
 
 ## Concrete Steps
 
@@ -305,7 +325,15 @@ Tenth validate end to end. Start `apps/relayd` locally, start `apps/agentd` in r
 
 21. Add focused server tests. Use a local relay test server or a fake relay transport to prove the server can claim a pairing, connect as controller, send a daemon `host/hello`, list runtimes, start a mock remote agent, and run a mock `agent/turn` through the normal Chat Runtime response path. The test should assert a `remote_runtime_session_links` row still owns remote host identity and the assistant message contains text derived from the user input.
 
-22. Run validation from the repository root:
+22. Add remote filesystem and git probe methods. In `packages/remote-agent-protocol/src/methods.ts`, add unary methods `fs/listDirectory`, `fs/stat`, and `git/probeRepository`. In `apps/agentd/src/filesystem.ts`, implement those methods without requiring `CRADLE_AGENTD_WORKSPACE_ROOTS`; use Node filesystem APIs for listing and stat, and run git probes through controlled `execFile` calls rather than arbitrary shell commands. In `apps/server/src/modules/remote-runtime-hosts/service.ts` and `index.ts`, expose HTTP routes:
+
+        GET /remote-runtime-hosts/:hostId/fs/directory?path=...
+        GET /remote-runtime-hosts/:hostId/fs/stat?path=...
+        GET /remote-runtime-hosts/:hostId/git/repository?path=...
+
+   The web client generator should then expose query helpers named `getRemoteRuntimeHostsByHostIdFsDirectoryOptions`, `getRemoteRuntimeHostsByHostIdFsStatOptions`, and `getRemoteRuntimeHostsByHostIdGitRepositoryOptions`.
+
+23. Run validation from the repository root:
 
         cd /Users/wibus/dev/Cradle
         cd apps/relayd
@@ -322,9 +350,9 @@ Tenth validate end to end. Start `apps/relayd` locally, start `apps/agentd` in r
         pnpm --filter @cradle/server exec vitest run tests/remote-runtime-hosts.test.ts
         pnpm --filter @cradle/server exec tsc --noEmit --pretty false
 
-   The Go commands are run from `apps/relayd` because the first version is a standalone Go module. If a later plan adds a root `go.work`, update this section with the new root-level commands. As of 2026-06-23 01:00 +0800, the expected test counts are: relay protocol 4 tests passed, agentd 3 tests passed, and server `remote-runtime-hosts.test.ts` 8 tests passed.
+   The Go commands are run from `apps/relayd` because the first version is a standalone Go module. If a later plan adds a root `go.work`, update this section with the new root-level commands. As of 2026-06-23 02:20 +0800, the expected test counts are: relay protocol 6 tests passed, agentd 5 tests passed, and server `remote-runtime-hosts.test.ts` 11 tests passed.
 
-23. Perform a manual smoke. Start relay locally:
+24. Perform a manual smoke. Start relay locally:
 
         cd /Users/wibus/dev/Cradle/apps/relayd
         go run ./cmd/relayd --listen 127.0.0.1:8787
@@ -348,6 +376,8 @@ Heartbeat is acceptable when idle connections close after the configured timeout
 Security is acceptable when relay validates all tokens, token comparisons are constant-time where applicable, pair codes are generated with `crypto/rand`, tokens and payloads are redacted from logs, frame size limits are enforced before forwarding, and pprof is disabled unless explicitly enabled.
 
 Cradle integration is acceptable when relay is an alternate transport under `remote-runtime-hosts`, not a provider target namespace. Creating or pairing a relay host must not write `providerTargets`. Chat Runtime provider code should call the same daemon client abstraction whether the host uses SSH/local socket or relay.
+
+Remote project selection browsing is acceptable when a connected host can be browsed through Cradle Server without any `CRADLE_AGENTD_WORKSPACE_ROOTS` configuration and a selected path can be probed for git metadata. Durable project registration remains incomplete until a transport-aware schema exists; the eventual record should be created by Cradle from `hostId`, `remotePath`, repository identity, display name, and saved project config. New UI must not treat daemon `workspace/list` output as authoritative.
 
 End-to-end acceptance is a mock remote chat turn through relay. A user message sent through the existing Chat Runtime response path is wrapped by Cradle Server into a remote-agent protocol frame, wrapped into a relay envelope, forwarded by relay to agentd, handled by `AgentdDaemon.handleStream('agent/turn')`, returned through relay, and persisted as an assistant message visible through existing chat hydration. Relay itself must not persist the transcript.
 
@@ -388,6 +418,19 @@ Validation evidence from 2026-06-23 01:16 +0800:
 
    Result: relay protocol tests passed with 4 tests, agentd tests passed with 3 tests, server remote-runtime-hosts tests passed with 8 tests, and both server and package typechecks exited 0. The server test command prints plugin activation logs during app startup; those logs are expected and do not indicate a relay failure.
 
+Remote filesystem and git probe validation evidence from 2026-06-23 02:20 +0800:
+
+        pnpm --filter @cradle/remote-agent-protocol typecheck
+        pnpm --filter @cradle/remote-agent-protocol test
+        pnpm --filter @cradle/agentd typecheck
+        pnpm --filter @cradle/agentd test
+        pnpm --filter @cradle/server typecheck
+        pnpm --filter @cradle/server exec vitest run tests/remote-runtime-hosts.test.ts
+        pnpm --filter @cradle/web generate
+        pnpm --filter @cradle/web typecheck
+
+   Result: remote-agent protocol tests passed with the new `fs/listDirectory` frame parse test; agentd tests passed including directory listing/stat without workspace roots and git probing from a nested path; server remote-runtime-hosts tests passed with the new HTTP endpoints exercised by a fake daemon; web API generation produced query helpers for the new endpoints; and web typecheck exited 0.
+
 Live relay/agentd smoke evidence from 2026-06-23 01:16 +0800:
 
         go run ./cmd/relayd --listen 127.0.0.1:18789 --public-url http://127.0.0.1:18789 --dev-hmac-secret relay-smoke-secret --heartbeat-interval 1s --idle-timeout 5s
@@ -413,7 +456,7 @@ The intended ownership after this plan is:
           wraps existing remote-agent protocol frames into relay envelopes
 
         apps/agentd
-          owns remote runtime processes, workspaces, credentials, PTYs
+          owns remote runtime processes, credentials, PTYs, filesystem primitives, git probes
           connects to relay as host when SSH is unavailable
           reuses AgentdDaemon dispatch for relay and Unix-socket transports
 
@@ -425,6 +468,7 @@ The intended ownership after this plan is:
         packages/remote-agent-protocol
           owns daemon JSON-RPC method frames such as host/hello and agent/turn
           remains opaque payload to relay
+          includes legacy workspace suggestions plus primitive fs/git methods
 
         packages/remote-relay-protocol
           owns outer relay envelope schemas and JSON fixtures for TS and Go tests
@@ -526,6 +570,24 @@ TypeScript additions:
           exports startAgentdRelayClient(options), connects to relay as host, and
           dispatches payload frames through AgentdDaemon
 
+Remote host primitive capability additions:
+
+        packages/remote-agent-protocol/src/methods.ts
+          includes unary methods `fs/listDirectory`, `fs/stat`, and `git/probeRepository`
+          alongside legacy `workspace/list`
+
+        apps/agentd/src/filesystem.ts
+          exports listDirectory(rawParams), statPath(rawParams), and probeRepository(rawParams)
+
+        apps/server/src/modules/remote-runtime-hosts/service.ts
+          exports listRemoteDirectory(hostId, params), statRemotePath(hostId, params),
+          and probeRemoteRepository(hostId, params)
+
+        apps/server/src/modules/remote-runtime-hosts/index.ts
+          exposes `GET /remote-runtime-hosts/:hostId/fs/directory`,
+          `GET /remote-runtime-hosts/:hostId/fs/stat`, and
+          `GET /remote-runtime-hosts/:hostId/git/repository`
+
 Revision note 2026-06-23: Initial relay plan created after deciding that public WSS pairing should be a separate Go network service rather than part of the TypeScript daemon proof.
 
 Revision note 2026-06-23: Updated after Go skills review and local toolchain confirmation (`go version go1.25.8 darwin/arm64`); changed the planned module directive to `go 1.25` and added explicit Go style, safety, modernization, vet, gofmt, and race-test requirements.
@@ -533,3 +595,5 @@ Revision note 2026-06-23: Updated after Go skills review and local toolchain con
 Revision note 2026-06-23: Updated after implementation. Recorded the completed Go relay service, shared relay protocol package, agentd relay host client, Cradle Server relay controller/token path, automated fake-relay Chat Runtime acceptance test, Go skills hardening changes, and validation results.
 
 Revision note 2026-06-23: Updated after live process smoke. Recorded and fixed the heartbeat activity bug, serialized WebSocket writes/pings, made agentd ignore relay control envelopes, added a heartbeat regression test, recorded the successful live relayd plus agentd relay `host/hello` smoke, and refreshed final validation evidence.
+
+Revision note 2026-06-23: Updated after correcting remote workspace ownership. Recorded that `workspace/list` is legacy only, added primitive filesystem/git daemon capabilities and Cradle Server routes for remote directory browsing, and clarified that Cradle owns workspace projection from selected remote paths.
