@@ -5,11 +5,14 @@ import {
   LoadingLine as Loader2Icon,
 } from '@mingcute/react'
 import { useDeferredValue, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Input } from '~/components/ui/input'
 import { ScrollArea } from '~/components/ui/scroll-area'
 import { useGitBranches, useGitGraph } from '~/features/git/use-git'
 import { cn } from '~/lib/cn'
+
+type DiffReviewKey = keyof typeof import('~/locales/default').default['diff-review']
 
 export interface GitRefPickerProps {
   workspaceId: string
@@ -52,6 +55,7 @@ export function GitRefPicker({
   inputId,
   onKeyDown,
 }: GitRefPickerProps) {
+  const { t } = useTranslation('diff-review')
   const [search, setSearch] = useState('')
   const deferredSearch = useDeferredValue(search.trim().toLowerCase())
 
@@ -137,7 +141,7 @@ export function GitRefPicker({
             ? (
                 <div className="flex items-center justify-center gap-1.5 py-6 text-[11px] text-muted-foreground">
                   <Loader2Icon className="size-3 animate-spin" aria-hidden />
-                  Loading…
+                  {t('gitRefPicker.loading' as DiffReviewKey)}
                 </div>
               )
             : groups.length === 0

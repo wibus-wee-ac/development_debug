@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { Textarea } from '~/components/ui/textarea'
@@ -7,6 +8,8 @@ import { cn } from '~/lib/cn'
 import type { CodeViewLineSelection } from '../shared/diff-items'
 import { formatSelectedReviewRange, getSelectedReviewRange } from '../shared/diff-items'
 import type { ReviewFile } from '../shared/types'
+
+type DiffReviewKey = keyof typeof import('~/locales/default').default['diff-review']
 
 interface ThreadComposerProps {
   selection: CodeViewLineSelection
@@ -25,6 +28,7 @@ export function ThreadComposer({
   onCreate,
   pending,
 }: ThreadComposerProps) {
+  const { t } = useTranslation('diff-review')
   const [draft, setDraft] = useState('')
   const range = getSelectedReviewRange(selection, files, itemIdToPath)
 
@@ -72,7 +76,7 @@ export function ThreadComposer({
               onClose()
             }
           }}
-          placeholder="Add a comment…"
+          placeholder={t('thread.addComment.placeholder' as DiffReviewKey)}
           className={cn(
             'min-h-7 flex-1 resize-none border-0 bg-transparent p-0 text-[13px] shadow-none focus-visible:ring-0',
             'placeholder:text-muted-foreground/60',

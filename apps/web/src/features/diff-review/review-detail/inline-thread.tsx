@@ -1,4 +1,5 @@
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { Textarea } from '~/components/ui/textarea'
@@ -6,6 +7,8 @@ import { cn } from '~/lib/cn'
 
 import { formatTimestamp } from '../shared/diff-items'
 import type { ReviewThread } from '../shared/types'
+
+type DiffReviewKey = keyof typeof import('~/locales/default').default['diff-review']
 
 interface InlineThreadProps {
   thread: ReviewThread
@@ -26,6 +29,7 @@ export function InlineThread({
   onAskAgent,
   onExpandedChange,
 }: InlineThreadProps) {
+  const { t } = useTranslation('diff-review')
   const [expanded, setExpanded] = useState(thread.state !== 'resolved')
   const [draft, setDraft] = useState('')
   const [replying, setReplying] = useState(false)
@@ -103,7 +107,7 @@ export function InlineThread({
                           setDraft('')
                         }
                       }}
-                      placeholder="Reply…"
+                      placeholder={t('thread.reply.placeholder' as DiffReviewKey)}
                       className="min-h-7 resize-none text-[12px]"
                     />
                     <div className="flex items-center justify-end gap-1">

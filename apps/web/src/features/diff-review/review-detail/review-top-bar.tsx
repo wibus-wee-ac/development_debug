@@ -12,6 +12,7 @@ import {
   SelectorHorizontalLine as SlidersHorizontalIcon
 } from '@mingcute/react'
 import { useState, useTransition } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import { Popover, PopoverContent, PopoverTrigger } from '~/components/ui/popover'
@@ -20,6 +21,8 @@ import { cn } from '~/lib/cn'
 
 import { formatChangeStats, sourceLabel } from '../shared/diff-items'
 import type { CradleDiffReview, DiffStyle, ReviewDecision } from '../shared/types'
+
+type DiffReviewKey = keyof typeof import('~/locales/default').default['diff-review']
 
 interface ReviewTopBarProps {
   review: CradleDiffReview
@@ -282,6 +285,7 @@ function ReviewPopover({
   state: CradleDiffReview['reviewState']
   onSubmit: (decision: ReviewDecision, bodyMarkdown: string) => void
 }) {
+  const { t } = useTranslation('diff-review')
   const [open, setOpen] = useState(false)
   const [body, setBody] = useState('')
 
@@ -315,7 +319,7 @@ function ReviewPopover({
         <Textarea
           value={body}
           onChange={event => setBody(event.target.value)}
-          placeholder="Leave a summary (optional). Single-line comments stay attached to lines."
+          placeholder={t('review.summary.placeholder' as DiffReviewKey)}
           className="min-h-[88px] resize-none text-[12px] leading-relaxed"
           autoFocus
           onKeyDown={(event) => {
@@ -352,7 +356,7 @@ function ReviewPopover({
           </DecisionButton>
         </div>
         <p className="mt-2 text-[11px] text-muted-foreground/60">
-          ⌘↵ to submit a plain comment.
+          {t('review.summary.shortcutHint' as DiffReviewKey)}
         </p>
       </PopoverContent>
     </Popover>

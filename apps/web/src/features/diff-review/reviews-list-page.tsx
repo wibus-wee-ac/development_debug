@@ -7,6 +7,7 @@ import {
 } from '@mingcute/react'
 import { useMutation, useQueryClient } from '@tanstack/react-query'
 import { useState } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import {
   postWorkspacesByIdDiffReviewsLocalBranchCompare,
@@ -28,6 +29,8 @@ import type { CradleDiffReview } from './shared/types'
 import { WORKING_TREE_REVIEW_ID } from './shared/types'
 import type { ReviewsListTab } from './shared/use-review-list'
 import { useReviewList } from './shared/use-review-list'
+
+type DiffReviewKey = keyof typeof import('~/locales/default').default['diff-review']
 
 interface ReviewsListPageProps {
   workspaceId: string
@@ -294,6 +297,7 @@ function CommitDialog({
   onOpen: (input: { commitRef: string }) => void
   pending: boolean
 }) {
+  const { t } = useTranslation('diff-review')
   const [open, setOpen] = useState(false)
   const [commitRef, setCommitRef] = useState('')
 
@@ -328,7 +332,7 @@ function CommitDialog({
           onValueChange={setCommitRef}
           autoFocus
           quickRefs={['HEAD', 'HEAD~1']}
-          placeholder="Search branches, commits, or type a ref…"
+          placeholder={t('reviews.commitRef.placeholder' as DiffReviewKey)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
               submit()
@@ -360,6 +364,7 @@ function CompareDialog({
   onCompare: (input: { baseRef: string, headRef: string }) => void
   pending: boolean
 }) {
+  const { t } = useTranslation('diff-review')
   const [open, setOpen] = useState(false)
   const [baseRef, setBaseRef] = useState('main')
   const [headRef, setHeadRef] = useState('')
@@ -396,7 +401,7 @@ function CompareDialog({
           onValueChange={setBaseRef}
           autoFocus
           quickRefs={['main', 'master', 'HEAD']}
-          placeholder="Base ref — search or type…"
+          placeholder={t('reviews.compareBaseRef.placeholder' as DiffReviewKey)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
               submit()
@@ -409,7 +414,7 @@ function CompareDialog({
           value={headRef}
           onValueChange={setHeadRef}
           quickRefs={['HEAD']}
-          placeholder="Head ref — search or type…"
+          placeholder={t('reviews.compareHeadRef.placeholder' as DiffReviewKey)}
           onKeyDown={(event) => {
             if (event.key === 'Enter') {
               submit()

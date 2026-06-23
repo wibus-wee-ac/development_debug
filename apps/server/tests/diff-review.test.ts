@@ -1,9 +1,10 @@
+import { randomUUID } from 'node:crypto'
 import { execFileSync } from 'node:child_process'
 import { mkdtempSync, rmSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join, resolve } from 'node:path'
 
-import { agents, diffReviewGuides, providerTargets, sessions, workspaces } from '@cradle/db'
+import { agents, diffReviewCommitPlans, diffReviewGuides, providerTargets, sessions, workspaces } from '@cradle/db'
 import type { UIMessageChunk } from 'ai'
 import { eq } from 'drizzle-orm'
 import { describe, expect, it } from 'vitest'
@@ -364,6 +365,48 @@ async function waitForCondition<T>(read: () => Promise<T | null>, description: s
   throw new Error(`Timed out waiting for ${description}`)
 }
 
+function insertManualCommitPlan(review: DiffReviewResponse, input: {
+  groups: Array<{
+    id: string
+    title: string
+    message: string
+    rationale: string
+    paths: string[]
+    dependsOn: string[]
+  }>
+  rationale?: string
+}): string {
+  if (!review.currentRevisionId) {
+    throw new Error('Cannot create a manual commit plan without a current revision')
+  }
+  const fileByPath = new Map(review.files.map(file => [file.path, file]))
+  const groups = input.groups.map(group => ({
+    ...group,
+    fileIds: group.paths.map((path) => {
+      const file = fileByPath.get(path)
+      if (!file) {
+        throw new Error(`Manual commit plan references unknown review file: ${path}`)
+      }
+      return file.id
+    }),
+  }))
+  const now = Math.floor(Date.now() / 1000)
+  const id = randomUUID()
+  db().insert(diffReviewCommitPlans).values({
+    id,
+    reviewId: review.id,
+    revisionId: review.currentRevisionId,
+    actorId: 'local-test-user',
+    strategy: 'manual',
+    status: 'draft',
+    groupsJson: JSON.stringify(groups),
+    rationale: input.rationale ?? 'Manual commit plan fixture.',
+    createdAt: now,
+    updatedAt: now,
+  }).run()
+  return id
+}
+
 describe('diff-review capability', () => {
   it('creates and refreshes an immutable local working tree revision', async () => {
     const dataDir = makeTempDir('cradle-data-')
@@ -525,13 +568,34 @@ describe('diff-review capability', () => {
         status: 'pending',
       })
 
-      const commitPlan = await postJson<DiffReviewResponse>(
+      const planId = insertManualCommitPlan(review, {
+        rationale: 'Manual commit plan fixture for local review lifecycle.',
+        groups: [
+          {
+            id: 'commit:implementation',
+            title: 'Implementation',
+            message: 'diff-review: implement local-working-tree review flow',
+            rationale: 'Keep application code separate.',
+            paths: ['app.ts'],
+            dependsOn: [],
+          },
+          {
+            id: 'commit:documentation',
+            title: 'Documentation',
+            message: 'docs: update Cradle Diffs coverage',
+            rationale: 'Document the behavior after code changes land.',
+            paths: ['README.md'],
+            dependsOn: ['commit:implementation'],
+          },
+        ],
+      })
+      const commitPlan = await getJson<DiffReviewResponse>(
         app,
-        `/workspaces/workspace-diff-review-lifecycle/diff-reviews/${review.id}/commit-plan`,
-        { strategy: 'rule-based-groups' },
+        `/workspaces/workspace-diff-review-lifecycle/diff-reviews/${review.id}`,
       )
       expect(commitPlan.commitPlans[0]).toMatchObject({
-        strategy: 'rule-based-groups',
+        id: planId,
+        strategy: 'manual',
         status: 'draft',
       })
       expect(commitPlan.commitPlans[0]?.groups).toEqual([
@@ -610,7 +674,6 @@ describe('diff-review capability', () => {
           expect.objectContaining({ eventKind: 'thread_resolved' }),
           expect.objectContaining({ eventKind: 'review_submitted' }),
           expect.objectContaining({ eventKind: 'agent_fix_created' }),
-          expect.objectContaining({ eventKind: 'commit_plan_created' }),
           expect.objectContaining({ eventKind: 'commit_plan_updated' }),
           expect.objectContaining({ eventKind: 'review_closed' }),
         ]),
@@ -912,7 +975,7 @@ describe('diff-review capability', () => {
         {
           threadId,
           instruction: 'Update the reviewed line with clearer wording.',
-          profileId: 'agent-diff-review-fix',
+          agentId: 'agent-diff-review-fix',
           expectedOutput: 'working-tree-change',
         },
       )
@@ -1199,7 +1262,7 @@ describe('diff-review capability', () => {
         {
           threadId: threaded.threads[0]!.id,
           instruction: 'Make this change cancellable.',
-          profileId: 'agent-diff-review-fix-control',
+          agentId: 'agent-diff-review-fix-control',
           expectedOutput: 'working-tree-change',
         },
       )
@@ -1388,12 +1451,31 @@ describe('diff-review capability', () => {
         .run()
 
       const review = await refreshLocalReview(app, 'workspace-diff-review-apply')
-      const commitPlan = await postJson<DiffReviewResponse>(
+      const planId = insertManualCommitPlan(review, {
+        groups: [
+          {
+            id: 'commit:implementation',
+            title: 'Implementation',
+            message: 'diff-review: apply implementation group',
+            rationale: 'Commit implementation files first.',
+            paths: ['app.ts'],
+            dependsOn: [],
+          },
+          {
+            id: 'commit:documentation',
+            title: 'Documentation',
+            message: 'docs: apply documentation group',
+            rationale: 'Commit documentation after implementation.',
+            paths: ['README.md'],
+            dependsOn: ['commit:implementation'],
+          },
+        ],
+      })
+      const commitPlan = await getJson<DiffReviewResponse>(
         app,
-        `/workspaces/workspace-diff-review-apply/diff-reviews/${review.id}/commit-plan`,
-        { strategy: 'rule-based-groups' },
+        `/workspaces/workspace-diff-review-apply/diff-reviews/${review.id}`,
       )
-      const plan = commitPlan.commitPlans[0]!
+      const plan = commitPlan.commitPlans.find(item => item.id === planId)!
       const accepted = await putJson<DiffReviewResponse>(
         app,
         `/workspaces/workspace-diff-review-apply/diff-reviews/${review.id}/commit-plans/${plan.id}`,
