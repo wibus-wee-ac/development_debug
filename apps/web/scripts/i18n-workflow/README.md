@@ -8,7 +8,7 @@
 
 - **index.ts**: Runs the standard authoring workflow: diff invalidation before default baseline regeneration.
 - **gen-diff.ts**: Compares the current `en-US` baseline with the TypeScript default source and removes stale non-default translations when default English values changed.
-- **gen-default-locale-json.ts**: Regenerates `src/locales/en-US/*.json` from `src/locales/default/*.ts`.
+- **gen-default-locale-json.ts**: Regenerates `src/locales/en-US/*.json` from `src/locales/default/*.ts`; `--check` compares generated content with the current baseline without writing files.
 - **check-translations.ts**: Validates locale namespace parity, missing keys, extra keys, string-only entries, placeholders, `<Trans>`-style tags, and plural families.
 - **check-hardcoded-text.ts**: Scans React TSX surfaces for hardcoded user-facing copy in JSX text, `aria-label`, `title`, and `placeholder` literals.
 - **init-locale.ts**: Creates missing namespace JSON files for an existing supported locale.
@@ -22,4 +22,4 @@ The workflow writes timestamped reports to `apps/web/i18n-*.json`. These files a
 
 ## CI Gate
 
-Use `pnpm --filter @cradle/web i18n:ci` for the full gate. It regenerates the default baseline, checks Git drift under `src/locales/en-US`, validates all locale JSON, and runs the hardcoded-text scan.
+Use `pnpm --filter @cradle/web i18n:ci` for the full gate. It checks that `src/locales/en-US` matches the generated default baseline, validates all locale JSON, and runs the hardcoded-text scan.

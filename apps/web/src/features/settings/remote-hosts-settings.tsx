@@ -28,6 +28,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
 import {
+  getRelayServersOptions,
+  getRelayServersQueryKey,
   getRemoteRuntimeHostsByHostIdAgentsOptions,
   getRemoteRuntimeHostsByHostIdAgentsQueryKey,
   getRemoteRuntimeHostsByHostIdHealthOptions,
@@ -40,8 +42,11 @@ import {
   getRemoteRuntimeHostsQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
 import {
+  deleteRelayServersByRelayServerId,
   deleteRemoteRuntimeHostsByHostId,
+  patchRelayServersByRelayServerId,
   patchRemoteRuntimeHostsByHostId,
+  postRelayServers,
   postRemoteRuntimeHosts,
   postRemoteRuntimeHostsByHostIdConnect,
   postRemoteRuntimeHostsByHostIdDisconnect,
@@ -76,17 +81,20 @@ import {
 } from '~/components/ui/dialog'
 import { Input } from '~/components/ui/input'
 import { Label } from '~/components/ui/label'
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '~/components/ui/select'
 import { Spinner } from '~/components/ui/spinner'
 import { Switch } from '~/components/ui/switch'
 import { toastManager } from '~/components/ui/toast'
+import { ToggleGroup, ToggleGroupItem } from '~/components/ui/toggle-group'
 import { Tooltip, TooltipContent, TooltipTrigger } from '~/components/ui/tooltip'
 import { cn } from '~/lib/cn'
 
 import { SettingsGroup, SettingsPage } from './settings-container'
 
-import type { GetRemoteRuntimeHostsResponse } from '~/api-gen/types.gen'
+import type { GetRelayServersResponse, GetRemoteRuntimeHostsResponse } from '~/api-gen/types.gen'
 
 type Host = GetRemoteRuntimeHostsResponse[number]
+type RelayServer = GetRelayServersResponse[number]
 type ConnectionState = Host['connectionState']
 type HostTransport = 'ssh' | 'direct-socket' | 'relay'
 
@@ -131,6 +139,10 @@ function shortRoomId(roomId?: string | null): string | null {
     return null
   }
   return roomId.replace(/^room_/, '').slice(0, 8)
+}
+
+function quoteTerminalArg(value: string): string {
+  return `'${value.replaceAll('\'', '\'\\\'\'')}'`
 }
 
 type SettingsKey = keyof typeof import('~/locales/default').default.settings
@@ -253,7 +265,7 @@ function CopyCodeButton({ command }: { command: string }) {
 
   return (
     <div className="group relative overflow-hidden rounded-lg border border-border bg-muted/40">
-      <pre className="overflow-x-auto px-3 py-2 pr-9 font-mono text-[11.5px] leading-relaxed text-foreground/85">
+      <pre className="break-all whitespace-pre-wrap px-3 py-2 font-mono text-[11.5px] leading-relaxed text-foreground/85">
         <code>{command}</code>
       </pre>
       <Button
@@ -692,7 +704,9 @@ function HostRow({ host }: { host: Host }) {
                   size="xs"
                   variant="outline"
                   className="h-7 px-2.5 text-[11px]"
-                  disabled={busy || !host.enabled}
+                  // A relay host that hasn't been paired yet has no relay
+                  // coordinates — connecting would just 400. Nudge to pair.
+                  disabled={busy || !host.enabled || (isRelay && !relay)}
                   onClick={() => connect.mutate()}
                 >
                   {connect.isPending ? <Spinner className="size-3" /> : null}
@@ -795,6 +809,7 @@ function HostRow({ host }: { host: Host }) {
 
 interface HostFormValues {
   displayName: string
+  transport: HostTransport
   sshTarget: string
   remoteSocketPath: string
   enabled: boolean
@@ -820,8 +835,13 @@ function RelayPairingDialog({
   const { t } = useTranslation('settings')
   const queryClient = useQueryClient()
 
-  const existingRelayUrl = readConnectionConfig(host)?.relay?.relayUrl ?? ''
-  const [relayUrl, setRelayUrl] = useState(existingRelayUrl)
+  const relayServersQuery = useQuery(getRelayServersOptions())
+  const servers = relayServersQuery.data ?? []
+  const defaultServer = servers.find(s => s.isDefault) ?? servers[0]
+
+  // The selected relay server id. Defaults to the configured default server;
+  // cleared only if there are no servers at all.
+  const [relayServerId, setRelayServerId] = useState<string>('')
   const [pairing, setPairing] = useState<{ command: string, expiresAt: number } | null>(null)
   const [pairingCode, setPairingCode] = useState('')
   const [now, setNow] = useState(() => Date.now())
@@ -829,12 +849,18 @@ function RelayPairingDialog({
   // Re-seed the form each time the dialog opens.
   useEffect(() => {
     if (open) {
-      setRelayUrl(existingRelayUrl)
       setPairing(null)
       setPairingCode('')
       setNow(Date.now())
     }
-  }, [open, existingRelayUrl])
+  }, [open])
+
+  // Default the selection once servers load (or when the default changes).
+  useEffect(() => {
+    if (defaultServer && !relayServerId) {
+      setRelayServerId(defaultServer.id)
+    }
+  }, [defaultServer, relayServerId])
 
   // Tick once a second while a command is showing so the countdown stays live.
   useEffect(() => {
@@ -847,12 +873,13 @@ function RelayPairingDialog({
 
   const remainingSec = pairing ? Math.max(0, Math.ceil((pairing.expiresAt - now) / 1000)) : 0
   const expired = !!pairing && remainingSec <= 0
+  const hasServer = servers.length > 0
 
   const generate = useMutation({
     mutationFn: async () => {
       const { data, error } = await postRemoteRuntimeHostsByHostIdRelayPairingToken({
         path: { hostId: host.id },
-        body: { relayUrl: relayUrl.trim() },
+        body: { relayServerId },
       })
       if (error) {
         throw error
@@ -863,7 +890,16 @@ function RelayPairingDialog({
       if (!data) {
         return
       }
-      const command = `cradle-agentd relay --relay-url ${data.relayUrl} --pairing-token ${data.pairingToken}`
+      const command = [
+        'cradle-agentd',
+        'relay',
+        '--relay-url',
+        quoteTerminalArg(data.relayUrl),
+        '--pairing-token',
+        quoteTerminalArg(data.pairingToken),
+        '--host-token',
+        quoteTerminalArg(data.hostToken),
+      ].join(' ')
       setPairing({ command, expiresAt: new Date(data.expiresAt).getTime() })
       setNow(Date.now())
       setPairingCode('')
@@ -880,7 +916,10 @@ function RelayPairingDialog({
     mutationFn: async () => {
       const { error } = await postRemoteRuntimeHostsByHostIdRelayClaim({
         path: { hostId: host.id },
-        body: { pairingCode: pairingCode.trim() },
+        // Send the relay server id so the server resolves the URL the same way
+        // it did when minting the pairing token. (Claim is one-time on the
+        // relay; the id must match the token's relay.)
+        body: { relayServerId, pairingCode: pairingCode.trim() },
       })
       if (error) {
         throw error
@@ -898,7 +937,7 @@ function RelayPairingDialog({
     }),
   })
 
-  const canGenerate = relayUrl.trim().length > 0 && !generate.isPending
+  const canGenerate = hasServer && !!relayServerId && !generate.isPending
   const canClaim = !!pairing && !expired && pairingCode.trim().length > 0 && !claim.isPending
 
   return (
@@ -910,17 +949,41 @@ function RelayPairingDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-1">
-          <div className="space-y-2">
-            <Label htmlFor="rh-relay-url" className="text-xs">{t('remoteHosts.relay.dialog.relayUrl' as SettingsKey)}</Label>
-            <Input
-              id="rh-relay-url"
-              value={relayUrl}
-              onChange={e => setRelayUrl(e.target.value)}
-              placeholder={t('remoteHosts.relay.dialog.relayUrlPlaceholder' as SettingsKey)}
-              className="h-8 font-mono text-xs"
-            />
-            <p className="text-[11px] text-muted-foreground">{t('remoteHosts.relay.dialog.relayUrlHint' as SettingsKey)}</p>
-          </div>
+          {hasServer
+            ? (
+                <div className="space-y-2">
+                  <Label className="text-xs">{t('remoteHosts.relay.dialog.relayServer' as SettingsKey)}</Label>
+                  <Select
+                    value={relayServerId}
+                    onValueChange={(next) => {
+                      setRelayServerId(next)
+                      // The pairing token is bound to one relay server. Switching
+                      // invalidates any live command and pasted code.
+                      if (pairing) {
+                        setPairing(null)
+                        setPairingCode('')
+                      }
+                    }}
+                  >
+                    <SelectTrigger className="h-8 text-xs">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {servers.map(server => (
+                        <SelectItem key={server.id} value={server.id}>
+                          {server.displayName}
+                          {server.isDefault ? ` · ${t('remoteHosts.relayServers.badge.default' as SettingsKey)}` : ''}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )
+            : (
+                <p className="rounded-lg border border-dashed border-foreground/10 bg-muted/20 px-3 py-3 text-[11.5px] leading-relaxed text-muted-foreground">
+                  {t('remoteHosts.relay.dialog.noRelayServerHint' as SettingsKey)}
+                </p>
+              )}
 
           <Button size="sm" disabled={!canGenerate} onClick={() => generate.mutate()} className="h-7 text-xs">
             {generate.isPending && <Spinner className="size-3.5" />}
@@ -977,6 +1040,7 @@ function RelayPairingDialog({
 function initialHostFormValues(host?: Host): HostFormValues {
   return {
     displayName: host?.displayName ?? '',
+    transport: host ? hostTransport(host) : 'ssh',
     sshTarget: host?.sshTarget ?? '',
     remoteSocketPath: host?.remoteSocketPath ?? DEFAULT_REMOTE_SOCKET_PATH,
     enabled: host?.enabled ?? true,
@@ -1008,12 +1072,39 @@ function HostFormDialog({
 
   const set = (patch: Partial<HostFormValues>) => setValues(prev => ({ ...prev, ...patch }))
 
+  const isRelay = values.transport === 'relay'
+  // Relay hosts are created "pending" — no SSH target or socket path needed;
+  // they're paired from the host row after saving. SSH hosts need both.
   const valid = values.displayName.trim().length > 0
-    && values.sshTarget.trim().length > 0
-    && values.remoteSocketPath.trim().length > 0
+    && (isRelay
+      ? true
+      : values.sshTarget.trim().length > 0 && values.remoteSocketPath.trim().length > 0)
 
   const save = useMutation({
     mutationFn: async () => {
+      if (isRelay) {
+        // Pending relay host: transport is relay, relay coordinates are filled
+        // in later by the pairing flow. The server derives a placeholder
+        // sshTarget ('relay') so we send neither sshTarget nor socket path.
+        const body = {
+          displayName: values.displayName.trim(),
+          enabled: values.enabled,
+          transport: 'relay' as const,
+        }
+        if (host) {
+          const { error } = await patchRemoteRuntimeHostsByHostId({ path: { hostId: host.id }, body })
+          if (error) {
+            throw error
+          }
+        }
+        else {
+          const { error } = await postRemoteRuntimeHosts({ body })
+          if (error) {
+            throw error
+          }
+        }
+        return
+      }
       const body = {
         displayName: values.displayName.trim(),
         sshTarget: values.sshTarget.trim(),
@@ -1071,39 +1162,67 @@ function HostFormDialog({
           </div>
 
           <div className="space-y-2">
-            <Label htmlFor="rh-ssh-target" className="text-xs">{t('remoteHosts.form.sshTarget' as SettingsKey)}</Label>
-            <Input
-              id="rh-ssh-target"
-              value={values.sshTarget}
-              onChange={e => set({ sshTarget: e.target.value })}
-              placeholder={t('remoteHosts.form.sshTargetPlaceholder' as SettingsKey)}
-              className="h-8 font-mono text-xs"
-            />
-            <p className="text-[11px] text-muted-foreground">{t('remoteHosts.form.sshTargetHint' as SettingsKey)}</p>
+            <Label className="text-xs">{t('remoteHosts.form.transport' as SettingsKey)}</Label>
+            <ToggleGroup
+              type="single"
+              value={values.transport}
+              onValueChange={next => next && set({ transport: next as HostTransport })}
+              className="w-full"
+            >
+              <ToggleGroupItem value="ssh" size="sm" className="flex-1 text-xs">
+                {t('remoteHosts.form.transportSsh' as SettingsKey)}
+              </ToggleGroupItem>
+              <ToggleGroupItem value="relay" size="sm" className="flex-1 text-xs">
+                {t('remoteHosts.form.transportRelay' as SettingsKey)}
+              </ToggleGroupItem>
+            </ToggleGroup>
           </div>
 
-          <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
-            <CollapsibleTrigger asChild>
-              <button
-                type="button"
-                className="flex items-center gap-1 text-[11.5px] font-medium text-muted-foreground transition-colors hover:text-foreground"
-              >
-                <ChevronIcon className={cn('size-3.5 transition-transform', advancedOpen ? 'rotate-0' : '-rotate-90')} aria-hidden="true" />
-                {t('remoteHosts.form.advanced' as SettingsKey)}
-              </button>
-            </CollapsibleTrigger>
-            <CollapsibleContent className="space-y-2 pt-3">
-              <Label htmlFor="rh-socket-path" className="text-xs">{t('remoteHosts.form.remoteSocketPath' as SettingsKey)}</Label>
-              <Input
-                id="rh-socket-path"
-                value={values.remoteSocketPath}
-                onChange={e => set({ remoteSocketPath: e.target.value })}
-                placeholder={DEFAULT_REMOTE_SOCKET_PATH}
-                className="h-8 font-mono text-xs"
-              />
-              <p className="text-[11px] text-muted-foreground">{t('remoteHosts.form.remoteSocketPathHint' as SettingsKey)}</p>
-            </CollapsibleContent>
-          </Collapsible>
+          {isRelay
+            ? (
+                <p className="flex items-start gap-2 rounded-lg border border-sky-500/15 bg-sky-500/5 px-3 py-2 text-[11.5px] leading-relaxed text-muted-foreground">
+                  <RelayIcon className="mt-px size-3.5 shrink-0 text-sky-500" aria-hidden="true" />
+                  {t('remoteHosts.form.relayNote' as SettingsKey)}
+                </p>
+              )
+            : (
+              <>
+                <div className="space-y-2">
+                  <Label htmlFor="rh-ssh-target" className="text-xs">{t('remoteHosts.form.sshTarget' as SettingsKey)}</Label>
+                  <Input
+                    id="rh-ssh-target"
+                    value={values.sshTarget}
+                    onChange={e => set({ sshTarget: e.target.value })}
+                    placeholder={t('remoteHosts.form.sshTargetPlaceholder' as SettingsKey)}
+                    className="h-8 font-mono text-xs"
+                  />
+                  <p className="text-[11px] text-muted-foreground">{t('remoteHosts.form.sshTargetHint' as SettingsKey)}</p>
+                </div>
+
+                <Collapsible open={advancedOpen} onOpenChange={setAdvancedOpen}>
+                  <CollapsibleTrigger asChild>
+                    <button
+                      type="button"
+                      className="flex items-center gap-1 text-[11.5px] font-medium text-muted-foreground transition-colors hover:text-foreground"
+                    >
+                      <ChevronIcon className={cn('size-3.5 transition-transform', advancedOpen ? 'rotate-0' : '-rotate-90')} aria-hidden="true" />
+                      {t('remoteHosts.form.advanced' as SettingsKey)}
+                    </button>
+                  </CollapsibleTrigger>
+                  <CollapsibleContent className="space-y-2 pt-3">
+                    <Label htmlFor="rh-socket-path" className="text-xs">{t('remoteHosts.form.remoteSocketPath' as SettingsKey)}</Label>
+                    <Input
+                      id="rh-socket-path"
+                      value={values.remoteSocketPath}
+                      onChange={e => set({ remoteSocketPath: e.target.value })}
+                      placeholder={DEFAULT_REMOTE_SOCKET_PATH}
+                      className="h-8 font-mono text-xs"
+                    />
+                    <p className="text-[11px] text-muted-foreground">{t('remoteHosts.form.remoteSocketPathHint' as SettingsKey)}</p>
+                  </CollapsibleContent>
+                </Collapsible>
+              </>
+            )}
 
           <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 px-3 py-2.5">
             <div className="space-y-0.5">
@@ -1128,6 +1247,273 @@ function HostFormDialog({
   )
 }
 
+interface RelayServerFormValues {
+  displayName: string
+  relayUrl: string
+  isDefault: boolean
+}
+
+function initialRelayServerFormValues(server?: RelayServer): RelayServerFormValues {
+  return {
+    displayName: server?.displayName ?? '',
+    relayUrl: server?.relayUrl ?? '',
+    isDefault: server?.isDefault ?? false,
+  }
+}
+
+function RelayServerFormDialog({
+  open,
+  onOpenChange,
+  server,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  server?: RelayServer
+}) {
+  const { t } = useTranslation('settings')
+  const queryClient = useQueryClient()
+  const [values, setValues] = useState<RelayServerFormValues>(() => initialRelayServerFormValues(server))
+
+  useEffect(() => {
+    if (open) {
+      setValues(initialRelayServerFormValues(server))
+    }
+  }, [open, server])
+
+  const set = (patch: Partial<RelayServerFormValues>) => setValues(prev => ({ ...prev, ...patch }))
+
+  const valid = values.displayName.trim().length > 0 && values.relayUrl.trim().length > 0
+
+  const save = useMutation({
+    mutationFn: async () => {
+      const body = {
+        displayName: values.displayName.trim(),
+        relayUrl: values.relayUrl.trim(),
+        isDefault: values.isDefault,
+      }
+      if (server) {
+        const { error } = await patchRelayServersByRelayServerId({ path: { relayServerId: server.id }, body })
+        if (error) {
+          throw error
+        }
+      }
+      else {
+        const { error } = await postRelayServers({ body })
+        if (error) {
+          throw error
+        }
+      }
+    },
+    onSuccess: () => {
+      toastManager.add({ type: 'success', title: t(server ? 'remoteHosts.relayServers.toast.updated' as SettingsKey : 'remoteHosts.relayServers.toast.created' as SettingsKey) })
+      void queryClient.invalidateQueries({ queryKey: getRelayServersQueryKey() })
+      onOpenChange(false)
+    },
+    onError: error => toastManager.add({
+      type: 'error',
+      title: t('remoteHosts.relayServers.toast.saveFailed' as SettingsKey),
+      description: describeError(error),
+    }),
+  })
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t(server ? 'remoteHosts.relayServers.form.editTitle' as SettingsKey : 'remoteHosts.relayServers.form.addTitle' as SettingsKey)}</DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 py-1">
+          <div className="space-y-2">
+            <Label htmlFor="rs-display-name" className="text-xs">{t('remoteHosts.relayServers.form.displayName' as SettingsKey)}</Label>
+            <Input
+              id="rs-display-name"
+              value={values.displayName}
+              onChange={e => set({ displayName: e.target.value })}
+              placeholder={t('remoteHosts.relayServers.form.displayNamePlaceholder' as SettingsKey)}
+              className="h-8 text-xs"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <Label htmlFor="rs-relay-url" className="text-xs">{t('remoteHosts.relayServers.form.relayUrl' as SettingsKey)}</Label>
+            <Input
+              id="rs-relay-url"
+              value={values.relayUrl}
+              onChange={e => set({ relayUrl: e.target.value })}
+              placeholder={t('remoteHosts.relayServers.form.relayUrlPlaceholder' as SettingsKey)}
+              className="h-8 font-mono text-xs"
+            />
+          </div>
+
+          <div className="flex items-center justify-between gap-4 rounded-lg border border-border/60 px-3 py-2.5">
+            <Label className="text-xs">{t('remoteHosts.relayServers.form.isDefault' as SettingsKey)}</Label>
+            <Switch checked={values.isDefault} onCheckedChange={v => set({ isDefault: v })} size="sm" />
+          </div>
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="h-7 text-xs">
+            {t('remoteHosts.action.cancel' as SettingsKey)}
+          </Button>
+          <Button size="sm" disabled={!valid || save.isPending} onClick={() => save.mutate()} className="h-7 text-xs">
+            {save.isPending && <Spinner className="size-3.5" />}
+            {t(server ? 'remoteHosts.action.save' as SettingsKey : 'remoteHosts.action.add' as SettingsKey)}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
+}
+
+function RelayServerRow({ server }: { server: RelayServer }) {
+  const { t } = useTranslation('settings')
+  const queryClient = useQueryClient()
+  const [editing, setEditing] = useState(false)
+  const [confirmingDelete, setConfirmingDelete] = useState(false)
+
+  const invalidate = () => {
+    void queryClient.invalidateQueries({ queryKey: getRelayServersQueryKey() })
+  }
+
+  const setDefault = useMutation({
+    mutationFn: async () => {
+      const { error } = await patchRelayServersByRelayServerId({ path: { relayServerId: server.id }, body: { isDefault: true } })
+      if (error) {
+        throw error
+      }
+    },
+    onSuccess: invalidate,
+    onError: error => toastManager.add({ type: 'error', title: t('remoteHosts.relayServers.toast.saveFailed' as SettingsKey), description: describeError(error) }),
+  })
+
+  const deleteServer = useMutation({
+    mutationFn: async () => {
+      const { error } = await deleteRelayServersByRelayServerId({ path: { relayServerId: server.id } })
+      if (error) {
+        throw error
+      }
+    },
+    onSuccess: () => {
+      toastManager.add({ type: 'success', title: t('remoteHosts.relayServers.toast.deleted' as SettingsKey) })
+      invalidate()
+    },
+    onError: error => toastManager.add({ type: 'error', title: t('remoteHosts.relayServers.toast.deleteFailed' as SettingsKey), description: describeError(error) }),
+  })
+
+  return (
+    <div data-testid={`relay-server-row-${server.id}`} className="flex items-center gap-3 px-3.5 py-3">
+      <div className="mt-0.5 flex size-7 shrink-0 items-center justify-center rounded-lg bg-muted text-foreground">
+        <RelayIcon className="size-3.5" aria-hidden="true" />
+      </div>
+      <div className="min-w-0 flex-1 space-y-0.5">
+        <div className="flex flex-wrap items-center gap-2">
+          <span className="truncate text-[12.5px] font-medium text-foreground">{server.displayName}</span>
+          {server.isDefault && (
+            <Badge variant="outline" className="h-4 border-sky-500/30 px-1.5 text-[9px] font-normal text-sky-600 dark:text-sky-400">
+              {t('remoteHosts.relayServers.badge.default' as SettingsKey)}
+            </Badge>
+          )}
+        </div>
+        <div className="truncate font-mono text-[11px] text-muted-foreground/70">{server.relayUrl}</div>
+      </div>
+
+      <div className="flex shrink-0 items-center gap-1">
+        {!server.isDefault && (
+          <Button size="xs" variant="ghost" className="h-7 px-2.5 text-[11px]" disabled={setDefault.isPending} onClick={() => setDefault.mutate()}>
+            {t('remoteHosts.relayServers.action.setDefault' as SettingsKey)}
+          </Button>
+        )}
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button size="icon-xs" variant="ghost" onClick={() => setEditing(true)} aria-label={t('remoteHosts.relayServers.action.edit' as SettingsKey)}>
+              <PencilIcon className="size-3.5" aria-hidden="true" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">{t('remoteHosts.relayServers.action.edit' as SettingsKey)}</TooltipContent>
+        </Tooltip>
+        <Tooltip>
+          <TooltipTrigger asChild>
+            <Button size="icon-xs" variant="ghost" onClick={() => setConfirmingDelete(true)} aria-label={t('remoteHosts.relayServers.action.delete' as SettingsKey)}>
+              {deleteServer.isPending ? <Spinner className="size-3.5" /> : <TrashIcon className="size-3.5" aria-hidden="true" />}
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="top">{t('remoteHosts.relayServers.action.delete' as SettingsKey)}</TooltipContent>
+        </Tooltip>
+      </div>
+
+      {editing && (
+        <RelayServerFormDialog open onOpenChange={open => !open && setEditing(false)} server={server} />
+      )}
+
+      <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
+        <AlertDialogContent>
+          <AlertDialogHeader>
+            <AlertDialogTitle>{t('remoteHosts.relayServers.delete.title' as SettingsKey)}</AlertDialogTitle>
+            <AlertDialogDescription>
+              {t('remoteHosts.relayServers.delete.description', { name: server.displayName })}
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel>{t('remoteHosts.action.cancel' as SettingsKey)}</AlertDialogCancel>
+            <AlertDialogAction onClick={() => deleteServer.mutate()}>
+              {t('remoteHosts.relayServers.action.delete' as SettingsKey)}
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
+    </div>
+  )
+}
+
+/**
+ * Relay server registry — the SSH-less path's equivalent of an SSH config entry.
+ * Pairs of (name, URL) that remote hosts pair against instead of typing a URL
+ * every time. Lives above the host list so it reads as a shared prerequisite.
+ */
+export function RelayServersSection() {
+  const { t } = useTranslation('settings')
+  const [addOpen, setAddOpen] = useState(false)
+  const { data: servers = [], isLoading } = useQuery(getRelayServersOptions())
+
+  return (
+    <SettingsPage
+      title={t('remoteHosts.relayServers.title' as SettingsKey)}
+      description={t('remoteHosts.relayServers.description' as SettingsKey)}
+      action={(
+        <Button data-testid="add-relay-server-btn" size="sm" onClick={() => setAddOpen(true)}>
+          <PlusIcon className="size-3.5" aria-hidden="true" />
+          {t('remoteHosts.relayServers.add' as SettingsKey)}
+        </Button>
+      )}
+      data-testid="relay-servers-section"
+    >
+      {isLoading
+        ? (
+            <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-10 text-[12px] text-muted-foreground">
+              <Spinner className="size-3.5" />
+              {t('remoteHosts.loading' as SettingsKey)}
+            </div>
+          )
+        : servers.length === 0
+          ? (
+              <p className="rounded-xl border border-dashed border-foreground/10 bg-muted/20 px-6 py-8 text-center text-[12px] text-muted-foreground">
+                {t('remoteHosts.relayServers.empty' as SettingsKey)}
+              </p>
+            )
+          : (
+              <SettingsGroup bare className="[&>*+*]:border-t [&>*+*]:border-border/60">
+                {servers.map(server => (
+                  <RelayServerRow key={server.id} server={server} />
+                ))}
+              </SettingsGroup>
+            )}
+
+      <RelayServerFormDialog open={addOpen} onOpenChange={setAddOpen} />
+    </SettingsPage>
+  )
+}
+
 export function RemoteHostsSettings() {
   const { t } = useTranslation('settings')
   const [addOpen, setAddOpen] = useState(false)
@@ -1136,17 +1522,21 @@ export function RemoteHostsSettings() {
   const { data: hosts = [], isLoading } = useQuery(getRemoteRuntimeHostsOptions())
 
   return (
-    <SettingsPage
-      title={t('remoteHosts.page.title' as SettingsKey)}
-      description={t('remoteHosts.page.description' as SettingsKey)}
-      action={(
-        <Button data-testid="add-remote-host-btn" size="sm" onClick={() => setAddOpen(true)}>
-          <PlusIcon className="size-3.5" aria-hidden="true" />
-          {t('remoteHosts.action.addHost' as SettingsKey)}
-        </Button>
-      )}
-      data-testid="remote-hosts-settings"
-    >
+    <>
+      <RelayServersSection />
+
+      <SettingsPage
+        title={t('remoteHosts.page.title' as SettingsKey)}
+        description={t('remoteHosts.page.description' as SettingsKey)}
+        action={(
+          <Button data-testid="add-remote-host-btn" size="sm" onClick={() => setAddOpen(true)}>
+            <PlusIcon className="size-3.5" aria-hidden="true" />
+            {t('remoteHosts.action.addHost' as SettingsKey)}
+          </Button>
+        )}
+        className='mt-4'
+        data-testid="remote-hosts-settings"
+      >
       {isLoading
         ? (
             <div className="flex items-center justify-center gap-2 rounded-xl border border-border bg-card py-10 text-[12px] text-muted-foreground">
@@ -1186,6 +1576,7 @@ export function RemoteHostsSettings() {
             )}
 
       <HostFormDialog open={addOpen} onOpenChange={setAddOpen} />
-    </SettingsPage>
+      </SettingsPage>
+    </>
   )
 }
