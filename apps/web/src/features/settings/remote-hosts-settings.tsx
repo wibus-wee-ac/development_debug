@@ -15,9 +15,17 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query'
 import {
   ArrowDownLine as ChevronIcon,
+  ArrowRightLine as GoIcon,
+  ArrowUpLine as UpIcon,
   CheckLine as CheckIcon,
+  ClockLine as ClockIcon,
   CopyLine as CopyIcon,
   DeleteLine as TrashIcon,
+  ExternalLinkLine as ExternalIcon,
+  FileLine as FileIcon,
+  FolderLine as FolderIcon,
+  GitBranchLine as BranchIcon,
+  Home2Line as HomeIcon,
   PencilLine as PencilIcon,
   PlusLine as PlusIcon,
   Refresh2Line as RefreshIcon,
@@ -32,12 +40,14 @@ import {
   getRelayServersQueryKey,
   getRemoteRuntimeHostsByHostIdAgentsOptions,
   getRemoteRuntimeHostsByHostIdAgentsQueryKey,
+  getRemoteRuntimeHostsByHostIdFsDirectoryOptions,
+  getRemoteRuntimeHostsByHostIdFsDirectoryQueryKey,
+  getRemoteRuntimeHostsByHostIdFsStatOptions,
+  getRemoteRuntimeHostsByHostIdGitRepositoryOptions,
   getRemoteRuntimeHostsByHostIdHealthOptions,
   getRemoteRuntimeHostsByHostIdHealthQueryKey,
   getRemoteRuntimeHostsByHostIdRuntimesOptions,
   getRemoteRuntimeHostsByHostIdRuntimesQueryKey,
-  getRemoteRuntimeHostsByHostIdWorkspacesOptions,
-  getRemoteRuntimeHostsByHostIdWorkspacesQueryKey,
   getRemoteRuntimeHostsOptions,
   getRemoteRuntimeHostsQueryKey,
 } from '~/api-gen/@tanstack/react-query.gen'
@@ -52,7 +62,6 @@ import {
   postRemoteRuntimeHostsByHostIdDisconnect,
   postRemoteRuntimeHostsByHostIdRelayClaim,
   postRemoteRuntimeHostsByHostIdRelayPairingToken,
-  postWorkspaces,
 } from '~/api-gen/sdk.gen'
 import {
   AlertDialog,
@@ -91,7 +100,13 @@ import { cn } from '~/lib/cn'
 
 import { SettingsGroup, SettingsPage } from './settings-container'
 
-import type { GetRelayServersResponse, GetRemoteRuntimeHostsResponse } from '~/api-gen/types.gen'
+import type {
+  GetRelayServersResponse,
+  GetRemoteRuntimeHostsByHostIdFsDirectoryResponse,
+  GetRemoteRuntimeHostsByHostIdFsStatResponse,
+  GetRemoteRuntimeHostsByHostIdGitRepositoryResponse,
+  GetRemoteRuntimeHostsResponse,
+} from '~/api-gen/types.gen'
 
 type Host = GetRemoteRuntimeHostsResponse[number]
 type RelayServer = GetRelayServersResponse[number]
@@ -327,7 +342,12 @@ function SetupGuide({ onAdd }: { onAdd?: () => void }) {
           <p className="text-[12px] leading-relaxed text-muted-foreground/80">
             {t('remoteHosts.guide.step2.detail' as SettingsKey)}
           </p>
-          <CopyCodeButton command="CRADLE_AGENTD_WORKSPACE_ROOTS=~/projects cradle-agentd" />
+          {onAdd && (
+            <Button size="sm" onClick={onAdd}>
+              <PlusIcon className="size-3.5" aria-hidden="true" />
+              {t('remoteHosts.action.addHost' as SettingsKey)}
+            </Button>
+          )}
         </GuideStep>
 
         <GuideStep
@@ -338,12 +358,6 @@ function SetupGuide({ onAdd }: { onAdd?: () => void }) {
           <p className="text-[12px] leading-relaxed text-muted-foreground/80">
             {t('remoteHosts.guide.step3.detail' as SettingsKey)}
           </p>
-          {onAdd && (
-            <Button size="sm" onClick={onAdd}>
-              <PlusIcon className="size-3.5" aria-hidden="true" />
-              {t('remoteHosts.action.addHost' as SettingsKey)}
-            </Button>
-          )}
         </GuideStep>
       </ol>
 
@@ -391,6 +405,314 @@ function EmptyInline({ text }: { text: string }) {
   return <p className="text-[11.5px] text-muted-foreground/60">{text}</p>
 }
 
+function formatBytes(size: number | null): string | null {
+  if (size == null) {
+    return null
+  }
+  if (size < 1024) {
+    return `${size} B`
+  }
+  const units = ['KB', 'MB', 'GB', 'TB']
+  let value = size / 1024
+  let unit = 0
+  while (value >= 1024 && unit < units.length - 1) {
+    value /= 1024
+    unit += 1
+  }
+  return `${value.toFixed(value >= 10 ? 0 : 1)} ${units[unit]}`
+}
+
+function formatTime(ms: number | null): string | null {
+  if (ms == null || !Number.isFinite(ms)) {
+    return null
+  }
+  return new Date(ms).toLocaleString()
+}
+
+type FsEntry = GetRemoteRuntimeHostsByHostIdFsDirectoryResponse['entries'][number]
+
+function entryIcon(kind: FsEntry['kind']) {
+  if (kind === 'directory' || kind === 'symlink') {
+    return <FolderIcon className="size-3.5 shrink-0 text-sky-500/80" aria-hidden="true" />
+  }
+  return <FileIcon className="size-3.5 shrink-0 text-muted-foreground/60" aria-hidden="true" />
+}
+
+/**
+ * Probes a selected remote path for filesystem metadata and git identity, then
+ * surfaces a (pending) "register as remote project" action.
+ *
+ * Durable registration of a remote path as a Cradle-owned project is a separate
+ * transport-aware schema step that isn't shipped yet — see the exec plan. Until
+ * it lands, the action stays disabled with an explanatory note rather than
+ * silently reusing the local-path `/workspaces` model.
+ */
+function RepositoryProbe({ host, path }: { host: Host, path: string }) {
+  const { t } = useTranslation('settings')
+  const hostOpts = { path: { hostId: host.id } }
+  const statQuery = useQuery({
+    ...getRemoteRuntimeHostsByHostIdFsStatOptions({ ...hostOpts, query: { path } }),
+    retry: false,
+  })
+  const gitQuery = useQuery({
+    ...getRemoteRuntimeHostsByHostIdGitRepositoryOptions({ ...hostOpts, query: { path } }),
+    retry: false,
+  })
+
+  const stat: GetRemoteRuntimeHostsByHostIdFsStatResponse | undefined = statQuery.data
+  const git: GetRemoteRuntimeHostsByHostIdGitRepositoryResponse | undefined = gitQuery.data
+  const loading = statQuery.isLoading || gitQuery.isLoading
+
+  return (
+    <div className="space-y-3 rounded-lg border border-border/70 bg-card/60 p-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="min-w-0">
+          <p className="text-[11px] font-medium uppercase tracking-wide text-muted-foreground/70">
+            {t('remoteHosts.directory.selected' as SettingsKey)}
+          </p>
+          <p className="truncate font-mono text-[11.5px] text-foreground/80">{path}</p>
+        </div>
+        {loading && <Spinner className="size-3.5" />}
+      </div>
+
+      {statQuery.isError && (
+        <p className="rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1 text-[11px] text-destructive">
+          {describeError(statQuery.error)}
+        </p>
+      )}
+
+      {stat && (
+        <div className="flex flex-wrap items-center gap-x-3 gap-y-1 text-[11px] text-muted-foreground">
+          <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-normal">{stat.kind}</Badge>
+          {formatBytes(stat.size) && <span>{formatBytes(stat.size)}</span>}
+          {formatTime(stat.modifiedAt) && (
+            <span className="inline-flex items-center gap-1">
+              <ClockIcon className="size-3" aria-hidden="true" />
+              {formatTime(stat.modifiedAt)}
+            </span>
+          )}
+        </div>
+      )}
+
+      {gitQuery.isError && (
+        <p className="text-[11px] text-muted-foreground/70">
+          {t('remoteHosts.directory.probeUnavailable' as SettingsKey)}
+        </p>
+      )}
+
+      {git && (
+        git.isRepository
+          ? (
+              <div className="space-y-1.5 rounded-md border border-emerald-500/20 bg-emerald-500/5 px-2.5 py-2">
+                <div className="flex items-center gap-1.5 text-[11.5px] font-medium text-emerald-700 dark:text-emerald-300">
+                  <BranchIcon className="size-3.5" aria-hidden="true" />
+                  {t('remoteHosts.directory.isRepo' as SettingsKey)}
+                </div>
+                <dl className="space-y-1 text-[11px]">
+                  {git.rootPath && (
+                    <div className="flex gap-2">
+                      <dt className="w-20 shrink-0 text-muted-foreground/70">{t('remoteHosts.directory.repoRoot' as SettingsKey)}</dt>
+                      <dd className="min-w-0 break-all font-mono text-foreground/80">{git.rootPath}</dd>
+                    </div>
+                  )}
+                  {git.branch && (
+                    <div className="flex gap-2">
+                      <dt className="w-20 shrink-0 text-muted-foreground/70">{t('remoteHosts.directory.branch' as SettingsKey)}</dt>
+                      <dd className="min-w-0 break-all font-mono text-foreground/80">{git.branch}</dd>
+                    </div>
+                  )}
+                  {git.remoteUrl && (
+                    <div className="flex gap-2">
+                      <dt className="w-20 shrink-0 text-muted-foreground/70">{t('remoteHosts.directory.remote' as SettingsKey)}</dt>
+                      <dd className="min-w-0 break-all font-mono text-foreground/80">{git.remoteUrl}</dd>
+                    </div>
+                  )}
+                </dl>
+              </div>
+            )
+          : (
+              <p className="rounded-md border border-border/60 bg-muted/30 px-2.5 py-1.5 text-[11px] text-muted-foreground">
+                {t('remoteHosts.directory.notRepo' as SettingsKey)}
+              </p>
+            )
+      )}
+
+      <div className="space-y-1 border-t border-border/60 pt-2.5">
+        <Button size="xs" variant="outline" className="h-7 px-2.5 text-[11px]" disabled>
+          {t('remoteHosts.directory.register' as SettingsKey)}
+        </Button>
+        <p className="flex items-start gap-1.5 text-[10.5px] leading-relaxed text-muted-foreground/70">
+          <ExternalIcon className="mt-px size-3 shrink-0" aria-hidden="true" />
+          {t('remoteHosts.directory.registerPending' as SettingsKey)}
+        </p>
+      </div>
+    </div>
+  )
+}
+
+/**
+ * Browse a connected host's filesystem, pick a project directory, and probe it
+ * for git identity — the To-C project selection flow that replaces the old
+ * `workspace/list` suggestions. No `CRADLE_AGENTD_WORKSPACE_ROOTS` needed: the
+ * user navigates to wherever their code lives and selects it directly.
+ */
+function RemoteDirectoryBrowser({ host }: { host: Host }) {
+  const { t } = useTranslation('settings')
+  const [cwd, setCwd] = useState('~')
+  const [pathInput, setPathInput] = useState('~')
+  const [selectedPath, setSelectedPath] = useState<string | null>(null)
+
+  const directoryQuery = useQuery({
+    ...getRemoteRuntimeHostsByHostIdFsDirectoryOptions({ path: { hostId: host.id }, query: { path: cwd } }),
+    retry: false,
+  })
+
+  // Keep the editable path field in sync as the user navigates.
+  useEffect(() => {
+    setPathInput(cwd)
+    // Navigating away clears the previous selection's probe panel.
+    setSelectedPath(null)
+  }, [cwd])
+
+  const directory: GetRemoteRuntimeHostsByHostIdFsDirectoryResponse | undefined = directoryQuery.data
+  const entries = directory?.entries ?? []
+  const directories = entries.filter(e => e.kind === 'directory' || e.kind === 'symlink')
+  const files = entries.filter(e => e.kind !== 'directory' && e.kind !== 'symlink')
+  const resolvedPath = directory?.path ?? cwd
+  const parentPath = directory?.parentPath ?? null
+
+  const goTo = (next: string) => {
+    const trimmed = next.trim()
+    if (trimmed && trimmed !== cwd) {
+      setCwd(trimmed)
+    }
+  }
+
+  return (
+    <div className="space-y-2.5">
+      {/* Path bar: jump-to input + up / home navigation */}
+      <div className="flex items-center gap-1.5">
+        <Input
+          value={pathInput}
+          onChange={e => setPathInput(e.target.value)}
+          onKeyDown={(e) => {
+            if (e.key === 'Enter') {
+              e.preventDefault()
+              goTo(pathInput)
+            }
+          }}
+          placeholder={t('remoteHosts.directory.pathPlaceholder' as SettingsKey)}
+          className="h-7 flex-1 font-mono text-[11.5px]"
+        />
+        <Button
+          size="icon-xs"
+          variant="outline"
+          onClick={() => goTo(pathInput)}
+          aria-label={t('remoteHosts.directory.go' as SettingsKey)}
+        >
+          <GoIcon className="size-3.5" aria-hidden="true" />
+        </Button>
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          disabled={!parentPath}
+          onClick={() => parentPath && goTo(parentPath)}
+          aria-label={t('remoteHosts.directory.up' as SettingsKey)}
+        >
+          <UpIcon className="size-3.5" aria-hidden="true" />
+        </Button>
+        <Button
+          size="icon-xs"
+          variant="ghost"
+          onClick={() => goTo('~')}
+          aria-label={t('remoteHosts.directory.home' as SettingsKey)}
+        >
+          <HomeIcon className="size-3.5" aria-hidden="true" />
+        </Button>
+      </div>
+
+      {/* Resolved location + "use this directory" */}
+      <div className="flex items-center justify-between gap-2">
+        <span className="truncate font-mono text-[10.5px] text-muted-foreground/70" title={resolvedPath}>
+          {resolvedPath}
+        </span>
+        <Button
+          size="xs"
+          variant="ghost"
+          className="h-6 shrink-0 px-2 text-[10.5px]"
+          disabled={directoryQuery.isLoading}
+          onClick={() => setSelectedPath(resolvedPath)}
+        >
+          {t('remoteHosts.directory.useCurrent' as SettingsKey)}
+        </Button>
+      </div>
+
+      {directoryQuery.isLoading
+        ? <EmptyInline text={t('remoteHosts.detail.loading' as SettingsKey)} />
+        : directoryQuery.isError
+          ? (
+              <p className="rounded-md border border-destructive/30 bg-destructive/5 px-2 py-1.5 text-[11px] text-destructive">
+                {describeError(directoryQuery.error)}
+              </p>
+            )
+          : entries.length === 0
+            ? <EmptyInline text={t('remoteHosts.directory.empty' as SettingsKey)} />
+            : (
+                <div className="max-h-64 overflow-y-auto rounded-md border border-border/60">
+                  {[...directories, ...files].map(entry => (
+                    <DirectoryEntryRow
+                      key={entry.path}
+                      entry={entry}
+                      onNavigate={() => goTo(entry.path)}
+                      onSelect={() => setSelectedPath(entry.path)}
+                    />
+                  ))}
+                </div>
+              )}
+
+      {selectedPath && <RepositoryProbe host={host} path={selectedPath} />}
+    </div>
+  )
+}
+
+function DirectoryEntryRow({
+  entry,
+  onNavigate,
+  onSelect,
+}: {
+  entry: FsEntry
+  onNavigate: () => void
+  onSelect: () => void
+}) {
+  const { t } = useTranslation('settings')
+  const navigable = entry.kind === 'directory' || entry.kind === 'symlink'
+  return (
+    <div className="group flex items-center gap-2 border-b border-border/40 px-2 py-1.5 last:border-b-0 hover:bg-muted/40">
+      <button
+        type="button"
+        disabled={!navigable}
+        onClick={onNavigate}
+        className="flex min-w-0 flex-1 items-center gap-2 text-left disabled:cursor-default"
+      >
+        {entryIcon(entry.kind)}
+        <span className={cn('truncate text-[11.5px]', navigable ? 'text-foreground/85' : 'text-muted-foreground/70', entry.hidden && 'opacity-70')}>
+          {entry.name}
+        </span>
+      </button>
+      {navigable && (
+        <Button
+          size="xs"
+          variant="ghost"
+          className="h-5 shrink-0 px-1.5 text-[10px] opacity-0 group-hover:opacity-100"
+          onClick={onSelect}
+        >
+          {t('remoteHosts.directory.select' as SettingsKey)}
+        </Button>
+      )}
+    </div>
+  )
+}
+
 /** Expanded detail panel for a connected host. */
 function HostDetail({ host }: { host: Host }) {
   const { t } = useTranslation('settings')
@@ -408,11 +730,6 @@ function HostDetail({ host }: { host: Host }) {
     enabled: connected,
     retry: false,
   })
-  const workspacesQuery = useQuery({
-    ...getRemoteRuntimeHostsByHostIdWorkspacesOptions(hostOpts),
-    enabled: connected,
-    retry: false,
-  })
   const agentsQuery = useQuery({
     ...getRemoteRuntimeHostsByHostIdAgentsOptions(hostOpts),
     enabled: connected,
@@ -422,36 +739,9 @@ function HostDetail({ host }: { host: Host }) {
   const refreshAll = () => {
     void queryClient.invalidateQueries({ queryKey: getRemoteRuntimeHostsByHostIdHealthQueryKey(hostOpts) })
     void queryClient.invalidateQueries({ queryKey: getRemoteRuntimeHostsByHostIdRuntimesQueryKey(hostOpts) })
-    void queryClient.invalidateQueries({ queryKey: getRemoteRuntimeHostsByHostIdWorkspacesQueryKey(hostOpts) })
+    void queryClient.invalidateQueries({ queryKey: getRemoteRuntimeHostsByHostIdFsDirectoryQueryKey({ ...hostOpts, query: {} }) })
     void queryClient.invalidateQueries({ queryKey: getRemoteRuntimeHostsByHostIdAgentsQueryKey(hostOpts) })
   }
-
-  const importWorkspace = useMutation({
-    mutationFn: async (workspace: { name: string, path: string }) => {
-      const { error } = await postWorkspaces({
-        body: { name: workspace.name, path: workspace.path },
-      })
-      if (error) {
-        throw error
-      }
-    },
-    onSuccess: (_data, workspace) => {
-      toastManager.add({ type: 'success', title: t('remoteHosts.workspace.imported', { name: workspace.name }) })
-    },
-    onError: (error, workspace) => {
-      const message = describeError(error)
-      // 409 from the server means the path is already registered — treat as success-ish.
-      if (/already|exists|409|conflict/i.test(message)) {
-        toastManager.add({ type: 'info', title: t('remoteHosts.workspace.alreadyRegistered', { name: workspace.name }) })
-        return
-      }
-      toastManager.add({
-        type: 'error',
-        title: t('remoteHosts.workspace.importFailed' as SettingsKey),
-        description: message,
-      })
-    },
-  })
 
   if (!connected) {
     return (
@@ -461,9 +751,8 @@ function HostDetail({ host }: { host: Host }) {
     )
   }
 
-  const loadingAny = healthQuery.isLoading || runtimesQuery.isLoading || workspacesQuery.isLoading || agentsQuery.isLoading
+  const loadingAny = healthQuery.isLoading || runtimesQuery.isLoading || agentsQuery.isLoading
   const runtimes = runtimesQuery.data?.runtimes ?? []
-  const workspaces = workspacesQuery.data?.workspaces ?? []
   const agents = agentsQuery.data?.agents ?? []
   const summary = daemonSummary(host, healthQuery.data)
 
@@ -484,6 +773,13 @@ function HostDetail({ host }: { host: Host }) {
           {host.lastError}
         </p>
       )}
+
+      <DetailSection label={t('remoteHosts.detail.directory' as SettingsKey)}>
+        <p className="text-[11px] leading-relaxed text-muted-foreground/70">
+          {t('remoteHosts.directory.hint' as SettingsKey)}
+        </p>
+        <RemoteDirectoryBrowser host={host} />
+      </DetailSection>
 
       <DetailSection label={t('remoteHosts.detail.runtimes' as SettingsKey)}>
         {loadingAny
@@ -506,36 +802,6 @@ function HostDetail({ host }: { host: Host }) {
                       >
                         {t(`remoteHosts.runtime.${runtime.status}` as SettingsKey)}
                       </Badge>
-                    </div>
-                  ))}
-                </div>
-              )}
-      </DetailSection>
-
-      <DetailSection label={t('remoteHosts.detail.workspaces' as SettingsKey)}>
-        {loadingAny
-          ? <EmptyInline text={t('remoteHosts.detail.loading' as SettingsKey)} />
-          : workspaces.length === 0
-            ? <EmptyInline text={t('remoteHosts.detail.noWorkspaces' as SettingsKey)} />
-            : (
-                <div className="flex flex-col gap-1">
-                  {workspaces.map(workspace => (
-                    <div key={workspace.id || workspace.path} className="flex items-center justify-between gap-2 text-[11.5px]">
-                      <div className="min-w-0">
-                        <div className="truncate text-foreground/80">{workspace.name}</div>
-                        <div className="truncate font-mono text-[10.5px] text-muted-foreground/60">{workspace.path}</div>
-                      </div>
-                      <Button
-                        size="xs"
-                        variant="ghost"
-                        className="h-6 shrink-0 px-2 text-[10.5px]"
-                        disabled={importWorkspace.isPending && importWorkspace.variables?.path === workspace.path}
-                        onClick={() => importWorkspace.mutate({ name: workspace.name, path: workspace.path })}
-                      >
-                        {importWorkspace.isPending && importWorkspace.variables?.path === workspace.path
-                          ? <Spinner className="size-3" />
-                          : t('remoteHosts.workspace.import' as SettingsKey)}
-                      </Button>
                     </div>
                   ))}
                 </div>

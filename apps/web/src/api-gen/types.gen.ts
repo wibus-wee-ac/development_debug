@@ -2173,6 +2173,90 @@ export type GetRemoteRuntimeHostsByHostIdWorkspacesResponses = {
 
 export type GetRemoteRuntimeHostsByHostIdWorkspacesResponse = GetRemoteRuntimeHostsByHostIdWorkspacesResponses[keyof GetRemoteRuntimeHostsByHostIdWorkspacesResponses];
 
+export type GetRemoteRuntimeHostsByHostIdFsDirectoryData = {
+    body?: never;
+    path: {
+        hostId: string;
+    };
+    query?: {
+        path?: string;
+    };
+    url: '/remote-runtime-hosts/{hostId}/fs/directory';
+};
+
+export type GetRemoteRuntimeHostsByHostIdFsDirectoryResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        path: string;
+        parentPath: string | null;
+        entries: Array<{
+            name: string;
+            path: string;
+            kind: 'file' | 'directory' | 'symlink' | 'other';
+            size: number | null;
+            modifiedAt: number | null;
+            hidden: boolean;
+        }>;
+    };
+};
+
+export type GetRemoteRuntimeHostsByHostIdFsDirectoryResponse = GetRemoteRuntimeHostsByHostIdFsDirectoryResponses[keyof GetRemoteRuntimeHostsByHostIdFsDirectoryResponses];
+
+export type GetRemoteRuntimeHostsByHostIdFsStatData = {
+    body?: never;
+    path: {
+        hostId: string;
+    };
+    query: {
+        path: string;
+    };
+    url: '/remote-runtime-hosts/{hostId}/fs/stat';
+};
+
+export type GetRemoteRuntimeHostsByHostIdFsStatResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        name: string;
+        path: string;
+        kind: 'file' | 'directory' | 'symlink' | 'other';
+        size: number | null;
+        modifiedAt: number | null;
+        hidden: boolean;
+    };
+};
+
+export type GetRemoteRuntimeHostsByHostIdFsStatResponse = GetRemoteRuntimeHostsByHostIdFsStatResponses[keyof GetRemoteRuntimeHostsByHostIdFsStatResponses];
+
+export type GetRemoteRuntimeHostsByHostIdGitRepositoryData = {
+    body?: never;
+    path: {
+        hostId: string;
+    };
+    query: {
+        path: string;
+    };
+    url: '/remote-runtime-hosts/{hostId}/git/repository';
+};
+
+export type GetRemoteRuntimeHostsByHostIdGitRepositoryResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        path: string;
+        isRepository: boolean;
+        rootPath: string | null;
+        branch: string | null;
+        remoteUrl: string | null;
+    };
+};
+
+export type GetRemoteRuntimeHostsByHostIdGitRepositoryResponse = GetRemoteRuntimeHostsByHostIdGitRepositoryResponses[keyof GetRemoteRuntimeHostsByHostIdGitRepositoryResponses];
+
 export type GetRemoteRuntimeHostsByHostIdAgentsData = {
     body?: never;
     path: {

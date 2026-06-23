@@ -500,6 +500,30 @@ export const zGetRemoteRuntimeHostsByHostIdWorkspacesQuery = z.object({
     root: z.string().optional()
 });
 
+export const zGetRemoteRuntimeHostsByHostIdFsDirectoryPath = z.object({
+    hostId: z.string().min(1)
+});
+
+export const zGetRemoteRuntimeHostsByHostIdFsDirectoryQuery = z.object({
+    path: z.string().optional()
+});
+
+export const zGetRemoteRuntimeHostsByHostIdFsStatPath = z.object({
+    hostId: z.string().min(1)
+});
+
+export const zGetRemoteRuntimeHostsByHostIdFsStatQuery = z.object({
+    path: z.string().min(1).regex(/.*\S.*/)
+});
+
+export const zGetRemoteRuntimeHostsByHostIdGitRepositoryPath = z.object({
+    hostId: z.string().min(1)
+});
+
+export const zGetRemoteRuntimeHostsByHostIdGitRepositoryQuery = z.object({
+    path: z.string().min(1).regex(/.*\S.*/)
+});
+
 export const zGetRemoteRuntimeHostsByHostIdAgentsPath = z.object({
     hostId: z.string().min(1)
 });
