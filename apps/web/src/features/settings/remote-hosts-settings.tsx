@@ -21,6 +21,7 @@ import {
   PencilLine as PencilIcon,
   PlusLine as PlusIcon,
   Refresh2Line as RefreshIcon,
+  RouteLine as RelayIcon,
   ServerLine as ServerIcon,
 } from '@mingcute/react'
 import { useEffect, useState } from 'react'
@@ -44,6 +45,8 @@ import {
   postRemoteRuntimeHosts,
   postRemoteRuntimeHostsByHostIdConnect,
   postRemoteRuntimeHostsByHostIdDisconnect,
+  postRemoteRuntimeHostsByHostIdRelayClaim,
+  postRemoteRuntimeHostsByHostIdRelayPairingToken,
   postWorkspaces,
 } from '~/api-gen/sdk.gen'
 import {
@@ -85,6 +88,50 @@ import type { GetRemoteRuntimeHostsResponse } from '~/api-gen/types.gen'
 
 type Host = GetRemoteRuntimeHostsResponse[number]
 type ConnectionState = Host['connectionState']
+type HostTransport = 'ssh' | 'direct-socket' | 'relay'
+
+/**
+ * The host's transport lives inside `connectionConfigJson` (a JSON string the
+ * server stores verbatim). We parse it here only to read the transport kind and
+ * the public relay coordinates (relayUrl, roomId). The controller token is in
+ * there too and is intentionally never rendered.
+ */
+interface HostConnectionConfig {
+  transport?: HostTransport
+  relay?: { relayUrl: string, roomId: string, controllerToken: string }
+}
+
+function readConnectionConfig(host: Host): HostConnectionConfig | null {
+  if (!host.connectionConfigJson) {
+    return null
+  }
+  try {
+    return JSON.parse(host.connectionConfigJson) as HostConnectionConfig
+  }
+  catch {
+    return null
+  }
+}
+
+/** Mirrors the server's inferConnectionTransport so the UI never disagrees. */
+function hostTransport(host: Host): HostTransport {
+  const cfg = readConnectionConfig(host)
+  if (cfg?.transport) {
+    return cfg.transport
+  }
+  if (cfg?.relay) {
+    return 'relay'
+  }
+  return 'ssh'
+}
+
+/** Short, non-sensitive label for a relay room id (e.g. room_a1b2c3d4… → a1b2c3d4). */
+function shortRoomId(roomId?: string | null): string | null {
+  if (!roomId) {
+    return null
+  }
+  return roomId.replace(/^room_/, '').slice(0, 8)
+}
 
 type SettingsKey = keyof typeof import('~/locales/default').default.settings
 
@@ -149,6 +196,28 @@ function ConnectionDot({ state }: { state: ConnectionState }) {
       </span>
       {t(spec.labelKey)}
     </span>
+  )
+}
+
+function TransportBadge({ transport }: { transport: HostTransport }) {
+  const { t } = useTranslation('settings')
+  const labelKey: SettingsKey = transport === 'relay'
+    ? 'remoteHosts.transport.relay'
+    : transport === 'direct-socket'
+      ? 'remoteHosts.transport.directSocket'
+      : 'remoteHosts.transport.ssh'
+  return (
+    <Badge
+      variant="outline"
+      className={cn(
+        'h-4 px-1.5 text-[9px] font-normal',
+        transport === 'relay'
+          ? 'border-sky-500/30 text-sky-600 dark:text-sky-400'
+          : 'border-border text-muted-foreground',
+      )}
+    >
+      {t(labelKey)}
+    </Badge>
   )
 }
 
@@ -227,43 +296,50 @@ function GuideStep({ index, title, isLast, children }: { index: number, title: s
 function SetupGuide({ onAdd }: { onAdd?: () => void }) {
   const { t } = useTranslation('settings')
   return (
-    <ol className="space-y-0">
-      <GuideStep
-        index={1}
-        title={t('remoteHosts.guide.step1.title' as SettingsKey)}
-      >
-        <p className="text-[12px] leading-relaxed text-muted-foreground/80">
-          {t('remoteHosts.guide.step1.detail' as SettingsKey)}
-        </p>
-        <CopyCodeButton command="cradle-agentd" />
-      </GuideStep>
+    <div className="space-y-4">
+      <ol className="space-y-0">
+        <GuideStep
+          index={1}
+          title={t('remoteHosts.guide.step1.title' as SettingsKey)}
+        >
+          <p className="text-[12px] leading-relaxed text-muted-foreground/80">
+            {t('remoteHosts.guide.step1.detail' as SettingsKey)}
+          </p>
+          <CopyCodeButton command="cradle-agentd" />
+        </GuideStep>
 
-      <GuideStep
-        index={2}
-        title={t('remoteHosts.guide.step2.title' as SettingsKey)}
-      >
-        <p className="text-[12px] leading-relaxed text-muted-foreground/80">
-          {t('remoteHosts.guide.step2.detail' as SettingsKey)}
-        </p>
-        <CopyCodeButton command="CRADLE_AGENTD_WORKSPACE_ROOTS=~/projects cradle-agentd" />
-      </GuideStep>
+        <GuideStep
+          index={2}
+          title={t('remoteHosts.guide.step2.title' as SettingsKey)}
+        >
+          <p className="text-[12px] leading-relaxed text-muted-foreground/80">
+            {t('remoteHosts.guide.step2.detail' as SettingsKey)}
+          </p>
+          <CopyCodeButton command="CRADLE_AGENTD_WORKSPACE_ROOTS=~/projects cradle-agentd" />
+        </GuideStep>
 
-      <GuideStep
-        index={3}
-        isLast
-        title={t('remoteHosts.guide.step3.title' as SettingsKey)}
-      >
-        <p className="text-[12px] leading-relaxed text-muted-foreground/80">
-          {t('remoteHosts.guide.step3.detail' as SettingsKey)}
-        </p>
-        {onAdd && (
-          <Button size="sm" onClick={onAdd}>
-            <PlusIcon className="size-3.5" aria-hidden="true" />
-            {t('remoteHosts.action.addHost' as SettingsKey)}
-          </Button>
-        )}
-      </GuideStep>
-    </ol>
+        <GuideStep
+          index={3}
+          isLast
+          title={t('remoteHosts.guide.step3.title' as SettingsKey)}
+        >
+          <p className="text-[12px] leading-relaxed text-muted-foreground/80">
+            {t('remoteHosts.guide.step3.detail' as SettingsKey)}
+          </p>
+          {onAdd && (
+            <Button size="sm" onClick={onAdd}>
+              <PlusIcon className="size-3.5" aria-hidden="true" />
+              {t('remoteHosts.action.addHost' as SettingsKey)}
+            </Button>
+          )}
+        </GuideStep>
+      </ol>
+
+      <p className="flex items-start gap-2 rounded-lg border border-sky-500/15 bg-sky-500/5 px-3 py-2 text-[11.5px] leading-relaxed text-muted-foreground">
+        <RelayIcon className="mt-px size-3.5 shrink-0 text-sky-500" aria-hidden="true" />
+        {t('remoteHosts.guide.relayNote' as SettingsKey)}
+      </p>
+    </div>
   )
 }
 
@@ -495,10 +571,16 @@ function HostRow({ host }: { host: Host }) {
   const [expanded, setExpanded] = useState(false)
   const [editing, setEditing] = useState(false)
   const [confirmingDelete, setConfirmingDelete] = useState(false)
+  const [pairingRelay, setPairingRelay] = useState(false)
 
   const invalidateHosts = () => {
     void queryClient.invalidateQueries({ queryKey: getRemoteRuntimeHostsQueryKey() })
   }
+
+  const transport = hostTransport(host)
+  const relay = readConnectionConfig(host)?.relay ?? null
+  const isRelay = transport === 'relay'
+  const roomShort = shortRoomId(relay?.roomId ?? null)
 
   const connect = useMutation({
     mutationFn: async () => {
@@ -572,14 +654,22 @@ function HostRow({ host }: { host: Host }) {
           <div className="min-w-0 flex-1 space-y-0.5">
             <div className="flex flex-wrap items-center gap-2">
               <span className="truncate text-[12.5px] font-medium text-foreground">{host.displayName}</span>
+              <TransportBadge transport={transport} />
               {!host.enabled && (
                 <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-normal text-muted-foreground">
                   {t('remoteHosts.badge.disabled' as SettingsKey)}
                 </Badge>
               )}
+              {isRelay && roomShort && (
+                <Badge variant="outline" className="h-4 px-1.5 text-[9px] font-normal text-muted-foreground" title={relay?.roomId}>
+                  {t('remoteHosts.relay.roomLabel' as SettingsKey)} {roomShort}
+                </Badge>
+              )}
               <ConnectionDot state={host.connectionState} />
             </div>
-            <div className="truncate font-mono text-[11px] text-muted-foreground/70">{host.sshTarget}</div>
+            <div className="truncate font-mono text-[11px] text-muted-foreground/70">
+              {isRelay ? (relay?.relayUrl ?? t('remoteHosts.relay.noRoom' as SettingsKey)) : host.sshTarget}
+            </div>
           </div>
         </button>
 
@@ -609,6 +699,20 @@ function HostRow({ host }: { host: Host }) {
                   {t('remoteHosts.action.connect' as SettingsKey)}
                 </Button>
               )}
+
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button
+                size="icon-xs"
+                variant="ghost"
+                onClick={() => setPairingRelay(true)}
+                aria-label={t('remoteHosts.action.pairRelay' as SettingsKey)}
+              >
+                <RelayIcon className="size-3.5" aria-hidden="true" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="top">{t('remoteHosts.action.pairRelay' as SettingsKey)}</TooltipContent>
+          </Tooltip>
 
           <Tooltip>
             <TooltipTrigger asChild>
@@ -659,6 +763,12 @@ function HostRow({ host }: { host: Host }) {
         />
       )}
 
+      <RelayPairingDialog
+        open={pairingRelay}
+        onOpenChange={open => setPairingRelay(open)}
+        host={host}
+      />
+
       <AlertDialog open={confirmingDelete} onOpenChange={setConfirmingDelete}>
         <AlertDialogContent>
           <AlertDialogHeader>
@@ -688,6 +798,180 @@ interface HostFormValues {
   sshTarget: string
   remoteSocketPath: string
   enabled: boolean
+}
+
+/**
+ * Pair a host through a relay server — the SSH-less path.
+ *
+ * Flow: enter/confirm the relay URL → generate a one-time `cradle-agentd relay`
+ * command (with copy + expiry countdown) → run it on the remote machine, which
+ * prints a pairing code → paste the code back here → POST /relay/claim. On
+ * success the host's transport flips to relay and the row re-renders.
+ */
+function RelayPairingDialog({
+  open,
+  onOpenChange,
+  host,
+}: {
+  open: boolean
+  onOpenChange: (open: boolean) => void
+  host: Host
+}) {
+  const { t } = useTranslation('settings')
+  const queryClient = useQueryClient()
+
+  const existingRelayUrl = readConnectionConfig(host)?.relay?.relayUrl ?? ''
+  const [relayUrl, setRelayUrl] = useState(existingRelayUrl)
+  const [pairing, setPairing] = useState<{ command: string, expiresAt: number } | null>(null)
+  const [pairingCode, setPairingCode] = useState('')
+  const [now, setNow] = useState(() => Date.now())
+
+  // Re-seed the form each time the dialog opens.
+  useEffect(() => {
+    if (open) {
+      setRelayUrl(existingRelayUrl)
+      setPairing(null)
+      setPairingCode('')
+      setNow(Date.now())
+    }
+  }, [open, existingRelayUrl])
+
+  // Tick once a second while a command is showing so the countdown stays live.
+  useEffect(() => {
+    if (!pairing) {
+      return
+    }
+    const id = setInterval(() => setNow(Date.now()), 1000)
+    return () => clearInterval(id)
+  }, [pairing])
+
+  const remainingSec = pairing ? Math.max(0, Math.ceil((pairing.expiresAt - now) / 1000)) : 0
+  const expired = !!pairing && remainingSec <= 0
+
+  const generate = useMutation({
+    mutationFn: async () => {
+      const { data, error } = await postRemoteRuntimeHostsByHostIdRelayPairingToken({
+        path: { hostId: host.id },
+        body: { relayUrl: relayUrl.trim() },
+      })
+      if (error) {
+        throw error
+      }
+      return data
+    },
+    onSuccess: (data) => {
+      if (!data) {
+        return
+      }
+      const command = `cradle-agentd relay --relay-url ${data.relayUrl} --pairing-token ${data.pairingToken}`
+      setPairing({ command, expiresAt: new Date(data.expiresAt).getTime() })
+      setNow(Date.now())
+      setPairingCode('')
+      toastManager.add({ type: 'success', title: t('remoteHosts.relay.toast.commandGenerated' as SettingsKey) })
+    },
+    onError: error => toastManager.add({
+      type: 'error',
+      title: t('remoteHosts.relay.toast.commandFailed' as SettingsKey),
+      description: describeError(error),
+    }),
+  })
+
+  const claim = useMutation({
+    mutationFn: async () => {
+      const { error } = await postRemoteRuntimeHostsByHostIdRelayClaim({
+        path: { hostId: host.id },
+        body: { pairingCode: pairingCode.trim() },
+      })
+      if (error) {
+        throw error
+      }
+    },
+    onSuccess: () => {
+      toastManager.add({ type: 'success', title: t('remoteHosts.relay.toast.pairingComplete' as SettingsKey) })
+      void queryClient.invalidateQueries({ queryKey: getRemoteRuntimeHostsQueryKey() })
+      onOpenChange(false)
+    },
+    onError: error => toastManager.add({
+      type: 'error',
+      title: t('remoteHosts.relay.toast.pairingFailed' as SettingsKey),
+      description: describeError(error),
+    }),
+  })
+
+  const canGenerate = relayUrl.trim().length > 0 && !generate.isPending
+  const canClaim = !!pairing && !expired && pairingCode.trim().length > 0 && !claim.isPending
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-lg">
+        <DialogHeader>
+          <DialogTitle>{t('remoteHosts.relay.dialog.title' as SettingsKey)}</DialogTitle>
+          <DialogDescription>{t('remoteHosts.relay.dialog.description' as SettingsKey)}</DialogDescription>
+        </DialogHeader>
+
+        <div className="space-y-4 py-1">
+          <div className="space-y-2">
+            <Label htmlFor="rh-relay-url" className="text-xs">{t('remoteHosts.relay.dialog.relayUrl' as SettingsKey)}</Label>
+            <Input
+              id="rh-relay-url"
+              value={relayUrl}
+              onChange={e => setRelayUrl(e.target.value)}
+              placeholder={t('remoteHosts.relay.dialog.relayUrlPlaceholder' as SettingsKey)}
+              className="h-8 font-mono text-xs"
+            />
+            <p className="text-[11px] text-muted-foreground">{t('remoteHosts.relay.dialog.relayUrlHint' as SettingsKey)}</p>
+          </div>
+
+          <Button size="sm" disabled={!canGenerate} onClick={() => generate.mutate()} className="h-7 text-xs">
+            {generate.isPending && <Spinner className="size-3.5" />}
+            {pairing
+              ? t('remoteHosts.relay.dialog.regenerate' as SettingsKey)
+              : t('remoteHosts.relay.dialog.generate' as SettingsKey)}
+          </Button>
+
+          {pairing && (
+            <div className="space-y-2">
+              <div className="flex items-center justify-between gap-2">
+                <Label className="text-xs">{t('remoteHosts.relay.dialog.commandTitle' as SettingsKey)}</Label>
+                <span className={cn('text-[10.5px]', expired ? 'text-destructive' : 'text-muted-foreground')}>
+                  {expired
+                    ? t('remoteHosts.relay.dialog.expired' as SettingsKey)
+                    : t('remoteHosts.relay.dialog.expiresIn', { seconds: remainingSec })}
+                </span>
+              </div>
+              <p className="text-[11px] text-muted-foreground">{t('remoteHosts.relay.dialog.commandHint' as SettingsKey)}</p>
+              <CopyCodeButton command={pairing.command} />
+            </div>
+          )}
+
+          {pairing && !expired && (
+            <div className="space-y-2">
+              <Label htmlFor="rh-pairing-code" className="text-xs">{t('remoteHosts.relay.dialog.pairingCode' as SettingsKey)}</Label>
+              <Input
+                id="rh-pairing-code"
+                value={pairingCode}
+                onChange={e => setPairingCode(e.target.value)}
+                placeholder={t('remoteHosts.relay.dialog.pairingCodePlaceholder' as SettingsKey)}
+                className="h-8 font-mono text-xs"
+              />
+            </div>
+          )}
+        </div>
+
+        <DialogFooter>
+          <Button variant="ghost" size="sm" onClick={() => onOpenChange(false)} className="h-7 text-xs">
+            {t('remoteHosts.action.cancel' as SettingsKey)}
+          </Button>
+          <Button size="sm" disabled={!canClaim} onClick={() => claim.mutate()} className="h-7 text-xs">
+            {claim.isPending && <Spinner className="size-3.5" />}
+            {claim.isPending
+              ? t('remoteHosts.relay.dialog.claiming' as SettingsKey)
+              : t('remoteHosts.relay.dialog.claim' as SettingsKey)}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  )
 }
 
 function initialHostFormValues(host?: Host): HostFormValues {
