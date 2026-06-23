@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { useQuery } from '@tanstack/react-query'
 
 import { ArrowRightLine as ArrowRightIcon, ShuffleLine as ShuffleIcon } from '@mingcute/react'
@@ -25,6 +26,7 @@ import { PROVIDER_PRESETS } from '~/features/agent-management/provider-templates
 import { useProviderTargets } from '~/features/agent-runtime/use-provider-targets'
 
 const CC_SWITCH_SOURCE_ID = 'cc-switch'
+type OnboardingKey = keyof typeof import('~/locales/default').default.onboarding
 
 interface Row {
   key: string
@@ -48,6 +50,7 @@ interface Row {
  * Mount once near the app root; it manages its own visibility.
  */
 export function CredentialSetupDialog() {
+  const { t } = useTranslation('onboarding')
   const onboardingCompleted = useOnboardingStore(s => s.completed)
   const setupCompleted = useCredentialSetupStore(s => s.completed)
   const complete = useCredentialSetupStore(s => s.complete)
@@ -131,7 +134,7 @@ export function CredentialSetupDialog() {
         {/* Header */}
         <div className="px-5 pt-5 pb-4">
           <DialogTitle className="font-heading text-base font-semibold tracking-tight" style={{ textWrap: 'balance' }}>
-            Welcome to Cradle!
+            {t('credentials.welcomeTitle' as OnboardingKey)}
           </DialogTitle>
           <DialogDescription className="mt-1 text-[13px]" style={{ textWrap: 'pretty' }}>
             You should connect a provider first. Choose a provider to start using Cradle.

@@ -12,6 +12,7 @@ import {
 import { useMutation, useQuery } from '@tanstack/react-query'
 import type { ReactNode } from 'react'
 import { useEffect, useMemo, useState } from 'react'
+import { useTranslation } from 'react-i18next'
 import { Bar, BarChart, CartesianGrid, Cell, XAxis } from 'recharts'
 
 import {
@@ -54,12 +55,14 @@ type RateLimitWindow = NonNullable<RateLimitSnapshot['primary']>
 type DailyBucket = NonNullable<CodexAccountDiagnostics['tokenUsage']>['dailyUsageBuckets'][number]
 
 type StatusKind = 'idle' | 'available' | 'limited' | 'unsupported' | 'error'
+type AgentManagementKey = keyof typeof import('~/locales/default').default.agentManagement
 
 const DAILY_TOKENS_CHART_CONFIG: ChartConfig = {
   tokens: { label: 'Tokens' },
 }
 
 export function CodexAccountDiagnosticsPanel({ providerTargetId }: { providerTargetId: string }) {
+  const { t } = useTranslation('agentManagement')
   const [dialogOpen, setDialogOpen] = useState(false)
   const [resetDialogOpen, setResetDialogOpen] = useState(false)
   const [resetAttemptKey, setResetAttemptKey] = useState<string | null>(null)
@@ -94,6 +97,7 @@ export function CodexAccountDiagnosticsPanel({ providerTargetId }: { providerTar
   const diagnostics = diagnosticsQuery.data ?? null
   const canUseResetCredit = isResetCreditAvailable(diagnostics)
   const statusKind = deriveStatusKind(diagnostics, diagnosticsQuery.error)
+  const loadingLabel = t('codexDiagnostics.loading' as AgentManagementKey)
 
   // Open the dialog → fetch once if we have nothing yet.
   useEffect(() => {
@@ -131,6 +135,7 @@ export function CodexAccountDiagnosticsPanel({ providerTargetId }: { providerTar
         statusKind={statusKind}
         loading={diagnosticsQuery.isFetching}
         error={diagnosticsQuery.error}
+        loadingLabel={loadingLabel}
         onRefresh={refresh}
         onOpen={() => setDialogOpen(true)}
       />
@@ -172,19 +177,19 @@ export function CodexAccountDiagnosticsPanel({ providerTargetId }: { providerTar
 
             <TabsContent value="account" className="mt-0 min-h-0 flex-1 overflow-hidden">
               <ScrollArea className="h-full">
-                <AccountTab diagnostics={diagnostics} loading={diagnosticsQuery.isFetching} error={diagnosticsQuery.error} />
+                <AccountTab diagnostics={diagnostics} loading={diagnosticsQuery.isFetching} error={diagnosticsQuery.error} loadingLabel={loadingLabel} />
               </ScrollArea>
             </TabsContent>
 
             <TabsContent value="rate-limits" className="mt-0 min-h-0 flex-1 overflow-hidden">
               <ScrollArea className="h-full">
-                <RateLimitsTab diagnostics={diagnostics} loading={diagnosticsQuery.isFetching} error={diagnosticsQuery.error} />
+                <RateLimitsTab diagnostics={diagnostics} loading={diagnosticsQuery.isFetching} error={diagnosticsQuery.error} loadingLabel={loadingLabel} />
               </ScrollArea>
             </TabsContent>
 
             <TabsContent value="usage" className="mt-0 min-h-0 flex-1 overflow-hidden">
               <ScrollArea className="h-full">
-                <UsageTab diagnostics={diagnostics} loading={diagnosticsQuery.isFetching} error={diagnosticsQuery.error} />
+                <UsageTab diagnostics={diagnostics} loading={diagnosticsQuery.isFetching} error={diagnosticsQuery.error} loadingLabel={loadingLabel} />
               </ScrollArea>
             </TabsContent>
           </Tabs>
@@ -219,6 +224,7 @@ function SummaryCard({
   statusKind,
   loading,
   error,
+  loadingLabel,
   onRefresh,
   onOpen,
 }: {
@@ -226,6 +232,7 @@ function SummaryCard({
   statusKind: StatusKind
   loading: boolean
   error: Error | null
+  loadingLabel: string
   onRefresh: () => void
   onOpen: () => void
 }) {
@@ -361,12 +368,14 @@ function AccountTab({
   diagnostics,
   loading,
   error,
+  loadingLabel,
 }: {
   diagnostics: CodexAccountDiagnostics | null
   loading: boolean
   error: Error | null
+  loadingLabel: string
 }) {
-  const body = renderNoticeBody(diagnostics, loading, error)
+  const body = renderNoticeBody(diagnostics, loading, error, loadingLabel)
   if (body) {
     return <div className="px-6 py-8">{body}</div>
   }
@@ -398,12 +407,14 @@ function RateLimitsTab({
   diagnostics,
   loading,
   error,
+  loadingLabel,
 }: {
   diagnostics: CodexAccountDiagnostics | null
   loading: boolean
   error: Error | null
+  loadingLabel: string
 }) {
-  const body = renderNoticeBody(diagnostics, loading, error)
+  const body = renderNoticeBody(diagnostics, loading, error, loadingLabel)
   if (body) {
     return <div className="px-6 py-8">{body}</div>
   }
@@ -453,12 +464,14 @@ function UsageTab({
   diagnostics,
   loading,
   error,
+  loadingLabel,
 }: {
   diagnostics: CodexAccountDiagnostics | null
   loading: boolean
   error: Error | null
+  loadingLabel: string
 }) {
-  const body = renderNoticeBody(diagnostics, loading, error)
+  const body = renderNoticeBody(diagnostics, loading, error, loadingLabel)
   if (body) {
     return <div className="px-6 py-8">{body}</div>
   }
@@ -804,6 +817,7 @@ function renderNoticeBody(
   diagnostics: CodexAccountDiagnostics | null,
   loading: boolean,
   error: Error | null,
+  loadingLabel: string,
 ): ReactNode | null {
   if (error) {
     return (
@@ -818,7 +832,7 @@ function renderNoticeBody(
     return (
       <div className="flex items-center justify-center gap-2 py-12 text-[12px] text-muted-foreground">
         <Spinner className="size-3.5" />
-        Loading…
+        {loadingLabel}
       </div>
     )
   }

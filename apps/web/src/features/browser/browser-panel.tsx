@@ -37,6 +37,7 @@ import {
   useRef,
   useState,
 } from 'react'
+import { useTranslation } from 'react-i18next'
 
 import { Button } from '~/components/ui/button'
 import {
@@ -113,6 +114,8 @@ interface BrowserPanelProps {
   nativeSurfaceVisible?: boolean
   onCloseLastTab?: (ownerId: string) => void
 }
+
+type ChromeKey = keyof typeof import('~/locales/default').default.chrome
 
 interface BrowserLocalServer {
   port: number
@@ -1219,6 +1222,7 @@ export function BrowserPanel({
   nativeSurfaceVisible = true,
   onCloseLastTab,
 }: BrowserPanelProps) {
+  const { t } = useTranslation('chrome')
   const resolvedOwnerId = ownerId ?? DEFAULT_BROWSER_PANEL_OWNER_ID
   const selectBrowserState = selectOwnerBrowserState(resolvedOwnerId)
   const selectBrowserHistory = selectOwnerBrowserHistory(resolvedOwnerId)
@@ -2930,11 +2934,13 @@ export function BrowserPanel({
               )}
               disabled={!nativeBrowserAvailable || !activeBrowserTabId}
               onClick={hasActiveAnnotationSession ? handleCancelAnnotation : handleStartAnnotation}
-              aria-label={hasActiveAnnotationSession ? 'Cancel annotation' : 'Comment on browser'}
-              title="Toggle browser comments (Command/Ctrl Shift F)"
+              aria-label={hasActiveAnnotationSession
+                ? t('browser.annotation.cancel' as ChromeKey)
+                : t('browser.annotation.comment' as ChromeKey)}
+              title={t('browser.annotation.toggleTitle' as ChromeKey)}
             >
               <MessageSquarePlusIcon className="size-3.5" />
-              <span>Comment</span>
+              <span>{t('browser.annotation.comment' as ChromeKey)}</span>
             </button>
           </div>
         )
