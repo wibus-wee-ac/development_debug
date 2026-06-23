@@ -1068,6 +1068,15 @@ describe('claudeAgentProvider MCP integration', () => {
           iconKey: 'user-input',
           surfaces: ['composerState', 'runtimePanel', 'streamEvidence'],
         },
+        {
+          id: 'claude-agent:crew',
+          name: 'crew',
+          label: 'Crew',
+          description: 'Show active sub-agents and crew status.',
+          argumentHint: '',
+          iconKey: 'crew',
+          surfaces: ['runtimePanel'],
+        },
       ],
       skills: [],
     })
