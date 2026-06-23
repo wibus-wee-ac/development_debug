@@ -33,7 +33,6 @@ export interface SideChatSessionDto {
   providerTargetId: string | null
   providerSessionId: string | null
   title: string
-  expiresAt: number
 }
 
 export interface SideChatRunContext {
@@ -166,7 +165,6 @@ export async function createSideChat(
       providerTargetId: context.providerTarget.id,
       providerSessionId: childRuntimeSession.providerSessionId,
       title: createSideSessionTitle(parentSession.title, deps),
-      expiresAt: record.expiresAt
     }
   } finally {
     if (!sideRegistered) {

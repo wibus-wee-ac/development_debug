@@ -1793,7 +1793,6 @@ describe('chat runtime capability', () => {
         providerTargetId: string | null
         providerSessionId: string | null
         title: string
-        expiresAt: number
       }
 
       expect(side).toEqual(expect.objectContaining({

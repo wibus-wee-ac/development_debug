@@ -1054,7 +1054,6 @@ export const ChatRuntimeModel = {
     providerTargetId: t.Union([t.String(), t.Null()]),
     providerSessionId: t.Union([t.String(), t.Null()]),
     title: t.String(),
-    expiresAt: t.Number()
   }),
 
   bangCommandResponse: t.Object({

@@ -13,7 +13,6 @@ export interface SideConversationRecord {
   runtimeSession: RuntimeSession
   requestedModelId: string | null
   history: UIMessage[]
-  expiresAt: number
   pinned: boolean
   lease: ProviderRuntimeLease<unknown>
 }
@@ -26,29 +25,22 @@ export interface ReservedSideConversationHostLease {
   lease: ProviderRuntimeLease<unknown>
 }
 
-const DEFAULT_SIDE_CONVERSATION_TTL_MS = 30 * 60 * 1000
 const sideConversations = new Map<string, SideConversationRecord>()
 
-function currentTimeMs(): number {
-  return Date.now()
-}
-
-function pruneExpiredSideConversations(now = currentTimeMs()): void {
+function pruneExpiredSideConversations(): void {
   for (const [sideConversationId, record] of sideConversations) {
-    if (record.expiresAt <= now || !providerRuntimeHostManager.hasHost(record.lease.hostId)) {
+    if (!providerRuntimeHostManager.hasHost(record.lease.hostId)) {
       record.lease.release()
       sideConversations.delete(sideConversationId)
     }
   }
 }
 
-export function registerSideConversation(input: Omit<SideConversationRecord, 'expiresAt' | 'lease' | 'pinned' | 'history'> & {
+export function registerSideConversation(input: Omit<SideConversationRecord, 'lease' | 'pinned' | 'history'> & {
   history?: UIMessage[]
-  ttlMs?: number
   hostLease: ReservedSideConversationHostLease
 }): SideConversationRecord {
   pruneExpiredSideConversations()
-  const ttlMs = input.ttlMs ?? DEFAULT_SIDE_CONVERSATION_TTL_MS
   const hostLease = input.hostLease
   if (
     hostLease.sideConversationId !== input.sideConversationId
@@ -71,7 +63,6 @@ export function registerSideConversation(input: Omit<SideConversationRecord, 'ex
     runtimeSession: input.runtimeSession,
     requestedModelId: input.requestedModelId,
     history: input.history ? [...input.history] : [],
-    expiresAt: currentTimeMs() + ttlMs,
     pinned: true,
     lease: hostLease.lease,
   }
@@ -83,14 +74,12 @@ export function reserveSideConversationHostLease(input: {
   sideConversationId: string
   providerTargetId: string
   runtimeKind: RuntimeKind
-  ttlMs?: number
 }): ReservedSideConversationHostLease {
   pruneExpiredSideConversations()
   const lease = providerRuntimeHostManager.acquireLease({
     runtimeKind: input.runtimeKind,
     providerTargetId: input.providerTargetId,
     scopeId: input.sideConversationId,
-    ttlMs: input.ttlMs ?? DEFAULT_SIDE_CONVERSATION_TTL_MS,
     pinned: true,
   })
   return {
@@ -116,13 +105,12 @@ export function appendSideConversationHistory(sideConversationId: string, messag
   return record
 }
 
-export function refreshSideConversation(sideConversationId: string, ttlMs = DEFAULT_SIDE_CONVERSATION_TTL_MS): SideConversationRecord | undefined {
+export function refreshSideConversation(sideConversationId: string): SideConversationRecord | undefined {
   const record = readSideConversation(sideConversationId)
   if (!record) {
     return undefined
   }
-  record.expiresAt = currentTimeMs() + ttlMs
-  record.lease.refresh(ttlMs)
+  record.lease.refresh()
   return record
 }
 
