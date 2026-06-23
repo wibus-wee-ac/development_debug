@@ -8,6 +8,7 @@ import {
 } from '@cradle/remote-agent-protocol'
 
 import { AgentRegistry } from './agents'
+import { listDirectory, probeRepository, statPath } from './filesystem'
 import { PtyRegistry } from './pty'
 import { readHostId } from './host-id'
 import { listWorkspaces } from './workspaces'
@@ -60,6 +61,12 @@ export class AgentdDaemon {
         }
       case 'workspace/list':
         return listWorkspaces(params)
+      case 'fs/listDirectory':
+        return await listDirectory(params)
+      case 'fs/stat':
+        return await statPath(params)
+      case 'git/probeRepository':
+        return await probeRepository(params)
       case 'agent/list':
         return this.agents.list()
       case 'agent/start':
