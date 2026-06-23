@@ -6,6 +6,7 @@
   "batch.provider.emptySelection": "Select provider",
   "batch.provider.selected": "{{count}} agents selected",
   "batch.provider.skippedCliTui": "{{count}} CLI TUI agents skipped.",
+  "codexDiagnostics.loading": "Loading...",
   "detail.action.cancel": "Cancel",
   "detail.avatar.alt": "Agent",
   "detail.avatar.shuffle": "Click to shuffle",

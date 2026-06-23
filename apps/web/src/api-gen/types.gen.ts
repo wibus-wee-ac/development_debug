@@ -1787,6 +1787,111 @@ export type PatchProviderTargetsByProviderTargetIdCustomModelsResponses = {
 
 export type PatchProviderTargetsByProviderTargetIdCustomModelsResponse = PatchProviderTargetsByProviderTargetIdCustomModelsResponses[keyof PatchProviderTargetsByProviderTargetIdCustomModelsResponses];
 
+export type GetRelayServersData = {
+    body?: never;
+    path?: never;
+    query?: never;
+    url: '/relay-servers';
+};
+
+export type GetRelayServersResponses = {
+    /**
+     * Response for status 200
+     */
+    200: Array<{
+        id: string;
+        displayName: string;
+        relayUrl: string;
+        enabled: boolean;
+        isDefault: boolean;
+        createdAt: number;
+        updatedAt: number;
+    }>;
+};
+
+export type GetRelayServersResponse = GetRelayServersResponses[keyof GetRelayServersResponses];
+
+export type PostRelayServersData = {
+    body: {
+        id?: string;
+        displayName: string;
+        relayUrl: string;
+        enabled?: boolean;
+        isDefault?: boolean;
+    };
+    path?: never;
+    query?: never;
+    url: '/relay-servers';
+};
+
+export type PostRelayServersResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        displayName: string;
+        relayUrl: string;
+        enabled: boolean;
+        isDefault: boolean;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PostRelayServersResponse = PostRelayServersResponses[keyof PostRelayServersResponses];
+
+export type DeleteRelayServersByRelayServerIdData = {
+    body?: never;
+    path: {
+        relayServerId: string;
+    };
+    query?: never;
+    url: '/relay-servers/{relayServerId}';
+};
+
+export type DeleteRelayServersByRelayServerIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        ok: boolean;
+    };
+};
+
+export type DeleteRelayServersByRelayServerIdResponse = DeleteRelayServersByRelayServerIdResponses[keyof DeleteRelayServersByRelayServerIdResponses];
+
+export type PatchRelayServersByRelayServerIdData = {
+    body: {
+        displayName?: string;
+        relayUrl?: string;
+        enabled?: boolean;
+        isDefault?: boolean;
+    };
+    path: {
+        relayServerId: string;
+    };
+    query?: never;
+    url: '/relay-servers/{relayServerId}';
+};
+
+export type PatchRelayServersByRelayServerIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        displayName: string;
+        relayUrl: string;
+        enabled: boolean;
+        isDefault: boolean;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PatchRelayServersByRelayServerIdResponse = PatchRelayServersByRelayServerIdResponses[keyof PatchRelayServersByRelayServerIdResponses];
+
 export type GetRemoteRuntimeHostsData = {
     body?: never;
     path?: never;
@@ -1823,9 +1928,19 @@ export type PostRemoteRuntimeHostsData = {
     body: {
         id?: string;
         displayName: string;
-        sshTarget: string;
-        remoteSocketPath: string;
+        sshTarget?: string;
+        remoteSocketPath?: string;
         enabled?: boolean;
+        transport?: 'ssh' | 'direct-socket' | 'relay';
+        sshProfile?: {
+            hostName: string;
+            user?: string | null;
+            port?: string | number | null;
+            auth?: 'default' | 'identityFile';
+            identityFilePath?: string | null;
+        } | null;
+        localSocketPath?: string;
+        connectTimeoutMs?: string | number;
         connectionConfig?: {
             [key: string]: unknown;
         };
@@ -1886,6 +2001,16 @@ export type PatchRemoteRuntimeHostsByHostIdData = {
         sshTarget?: string;
         remoteSocketPath?: string;
         enabled?: boolean;
+        transport?: 'ssh' | 'direct-socket' | 'relay';
+        sshProfile?: {
+            hostName: string;
+            user?: string | null;
+            port?: string | number | null;
+            auth?: 'default' | 'identityFile';
+            identityFilePath?: string | null;
+        } | null;
+        localSocketPath?: string;
+        connectTimeoutMs?: string | number;
         connectionConfig?: {
             [key: string]: unknown;
         };
@@ -2109,6 +2234,63 @@ export type PostRemoteRuntimeHostsByHostIdAgentsResponses = {
 };
 
 export type PostRemoteRuntimeHostsByHostIdAgentsResponse = PostRemoteRuntimeHostsByHostIdAgentsResponses[keyof PostRemoteRuntimeHostsByHostIdAgentsResponses];
+
+export type PostRemoteRuntimeHostsByHostIdRelayPairingTokenData = {
+    body: {
+        relayUrl?: string;
+        relayServerId?: string;
+        ttlMs?: string | number;
+    };
+    path: {
+        hostId: string;
+    };
+    query?: never;
+    url: '/remote-runtime-hosts/{hostId}/relay/pairing-token';
+};
+
+export type PostRemoteRuntimeHostsByHostIdRelayPairingTokenResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        relayUrl: string;
+        relayServerId: string | null;
+        roomId: string;
+        pairingToken: string;
+        hostToken: string;
+        expiresAt: string;
+    };
+};
+
+export type PostRemoteRuntimeHostsByHostIdRelayPairingTokenResponse = PostRemoteRuntimeHostsByHostIdRelayPairingTokenResponses[keyof PostRemoteRuntimeHostsByHostIdRelayPairingTokenResponses];
+
+export type PostRemoteRuntimeHostsByHostIdRelayClaimData = {
+    body: {
+        relayUrl?: string;
+        relayServerId?: string;
+        pairingCode: string;
+        ttlMs?: string | number;
+    };
+    path: {
+        hostId: string;
+    };
+    query?: never;
+    url: '/remote-runtime-hosts/{hostId}/relay/claim';
+};
+
+export type PostRemoteRuntimeHostsByHostIdRelayClaimResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        relayUrl: string;
+        roomId: string;
+        controllerToken: string;
+        expiresAt: string;
+    };
+};
+
+export type PostRemoteRuntimeHostsByHostIdRelayClaimResponse = PostRemoteRuntimeHostsByHostIdRelayClaimResponses[keyof PostRemoteRuntimeHostsByHostIdRelayClaimResponses];
 
 export type GetExternalIssueSourcesData = {
     body?: never;

@@ -26,8 +26,8 @@
   "relative.minutesAgo": "{{count}} 分钟前",
   "relative.monthsAgo": "{{count}} 个月前",
   "send.tooltip": "发送",
-  "workspace.addProject": "添加项目",
   "workspace.adding": "添加中...",
+  "workspace.addProject": "添加项目",
   "workspace.adhoc": "无项目",
   "workspace.group": "工作区"
 }

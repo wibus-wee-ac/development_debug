@@ -1,4 +1,7 @@
 {
+  "browser.annotation.cancel": "Cancel annotation",
+  "browser.annotation.comment": "Comment",
+  "browser.annotation.toggleTitle": "Toggle browser comments (Command/Ctrl Shift F)",
   "chromeSheet.action.close": "Close",
   "chromeSheet.rightAside.title": "Right panel",
   "chromeSheet.sidebar.title": "Sidebar",

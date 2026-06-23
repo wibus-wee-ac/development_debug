@@ -1,4 +1,7 @@
 {
+  "browser.annotation.cancel": "Cancel annotation",
+  "browser.annotation.comment": "Comment",
+  "browser.annotation.toggleTitle": "Toggle browser comments (Command/Ctrl Shift F)",
   "chromeSheet.action.close": "关闭",
   "chromeSheet.rightAside.title": "右侧面板",
   "chromeSheet.sidebar.title": "侧边栏",
@@ -18,6 +21,14 @@
   "header.action.toggleBrowserPanel": "切换浏览器面板",
   "header.action.toggleRightPanel": "切换右侧面板",
   "header.tab.settings": "设置",
+  "rightAside.issue.empty": "未选择会话",
+  "rightAside.tab.adjustment": "调整",
+  "rightAside.tab.await": "动态",
+  "rightAside.tab.changes": "变更",
+  "rightAside.tab.files": "文件",
+  "rightAside.tab.git": "Git",
+  "rightAside.tab.issue": "事项",
+  "rightAside.tab.runtime": "运行时",
   "update.button": "更新",
   "update.status.available": "可更新 {{version}}",
   "update.status.checking": "检查中",
@@ -28,13 +39,5 @@
   "update.toast.availableDescription": "打开桌面端设置，下载并准备安装更新。",
   "update.toast.availableTitle": "Cradle {{version}} 可用",
   "update.tooltip.available": "可用版本：{{version}}",
-  "update.tooltip.title": "Cradle 更新",
-  "rightAside.issue.empty": "未选择会话",
-  "rightAside.tab.adjustment": "调整",
-  "rightAside.tab.await": "动态",
-  "rightAside.tab.changes": "变更",
-  "rightAside.tab.files": "文件",
-  "rightAside.tab.git": "Git",
-  "rightAside.tab.issue": "事项",
-  "rightAside.tab.runtime": "运行时"
+  "update.tooltip.title": "Cradle 更新"
 }

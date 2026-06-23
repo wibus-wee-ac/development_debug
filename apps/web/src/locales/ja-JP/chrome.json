@@ -1,4 +1,7 @@
 {
+  "browser.annotation.cancel": "Cancel annotation",
+  "browser.annotation.comment": "Comment",
+  "browser.annotation.toggleTitle": "Toggle browser comments (Command/Ctrl Shift F)",
   "chromeSheet.action.close": "閉じる",
   "chromeSheet.rightAside.title": "右パネル",
   "chromeSheet.sidebar.title": "サイドバー",
@@ -18,6 +21,14 @@
   "header.action.toggleBrowserPanel": "ブラウザパネルを切り替え",
   "header.action.toggleRightPanel": "右パネルを切り替え",
   "header.tab.settings": "設定",
+  "rightAside.issue.empty": "セッションが選択されていません",
+  "rightAside.tab.adjustment": "調整",
+  "rightAside.tab.await": "フィード",
+  "rightAside.tab.changes": "変更",
+  "rightAside.tab.files": "ファイル",
+  "rightAside.tab.git": "Git",
+  "rightAside.tab.issue": "Issue",
+  "rightAside.tab.runtime": "Runtime",
   "update.button": "更新",
   "update.status.available": "更新 {{version}}",
   "update.status.checking": "確認中",
@@ -28,13 +39,5 @@
   "update.toast.availableDescription": "デスクトップ設定を開いて、インストーラーをデスクトップにダウンロードします。",
   "update.toast.availableTitle": "Cradle {{version}} が利用可能です",
   "update.tooltip.available": "利用可能: {{version}}",
-  "update.tooltip.title": "Cradle の更新",
-  "rightAside.issue.empty": "セッションが選択されていません",
-  "rightAside.tab.adjustment": "調整",
-  "rightAside.tab.await": "フィード",
-  "rightAside.tab.changes": "変更",
-  "rightAside.tab.files": "ファイル",
-  "rightAside.tab.git": "Git",
-  "rightAside.tab.issue": "Issue",
-  "rightAside.tab.runtime": "Runtime"
+  "update.tooltip.title": "Cradle の更新"
 }

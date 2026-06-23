@@ -166,6 +166,23 @@ import { register as registerProfileGet } from './profile/get'
 import { register as registerProfileList } from './profile/list'
 import { register as registerProfileSet } from './profile/set'
 import { register as registerProviderModels } from './provider/models'
+import { register as registerRelayServerCreate } from './relay-server/create'
+import { register as registerRelayServerDelete } from './relay-server/delete'
+import { register as registerRelayServerList } from './relay-server/list'
+import { register as registerRelayServerUpdate } from './relay-server/update'
+import { register as registerRemoteRuntimeHostAgentList } from './remote-runtime-host/agent/list'
+import { register as registerRemoteRuntimeHostAgentStart } from './remote-runtime-host/agent/start'
+import { register as registerRemoteRuntimeHostConnect } from './remote-runtime-host/connect'
+import { register as registerRemoteRuntimeHostCreate } from './remote-runtime-host/create'
+import { register as registerRemoteRuntimeHostDelete } from './remote-runtime-host/delete'
+import { register as registerRemoteRuntimeHostDisconnect } from './remote-runtime-host/disconnect'
+import { register as registerRemoteRuntimeHostHealth } from './remote-runtime-host/health'
+import { register as registerRemoteRuntimeHostList } from './remote-runtime-host/list'
+import { register as registerRemoteRuntimeHostRelayClaim } from './remote-runtime-host/relay/claim'
+import { register as registerRemoteRuntimeHostRelayPairingToken } from './remote-runtime-host/relay/pairing-token'
+import { register as registerRemoteRuntimeHostRuntimeList } from './remote-runtime-host/runtime/list'
+import { register as registerRemoteRuntimeHostUpdate } from './remote-runtime-host/update'
+import { register as registerRemoteRuntimeHostWorkspaceList } from './remote-runtime-host/workspace/list'
 import { register as registerSearchChronicle } from './search/chronicle'
 import { register as registerSearchThreads } from './search/threads'
 import { register as registerSecretDelete } from './secret/delete'
@@ -425,6 +442,23 @@ export function registerGeneratedCommands(program: Command): void {
   registerProfileList(program)
   registerProfileSet(program)
   registerProviderModels(program)
+  registerRelayServerCreate(program)
+  registerRelayServerDelete(program)
+  registerRelayServerList(program)
+  registerRelayServerUpdate(program)
+  registerRemoteRuntimeHostAgentList(program)
+  registerRemoteRuntimeHostAgentStart(program)
+  registerRemoteRuntimeHostConnect(program)
+  registerRemoteRuntimeHostCreate(program)
+  registerRemoteRuntimeHostDelete(program)
+  registerRemoteRuntimeHostDisconnect(program)
+  registerRemoteRuntimeHostHealth(program)
+  registerRemoteRuntimeHostList(program)
+  registerRemoteRuntimeHostRelayClaim(program)
+  registerRemoteRuntimeHostRelayPairingToken(program)
+  registerRemoteRuntimeHostRuntimeList(program)
+  registerRemoteRuntimeHostUpdate(program)
+  registerRemoteRuntimeHostWorkspaceList(program)
   registerSearchChronicle(program)
   registerSearchThreads(program)
   registerSecretDelete(program)

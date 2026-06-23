@@ -388,12 +388,55 @@ export const zPatchProviderTargetsByProviderTargetIdCustomModelsPath = z.object(
     providerTargetId: z.string().min(1)
 });
 
+export const zPostRelayServersBody = z.object({
+    id: z.string().min(1).regex(/.*\S.*/).optional(),
+    displayName: z.string().min(1).regex(/.*\S.*/),
+    relayUrl: z.string().min(1).regex(/.*\S.*/),
+    enabled: z.boolean().optional(),
+    isDefault: z.boolean().optional()
+});
+
+export const zDeleteRelayServersByRelayServerIdPath = z.object({
+    relayServerId: z.string().min(1)
+});
+
+export const zPatchRelayServersByRelayServerIdBody = z.object({
+    displayName: z.string().min(1).regex(/.*\S.*/).optional(),
+    relayUrl: z.string().min(1).regex(/.*\S.*/).optional(),
+    enabled: z.boolean().optional(),
+    isDefault: z.boolean().optional()
+});
+
+export const zPatchRelayServersByRelayServerIdPath = z.object({
+    relayServerId: z.string().min(1)
+});
+
 export const zPostRemoteRuntimeHostsBody = z.object({
     id: z.string().min(1).regex(/.*\S.*/).optional(),
     displayName: z.string().min(1).regex(/.*\S.*/),
-    sshTarget: z.string().min(1).regex(/.*\S.*/),
-    remoteSocketPath: z.string().min(1).regex(/.*\S.*/),
+    sshTarget: z.string().min(1).regex(/.*\S.*/).optional(),
+    remoteSocketPath: z.string().min(1).regex(/.*\S.*/).optional(),
     enabled: z.boolean().optional(),
+    transport: z.enum([
+        'ssh',
+        'direct-socket',
+        'relay'
+    ]).optional(),
+    sshProfile: z.object({
+        hostName: z.string().min(1).regex(/.*\S.*/),
+        user: z.string().nullish(),
+        port: z.union([
+            z.string(),
+            z.int().gte(1).lte(65535)
+        ]).nullish(),
+        auth: z.enum(['default', 'identityFile']).optional(),
+        identityFilePath: z.string().nullish()
+    }).nullish(),
+    localSocketPath: z.string().min(1).regex(/.*\S.*/).optional(),
+    connectTimeoutMs: z.union([
+        z.string(),
+        z.int().gte(1).lte(120000)
+    ]).optional(),
     connectionConfig: z.record(z.string(), z.unknown()).optional()
 });
 
@@ -406,6 +449,26 @@ export const zPatchRemoteRuntimeHostsByHostIdBody = z.object({
     sshTarget: z.string().min(1).regex(/.*\S.*/).optional(),
     remoteSocketPath: z.string().min(1).regex(/.*\S.*/).optional(),
     enabled: z.boolean().optional(),
+    transport: z.enum([
+        'ssh',
+        'direct-socket',
+        'relay'
+    ]).optional(),
+    sshProfile: z.object({
+        hostName: z.string().min(1).regex(/.*\S.*/),
+        user: z.string().nullish(),
+        port: z.union([
+            z.string(),
+            z.int().gte(1).lte(65535)
+        ]).nullish(),
+        auth: z.enum(['default', 'identityFile']).optional(),
+        identityFilePath: z.string().nullish()
+    }).nullish(),
+    localSocketPath: z.string().min(1).regex(/.*\S.*/).optional(),
+    connectTimeoutMs: z.union([
+        z.string(),
+        z.int().gte(1).lte(120000)
+    ]).optional(),
     connectionConfig: z.record(z.string(), z.unknown()).optional()
 });
 
@@ -450,6 +513,33 @@ export const zPostRemoteRuntimeHostsByHostIdAgentsBody = z.object({
 });
 
 export const zPostRemoteRuntimeHostsByHostIdAgentsPath = z.object({
+    hostId: z.string().min(1)
+});
+
+export const zPostRemoteRuntimeHostsByHostIdRelayPairingTokenBody = z.object({
+    relayUrl: z.string().min(1).regex(/.*\S.*/).optional(),
+    relayServerId: z.string().min(1).regex(/.*\S.*/).optional(),
+    ttlMs: z.union([
+        z.string(),
+        z.int().gte(1000).lte(3600000)
+    ]).optional()
+});
+
+export const zPostRemoteRuntimeHostsByHostIdRelayPairingTokenPath = z.object({
+    hostId: z.string().min(1)
+});
+
+export const zPostRemoteRuntimeHostsByHostIdRelayClaimBody = z.object({
+    relayUrl: z.string().min(1).regex(/.*\S.*/).optional(),
+    relayServerId: z.string().min(1).regex(/.*\S.*/).optional(),
+    pairingCode: z.string().min(1).regex(/.*\S.*/),
+    ttlMs: z.union([
+        z.string(),
+        z.int().gte(1000).lte(3600000)
+    ]).optional()
+});
+
+export const zPostRemoteRuntimeHostsByHostIdRelayClaimPath = z.object({
     hostId: z.string().min(1)
 });
 

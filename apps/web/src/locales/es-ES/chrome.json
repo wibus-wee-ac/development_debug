@@ -1,4 +1,7 @@
 {
+  "browser.annotation.cancel": "Cancel annotation",
+  "browser.annotation.comment": "Comment",
+  "browser.annotation.toggleTitle": "Toggle browser comments (Command/Ctrl Shift F)",
   "chromeSheet.action.close": "Cerrar",
   "chromeSheet.rightAside.title": "Panel derecho",
   "chromeSheet.sidebar.title": "Barra lateral",
@@ -18,6 +21,14 @@
   "header.action.toggleBrowserPanel": "Alternar panel del navegador",
   "header.action.toggleRightPanel": "Alternar panel derecho",
   "header.tab.settings": "Configuración",
+  "rightAside.issue.empty": "No hay sesión seleccionada",
+  "rightAside.tab.adjustment": "Ajustar",
+  "rightAside.tab.await": "Feed",
+  "rightAside.tab.changes": "Cambios",
+  "rightAside.tab.files": "Archivos",
+  "rightAside.tab.git": "Git",
+  "rightAside.tab.issue": "Issue",
+  "rightAside.tab.runtime": "Runtime",
   "update.button": "Actualizaciones",
   "update.status.available": "Actualización {{version}}",
   "update.status.checking": "Buscando",
@@ -28,13 +39,5 @@
   "update.toast.availableDescription": "Abre la configuración de Escritorio para descargar el instalador en el escritorio.",
   "update.toast.availableTitle": "Cradle {{version}} está disponible",
   "update.tooltip.available": "Disponible: {{version}}",
-  "update.tooltip.title": "Actualizaciones de Cradle",
-  "rightAside.issue.empty": "No hay sesión seleccionada",
-  "rightAside.tab.adjustment": "Ajustar",
-  "rightAside.tab.await": "Feed",
-  "rightAside.tab.changes": "Cambios",
-  "rightAside.tab.files": "Archivos",
-  "rightAside.tab.git": "Git",
-  "rightAside.tab.issue": "Issue",
-  "rightAside.tab.runtime": "Runtime"
+  "update.tooltip.title": "Actualizaciones de Cradle"
 }

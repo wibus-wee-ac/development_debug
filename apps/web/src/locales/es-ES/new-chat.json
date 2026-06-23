@@ -26,8 +26,8 @@
   "relative.minutesAgo": "hace {{count}} minutos",
   "relative.monthsAgo": "hace {{count}} meses",
   "send.tooltip": "Enviar",
-  "workspace.addProject": "Agregar proyecto",
   "workspace.adding": "Agregando...",
+  "workspace.addProject": "Agregar proyecto",
   "workspace.adhoc": "Sin proyecto",
   "workspace.group": "Workspaces"
 }

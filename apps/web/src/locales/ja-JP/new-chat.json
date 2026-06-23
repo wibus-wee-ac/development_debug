@@ -26,8 +26,8 @@
   "relative.minutesAgo": "{{count}} 分前",
   "relative.monthsAgo": "{{count}} か月前",
   "send.tooltip": "送信",
-  "workspace.addProject": "プロジェクトを追加",
   "workspace.adding": "追加中...",
+  "workspace.addProject": "プロジェクトを追加",
   "workspace.adhoc": "プロジェクトなし",
   "workspace.group": "ワークスペース"
 }

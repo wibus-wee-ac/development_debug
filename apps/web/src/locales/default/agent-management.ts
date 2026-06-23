@@ -1,4 +1,5 @@
 export default {
+  'codexDiagnostics.loading': 'Loading...',
   'detail.action.cancel': 'Cancel',
   'detail.avatar.alt': 'Agent',
   'detail.avatar.shuffle': 'Click to shuffle',
