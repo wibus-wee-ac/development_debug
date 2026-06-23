@@ -8,7 +8,17 @@ targets, and this module must not write remote host identity into the provider t
 
 Runtime-native semantics remain owned by provider adapters. The module only knows how to open an
 OpenSSH Unix-socket tunnel, speak the `@cradle/remote-agent-protocol` WebSocket protocol, and expose
-host-level actions such as health, runtime listing, workspace listing, and live agent listing.
+host-level actions such as health, runtime listing, remote filesystem browsing, git repository
+probing, legacy workspace suggestions, and live agent listing.
+
+Workspaces are Cradle-owned projections, not daemon-owned entities. A remote host provides primitive
+capabilities such as directory listing, path stat, git probing, controlled process execution, and
+runtime startup. Frontends should browse a connected host, let the user choose a remote path, and
+probe that path. A later transport-aware projection should register the project from `hostId`,
+`remotePath`, repository identity, display name, and saved project configuration. Do not store remote
+paths in the existing `/workspaces` local path model as a shortcut. The daemon `workspace/list`
+method is retained only as a legacy suggestion source and should not be used as authoritative project
+state.
 
 Host configuration is structured Cradle data. Frontends should create SSH hosts with a profile such
 as:

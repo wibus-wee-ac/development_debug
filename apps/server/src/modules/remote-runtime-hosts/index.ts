@@ -118,7 +118,7 @@ export const remoteRuntimeHosts = new Elysia({
     root: query.root ?? null,
   }), {
     detail: {
-      'summary': 'List workspaces exposed by a remote runtime host',
+      'summary': 'List legacy workspace suggestions from a remote runtime host',
       'x-cradle-cli': {
         command: ['remote-runtime-host', 'workspace', 'list'],
       },
@@ -126,6 +126,45 @@ export const remoteRuntimeHosts = new Elysia({
     params: RemoteRuntimeHostsModel.hostIdParams,
     query: RemoteRuntimeHostsModel.workspaceQuery,
     response: { 200: RemoteRuntimeHostsModel.workspaceList },
+  })
+  .get('/:hostId/fs/directory', ({ params, query }) => RemoteRuntimeHosts.listRemoteDirectory(params.hostId, {
+    path: query.path ?? null,
+  }), {
+    detail: {
+      'summary': 'List a directory on a connected remote runtime host',
+      'x-cradle-cli': {
+        command: ['remote-runtime-host', 'fs', 'directory', 'list'],
+      },
+    },
+    params: RemoteRuntimeHostsModel.hostIdParams,
+    query: RemoteRuntimeHostsModel.fsPathQuery,
+    response: { 200: RemoteRuntimeHostsModel.fsDirectoryList },
+  })
+  .get('/:hostId/fs/stat', ({ params, query }) => RemoteRuntimeHosts.statRemotePath(params.hostId, {
+    path: query.path,
+  }), {
+    detail: {
+      'summary': 'Stat a path on a connected remote runtime host',
+      'x-cradle-cli': {
+        command: ['remote-runtime-host', 'fs', 'stat'],
+      },
+    },
+    params: RemoteRuntimeHostsModel.hostIdParams,
+    query: RemoteRuntimeHostsModel.requiredFsPathQuery,
+    response: { 200: RemoteRuntimeHostsModel.fsStat },
+  })
+  .get('/:hostId/git/repository', ({ params, query }) => RemoteRuntimeHosts.probeRemoteRepository(params.hostId, {
+    path: query.path,
+  }), {
+    detail: {
+      'summary': 'Probe whether a remote path belongs to a git repository',
+      'x-cradle-cli': {
+        command: ['remote-runtime-host', 'git', 'repository', 'probe'],
+      },
+    },
+    params: RemoteRuntimeHostsModel.hostIdParams,
+    query: RemoteRuntimeHostsModel.requiredFsPathQuery,
+    response: { 200: RemoteRuntimeHostsModel.gitRepositoryProbe },
   })
   .get('/:hostId/agents', ({ params }) => RemoteRuntimeHosts.listRemoteAgents(params.hostId), {
     detail: {

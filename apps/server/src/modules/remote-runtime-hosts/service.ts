@@ -8,6 +8,12 @@ import type {
   AgentListResult,
   AgentStartParams,
   AgentStartResult,
+  FsListDirectoryParams,
+  FsListDirectoryResult,
+  FsStatParams,
+  FsStatResult,
+  GitProbeRepositoryParams,
+  GitProbeRepositoryResult,
   HostHealthResult,
   RemoteAgentParams,
   RemoteAgentResult,
@@ -356,6 +362,27 @@ export async function listRemoteWorkspaces(
   params: WorkspaceListParams,
 ): Promise<WorkspaceListResult> {
   return await callRemoteRuntimeHost(hostId, 'workspace/list', params)
+}
+
+export async function listRemoteDirectory(
+  hostId: string,
+  params: FsListDirectoryParams,
+): Promise<FsListDirectoryResult> {
+  return await callRemoteRuntimeHost(hostId, 'fs/listDirectory', params)
+}
+
+export async function statRemotePath(
+  hostId: string,
+  params: FsStatParams,
+): Promise<FsStatResult> {
+  return await callRemoteRuntimeHost(hostId, 'fs/stat', params)
+}
+
+export async function probeRemoteRepository(
+  hostId: string,
+  params: GitProbeRepositoryParams,
+): Promise<GitProbeRepositoryResult> {
+  return await callRemoteRuntimeHost(hostId, 'git/probeRepository', params)
 }
 
 export async function listRemoteAgents(hostId: string): Promise<AgentListResult> {

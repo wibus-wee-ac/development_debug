@@ -35,6 +35,22 @@ const runtimeSummary = t.Object({
   detail: nullableString,
 }, { additionalProperties: false })
 
+const fsEntryKind = t.Union([
+  t.Literal('file'),
+  t.Literal('directory'),
+  t.Literal('symlink'),
+  t.Literal('other'),
+])
+
+const fsEntry = t.Object({
+  name: t.String(),
+  path: t.String(),
+  kind: fsEntryKind,
+  size: nullableNumber,
+  modifiedAt: nullableNumber,
+  hidden: t.Boolean(),
+}, { additionalProperties: false })
+
 const workspaceSummary = t.Object({
   id: t.String(),
   name: t.String(),
@@ -129,9 +145,33 @@ export const RemoteRuntimeHostsModel = {
     root: t.Optional(t.String()),
   }, { additionalProperties: false }),
 
+  fsPathQuery: t.Object({
+    path: t.Optional(t.String()),
+  }, { additionalProperties: false }),
+
+  requiredFsPathQuery: t.Object({
+    path: nonBlankString,
+  }, { additionalProperties: false }),
+
   workspaceList: t.Object({
     workspaces: t.Array(workspaceSummary),
     message: nullableString,
+  }, { additionalProperties: false }),
+
+  fsDirectoryList: t.Object({
+    path: t.String(),
+    parentPath: nullableString,
+    entries: t.Array(fsEntry),
+  }, { additionalProperties: false }),
+
+  fsStat: fsEntry,
+
+  gitRepositoryProbe: t.Object({
+    path: t.String(),
+    isRepository: t.Boolean(),
+    rootPath: nullableString,
+    branch: nullableString,
+    remoteUrl: nullableString,
   }, { additionalProperties: false }),
 
   agentList: t.Object({

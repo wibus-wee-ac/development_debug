@@ -494,6 +494,29 @@ describe('remote runtime hosts', () => {
         ],
       })
 
+      const directoryRes = await app.handle(new Request(`http://localhost/remote-runtime-hosts/remote-host-live/fs/directory?path=${encodeURIComponent(daemonHome)}`))
+      expect(directoryRes.status).toBe(200)
+      expect(await directoryRes.json()).toEqual(expect.objectContaining({
+        path: daemonHome,
+        entries: [expect.objectContaining({ name: 'repo', kind: 'directory' })],
+      }))
+
+      const statRes = await app.handle(new Request(`http://localhost/remote-runtime-hosts/remote-host-live/fs/stat?path=${encodeURIComponent(join(daemonHome, 'repo'))}`))
+      expect(statRes.status).toBe(200)
+      expect(await statRes.json()).toEqual(expect.objectContaining({
+        path: join(daemonHome, 'repo'),
+        name: 'repo',
+        kind: 'directory',
+      }))
+
+      const gitRes = await app.handle(new Request(`http://localhost/remote-runtime-hosts/remote-host-live/git/repository?path=${encodeURIComponent(join(daemonHome, 'repo', 'src'))}`))
+      expect(gitRes.status).toBe(200)
+      expect(await gitRes.json()).toEqual(expect.objectContaining({
+        path: join(daemonHome, 'repo', 'src'),
+        isRepository: true,
+        rootPath: join(daemonHome, 'repo'),
+      }))
+
       const agentRes = await app.handle(new Request('http://localhost/remote-runtime-hosts/remote-host-live/agents', {
         method: 'POST',
         headers: { 'content-type': 'application/json' },
@@ -929,6 +952,9 @@ function handleFakeUnary(
           'host/health',
           'runtime/list',
           'workspace/list',
+          'fs/listDirectory',
+          'fs/stat',
+          'git/probeRepository',
           'agent/list',
           'agent/start',
           'agent/attach',
@@ -957,6 +983,44 @@ function handleFakeUnary(
       }
     case 'workspace/list':
       return { workspaces: [], message: null }
+    case 'fs/listDirectory': {
+      const path = (params as { path?: string | null }).path ?? process.cwd()
+      return {
+        path,
+        parentPath: dirname(path),
+        entries: [
+          {
+            name: 'repo',
+            path: join(path, 'repo'),
+            kind: 'directory',
+            size: null,
+            modifiedAt: 1,
+            hidden: false,
+          },
+        ],
+      }
+    }
+    case 'fs/stat': {
+      const path = (params as { path: string }).path
+      return {
+        path,
+        name: path.split('/').filter(Boolean).at(-1) ?? path,
+        kind: 'directory',
+        size: null,
+        modifiedAt: 1,
+        hidden: false,
+      }
+    }
+    case 'git/probeRepository': {
+      const path = (params as { path: string }).path
+      return {
+        path,
+        isRepository: true,
+        rootPath: path.replace(/\/src$/, ''),
+        branch: 'main',
+        remoteUrl: null,
+      }
+    }
     case 'agent/list':
       return { agents: Array.from(agents.values()) }
     case 'agent/start': {
