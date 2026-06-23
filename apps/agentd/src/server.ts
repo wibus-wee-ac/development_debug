@@ -4,15 +4,14 @@ import { createConnection } from 'node:net'
 import { dirname } from 'node:path'
 
 import {
-  createRemoteAgentError,
   encodeRemoteAgentFrame,
   parseRemoteAgentFrame,
-  REMOTE_AGENT_PROTOCOL_VERSION,
   type RemoteAgentFrame,
 } from '@cradle/remote-agent-protocol'
 import { WebSocket, WebSocketServer } from 'ws'
 
 import { AgentdDaemon } from './daemon'
+import { dispatchRemoteAgentFrame, invalidRemoteAgentFrame } from './protocol-dispatch'
 
 export interface AgentdServerOptions {
   socketPath: string
@@ -70,66 +69,13 @@ async function handleSocketMessage(socket: WebSocket, daemon: AgentdDaemon, raw:
     frame = parseRemoteAgentFrame(raw.toString())
   }
   catch (error) {
-    send(socket, {
-      protocolVersion: REMOTE_AGENT_PROTOCOL_VERSION,
-      kind: 'notification',
-      method: 'protocol/error',
-      params: createRemoteAgentError('invalid_frame', 'Invalid remote agent frame', String(error)),
-    })
+    send(socket, invalidRemoteAgentFrame(error))
     return
   }
 
-  try {
-    if (frame.kind === 'rpc.request') {
-      const result = await daemon.handleUnary(frame.method, frame.params)
-      send(socket, {
-        protocolVersion: REMOTE_AGENT_PROTOCOL_VERSION,
-        kind: 'rpc.response',
-        id: frame.id,
-        result,
-      })
-      return
-    }
-
-    if (frame.kind === 'stream.open') {
-      for await (const value of daemon.handleStream(frame.method, frame.params)) {
-        send(socket, {
-          protocolVersion: REMOTE_AGENT_PROTOCOL_VERSION,
-          kind: 'stream.next',
-          streamId: frame.streamId,
-          value,
-        })
-      }
-      send(socket, {
-        protocolVersion: REMOTE_AGENT_PROTOCOL_VERSION,
-        kind: 'stream.close',
-        streamId: frame.streamId,
-      })
-    }
-  }
-  catch (error) {
-    const payload = createRemoteAgentError(
-      'request_failed',
-      error instanceof Error ? error.message : String(error),
-    )
-    if (frame.kind === 'rpc.request') {
-      send(socket, {
-        protocolVersion: REMOTE_AGENT_PROTOCOL_VERSION,
-        kind: 'rpc.error',
-        id: frame.id,
-        error: payload,
-      })
-      return
-    }
-    if (frame.kind === 'stream.open') {
-      send(socket, {
-        protocolVersion: REMOTE_AGENT_PROTOCOL_VERSION,
-        kind: 'stream.error',
-        streamId: frame.streamId,
-        error: payload,
-      })
-    }
-  }
+  await dispatchRemoteAgentFrame(daemon, frame, (response) => {
+    send(socket, response)
+  })
 }
 
 function send(socket: WebSocket, frame: RemoteAgentFrame): void {
