@@ -13,6 +13,9 @@ export const remoteAgentUnaryMethods = [
   'host/health',
   'runtime/list',
   'workspace/list',
+  'fs/listDirectory',
+  'fs/stat',
+  'git/probeRepository',
   'agent/list',
   'agent/start',
   'agent/attach',
@@ -78,6 +81,52 @@ export interface RemoteWorkspaceSummary {
 export interface WorkspaceListResult {
   workspaces: RemoteWorkspaceSummary[]
   message: string | null
+}
+
+export type RemoteFsEntryKind = 'file' | 'directory' | 'symlink' | 'other'
+
+export interface RemoteFsEntry {
+  name: string
+  path: string
+  kind: RemoteFsEntryKind
+  size: number | null
+  modifiedAt: number | null
+  hidden: boolean
+}
+
+export interface FsListDirectoryParams {
+  path?: string | null
+}
+
+export interface FsListDirectoryResult {
+  path: string
+  parentPath: string | null
+  entries: RemoteFsEntry[]
+}
+
+export interface FsStatParams {
+  path: string
+}
+
+export interface FsStatResult {
+  path: string
+  name: string
+  kind: RemoteFsEntryKind
+  size: number | null
+  modifiedAt: number | null
+  hidden: boolean
+}
+
+export interface GitProbeRepositoryParams {
+  path: string
+}
+
+export interface GitProbeRepositoryResult {
+  path: string
+  isRepository: boolean
+  rootPath: string | null
+  branch: string | null
+  remoteUrl: string | null
 }
 
 export interface RemoteAgentSummary {
@@ -194,6 +243,9 @@ export interface RemoteAgentParamsByMethod {
   'host/health': Record<string, never>
   'runtime/list': Record<string, never>
   'workspace/list': WorkspaceListParams
+  'fs/listDirectory': FsListDirectoryParams
+  'fs/stat': FsStatParams
+  'git/probeRepository': GitProbeRepositoryParams
   'agent/list': Record<string, never>
   'agent/start': AgentStartParams
   'agent/attach': AgentAttachParams
@@ -211,6 +263,9 @@ export interface RemoteAgentResultByMethod {
   'host/health': HostHealthResult
   'runtime/list': RuntimeListResult
   'workspace/list': WorkspaceListResult
+  'fs/listDirectory': FsListDirectoryResult
+  'fs/stat': FsStatResult
+  'git/probeRepository': GitProbeRepositoryResult
   'agent/list': AgentListResult
   'agent/start': AgentStartResult
   'agent/attach': AgentAttachResult

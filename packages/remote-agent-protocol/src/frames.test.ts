@@ -39,6 +39,19 @@ describe('remote agent protocol frames', () => {
     })).toThrow()
   })
 
+  it('parses remote filesystem request frames', () => {
+    expect(parseRemoteAgentFrame({
+      protocolVersion: REMOTE_AGENT_PROTOCOL_VERSION,
+      kind: 'rpc.request',
+      id: '1',
+      method: 'fs/listDirectory',
+      params: { path: '/tmp' },
+    })).toMatchObject({
+      kind: 'rpc.request',
+      method: 'fs/listDirectory',
+    })
+  })
+
   it('rejects invalid stream ids', () => {
     expect(() => parseRemoteAgentFrame({
       protocolVersion: REMOTE_AGENT_PROTOCOL_VERSION,
