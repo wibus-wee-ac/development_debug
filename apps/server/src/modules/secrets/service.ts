@@ -45,6 +45,7 @@ export interface SecretValueWithMetadata {
 
 const ALGORITHM = 'aes-256-gcm'
 const IV_BYTES = 12
+const SYSTEM_SECRET_KIND_PREFIX = 'system-'
 
 function getCredentialSecret(): string | null {
   return process.env.CRADLE_CREDENTIAL_SECRET?.trim() || null
@@ -221,31 +222,37 @@ export function removeSecret(id: string): void {
 
 export function listSecrets(): SecretMetadata[] {
   ensureConfigured()
-  return db().select().from(agentCredentials).orderBy(agentCredentials.label).all().map((secret) => {
-    try {
-      const plainText = decrypt(secret.encryptedSecret)
-      return {
-        id: secret.id,
-        kind: secret.kind,
-        label: secret.label,
-        maskedSecret: maskSecret(plainText),
-        chatgpt: readChatgptCredentialSummary(plainText),
-        createdAt: secret.createdAt,
-        updatedAt: secret.updatedAt,
+  return db()
+    .select()
+    .from(agentCredentials)
+    .orderBy(agentCredentials.label)
+    .all()
+    .filter(secret => !secret.kind.startsWith(SYSTEM_SECRET_KIND_PREFIX))
+    .map((secret) => {
+      try {
+        const plainText = decrypt(secret.encryptedSecret)
+        return {
+          id: secret.id,
+          kind: secret.kind,
+          label: secret.label,
+          maskedSecret: maskSecret(plainText),
+          chatgpt: readChatgptCredentialSummary(plainText),
+          createdAt: secret.createdAt,
+          updatedAt: secret.updatedAt,
+        }
       }
-    }
-    catch {
-      return {
-        id: secret.id,
-        kind: secret.kind,
-        label: secret.label,
-        maskedSecret: 'Unreadable credential',
-        chatgpt: null,
-        createdAt: secret.createdAt,
-        updatedAt: secret.updatedAt,
+      catch {
+        return {
+          id: secret.id,
+          kind: secret.kind,
+          label: secret.label,
+          maskedSecret: 'Unreadable credential',
+          chatgpt: null,
+          createdAt: secret.createdAt,
+          updatedAt: secret.updatedAt,
+        }
       }
-    }
-  })
+    })
 }
 
 export function readSecret(id: string): string {

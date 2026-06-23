@@ -40,6 +40,12 @@ For local smoke tests or a controller colocated with a daemon, use `transport: "
 `localSocketPath`. That path bypasses SSH and connects directly to a Unix socket. The default
 transport is SSH unless a legacy config has `localSocketPath` and no structured SSH profile.
 
+Relay hosts use `transport: "relay"`. A pending relay host can be created without SSH details; the
+pairing flow later stores relay coordinates (`relayUrl`, `roomId`, and controller token) in the
+host connection config. Relay server registry and default selection are owned by the
+`relay-servers` module. This module only resolves a relay URL, mints pairing/controller tokens, and
+projects relay transport into the remote agent protocol.
+
 Connection state is process-local and realtime. If the SSH tunnel exits or the daemon WebSocket is
 lost, the configured host row remains in the database, active calls fail with a transport error, and
 the user must reconnect explicitly.

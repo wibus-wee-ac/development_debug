@@ -23,6 +23,8 @@ import { z } from 'zod'
 
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
+import { createRelayRoomId, mintRelayToken } from '../relay-servers/relay-token-service'
+import { readDefaultRelayServer, resolveRelayUrl } from '../relay-servers/service'
 import {
   createRemoteAgentDaemonClient,
   RemoteAgentRpcError,
@@ -30,6 +32,9 @@ import {
   type RemoteAgentDaemonClient,
   type RemoteRuntimeHostConnectionState,
 } from './daemon-client'
+import {
+  createRelayRemoteAgentDaemonClient,
+} from './relay-transport'
 import {
   deleteRemoteRuntimeSessionLink,
   readRemoteRuntimeSessionLink,
@@ -70,7 +75,7 @@ export interface UpdateRemoteRuntimeHostInput {
   connectionConfig?: Record<string, unknown>
 }
 
-export type RemoteRuntimeHostTransport = 'ssh' | 'direct-socket'
+export type RemoteRuntimeHostTransport = 'ssh' | 'direct-socket' | 'relay'
 
 export interface RemoteRuntimeHostSshProfileInput {
   hostName: string
@@ -121,9 +126,9 @@ export interface RemoteRuntimeHostHealthView {
 
 interface RemoteRuntimeHostConnectionRecord {
   host: RemoteRuntimeHost
-  client: RemoteAgentDaemonClient
+  client: RemoteAgentDaemonClient | null
   tunnel: SshTunnelHandle | null
-  localSocketPath: string
+  localSocketPath: string | null
   lastError: string | null
   tunnelExited: boolean
 }
@@ -132,6 +137,13 @@ interface ConnectionConfigTransportFields {
   transport?: RemoteRuntimeHostTransport
   localSocketPath?: string
   ssh?: RemoteRuntimeHostSshProfile
+  relay?: RemoteRuntimeHostRelayConfig
+}
+
+export interface RemoteRuntimeHostRelayConfig {
+  relayUrl: string
+  roomId: string
+  controllerToken: string
 }
 
 interface NormalizedRemoteRuntimeHostConnection {
@@ -151,7 +163,7 @@ interface RemoteRuntimeHostConnectionPatch {
 }
 
 const nonBlankStringSchema = z.string().trim().min(1)
-const transportSchema = z.enum(['ssh', 'direct-socket'])
+const transportSchema = z.enum(['ssh', 'direct-socket', 'relay'])
 const sshAuthSchema = z.enum(['default', 'identityFile'])
 const sshProfileSchema = z.object({
   hostName: nonBlankStringSchema,
@@ -186,6 +198,11 @@ const connectionConfigSchema = z.object({
   transport: transportSchema.optional(),
   localSocketPath: nonBlankStringSchema.optional(),
   ssh: sshProfileSchema.optional(),
+  relay: z.object({
+    relayUrl: nonBlankStringSchema,
+    roomId: nonBlankStringSchema,
+    controllerToken: nonBlankStringSchema,
+  }).optional(),
   sshExecutable: nonBlankStringSchema.optional(),
   sshArgs: z.array(z.string()).optional(),
   connectTimeoutMs: z.number().int().positive().max(120_000).optional(),
@@ -197,6 +214,10 @@ const connectionConfigSchema = z.object({
       message: 'localSocketPath is required when transport is direct-socket.',
     })
   }
+  // A relay host is created "pending" — transport is relay but the relay
+  // coordinates (relayUrl/roomId/controllerToken) are only filled in once the
+  // user completes pairing from the UI. Until then there is no relay block,
+  // and that is valid; connecting simply fails until pairing is done.
 }).transform(config => ({
   ...config,
   transport: inferConnectionTransport(config),
@@ -303,7 +324,7 @@ export async function disconnectRemoteRuntimeHost(hostId: string): Promise<void>
   if (!record) {
     return
   }
-  await record.client.close()
+  await record.client?.close()
   await record.tunnel?.close()
 }
 
@@ -346,6 +367,164 @@ export async function startRemoteAgent(
   params: AgentStartParams,
 ): Promise<AgentStartResult> {
   return await callRemoteRuntimeHost(hostId, 'agent/start', params)
+}
+
+export interface CreateRemoteRuntimeHostRelayPairingTokenInput {
+  relayUrl?: string
+  relayServerId?: string
+  ttlMs?: number
+}
+
+export interface RemoteRuntimeHostRelayPairingTokenView {
+  relayUrl: string
+  relayServerId: string | null
+  roomId: string
+  pairingToken: string
+  hostToken: string
+  expiresAt: string
+}
+
+export interface ClaimRemoteRuntimeHostRelayPairingInput {
+  relayUrl?: string
+  relayServerId?: string
+  pairingCode: string
+  ttlMs?: number
+}
+
+export interface RemoteRuntimeHostRelayClaimView {
+  relayUrl: string
+  roomId: string
+  controllerToken: string
+  expiresAt: string
+}
+
+/**
+ * Resolve which relay server a pairing operation should target.
+ *
+ * Precedence: an explicit relayUrl wins (legacy/ad-hoc), then a configured
+ * relay server by id, then the host's stored relay config, then the default
+ * relay server. Returns the resolved URL and, when known, the relay server id
+ * so the pairing-token response can echo it back to the UI.
+ */
+function resolvePairingRelay(input: {
+  relayUrl?: string
+  relayServerId?: string
+  storedRelayUrl?: string
+}): { relayUrl: string, relayServerId: string | null } {
+  if (input.relayUrl?.trim()) {
+    return { relayUrl: input.relayUrl.trim(), relayServerId: null }
+  }
+  if (input.relayServerId?.trim()) {
+    return { relayUrl: resolveRelayUrl(input.relayServerId.trim()), relayServerId: input.relayServerId.trim() }
+  }
+  if (input.storedRelayUrl?.trim()) {
+    return { relayUrl: input.storedRelayUrl.trim(), relayServerId: null }
+  }
+  const defaultServer = readDefaultRelayServer()
+  if (defaultServer) {
+    return { relayUrl: defaultServer.relayUrl, relayServerId: defaultServer.id }
+  }
+  throw new AppError({
+    code: 'remote_relay_url_required',
+    status: 400,
+    message: 'A relay server is required to pair a remote host. Configure one under Relay servers or pass a relay URL.',
+  })
+}
+
+export function createRemoteRuntimeHostRelayPairingToken(
+  hostId: string,
+  input: CreateRemoteRuntimeHostRelayPairingTokenInput,
+): RemoteRuntimeHostRelayPairingTokenView {
+  requireRemoteRuntimeHost(hostId)
+  const host = readRemoteRuntimeHost(hostId)
+  const currentConfig = parseConnectionConfig(host.connectionConfigJson)
+  const { relayUrl, relayServerId } = resolvePairingRelay({
+    relayUrl: input.relayUrl,
+    relayServerId: input.relayServerId,
+    storedRelayUrl: currentConfig.relay?.relayUrl,
+  })
+  const roomId = createRelayRoomId()
+  const pairingToken = mintRelayToken({
+    subject: `remote-host:${hostId}`,
+    purpose: 'pairing_start',
+    roomId,
+    ttlMs: input.ttlMs,
+  })
+  const hostToken = mintRelayToken({
+    subject: `remote-host:${hostId}:host`,
+    purpose: 'ws',
+    role: 'host',
+    roomId,
+    ttlMs: input.ttlMs,
+  })
+  return {
+    relayUrl,
+    relayServerId,
+    roomId,
+    pairingToken: pairingToken.token,
+    hostToken: hostToken.token,
+    expiresAt: pairingToken.expiresAt,
+  }
+}
+
+export async function claimRemoteRuntimeHostRelayPairing(
+  hostId: string,
+  input: ClaimRemoteRuntimeHostRelayPairingInput,
+): Promise<RemoteRuntimeHostRelayClaimView> {
+  const host = requireRemoteRuntimeHost(hostId)
+  const currentConfig = parseConnectionConfig(host.connectionConfigJson)
+  const { relayUrl } = resolvePairingRelay({
+    relayUrl: input.relayUrl,
+    relayServerId: input.relayServerId,
+    storedRelayUrl: currentConfig.relay?.relayUrl,
+  })
+
+  const pendingClaim = await postRelayClaim(
+    relayUrl,
+    mintRelayToken({
+      subject: `remote-host:${hostId}:claim`,
+      purpose: 'pairing_claim',
+      ttlMs: input.ttlMs,
+    }).token,
+    input.pairingCode,
+  )
+  const controllerToken = mintRelayToken({
+    subject: `remote-host:${hostId}:controller`,
+    purpose: 'ws',
+    role: 'controller',
+    roomId: pendingClaim.roomId,
+    ttlMs: input.ttlMs,
+  })
+  const claimed = await postRelayClaim(
+    relayUrl,
+    mintRelayToken({
+      subject: `remote-host:${hostId}:claim`,
+      purpose: 'pairing_claim',
+      ttlMs: input.ttlMs,
+    }).token,
+    input.pairingCode,
+    controllerToken.token,
+  )
+
+  updateRemoteRuntimeHost(hostId, {
+    transport: 'relay',
+    connectionConfig: {
+      ...currentConfig,
+      transport: 'relay',
+      relay: {
+        relayUrl,
+        roomId: claimed.roomId,
+        controllerToken: controllerToken.token,
+      },
+    },
+  })
+
+  return {
+    relayUrl,
+    roomId: claimed.roomId,
+    controllerToken: controllerToken.token,
+    expiresAt: controllerToken.expiresAt,
+  }
 }
 
 export async function callRemoteRuntimeHost<M extends RemoteAgentUnaryMethod>(
@@ -408,13 +587,19 @@ async function connectRemoteRuntimeHostInner(hostId: string): Promise<RemoteRunt
   await disconnectRemoteRuntimeHost(hostId)
 
   const connectionConfig = parseConnectionConfig(host.connectionConfigJson)
-  const localSocketPath = connectionConfig.localSocketPath ?? defaultLocalSocketPath(host.id)
-  assertUnixSocketPathLength(localSocketPath)
+  const isRelay = connectionConfig.transport === 'relay'
+  const localSocketPath = isRelay ? null : connectionConfig.localSocketPath ?? defaultLocalSocketPath(host.id)
+  if (localSocketPath) {
+    assertUnixSocketPathLength(localSocketPath)
+  }
   let tunnel: SshTunnelHandle | null = null
   let record: RemoteRuntimeHostConnectionRecord | null = null
 
   try {
     if (connectionConfig.transport === 'ssh') {
+      if (!localSocketPath) {
+        throw new RemoteAgentTransportError('Local socket path is required for SSH transport.')
+      }
       const sshLaunch = resolveHostSshLaunchConfig(host, connectionConfig)
       tunnel = await startSshTunnel({
         hostId: host.id,
@@ -427,16 +612,27 @@ async function connectRemoteRuntimeHostInner(hostId: string): Promise<RemoteRunt
       })
     }
 
-    const client = await connectDaemonClientWithRetry({
-      socketPath: localSocketPath,
-      timeoutMs: connectionConfig.connectTimeoutMs ?? 10_000,
-      onTransportClose: (error) => {
-        if (!record) {
-          return
-        }
-        record.lastError = error.message
-      },
-    })
+    const client = isRelay
+      ? await connectRelayDaemonClientWithRetry({
+        relayConfig: requireRelayConfig(connectionConfig),
+        timeoutMs: connectionConfig.connectTimeoutMs ?? 10_000,
+        onTransportClose: (error) => {
+          if (!record) {
+            return
+          }
+          record.lastError = error.message
+        },
+      })
+      : await connectDaemonClientWithRetry({
+        socketPath: localSocketPath ?? '',
+        timeoutMs: connectionConfig.connectTimeoutMs ?? 10_000,
+        onTransportClose: (error) => {
+          if (!record) {
+            return
+          }
+          record.lastError = error.message
+        },
+      })
 
     record = {
       host,
@@ -452,7 +648,7 @@ async function connectRemoteRuntimeHostInner(hostId: string): Promise<RemoteRunt
       }
       record.tunnelExited = true
       record.lastError = `ssh tunnel exited with code ${exit.code ?? 'null'} signal ${exit.signal ?? 'null'}`
-      void record.client.close()
+      void record.client?.close()
     })
     connections.set(hostId, record)
     persistDaemonIdentity(hostId, client.hello)
@@ -463,7 +659,7 @@ async function connectRemoteRuntimeHostInner(hostId: string): Promise<RemoteRunt
     const appError = toAppError(error, 'remote_host_connect_failed')
     connections.set(hostId, {
       host,
-      client: createRemoteAgentDaemonClient({ socketPath: localSocketPath }),
+      client: null,
       tunnel: null,
       localSocketPath,
       lastError: appError.message,
@@ -515,10 +711,10 @@ function requireRemoteRuntimeHost(hostId: string): RemoteRuntimeHost {
   return host
 }
 
-function requireConnectedRecord(hostId: string): RemoteRuntimeHostConnectionRecord {
+function requireConnectedRecord(hostId: string): RemoteRuntimeHostConnectionRecord & { client: RemoteAgentDaemonClient } {
   requireRemoteRuntimeHost(hostId)
   const record = connections.get(hostId)
-  if (!record || connectionStateOf(record) !== 'connected') {
+  if (!record || !record.client || connectionStateOf(record) !== 'connected') {
     throw new AppError({
       code: 'remote_host_offline',
       status: 503,
@@ -530,7 +726,7 @@ function requireConnectedRecord(hostId: string): RemoteRuntimeHostConnectionReco
       },
     })
   }
-  return record
+  return { ...record, client: record.client }
 }
 
 function toHostView(row: RemoteRuntimeHost): RemoteRuntimeHostView {
@@ -543,7 +739,7 @@ function toHostView(row: RemoteRuntimeHost): RemoteRuntimeHostView {
 }
 
 function toConnectionView(record: RemoteRuntimeHostConnectionRecord): RemoteRuntimeHostConnectionView {
-  const hello = record.client.hello
+  const hello = record.client?.hello
   return {
     hostId: record.host.id,
     state: connectionStateOf(record),
@@ -560,7 +756,7 @@ function connectionStateOf(record: RemoteRuntimeHostConnectionRecord): RemoteRun
   if (record.tunnelExited) {
     return 'offline'
   }
-  return record.client.state
+  return record.client?.state ?? 'offline'
 }
 
 function persistDaemonIdentity(hostId: string, hello: RemoteAgentDaemonClient['hello']): void {
@@ -679,6 +875,9 @@ function resolveStoredSshTarget(input: {
   if (input.connectionConfig.transport === 'direct-socket') {
     return 'direct-socket'
   }
+  if (input.connectionConfig.transport === 'relay') {
+    return 'relay'
+  }
   throw new AppError({
     code: 'remote_host_ssh_profile_required',
     status: 400,
@@ -710,6 +909,9 @@ function hasConnectionPatch(patch: UpdateRemoteRuntimeHostInput): boolean {
 function inferConnectionTransport(config: ConnectionConfigTransportFields): RemoteRuntimeHostTransport {
   if (config.transport) {
     return config.transport
+  }
+  if (config.relay) {
+    return 'relay'
   }
   if (config.localSocketPath && !config.ssh) {
     return 'direct-socket'
@@ -807,6 +1009,75 @@ function toAppError(error: unknown, fallbackCode: string): AppError {
 
 function delay(ms: number): Promise<void> {
   return new Promise(resolve => setTimeout(resolve, ms))
+}
+
+async function connectRelayDaemonClientWithRetry(input: {
+  relayConfig: RemoteRuntimeHostRelayConfig
+  timeoutMs: number
+  onTransportClose: (error: RemoteAgentTransportError) => void
+}): Promise<RemoteAgentDaemonClient> {
+  const deadline = Date.now() + input.timeoutMs
+  let lastError: unknown
+  while (Date.now() <= deadline) {
+    const client = createRelayRemoteAgentDaemonClient({
+      relayUrl: input.relayConfig.relayUrl,
+      roomId: input.relayConfig.roomId,
+      controllerToken: input.relayConfig.controllerToken,
+      onTransportClose: input.onTransportClose,
+    })
+    try {
+      await client.connect()
+      return client
+    }
+    catch (error) {
+      lastError = error
+      await client.close()
+      await delay(150)
+    }
+  }
+  throw lastError ?? new RemoteAgentTransportError('Timed out connecting to remote relay.')
+}
+
+function requireRelayConfig(config: RemoteRuntimeHostConnectionConfig): RemoteRuntimeHostRelayConfig {
+  if (!config.relay) {
+    throw new AppError({
+      code: 'remote_relay_config_required',
+      status: 400,
+      message: 'Remote runtime host relay config is required for relay transport.',
+    })
+  }
+  return config.relay
+}
+
+async function postRelayClaim(
+  relayUrl: string,
+  claimToken: string,
+  pairingCode: string,
+  controllerToken?: string,
+): Promise<{ roomId: string }> {
+  const response = await fetch(new URL('/pairing/claim', ensureTrailingSlash(relayUrl)), {
+    method: 'POST',
+    headers: {
+      Authorization: `Bearer ${claimToken}`,
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify({
+      pairingCode,
+      ...(controllerToken ? { controllerToken } : {}),
+    }),
+  })
+  if (!response.ok) {
+    throw new AppError({
+      code: 'remote_relay_claim_failed',
+      status: 502,
+      message: `Relay pairing claim failed with HTTP ${response.status}.`,
+    })
+  }
+  return await response.json() as { roomId: string }
+}
+
+function ensureTrailingSlash(value: string): string {
+  return value.endsWith('/') ? value : `${value}/`
 }
 
 function currentUnixSeconds(): number {

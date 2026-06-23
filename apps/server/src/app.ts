@@ -30,6 +30,7 @@ import { preferences } from './modules/preferences'
 import { profiles } from './modules/profiles'
 import { providers } from './modules/provider-catalog'
 import { providerTargets } from './modules/provider-targets'
+import { relayServers } from './modules/relay-servers'
 import { remoteRuntimeHosts } from './modules/remote-runtime-hosts'
 import { registerPtyRoutes } from './modules/pty'
 import { search } from './modules/search'
@@ -124,6 +125,7 @@ export async function createServerContractApp(options: CreateServerContractAppOp
   app.use(usage)
   app.use(profiles)
   app.use(providerTargets)
+  app.use(relayServers)
   app.use(remoteRuntimeHosts)
   app.use(externalIssueSources)
   app.use(externalProviderSources)
@@ -180,6 +182,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     { activateServerPlugins, deactivateAllPlugins },
     conversationBridgeSupervisor,
     { destroyWorkspaceFileIndexes },
+    localRelaydSupervisor,
   ] = await Promise.all([
     import('./infra'),
     import('./modules/chat-runtime/service'),
@@ -193,6 +196,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     import('./plugins/loader'),
     import('./modules/conversation-bridge/runtime-supervisor'),
     import('./modules/workspace/files'),
+    import('./modules/relay-servers/local-relayd-supervisor'),
   ])
   if (recoverPersistedRunsOnCreate) {
     recoverPersistedRunProjections()
@@ -210,6 +214,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     () => conversationBridgeSupervisor.stopAllConversationBridgeConnections(),
     () => deactivateAllPlugins(),
     () => providerRuntimeHostManager.shutdown(),
+    () => localRelaydSupervisor.stopManagedLocalRelayd(),
     () => chronicleService.stopActivityPipelineScheduler(),
     () => chronicleService.stopSlackBackgroundSync(),
     () => chronicleCleanup(),
@@ -243,6 +248,7 @@ export async function createServerApp(options: CreateServerAppOptions = {}) {
     }
     providerRuntimeHostManager.startReaper()
     void conversationBridgeSupervisor.startEnabledConversationBridgeConnections()
+    void localRelaydSupervisor.startManagedLocalRelayd()
   }
 
   return app

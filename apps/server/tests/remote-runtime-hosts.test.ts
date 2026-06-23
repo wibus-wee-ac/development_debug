@@ -1,10 +1,11 @@
-import { randomUUID } from 'node:crypto'
+import { createHmac, randomUUID } from 'node:crypto'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { createServer, type Server } from 'node:http'
+import type { AddressInfo } from 'node:net'
 import { tmpdir } from 'node:os'
 import { dirname, join } from 'node:path'
 
-import { messages, providerTargets, remoteRuntimeSessionLinks, workspaces } from '@cradle/db'
+import { agentCredentials, messages, providerTargets, remoteRuntimeSessionLinks, workspaces } from '@cradle/db'
 import {
   encodeRemoteAgentFrame,
   parseRemoteAgentFrame,
@@ -14,6 +15,11 @@ import {
   type RemoteAgentSummary,
   type RemoteAgentTurnParams,
 } from '@cradle/remote-agent-protocol'
+import {
+  encodeRelayEnvelope,
+  parseRelayEnvelope,
+  type RelayEnvelope,
+} from '@cradle/remote-relay-protocol'
 import type { UIMessage } from 'ai'
 import { eq } from 'drizzle-orm'
 import { afterEach, describe, expect, it } from 'vitest'
@@ -23,12 +29,20 @@ import { createServerApp } from '../src/app'
 import { db, shutdownInfra } from '../src/infra'
 import { getRuntimeRegistry } from '../src/modules/chat-runtime/chat-runtime-provider-registry'
 import { createRemoteMockProvider } from '../src/modules/chat-runtime-providers/remote-mock/provider'
+import { mintRelayToken } from '../src/modules/relay-servers/relay-token-service'
 import { buildSshProfileLaunchConfig } from '../src/modules/remote-runtime-hosts/service'
 
 type ElysiaApp = Awaited<ReturnType<typeof createServerApp>>
 
+const defaultDevRelayHMACSecret = 'cradle-dev-relay-insecure-secret-do-not-use-in-production'
+
 interface FakeDaemonServer {
   socketPath: string
+  close(): Promise<void>
+}
+
+interface FakeRelayServer {
+  url: string
   close(): Promise<void>
 }
 
@@ -42,6 +56,14 @@ function restoreEnv(name: string, previousValue: string | undefined): void {
     return
   }
   process.env[name] = previousValue
+}
+
+function expectRelayTokenSignedByDevSecret(rawToken: string) {
+  const parts = rawToken.split('.')
+  expect(parts).toHaveLength(3)
+  const [header, payload, signature] = parts as [string, string, string]
+  expect(createHmac('sha256', defaultDevRelayHMACSecret).update(`${header}.${payload}`).digest('base64url')).toBe(signature)
+  return JSON.parse(Buffer.from(payload, 'base64url').toString('utf8'))
 }
 
 async function createAppWithDataDir(dataDir: string): Promise<ElysiaApp> {
@@ -58,10 +80,13 @@ async function createAppWithDataDir(dataDir: string): Promise<ElysiaApp> {
 
 describe('remote runtime hosts', () => {
   let fakeDaemon: FakeDaemonServer | null = null
+  let fakeRelay: FakeRelayServer | null = null
 
   afterEach(async () => {
     await fakeDaemon?.close()
     fakeDaemon = null
+    await fakeRelay?.close()
+    fakeRelay = null
     shutdownInfra()
   })
 
@@ -199,6 +224,238 @@ describe('remote runtime hosts', () => {
     }
   })
 
+  it('creates a pending relay host without an ssh target or relay config', async () => {
+    const dataDir = makeTempDir('cradle-remote-hosts-pending-relay-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    let app: ElysiaApp | undefined
+
+    try {
+      app = await createAppWithDataDir(dataDir)
+
+      // A relay host starts "pending": only a name and transport=relay. No SSH
+      // target is required, and the relay coordinates are filled in later by
+      // the pairing flow. The server stores a placeholder sshTarget ('relay').
+      const createRes = await app.handle(new Request('http://localhost/remote-runtime-hosts', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          id: 'remote-host-pending-relay',
+          displayName: 'Pending relay host',
+          enabled: true,
+          transport: 'relay',
+        }),
+      }))
+      expect(createRes.status).toBe(200)
+      const created = await createRes.json() as {
+        sshTarget: string
+        connectionConfigJson: string
+      }
+      expect(created.sshTarget).toBe('relay')
+      expect(JSON.parse(created.connectionConfigJson)).toEqual({ transport: 'relay' })
+      expect(db().select().from(providerTargets).all()).toHaveLength(0)
+    }
+    finally {
+      rmSync(dataDir, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+    }
+  })
+
+  it('mints relay pairing tokens without writing provider targets', async () => {
+    const dataDir = makeTempDir('cradle-remote-hosts-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousCredentialSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    const previousRelaySecret = process.env.CRADLE_RELAY_HMAC_SECRET
+    const previousRelayDevSecret = process.env.CRADLE_RELAYD_DEV_HMAC_SECRET
+    let app: ElysiaApp | undefined
+
+    try {
+      process.env.CRADLE_CREDENTIAL_SECRET = 'remote-relay-credential-secret'
+      delete process.env.CRADLE_RELAY_HMAC_SECRET
+      delete process.env.CRADLE_RELAYD_DEV_HMAC_SECRET
+      app = await createAppWithDataDir(dataDir)
+      await createRemoteHost(app, {
+        hostId: 'remote-host-relay-token',
+        socketPath: '/tmp/cradle-agentd-relay-token.sock',
+      })
+
+      const tokenRes = await app.handle(new Request('http://localhost/remote-runtime-hosts/remote-host-relay-token/relay/pairing-token', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          relayUrl: 'http://127.0.0.1:8787',
+          ttlMs: 60_000,
+        }),
+      }))
+      expect(tokenRes.status).toBe(200)
+      const token = await tokenRes.json() as {
+        relayUrl: string
+        pairingToken: string
+        hostToken: string
+        roomId: string
+      }
+      expect(token).toEqual(expect.objectContaining({
+        relayUrl: 'http://127.0.0.1:8787',
+        pairingToken: expect.any(String),
+        hostToken: expect.any(String),
+        roomId: expect.stringMatching(/^room_/),
+      }))
+      expect(expectRelayTokenSignedByDevSecret(token.pairingToken)).toEqual(expect.objectContaining({
+        aud: 'cradle-relay',
+        iss: 'cradle-server',
+        purpose: 'pairing_start',
+        roomId: token.roomId,
+      }))
+      expect(expectRelayTokenSignedByDevSecret(token.hostToken)).toEqual(expect.objectContaining({
+        aud: 'cradle-relay',
+        iss: 'cradle-server',
+        purpose: 'ws',
+        role: 'host',
+        roomId: token.roomId,
+      }))
+      expect(db().select().from(providerTargets).all()).toHaveLength(0)
+      expect(db().select().from(agentCredentials).all()).toEqual([
+        expect.objectContaining({
+          id: 'system:remote-relay-hmac:v1',
+          kind: 'system-relay-hmac-secret',
+          label: 'Remote relay HMAC signing key',
+          encryptedSecret: expect.any(String),
+        }),
+      ])
+
+      const listSecretsRes = await app.handle(new Request('http://localhost/secrets'))
+      expect(listSecretsRes.status).toBe(200)
+      expect(await listSecretsRes.json()).toEqual([])
+    }
+    finally {
+      rmSync(dataDir, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousCredentialSecret)
+      restoreEnv('CRADLE_RELAY_HMAC_SECRET', previousRelaySecret)
+      restoreEnv('CRADLE_RELAYD_DEV_HMAC_SECRET', previousRelayDevSecret)
+    }
+  })
+
+  it('uses the dev relay HMAC secret when the local secret store is unconfigured', () => {
+    const previousNodeEnv = process.env.NODE_ENV
+    const previousCradleEnv = process.env.CRADLE_ENV
+    const previousCredentialSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    const previousRelaySecret = process.env.CRADLE_RELAY_HMAC_SECRET
+    const previousRelayDevSecret = process.env.CRADLE_RELAYD_DEV_HMAC_SECRET
+
+    try {
+      process.env.NODE_ENV = 'development'
+      delete process.env.CRADLE_ENV
+      delete process.env.CRADLE_CREDENTIAL_SECRET
+      delete process.env.CRADLE_RELAY_HMAC_SECRET
+      delete process.env.CRADLE_RELAYD_DEV_HMAC_SECRET
+
+      const token = mintRelayToken({
+        subject: 'remote-host-local-dev-secret',
+        purpose: 'pairing_start',
+        ttlMs: 60_000,
+      })
+      expect(expectRelayTokenSignedByDevSecret(token.token)).toEqual(expect.objectContaining({
+        aud: 'cradle-relay',
+        iss: 'cradle-server',
+        purpose: 'pairing_start',
+      }))
+    }
+    finally {
+      restoreEnv('NODE_ENV', previousNodeEnv)
+      restoreEnv('CRADLE_ENV', previousCradleEnv)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousCredentialSecret)
+      restoreEnv('CRADLE_RELAY_HMAC_SECRET', previousRelaySecret)
+      restoreEnv('CRADLE_RELAYD_DEV_HMAC_SECRET', previousRelayDevSecret)
+    }
+  })
+
+  it('requires an explicit relay HMAC secret in production', () => {
+    const previousNodeEnv = process.env.NODE_ENV
+    const previousCradleEnv = process.env.CRADLE_ENV
+    const previousRelaySecret = process.env.CRADLE_RELAY_HMAC_SECRET
+    const previousRelayDevSecret = process.env.CRADLE_RELAYD_DEV_HMAC_SECRET
+
+    try {
+      process.env.NODE_ENV = 'production'
+      delete process.env.CRADLE_ENV
+      delete process.env.CRADLE_RELAY_HMAC_SECRET
+      delete process.env.CRADLE_RELAYD_DEV_HMAC_SECRET
+
+      expect(() => mintRelayToken({
+        subject: 'remote-host-production-secret',
+        purpose: 'pairing_start',
+        ttlMs: 60_000,
+      })).toThrow('Relay HMAC secret is required in production.')
+    }
+    finally {
+      restoreEnv('NODE_ENV', previousNodeEnv)
+      restoreEnv('CRADLE_ENV', previousCradleEnv)
+      restoreEnv('CRADLE_RELAY_HMAC_SECRET', previousRelaySecret)
+      restoreEnv('CRADLE_RELAYD_DEV_HMAC_SECRET', previousRelayDevSecret)
+    }
+  })
+
+  it('claims relay pairing and stores relay transport config without writing provider targets', async () => {
+    const dataDir = makeTempDir('cradle-remote-hosts-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousCredentialSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    const previousRelaySecret = process.env.CRADLE_RELAY_HMAC_SECRET
+    const previousRelayDevSecret = process.env.CRADLE_RELAYD_DEV_HMAC_SECRET
+    fakeRelay = await startFakeRelay('room_claimed')
+    let app: ElysiaApp | undefined
+
+    try {
+      process.env.CRADLE_CREDENTIAL_SECRET = 'remote-relay-credential-secret'
+      delete process.env.CRADLE_RELAY_HMAC_SECRET
+      delete process.env.CRADLE_RELAYD_DEV_HMAC_SECRET
+      app = await createAppWithDataDir(dataDir)
+      await createRemoteHost(app, {
+        hostId: 'remote-host-relay-claim',
+        socketPath: '/tmp/cradle-agentd-relay-claim.sock',
+      })
+
+      const claimRes = await app.handle(new Request('http://localhost/remote-runtime-hosts/remote-host-relay-claim/relay/claim', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          relayUrl: fakeRelay.url,
+          pairingCode: 'ABCD-1234',
+          ttlMs: 60_000,
+        }),
+      }))
+      expect(claimRes.status).toBe(200)
+      expect(await claimRes.json()).toEqual(expect.objectContaining({
+        relayUrl: fakeRelay.url,
+        roomId: 'room_claimed',
+        controllerToken: expect.any(String),
+      }))
+
+      const hosts = await (await app.handle(new Request('http://localhost/remote-runtime-hosts'))).json() as Array<{
+        id: string
+        connectionConfigJson: string
+      }>
+      const host = hosts.find(host => host.id === 'remote-host-relay-claim')
+      expect(host).toBeDefined()
+      expect(JSON.parse(host?.connectionConfigJson ?? '{}')).toEqual(expect.objectContaining({
+        transport: 'relay',
+        relay: expect.objectContaining({
+          relayUrl: fakeRelay.url,
+          roomId: 'room_claimed',
+          controllerToken: expect.any(String),
+        }),
+      }))
+      expect(db().select().from(providerTargets).all()).toHaveLength(0)
+      expect(db().select().from(agentCredentials).where(eq(agentCredentials.id, 'system:remote-relay-hmac:v1')).all()).toHaveLength(1)
+    }
+    finally {
+      rmSync(dataDir, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousCredentialSecret)
+      restoreEnv('CRADLE_RELAY_HMAC_SECRET', previousRelaySecret)
+      restoreEnv('CRADLE_RELAYD_DEV_HMAC_SECRET', previousRelayDevSecret)
+    }
+  })
+
   it('connects to a daemon over a local Unix socket and lists remote state', async () => {
     const dataDir = makeTempDir('cradle-remote-hosts-')
     const daemonHome = makeTempDir('cradle-fake-agentd-home-')
@@ -333,6 +590,77 @@ describe('remote runtime hosts', () => {
       restoreEnv('CRADLE_DATA_DIR', previousDataDir)
     }
   })
+
+  it('streams remote-mock output through relay transport projection', async () => {
+    const dataDir = makeTempDir('cradle-remote-relay-chat-')
+    const workspaceRoot = makeTempDir('cradle-remote-relay-chat-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    fakeRelay = await startFakeRelay('room_remote_relay_chat')
+    let app: ElysiaApp | undefined
+
+    try {
+      app = await createAppWithDataDir(dataDir)
+      await createRelayRemoteHost(app, {
+        hostId: 'remote-host-relay-chat',
+        relayUrl: fakeRelay.url,
+        roomId: 'room_remote_relay_chat',
+        controllerToken: 'controller-token',
+      })
+
+      db().insert(workspaces).values({
+        id: 'workspace-remote-relay-chat',
+        name: 'Remote Relay Chat Workspace',
+        path: workspaceRoot,
+      }).run()
+      db().insert(providerTargets).values({
+        id: 'provider-target-remote-relay-chat',
+        kind: 'manual',
+        providerKind: 'universal',
+        displayName: 'Remote Relay Chat Target',
+        connectionConfigJson: JSON.stringify({
+          remoteHostId: 'remote-host-relay-chat',
+        }),
+      }).run()
+
+      const sessionRes = await app.handle(new Request('http://localhost/sessions', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({
+          id: 'session-remote-relay-chat',
+          workspaceId: 'workspace-remote-relay-chat',
+          title: 'Remote Relay Chat',
+          providerTargetId: 'provider-target-remote-relay-chat',
+          runtimeKind: 'remote-mock',
+        }),
+      }))
+      expect(sessionRes.status).toBe(200)
+
+      const response = await app.handle(new Request('http://localhost/chat/sessions/session-remote-relay-chat/response', {
+        method: 'POST',
+        headers: { 'content-type': 'application/json' },
+        body: JSON.stringify({ text: 'Ping relay daemon' }),
+      }))
+      expect(response.status).toBe(200)
+      await response.text()
+
+      const assistant = await waitForAssistantMessage('session-remote-relay-chat')
+      expect(assistant.content).toContain('Remote mock response: Ping relay daemon')
+      const link = db()
+        .select()
+        .from(remoteRuntimeSessionLinks)
+        .where(eq(remoteRuntimeSessionLinks.chatSessionId, 'session-remote-relay-chat'))
+        .get()
+      expect(link).toEqual(expect.objectContaining({
+        remoteHostId: 'remote-host-relay-chat',
+        remoteRuntimeKind: 'mock-remote',
+      }))
+    }
+    finally {
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+    }
+  })
 })
 
 async function createRemoteHost(
@@ -350,6 +678,32 @@ async function createRemoteHost(
       connectionConfig: {
         localSocketPath: input.socketPath,
         connectTimeoutMs: 3_000,
+      },
+    }),
+  }))
+  expect(res.status).toBe(200)
+}
+
+async function createRelayRemoteHost(
+  app: ElysiaApp,
+  input: { hostId: string, relayUrl: string, roomId: string, controllerToken: string },
+): Promise<void> {
+  const res = await app.handle(new Request('http://localhost/remote-runtime-hosts', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({
+      id: input.hostId,
+      displayName: input.hostId,
+      sshTarget: 'relay',
+      remoteSocketPath: '/unused/agent.sock',
+      connectionConfig: {
+        transport: 'relay',
+        connectTimeoutMs: 3_000,
+        relay: {
+          relayUrl: input.relayUrl,
+          roomId: input.roomId,
+          controllerToken: input.controllerToken,
+        },
       },
     }),
   }))
@@ -415,14 +769,105 @@ async function startFakeDaemon(socketPath: string): Promise<FakeDaemonServer> {
   }
 }
 
+async function startFakeRelay(roomId: string): Promise<FakeRelayServer> {
+  const sockets = new Set<WebSocket>()
+  const agents = new Map<string, RemoteAgentSummary>()
+  const httpServer = createServer(async (request, response) => {
+    if (request.method !== 'POST' || request.url !== '/pairing/claim') {
+      response.writeHead(404)
+      response.end()
+      return
+    }
+    const chunks: Buffer[] = []
+    for await (const chunk of request) {
+      chunks.push(Buffer.isBuffer(chunk) ? chunk : Buffer.from(chunk))
+    }
+    const body = JSON.parse(Buffer.concat(chunks).toString()) as {
+      pairingCode?: string
+      controllerToken?: string
+    }
+    if (body.pairingCode !== 'ABCD-1234') {
+      response.writeHead(404, { 'content-type': 'application/json' })
+      response.end(JSON.stringify({ error: 'invalid pairing code' }))
+      return
+    }
+    response.writeHead(200, { 'content-type': 'application/json' })
+    response.end(JSON.stringify({ roomId }))
+  })
+  const socketServer = new WebSocketServer({ server: httpServer })
+
+  socketServer.on('connection', (socket) => {
+    let seq = 1
+    sockets.add(socket)
+    socket.on('close', () => sockets.delete(socket))
+    socket.on('message', (raw) => {
+      void handleFakeRelayEnvelope(socket, agents, raw.toString(), () => seq++)
+    })
+  })
+
+  await new Promise<void>((resolve, reject) => {
+    httpServer.once('error', reject)
+    httpServer.listen(0, '127.0.0.1', () => {
+      httpServer.off('error', reject)
+      resolve()
+    })
+  })
+  const address = httpServer.address() as AddressInfo
+  return {
+    url: `http://127.0.0.1:${address.port}`,
+    close: async () => {
+      for (const socket of sockets) {
+        socket.close()
+      }
+      await new Promise<void>((resolve, reject) => {
+        socketServer.close(() => {
+          httpServer.close((error) => {
+            if (error) {
+              reject(error)
+              return
+            }
+            resolve()
+          })
+        })
+      })
+    },
+  }
+}
+
 async function handleFakeDaemonFrame(
   socket: WebSocket,
   agents: Map<string, RemoteAgentSummary>,
   raw: string,
 ): Promise<void> {
   const frame = parseRemoteAgentFrame(raw)
+  await handleFakeRemoteAgentFrame(frame, agents, (response) => {
+    sendFrame(socket, response)
+  })
+}
+
+async function handleFakeRelayEnvelope(
+  socket: WebSocket,
+  agents: Map<string, RemoteAgentSummary>,
+  raw: string,
+  nextSeq: () => number,
+): Promise<void> {
+  const envelope = parseRelayEnvelope(raw)
+  if (envelope.kind !== 'remote_agent_frame') {
+    return
+  }
+  const frame = parseRemoteAgentFrame(envelope.payload)
+  await handleFakeRemoteAgentFrame(frame, agents, (response) => {
+    sendRelayFrame(socket, envelope.roomId, nextSeq(), response)
+  })
+}
+
+async function handleFakeRemoteAgentFrame(
+  frame: RemoteAgentFrame,
+  agents: Map<string, RemoteAgentSummary>,
+  send: (frame: RemoteAgentFrame) => void,
+): Promise<void> {
   if (frame.kind === 'rpc.request') {
-    sendFrame(socket, {
+    send({
       protocolVersion: REMOTE_AGENT_PROTOCOL_VERSION,
       kind: 'rpc.response',
       id: frame.id,
@@ -434,31 +879,31 @@ async function handleFakeDaemonFrame(
     const params = frame.params as RemoteAgentTurnParams
     const textId = `fake-text-${params.runId}`
     const text = `Remote mock response: ${readMessageText(params.message) || '(empty)'}`
-    sendFrame(socket, {
+    send({
       protocolVersion: REMOTE_AGENT_PROTOCOL_VERSION,
       kind: 'stream.next',
       streamId: frame.streamId,
       value: { kind: 'chunk', chunk: { type: 'text-start', id: textId } },
     })
-    sendFrame(socket, {
+    send({
       protocolVersion: REMOTE_AGENT_PROTOCOL_VERSION,
       kind: 'stream.next',
       streamId: frame.streamId,
       value: { kind: 'chunk', chunk: { type: 'text-delta', id: textId, delta: text } },
     })
-    sendFrame(socket, {
+    send({
       protocolVersion: REMOTE_AGENT_PROTOCOL_VERSION,
       kind: 'stream.next',
       streamId: frame.streamId,
       value: { kind: 'chunk', chunk: { type: 'text-end', id: textId } },
     })
-    sendFrame(socket, {
+    send({
       protocolVersion: REMOTE_AGENT_PROTOCOL_VERSION,
       kind: 'stream.next',
       streamId: frame.streamId,
       value: { kind: 'chunk', chunk: { type: 'finish', finishReason: 'stop' } },
     })
-    sendFrame(socket, {
+    send({
       protocolVersion: REMOTE_AGENT_PROTOCOL_VERSION,
       kind: 'stream.close',
       streamId: frame.streamId,
@@ -548,6 +993,17 @@ function handleFakeUnary(
 
 function sendFrame(socket: WebSocket, frame: RemoteAgentFrame): void {
   socket.send(encodeRemoteAgentFrame(frame))
+}
+
+function sendRelayFrame(socket: WebSocket, roomId: string, seq: number, frame: RemoteAgentFrame): void {
+  const envelope: RelayEnvelope = {
+    version: 1,
+    roomId,
+    seq,
+    kind: 'remote_agent_frame',
+    payload: JSON.parse(encodeRemoteAgentFrame(frame)),
+  }
+  socket.send(encodeRelayEnvelope(envelope))
 }
 
 function readMessageText(message: UIMessage): string {

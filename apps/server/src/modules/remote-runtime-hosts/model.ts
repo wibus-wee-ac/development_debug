@@ -6,6 +6,7 @@ const nonBlankString = t.String({ minLength: 1, pattern: '.*\\S.*' })
 const remoteRuntimeHostTransport = t.Union([
   t.Literal('ssh'),
   t.Literal('direct-socket'),
+  t.Literal('relay'),
 ])
 const sshAuth = t.Union([
   t.Literal('default'),
@@ -147,6 +148,35 @@ export const RemoteRuntimeHostsModel = {
 
   startAgentResponse: t.Object({
     agent: agentSummary,
+  }, { additionalProperties: false }),
+
+  relayPairingTokenBody: t.Object({
+    relayUrl: t.Optional(nonBlankString),
+    relayServerId: t.Optional(nonBlankString),
+    ttlMs: t.Optional(t.Integer({ minimum: 1_000, maximum: 3_600_000 })),
+  }, { additionalProperties: false }),
+
+  relayPairingTokenResponse: t.Object({
+    relayUrl: t.String(),
+    relayServerId: nullableString,
+    roomId: t.String(),
+    pairingToken: t.String(),
+    hostToken: t.String(),
+    expiresAt: t.String(),
+  }, { additionalProperties: false }),
+
+  relayClaimBody: t.Object({
+    relayUrl: t.Optional(nonBlankString),
+    relayServerId: t.Optional(nonBlankString),
+    pairingCode: nonBlankString,
+    ttlMs: t.Optional(t.Integer({ minimum: 1_000, maximum: 3_600_000 })),
+  }, { additionalProperties: false }),
+
+  relayClaimResponse: t.Object({
+    relayUrl: t.String(),
+    roomId: t.String(),
+    controllerToken: t.String(),
+    expiresAt: t.String(),
   }, { additionalProperties: false }),
 
   ok: t.Object({

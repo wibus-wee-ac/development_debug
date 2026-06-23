@@ -154,3 +154,34 @@ export const remoteRuntimeHosts = new Elysia({
     body: RemoteRuntimeHostsModel.startAgentBody,
     response: { 200: RemoteRuntimeHostsModel.startAgentResponse },
   })
+  .post('/:hostId/relay/pairing-token', ({ params, body }) => RemoteRuntimeHosts.createRemoteRuntimeHostRelayPairingToken(params.hostId, {
+    relayUrl: body.relayUrl,
+    relayServerId: body.relayServerId,
+    ttlMs: body.ttlMs,
+  }), {
+    detail: {
+      'summary': 'Create relay pairing tokens for a remote runtime host',
+      'x-cradle-cli': {
+        command: ['remote-runtime-host', 'relay', 'pairing-token'],
+      },
+    },
+    params: RemoteRuntimeHostsModel.hostIdParams,
+    body: RemoteRuntimeHostsModel.relayPairingTokenBody,
+    response: { 200: RemoteRuntimeHostsModel.relayPairingTokenResponse },
+  })
+  .post('/:hostId/relay/claim', ({ params, body }) => RemoteRuntimeHosts.claimRemoteRuntimeHostRelayPairing(params.hostId, {
+    relayUrl: body.relayUrl,
+    relayServerId: body.relayServerId,
+    pairingCode: body.pairingCode,
+    ttlMs: body.ttlMs,
+  }), {
+    detail: {
+      'summary': 'Claim a relay pairing code for a remote runtime host',
+      'x-cradle-cli': {
+        command: ['remote-runtime-host', 'relay', 'claim'],
+      },
+    },
+    params: RemoteRuntimeHostsModel.hostIdParams,
+    body: RemoteRuntimeHostsModel.relayClaimBody,
+    response: { 200: RemoteRuntimeHostsModel.relayClaimResponse },
+  })
