@@ -35,6 +35,7 @@ import {
 
 const CLAUDE_EXIT_PLAN_MODE_CAPTURED_MESSAGE = 'Cradle captured the proposed plan. Stop here and wait for the user to refine or implement it in a later turn.'
 const PLAN_IMPLEMENTATION_TOOL_NAME = 'plan_implementation'
+const CLAUDE_PLAN_FILE_PATH_SEGMENT = '/.claude/plans/'
 
 interface BetaContentBlock {
   type: string
@@ -100,6 +101,12 @@ export interface ClaudeAgentChunkMapperState {
   activeThinkingBlockByIndex: Map<number, string>
   /** Content block indices whose thinking blocks were fully emitted via stream events (reasoning-end sent). */
   completedThinkingBlockIndices: Set<number>
+  /** Tool call IDs whose AskUserQuestion input was successfully captured and parsed. */
+  capturedUserQuestionToolCallIds: Set<string>
+  /** Tool call IDs whose ExitPlanMode signal was captured by Cradle. */
+  capturedExitPlanToolCallIds: Set<string>
+  /** Latest plan body written through Claude plan mode before ExitPlanMode. */
+  latestPlanFileContent: string | null
 }
 
 interface ClaudeAgentSubagentStreamState extends ClaudeAgentSubagentProjection {
@@ -137,6 +144,8 @@ export interface ClaudeAgentCapturedUserQuestion {
 export interface ClaudeAgentCapturedCrewCall {
   toolCallId: string
   prompt: string | null
+  description: string | null
+  subagentType: string | null
   model: string | null
   reasoningEffort: string | null
   runInBackground: boolean
@@ -197,6 +206,9 @@ function normalizeClaudeAgentChunkMapperState(state: ClaudeAgentChunkMapperState
   state.activeTextBlockByIndex ??= new Map()
   state.activeThinkingBlockByIndex ??= new Map()
   state.completedThinkingBlockIndices ??= new Set()
+  state.capturedUserQuestionToolCallIds ??= new Set()
+  state.capturedExitPlanToolCallIds ??= new Set()
+  state.latestPlanFileContent ??= null
 }
 
 export function createClaudeAgentChunkMapperState(textItemId: string = randomUUID()): ClaudeAgentChunkMapperState {
@@ -215,6 +227,9 @@ export function createClaudeAgentChunkMapperState(textItemId: string = randomUUI
     activeTextBlockByIndex: new Map(),
     activeThinkingBlockByIndex: new Map(),
     completedThinkingBlockIndices: new Set(),
+    capturedUserQuestionToolCallIds: new Set(),
+    capturedExitPlanToolCallIds: new Set(),
+    latestPlanFileContent: null,
   }
 }
 
@@ -394,6 +409,8 @@ async function mapUser(msg: SDKUserMessage, state: ClaudeAgentChunkMapperState):
             capturedCrewCalls.push({
               toolCallId: b.tool_use_id,
               prompt: null,
+              description: null,
+              subagentType: null,
               model: null,
               reasoningEffort: null,
               runInBackground: false,
@@ -771,6 +788,7 @@ function emitToolUseChunks(
 
   if (input !== undefined && !current.inputAvailable) {
     state.toolArgsByToolCallId.set(toolCallId, input)
+    captureClaudePlanFileWrite(toolName, input, state)
     chunks.push({
       type: 'tool-input-available',
       toolCallId,
@@ -786,6 +804,7 @@ function emitToolUseChunks(
     const userQuestion = readClaudeAgentAskUserQuestionCapture(toolCallId, toolName, input)
     if (userQuestion) {
       capturedUserQuestions.push(userQuestion)
+      state.capturedUserQuestionToolCallIds.add(toolCallId)
     }
 
     // Capture Agent tool calls as crew calls
@@ -794,6 +813,12 @@ function emitToolUseChunks(
       capturedCrewCalls.push({
         toolCallId,
         prompt: typeof args.prompt === 'string' ? args.prompt : null,
+        description: typeof args.description === 'string' ? args.description : null,
+        subagentType: typeof args.subagent_type === 'string'
+          ? args.subagent_type
+          : typeof args.subagentType === 'string'
+            ? args.subagentType
+            : null,
         model: typeof args.model === 'string' ? args.model : null,
         reasoningEffort: typeof args.reasoningEffort === 'string' ? args.reasoningEffort : null,
         runInBackground: args.run_in_background === true,
@@ -809,8 +834,9 @@ function emitToolUseChunks(
     current.interactionModeCaptured = true
   }
 
-  const exitPlan = readExitPlanModePlan(toolName, input)
+  const exitPlan = readExitPlanModePlanContent(toolName, input, state)
   if (exitPlan && !current.outputAvailable) {
+    state.capturedExitPlanToolCallIds.add(toolCallId)
     capturedPlans.push({ toolCallId, content: exitPlan })
     chunks.push({
       type: 'tool-output-available',
@@ -857,11 +883,53 @@ function readExitPlanModePlan(toolName: string, input: unknown): string | null {
   if (!isExitPlanModeToolName(toolName)) {
     return null
   }
-  if (!isRecord(input) || typeof input.plan !== 'string') {
+  if (!isRecord(input)) {
     return null
   }
-  const plan = input.plan.trim()
+  const plan = typeof input.plan === 'string' ? input.plan.trim() : ''
   return plan.length > 0 ? plan : null
+}
+
+function captureClaudePlanFileWrite(
+  toolName: string,
+  input: unknown,
+  state: ClaudeAgentChunkMapperState,
+): void {
+  if (normalizeClaudeCodeToolApiName(toolName) !== ClaudeCodeToolName.Write || !isRecord(input)) {
+    return
+  }
+  const filePath = typeof input.file_path === 'string'
+    ? input.file_path
+    : typeof input.filePath === 'string'
+      ? input.filePath
+      : ''
+  if (!filePath.includes(CLAUDE_PLAN_FILE_PATH_SEGMENT) || !filePath.endsWith('.md')) {
+    return
+  }
+  if (typeof input.content !== 'string' || input.content.trim().length === 0) {
+    return
+  }
+  state.latestPlanFileContent = input.content
+}
+
+function readExitPlanModePlanContent(
+  toolName: string,
+  input: unknown,
+  state: ClaudeAgentChunkMapperState,
+): string | null {
+  const explicitPlan = readExitPlanModePlan(toolName, input)
+  if (explicitPlan) {
+    return explicitPlan
+  }
+  if (!isExitPlanModeToolName(toolName) || !isRecord(input) || !hasAllowedPrompts(input.allowedPrompts)) {
+    return null
+  }
+  const plan = state.latestPlanFileContent?.trim() ?? ''
+  return plan.length > 0 ? plan : null
+}
+
+function hasAllowedPrompts(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0
 }
 
 function emitPlanImplementationApprovalChunks(
@@ -912,7 +980,12 @@ function isCapturedExitPlanModeError(
   const toolName = state.toolNamesByToolCallId.get(toolCallId)
   return toolName !== undefined
     && isExitPlanModeToolName(toolName)
-    && errorText === CLAUDE_EXIT_PLAN_MODE_CAPTURED_MESSAGE
+    && state.capturedExitPlanToolCallIds.has(toolCallId)
+    && (
+      errorText === CLAUDE_EXIT_PLAN_MODE_CAPTURED_MESSAGE
+      || errorText === 'Exit plan mode?'
+      || errorText === 'Error: Exit plan mode?'
+    )
 }
 
 function isCapturedAskUserQuestionError(
@@ -922,6 +995,7 @@ function isCapturedAskUserQuestionError(
   const toolName = state.toolNamesByToolCallId.get(toolCallId)
   return toolName !== undefined
     && normalizeClaudeCodeToolApiName(toolName) === ClaudeCodeToolName.AskUserQuestion
+    && state.capturedUserQuestionToolCallIds.has(toolCallId)
 }
 
 function appendToolInputText(

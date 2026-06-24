@@ -479,6 +479,8 @@ interface ClaudeAgentCrewCallSnapshot {
   id: string
   tool: string
   prompt: string | null
+  description: string | null
+  subagentType: string | null
   model: string | null
   reasoningEffort: string | null
   runInBackground: boolean
@@ -530,10 +532,10 @@ export function projectClaudeAgentCrewUiSlotState(
     status: call.status,
     senderThreadId: runtimeSession.chatSessionId,
     receiverThreadIds: [],
-    prompt: call.prompt,
+    prompt: call.description ?? call.prompt,
     model: call.model,
     reasoningEffort: call.reasoningEffort,
-    agents: [],
+    agents: [projectClaudeAgentCrewAgent(call)],
     startedAt: call.startedAt,
     completedAt: call.completedAt,
   }))
@@ -541,7 +543,7 @@ export function projectClaudeAgentCrewUiSlotState(
   const recentItems: RuntimeToolActivityItem[] = calls.map(call => ({
     id: call.id,
     type: 'agentToolCall',
-    label: call.prompt ?? call.tool,
+    label: call.description ?? call.prompt ?? call.subagentType ?? call.tool,
     status: call.status,
     startedAt: call.startedAt,
     completedAt: call.completedAt,
@@ -550,16 +552,7 @@ export function projectClaudeAgentCrewUiSlotState(
   // Build agent list from calls so completed subagent transcripts stay readable
   // from the runtime panel after the active stream has finished.
   const agents: RuntimeCrewAgentItem[] = calls
-    .map(call => ({
-      threadId: call.id,
-      status: call.status,
-      message: call.prompt,
-      name: null,
-      preview: call.prompt?.slice(0, 120) ?? null,
-      modelProvider: null,
-      agentNickname: null,
-      agentRole: null,
-    }))
+    .map(projectClaudeAgentCrewAgent)
 
   return {
     kind: 'crew',
@@ -585,6 +578,8 @@ function mergeClaudeAgentCrewCall(
     id: existing.id,
     tool: next.tool || existing.tool,
     prompt: next.prompt ?? existing.prompt,
+    description: next.description ?? existing.description,
+    subagentType: next.subagentType ?? existing.subagentType,
     model: next.model ?? existing.model,
     reasoningEffort: next.reasoningEffort ?? existing.reasoningEffort,
     runInBackground: next.runInBackground || existing.runInBackground,
@@ -610,6 +605,8 @@ function readClaudeAgentCrewCallsSnapshot(value: unknown): ClaudeAgentCrewCallSn
       id,
       tool,
       prompt: typeof record.prompt === 'string' ? record.prompt : null,
+      description: typeof record.description === 'string' ? record.description : null,
+      subagentType: typeof record.subagentType === 'string' ? record.subagentType : null,
       model: typeof record.model === 'string' ? record.model : null,
       reasoningEffort: typeof record.reasoningEffort === 'string' ? record.reasoningEffort : null,
       runInBackground: record.runInBackground === true,
@@ -618,4 +615,17 @@ function readClaudeAgentCrewCallsSnapshot(value: unknown): ClaudeAgentCrewCallSn
       completedAt: typeof record.completedAt === 'number' ? record.completedAt : null,
     }]
   })
+}
+
+function projectClaudeAgentCrewAgent(call: ClaudeAgentCrewCallSnapshot): RuntimeCrewAgentItem {
+  return {
+    threadId: call.id,
+    status: call.status,
+    message: call.description ?? call.prompt,
+    name: call.subagentType,
+    preview: (call.description ?? call.prompt)?.slice(0, 120) ?? null,
+    modelProvider: call.model,
+    agentNickname: call.subagentType,
+    agentRole: call.description ?? call.prompt,
+  }
 }

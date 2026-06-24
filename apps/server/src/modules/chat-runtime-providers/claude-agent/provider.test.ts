@@ -489,10 +489,27 @@ describe('claudeAgentProvider MCP integration', () => {
                 { type: 'thinking', thinking: 'Checking the trace.' },
                 { type: 'text', text: 'Subagent report' },
               ],
-            },
           },
-        ]
-      }
+        },
+        {
+          type: 'user',
+          uuid: 'msg-agent-a-tool-result',
+          session_id: 'claude-session-1',
+          parent_tool_use_id: 'call_agent_1',
+          timestamp: '2026-06-24T05:27:00.810Z',
+          message: {
+            role: 'user',
+            content: [
+              {
+                type: 'tool_result',
+                tool_use_id: 'toolu_read_1',
+                content: 'Read complete',
+              },
+            ],
+          },
+        },
+      ]
+    }
       return [
         {
           type: 'assistant',
@@ -980,6 +997,108 @@ describe('claudeAgentProvider MCP integration', () => {
         slotId: 'claude-agent:compact',
       }),
     ])
+  })
+
+  it('projects Claude Agent tool description and subagent type into crew UI slot state', async () => {
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'assistant',
+        session_id: 'claude-session-crew-slot',
+        message: {
+          content: [
+            {
+              type: 'tool_use',
+              id: 'toolu_agent_1',
+              name: 'Agent',
+              input: {
+                description: 'Explore landing page changelog',
+                prompt: 'Read four files and report the structure.',
+                subagent_type: 'Explore',
+                model: 'sonnet',
+              },
+            },
+          ],
+        },
+      },
+      {
+        type: 'user',
+        session_id: 'claude-session-crew-slot',
+        message: {
+          content: [
+            {
+              type: 'tool_result',
+              tool_use_id: 'toolu_agent_1',
+              content: 'Report complete',
+            },
+          ],
+        },
+      },
+      {
+        type: 'result',
+        session_id: 'claude-session-crew-slot',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ]))
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const runtimeSession = createRuntimeSession()
+    for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-crew-slot',
+      runtimeSession,
+      profile: createProfile(),
+      message: createUserMessage('Use a subagent'),
+      workspaceId: 'workspace-1',
+    })) {
+      // Drain stream.
+    }
+
+    expect(JSON.parse(runtimeSession.providerStateSnapshot!).claudeAgent.crewCalls).toEqual([
+      expect.objectContaining({
+        id: 'toolu_agent_1',
+        tool: 'Agent',
+        prompt: 'Read four files and report the structure.',
+        description: 'Explore landing page changelog',
+        subagentType: 'Explore',
+        model: 'sonnet',
+        status: 'completed',
+        completedAt: expect.any(Number),
+      }),
+    ])
+
+    const slotStates = await provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile(),
+      workspacePath: '/tmp/cradle-workspace',
+    })
+
+    expect(slotStates).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'crew',
+        activeCount: 0,
+        completedCount: 1,
+        failedCount: 0,
+        agents: [
+          expect.objectContaining({
+            threadId: 'toolu_agent_1',
+            status: 'completed',
+            name: 'Explore',
+            agentNickname: 'Explore',
+            agentRole: 'Explore landing page changelog',
+            preview: 'Explore landing page changelog',
+            modelProvider: 'sonnet',
+          }),
+        ],
+        calls: [
+          expect.objectContaining({
+            id: 'toolu_agent_1',
+            prompt: 'Explore landing page changelog',
+            model: 'sonnet',
+          }),
+        ],
+      }),
+    ]))
   })
 
   it('projects structured Task state into progress UI slot state', async () => {

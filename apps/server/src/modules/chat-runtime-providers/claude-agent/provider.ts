@@ -640,7 +640,8 @@ export class ClaudeAgentProvider implements ChatRuntime {
   async listProviderThreadTurns(input: ProviderThreadTurnsInput): Promise<ProviderThreadTurnsResult> {
     const record = await this.resolveClaudeSubagentThreadRecord(input.threadId, input)
     const sortDirection = input.sortDirection ?? 'asc'
-    const messages = sortDirection === 'desc' ? [...record.messages].reverse() : record.messages
+    const displayMessages = record.messages.filter(hasClaudeSubagentDisplayParts)
+    const messages = sortDirection === 'desc' ? [...displayMessages].reverse() : displayMessages
     const offset = readProviderThreadOffset(input.cursor)
     const limit = readProviderThreadLimit(input.limit)
     const page = messages.slice(offset, offset + limit)
@@ -1253,6 +1254,10 @@ function projectClaudeSubagentMessagesToUiMessages(
   })
 }
 
+function hasClaudeSubagentDisplayParts(message: ClaudeSubagentSessionMessage): boolean {
+  return projectClaudeSubagentMessageParts(message).length > 0
+}
+
 function readClaudeSubagentUiRole(message: ClaudeSubagentSessionMessage): UIMessage['role'] {
   return message.type === 'assistant' || message.type === 'system' ? message.type : 'user'
 }
@@ -1285,12 +1290,6 @@ function projectClaudeSubagentMessageParts(message: ClaudeSubagentSessionMessage
         parts.push({ type: 'reasoning', text: thinking, state: 'done' })
       }
       continue
-    }
-    if (block.type === 'tool_result') {
-      const text = normalizeProviderThreadRawText(readClaudeToolResultText(block.content))
-      if (text) {
-        parts.push({ type: 'text', text, state: 'done' })
-      }
     }
   }
   return parts
@@ -1333,25 +1332,6 @@ function readClaudeTranscriptContent(value: unknown): ClaudeTranscriptMessagePay
   return value.map(block => readRecord(block) as ClaudeTranscriptContentBlock)
 }
 
-function readClaudeToolResultText(content: unknown): string | null {
-  if (typeof content === 'string') {
-    return content
-  }
-  if (Array.isArray(content)) {
-    return content
-      .map(item => {
-        if (typeof item === 'string') {
-          return item
-        }
-        const record = readRecord(item)
-        return typeof record.text === 'string' ? record.text : ''
-      })
-      .filter(Boolean)
-      .join('\n')
-  }
-  return null
-}
-
 function normalizeProviderThreadRawText(text: string | null | undefined): string | null {
   const normalized = text?.trim() ?? ''
   return normalized.length > 0 ? normalized : null
@@ -1361,6 +1341,8 @@ function mapCrewCallToSnapshot(call: ClaudeAgentCapturedCrewCall): {
   id: string
   tool: string
   prompt: string | null
+  description: string | null
+  subagentType: string | null
   model: string | null
   reasoningEffort: string | null
   runInBackground: boolean
@@ -1372,6 +1354,8 @@ function mapCrewCallToSnapshot(call: ClaudeAgentCapturedCrewCall): {
     id: call.toolCallId,
     tool: 'Agent',
     prompt: call.prompt,
+    description: call.description,
+    subagentType: call.subagentType,
     model: call.model,
     reasoningEffort: call.reasoningEffort,
     runInBackground: call.runInBackground,

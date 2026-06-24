@@ -212,6 +212,85 @@ describe('mapClaudeAgentMessageToChunks', () => {
     expect(result.chunks).toEqual([])
   })
 
+  it('captures Claude plan-file ExitPlanMode signals and suppresses the SDK denial error', async () => {
+    const state = createClaudeAgentChunkMapperState('text-1')
+    const plan = '# Implementation Plan\n\n1. Inspect\n2. Patch\n3. Verify'
+
+    await mapClaudeAgentMessageToChunks({
+      type: 'assistant',
+      session_id: 'claude-session-plan-file',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_write_plan_1',
+            name: 'Write',
+            input: {
+              file_path: '/Users/wibus/.claude/plans/example.md',
+              content: plan,
+            },
+          },
+        ],
+      },
+    } as unknown as SDKMessage, state)
+
+    const capture = await mapClaudeAgentMessageToChunks({
+      type: 'assistant',
+      session_id: 'claude-session-plan-file',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_exit_plan_1',
+            name: 'ExitPlanMode',
+            input: {
+              allowedPrompts: [
+                { tool: 'Bash', prompt: 'run build for testing' },
+              ],
+            },
+          },
+        ],
+      },
+    } as unknown as SDKMessage, state)
+
+    expect(capture.capturedPlans).toEqual([{ toolCallId: 'toolu_exit_plan_1', content: plan }])
+    expect(capture.chunks).toEqual(expect.arrayContaining([
+      {
+        type: 'tool-output-available',
+        toolCallId: 'toolu_exit_plan_1',
+        output: {
+          type: 'cradle.builtin-tool-call.result.v1',
+          identifier: 'claude-code',
+          apiName: 'ExitPlanMode',
+          args: {
+            allowedPrompts: [
+              { tool: 'Bash', prompt: 'run build for testing' },
+            ],
+          },
+          result: { plan },
+        },
+      },
+      { type: 'tool-approval-request', toolCallId: 'implement-plan:toolu_exit_plan_1', approvalId: 'implement-plan:toolu_exit_plan_1' },
+    ]))
+
+    const denial = await mapClaudeAgentMessageToChunks({
+      type: 'user',
+      session_id: 'claude-session-plan-file',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_exit_plan_1',
+            is_error: true,
+            content: 'Exit plan mode?',
+          },
+        ],
+      },
+    } as unknown as SDKMessage, state)
+
+    expect(denial.chunks).toEqual([])
+  })
+
   it('synthesizes TodoWrite plugin state when the matching tool result arrives', async () => {
     const state = createClaudeAgentChunkMapperState('text-1')
 
@@ -442,7 +521,7 @@ describe('mapClaudeAgentMessageToChunks', () => {
           },
         ],
       },
-    } as unknown as SDKMessage, state)
+    } as SDKMessage, state)
 
     const result = await mapClaudeAgentMessageToChunks({
       type: 'user',
@@ -481,6 +560,69 @@ describe('mapClaudeAgentMessageToChunks', () => {
         mediaType: 'image/png',
         url: 'data:image/png;base64,image-data',
       },
+    ])
+  })
+
+  it('captures Claude Agent tool metadata as crew state without guessing from output text', async () => {
+    const state = createClaudeAgentChunkMapperState('text-1')
+
+    const inputResult = await mapClaudeAgentMessageToChunks({
+      type: 'assistant',
+      session_id: 'claude-session-crew',
+      message: {
+        content: [
+          {
+            type: 'tool_use',
+            id: 'toolu_agent_1',
+            name: 'Agent',
+            input: {
+              description: 'Explore landing page changelog',
+              prompt: 'Read four files and report the structure.',
+              subagent_type: 'Explore',
+              model: 'sonnet',
+            },
+          },
+        ],
+      },
+    } as unknown as SDKMessage, state)
+
+    expect(inputResult.capturedCrewCalls).toEqual([
+      {
+        toolCallId: 'toolu_agent_1',
+        prompt: 'Read four files and report the structure.',
+        description: 'Explore landing page changelog',
+        subagentType: 'Explore',
+        model: 'sonnet',
+        reasoningEffort: null,
+        runInBackground: false,
+        status: 'running',
+        startedAt: expect.any(Number),
+        completedAt: null,
+      },
+    ])
+
+    const result = await mapClaudeAgentMessageToChunks({
+      type: 'user',
+      session_id: 'claude-session-crew',
+      message: {
+        content: [
+          {
+            type: 'tool_result',
+            tool_use_id: 'toolu_agent_1',
+            content: 'Report complete',
+          },
+        ],
+      },
+    } as unknown as SDKMessage, state)
+
+    expect(result.capturedCrewCalls).toEqual([
+      expect.objectContaining({
+        toolCallId: 'toolu_agent_1',
+        status: 'completed',
+        prompt: null,
+        description: null,
+        subagentType: null,
+      }),
     ])
   })
 
