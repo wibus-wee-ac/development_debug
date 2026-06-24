@@ -12,11 +12,12 @@ export const CodexAuthModeSchema = z.enum([
   'bedrockApiKey',
 ])
 
+export const ClaudeAgentAuthModeSchema = z.enum(['apiKey', 'claudeAi'])
+
 export const BaseProviderConfig = z.object({
   baseUrl: z.string().optional(),
   model: z.string().optional(),
   apiKey: z.string().optional(),
-  authMode: CodexAuthModeSchema.optional(),
   enabledModels: z.array(z.string()).default([]),
   skillPaths: z.array(z.string()).default([]),
   additionalDirectories: z.array(z.string()).default([]),
@@ -25,9 +26,9 @@ export const BaseProviderConfig = z.object({
 export const OpenAICompatibleConfigSchema = BaseProviderConfig.pick({
   baseUrl: true,
   model: true,
-  authMode: true,
   enabledModels: true,
 }).extend({
+  authMode: CodexAuthModeSchema.optional(),
   baseUrl: z.string().nullable().default(null),
   model: z.string().nullable().default(null),
   maxMessages: z.number().default(50),
@@ -36,6 +37,7 @@ export const OpenAICompatibleConfigSchema = BaseProviderConfig.pick({
 })
 
 export const CodexConfigSchema = BaseProviderConfig.extend({
+  authMode: CodexAuthModeSchema.optional(),
   approvalPolicy: z.enum(['never', 'on-request', 'on-failure', 'untrusted']).default(CODEX_DEFAULT_APPROVAL_POLICY),
   sandboxMode: z.enum(['read-only', 'workspace-write', 'danger-full-access']).default(CODEX_DEFAULT_SANDBOX_MODE),
   reasoningEffort: z.enum(['none', 'minimal', 'low', 'medium', 'high', 'xhigh']).default('high'),
@@ -47,6 +49,7 @@ export const CodexConfigSchema = BaseProviderConfig.extend({
 const ClaudeAgentModelEnvValueSchema = z.string().trim()
 
 export const ClaudeAgentConfigSchema = BaseProviderConfig.extend({
+  authMode: ClaudeAgentAuthModeSchema.default('apiKey'),
   claudeAgent: z.object({
     modelAliases: z.object({
       haiku: ClaudeAgentModelEnvValueSchema.optional(),
@@ -79,6 +82,7 @@ export const UniversalProviderConfigJsonSchema = z.string()
 
 export type UniversalProviderConfig = z.infer<typeof UniversalProviderConfigSchema>
 export type CodexAuthMode = z.infer<typeof CodexAuthModeSchema>
+export type ClaudeAgentAuthMode = z.infer<typeof ClaudeAgentAuthModeSchema>
 
 export function readTrustedUniversalConfig(raw: string): UniversalProviderConfig {
   const config = JSON.parse(raw) as Partial<UniversalProviderConfig>
@@ -188,6 +192,7 @@ export function readTrustedClaudeAgentConfig(raw: string): ClaudeAgentConfig {
     baseUrl: config.baseUrl,
     model: config.model,
     apiKey: config.apiKey,
+    authMode: config.authMode ?? 'apiKey',
     enabledModels: config.enabledModels ?? [],
     skillPaths: config.skillPaths ?? [],
     additionalDirectories: config.additionalDirectories ?? [],

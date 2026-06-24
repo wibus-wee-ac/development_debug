@@ -6,6 +6,18 @@ const providerTargetKind = t.Union([t.Literal('manual'), t.Literal('external')])
 const providerKind = providerKindSchema
 const nullableString = t.Union([t.String(), t.Null()])
 const nullableNumber = t.Union([t.Number(), t.Null()])
+const providerAuthDiagnosticsStatus = t.Union([
+  t.Literal('ready'),
+  t.Literal('warning'),
+  t.Literal('error'),
+  t.Literal('unknown'),
+])
+const providerAuthStatus = t.Union([
+  t.Literal('authenticated'),
+  t.Literal('unauthenticated'),
+  t.Literal('unknown'),
+])
+const claudeAgentAuthMode = t.Union([t.Literal('apiKey'), t.Literal('claudeAi')])
 const codexAccountType = t.Union([
   t.Literal('apiKey'),
   t.Literal('chatgpt'),
@@ -177,6 +189,32 @@ export const ProviderTargetsModel = {
   chatgptCredentialLoginParams: t.Object({
     loginId: t.String({ minLength: 1 }),
   }),
+
+  providerAuthDiagnostics: t.Object({
+    providerTargetId: t.String(),
+    supported: t.Boolean(),
+    unavailableReason: nullableString,
+    refreshedAt: nullableNumber,
+    status: providerAuthDiagnosticsStatus,
+    available: t.Boolean(),
+    authStatus: providerAuthStatus,
+    authMode: t.Union([claudeAgentAuthMode, t.Null()]),
+    authType: nullableString,
+    authLabel: nullableString,
+    version: nullableString,
+    message: nullableString,
+    account: t.Union([
+      t.Object({
+        email: nullableString,
+        organization: nullableString,
+        subscriptionType: nullableString,
+        tokenSource: nullableString,
+        apiKeySource: nullableString,
+        apiProvider: nullableString,
+      }, { additionalProperties: false }),
+      t.Null(),
+    ]),
+  }, { additionalProperties: false }),
 
   codexAccountDiagnostics: t.Object({
     providerTargetId: t.String(),
