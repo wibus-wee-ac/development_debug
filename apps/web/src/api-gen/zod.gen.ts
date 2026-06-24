@@ -357,6 +357,10 @@ export const zPatchProviderTargetsByProviderTargetIdModelSettingsPath = z.object
     providerTargetId: z.string().min(1)
 });
 
+export const zGetProviderTargetsByProviderTargetIdAuthDiagnosticsPath = z.object({
+    providerTargetId: z.string().min(1)
+});
+
 export const zGetProviderTargetsByProviderTargetIdCodexAccountDiagnosticsPath = z.object({
     providerTargetId: z.string().min(1)
 });
@@ -2471,6 +2475,73 @@ export const zPostChatSessionsBySessionIdQueueReorderPath = z.object({
 });
 
 export const zDeleteChatSessionsBySessionIdQueueByQueueItemIdPath = z.object({
+    sessionId: z.string().min(1),
+    queueItemId: z.string().min(1)
+});
+
+export const zPatchChatSessionsBySessionIdQueueByQueueItemIdBody = z.object({
+    text: z.string().min(1).optional(),
+    files: z.array(z.object({
+        type: z.string(),
+        mediaType: z.string().min(1),
+        filename: z.string().optional(),
+        url: z.string().min(1),
+        providerMetadata: z.unknown().optional()
+    })).optional(),
+    contextParts: z.array(z.union([z.object({
+            type: z.string(),
+            name: z.string().min(1),
+            path: z.string().min(1),
+            scope: z.enum([
+                'builtin',
+                'legacy',
+                'global',
+                'repository',
+                'workspace',
+                'agent'
+            ]),
+            description: z.string().nullable(),
+            position: z.number().gte(0).optional()
+        }), z.object({
+            type: z.string(),
+            provider: z.enum(['cradle', 'codex']).optional(),
+            pluginName: z.string().min(1),
+            displayName: z.string().min(1),
+            description: z.string().nullable(),
+            iconUrl: z.string().min(1).nullish(),
+            routeSegment: z.string().min(1),
+            capabilities: z.array(z.object({
+                id: z.string().min(1),
+                type: z.string().min(1),
+                layer: z.enum([
+                    'server',
+                    'web',
+                    'desktop'
+                ]),
+                label: z.string().nullable()
+            })),
+            mcpServers: z.array(z.string().min(1)),
+            nativeMention: z.object({
+                name: z.string().min(1),
+                path: z.string().min(1)
+            }).nullish(),
+            position: z.number().gte(0).optional()
+        })])).optional(),
+    providerTargetId: z.string().optional(),
+    modelId: z.string().nullish(),
+    thinkingEffort: z.enum([
+        'low',
+        'medium',
+        'high',
+        'xhigh'
+    ]).optional(),
+    runtimeSettings: z.object({
+        accessMode: z.enum(['approval-required', 'full-access']).optional(),
+        interactionMode: z.enum(['default', 'plan']).optional()
+    }).optional()
+});
+
+export const zPatchChatSessionsBySessionIdQueueByQueueItemIdPath = z.object({
     sessionId: z.string().min(1),
     queueItemId: z.string().min(1)
 });

@@ -1585,6 +1585,45 @@ export type PatchProviderTargetsByProviderTargetIdModelSettingsResponses = {
 
 export type PatchProviderTargetsByProviderTargetIdModelSettingsResponse = PatchProviderTargetsByProviderTargetIdModelSettingsResponses[keyof PatchProviderTargetsByProviderTargetIdModelSettingsResponses];
 
+export type GetProviderTargetsByProviderTargetIdAuthDiagnosticsData = {
+    body?: never;
+    path: {
+        providerTargetId: string;
+    };
+    query?: never;
+    url: '/provider-targets/{providerTargetId}/auth-diagnostics';
+};
+
+export type GetProviderTargetsByProviderTargetIdAuthDiagnosticsResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        providerTargetId: string;
+        supported: boolean;
+        unavailableReason: string | null;
+        refreshedAt: number | null;
+        status: 'ready' | 'warning' | 'error' | 'unknown';
+        available: boolean;
+        authStatus: 'authenticated' | 'unauthenticated' | 'unknown';
+        authMode: string | null;
+        authType: string | null;
+        authLabel: string | null;
+        version: string | null;
+        message: string | null;
+        account: {
+            email: string | null;
+            organization: string | null;
+            subscriptionType: string | null;
+            tokenSource: string | null;
+            apiKeySource: string | null;
+            apiProvider: string | null;
+        } | null;
+    };
+};
+
+export type GetProviderTargetsByProviderTargetIdAuthDiagnosticsResponse = GetProviderTargetsByProviderTargetIdAuthDiagnosticsResponses[keyof GetProviderTargetsByProviderTargetIdAuthDiagnosticsResponses];
+
 export type GetProviderTargetsByProviderTargetIdCodexAccountDiagnosticsData = {
     body?: never;
     path: {
@@ -8216,6 +8255,11 @@ export type GetWorkspacesByIdDiffReviewsResponses = {
                 paths: Array<string>;
                 dependsOn: Array<string>;
             }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
+            }>;
             rationale: string;
             createdAt: number;
             updatedAt: number;
@@ -8461,6 +8505,11 @@ export type PostWorkspacesByIdDiffReviewsLocalWorkingTreeResponses = {
                 paths: Array<string>;
                 dependsOn: Array<string>;
             }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
+            }>;
             rationale: string;
             createdAt: number;
             updatedAt: number;
@@ -8681,6 +8730,11 @@ export type PostWorkspacesByIdDiffReviewsLocalBranchCompareResponses = {
                 paths: Array<string>;
                 dependsOn: Array<string>;
             }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
+            }>;
             rationale: string;
             createdAt: number;
             updatedAt: number;
@@ -8900,6 +8954,11 @@ export type PostWorkspacesByIdDiffReviewsLocalCommitResponses = {
                 paths: Array<string>;
                 dependsOn: Array<string>;
             }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
+            }>;
             rationale: string;
             createdAt: number;
             updatedAt: number;
@@ -9116,6 +9175,11 @@ export type GetWorkspacesByIdDiffReviewsByReviewIdResponses = {
                 fileIds: Array<string>;
                 paths: Array<string>;
                 dependsOn: Array<string>;
+            }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
             }>;
             rationale: string;
             createdAt: number;
@@ -9334,6 +9398,11 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdRefreshResponses = {
                 paths: Array<string>;
                 dependsOn: Array<string>;
             }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
+            }>;
             rationale: string;
             createdAt: number;
             updatedAt: number;
@@ -9550,6 +9619,11 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdCloseResponses = {
                 fileIds: Array<string>;
                 paths: Array<string>;
                 dependsOn: Array<string>;
+            }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
             }>;
             rationale: string;
             createdAt: number;
@@ -9770,6 +9844,11 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdFilesByFileIdViewedResponses 
                 fileIds: Array<string>;
                 paths: Array<string>;
                 dependsOn: Array<string>;
+            }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
             }>;
             rationale: string;
             createdAt: number;
@@ -9999,6 +10078,11 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsResponses = {
                 paths: Array<string>;
                 dependsOn: Array<string>;
             }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
+            }>;
             rationale: string;
             createdAt: number;
             updatedAt: number;
@@ -10218,6 +10302,11 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdCommentsResp
                 fileIds: Array<string>;
                 paths: Array<string>;
                 dependsOn: Array<string>;
+            }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
             }>;
             rationale: string;
             createdAt: number;
@@ -10439,6 +10528,11 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdReactionsRes
                 paths: Array<string>;
                 dependsOn: Array<string>;
             }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
+            }>;
             rationale: string;
             createdAt: number;
             updatedAt: number;
@@ -10656,6 +10750,11 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdThreadsByThreadIdResolveRespo
                 fileIds: Array<string>;
                 paths: Array<string>;
                 dependsOn: Array<string>;
+            }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
             }>;
             rationale: string;
             createdAt: number;
@@ -10876,6 +10975,11 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdSubmitResponses = {
                 fileIds: Array<string>;
                 paths: Array<string>;
                 dependsOn: Array<string>;
+            }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
             }>;
             rationale: string;
             createdAt: number;
@@ -11140,6 +11244,11 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdGuideGenerateResponses = {
                 paths: Array<string>;
                 dependsOn: Array<string>;
             }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
+            }>;
             rationale: string;
             createdAt: number;
             updatedAt: number;
@@ -11356,6 +11465,11 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdGuideCancelResponses = {
                 fileIds: Array<string>;
                 paths: Array<string>;
                 dependsOn: Array<string>;
+            }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
             }>;
             rationale: string;
             createdAt: number;
@@ -11587,6 +11701,11 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesResponses = {
                 paths: Array<string>;
                 dependsOn: Array<string>;
             }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
+            }>;
             rationale: string;
             createdAt: number;
             updatedAt: number;
@@ -11809,6 +11928,11 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdStartRe
                 fileIds: Array<string>;
                 paths: Array<string>;
                 dependsOn: Array<string>;
+            }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
             }>;
             rationale: string;
             createdAt: number;
@@ -12061,6 +12185,11 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdCancelR
                 paths: Array<string>;
                 dependsOn: Array<string>;
             }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
+            }>;
             rationale: string;
             createdAt: number;
             updatedAt: number;
@@ -12284,6 +12413,11 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRerunRe
                 paths: Array<string>;
                 dependsOn: Array<string>;
             }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
+            }>;
             rationale: string;
             createdAt: number;
             updatedAt: number;
@@ -12501,6 +12635,11 @@ export type DeleteWorkspacesByIdDiffReviewsByReviewIdAgentFixesByAgentFixIdRespo
                 fileIds: Array<string>;
                 paths: Array<string>;
                 dependsOn: Array<string>;
+            }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
             }>;
             rationale: string;
             createdAt: number;
@@ -12732,6 +12871,11 @@ export type PutWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdRespo
                 paths: Array<string>;
                 dependsOn: Array<string>;
             }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
+            }>;
             rationale: string;
             createdAt: number;
             updatedAt: number;
@@ -12951,6 +13095,11 @@ export type PostWorkspacesByIdDiffReviewsByReviewIdCommitPlansByCommitPlanIdAppl
                 fileIds: Array<string>;
                 paths: Array<string>;
                 dependsOn: Array<string>;
+            }>;
+            conflicts: Array<{
+                fileId: string;
+                path: string;
+                groupIds: Array<string>;
             }>;
             rationale: string;
             createdAt: number;
@@ -13374,7 +13523,6 @@ export type PostChatSessionsBySessionIdSideChatResponses = {
         providerTargetId: string | null;
         providerSessionId: string | null;
         title: string;
-        expiresAt: number;
     };
 };
 
@@ -14026,6 +14174,125 @@ export type DeleteChatSessionsBySessionIdQueueByQueueItemIdResponses = {
 };
 
 export type DeleteChatSessionsBySessionIdQueueByQueueItemIdResponse = DeleteChatSessionsBySessionIdQueueByQueueItemIdResponses[keyof DeleteChatSessionsBySessionIdQueueByQueueItemIdResponses];
+
+export type PatchChatSessionsBySessionIdQueueByQueueItemIdData = {
+    body: {
+        text?: string;
+        files?: Array<{
+            type: string;
+            mediaType: string;
+            filename?: string;
+            url: string;
+            providerMetadata?: unknown;
+            [key: string]: unknown;
+        }>;
+        contextParts?: Array<{
+            type: string;
+            name: string;
+            path: string;
+            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+            description: string | null;
+            position?: number;
+        } | {
+            type: string;
+            provider?: 'cradle' | 'codex';
+            pluginName: string;
+            displayName: string;
+            description: string | null;
+            iconUrl?: string | null;
+            routeSegment: string;
+            capabilities: Array<{
+                id: string;
+                type: string;
+                layer: 'server' | 'web' | 'desktop';
+                label: string | null;
+            }>;
+            mcpServers: Array<string>;
+            nativeMention?: {
+                name: string;
+                path: string;
+            } | null;
+            position?: number;
+        }>;
+        providerTargetId?: string;
+        modelId?: string | null;
+        thinkingEffort?: 'low' | 'medium' | 'high' | 'xhigh';
+        runtimeSettings?: {
+            accessMode?: 'approval-required' | 'full-access';
+            interactionMode?: 'default' | 'plan';
+        };
+    };
+    path: {
+        sessionId: string;
+        queueItemId: string;
+    };
+    query?: never;
+    url: '/chat/sessions/{sessionId}/queue/{queueItemId}';
+};
+
+export type PatchChatSessionsBySessionIdQueueByQueueItemIdResponses = {
+    /**
+     * Response for status 200
+     */
+    200: {
+        id: string;
+        sessionId: string;
+        mode: string;
+        status: 'pending' | 'running' | 'cancelled' | 'completed' | 'failed';
+        text: string;
+        files: Array<{
+            type: string;
+            mediaType: string;
+            filename?: string;
+            url: string;
+            providerMetadata?: unknown;
+            [key: string]: unknown;
+        }>;
+        contextParts: Array<{
+            type: string;
+            name: string;
+            path: string;
+            scope: 'builtin' | 'legacy' | 'global' | 'repository' | 'workspace' | 'agent';
+            description: string | null;
+            position?: number;
+        } | {
+            type: string;
+            provider?: 'cradle' | 'codex';
+            pluginName: string;
+            displayName: string;
+            description: string | null;
+            iconUrl?: string | null;
+            routeSegment: string;
+            capabilities: Array<{
+                id: string;
+                type: string;
+                layer: 'server' | 'web' | 'desktop';
+                label: string | null;
+            }>;
+            mcpServers: Array<string>;
+            nativeMention?: {
+                name: string;
+                path: string;
+            } | null;
+            position?: number;
+        }>;
+        providerTargetId: string | null;
+        modelId: string | null;
+        thinkingEffort: string | null;
+        runtimeSettings: {
+            accessMode: 'approval-required' | 'full-access';
+            interactionMode: 'default' | 'plan';
+        };
+        position: number;
+        sourceRunId: string | null;
+        startedRunId: string | null;
+        errorText: string | null;
+        createdAt: number;
+        updatedAt: number;
+    };
+};
+
+export type PatchChatSessionsBySessionIdQueueByQueueItemIdResponse = PatchChatSessionsBySessionIdQueueByQueueItemIdResponses[keyof PatchChatSessionsBySessionIdQueueByQueueItemIdResponses];
 
 export type GetChatDraftRuntimeCapabilitiesData = {
     body?: never;

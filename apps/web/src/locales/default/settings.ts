@@ -303,6 +303,7 @@ export default {
   'desktop.updates.currentVersion': 'Installed version',
   'desktop.updates.availableVersion': 'Available update',
   'desktop.updates.none': 'None',
+  'desktop.updates.releaseNotes': 'Release Notes',
   'desktop.updates.actions.refresh': 'Refresh',
   'desktop.updates.actions.check': 'Check',
   'desktop.updates.actions.download': 'Download',
