@@ -19,13 +19,18 @@ import type {
 } from '../../chat-runtime/runtime-provider-types'
 import { ProviderErrors, ProviderRuntimeError } from '../../chat-runtime/runtime-provider-types'
 import {
+  type ClaudeAgentAuthMode,
   readTrustedClaudeAgentConfig,
   readTrustedUniversalConfig,
   resolveApiKey,
 } from '../../provider-contracts/provider-base'
 import { readWorkspaceProviderStateSnapshot } from '../provider-state-snapshot'
 import { CLAUDE_AGENT_RUNTIME_KIND } from './metadata'
-import { activateClaudeAgentSdkConfigDir, resolveClaudeAgentRuntimeContext } from './runtime-context'
+import {
+  prepareClaudeAgentSdkConfigDir,
+  removeCradleOwnedClaudeConfigDirFromEnv,
+  resolveClaudeAgentRuntimeContext,
+} from './runtime-context'
 import type {
   AnthropicImageMediaType,
   ClaudeAgentContentBlock,
@@ -161,7 +166,10 @@ export function buildClaudeQueryOptions(input: {
   persistSession?: boolean
 }): Options {
   const config = readTrustedClaudeAgentConfig(input.input.profile.configJson)
-  const apiKey = resolveApiKey(input.input.profile, config.apiKey, 'ANTHROPIC_API_KEY', input.deps)
+  const authMode = resolveClaudeAgentAuthMode(config)
+  const apiKey = authMode === 'apiKey'
+    ? resolveApiKey(input.input.profile, config.apiKey, 'ANTHROPIC_API_KEY', input.deps)
+    : null
   const effectiveModel = readClaudeAgentModelId(input.input, config)
   const providerOptions = 'providerOptions' in input.input ? input.input.providerOptions : undefined
   const permissionMode = (providerOptions
@@ -169,7 +177,7 @@ export function buildClaudeQueryOptions(input: {
     : undefined) ?? config.permissionMode
   const supportsRuntimePermissionSwitch = input.attachPermissionHandler
 
-  if (!apiKey) {
+  if (authMode === 'apiKey' && !apiKey) {
     throw new ProviderRuntimeError(ProviderErrors.authFailed(CLAUDE_AGENT_RUNTIME_KIND))
   }
 
@@ -178,7 +186,7 @@ export function buildClaudeQueryOptions(input: {
     snapshot.workspacePath ?? input.input.workspacePath,
     input.input.agentId ?? snapshot.agentId ?? null,
   )
-  const shouldPersistSession = input.persistSession ?? CLAUDE_AGENT_SDK_PERSIST_SESSION
+  const shouldPersistSession = input.persistSession ?? shouldPersistClaudeAgentSdkSession(authMode)
   const queryOptions: Options = {
     abortController: input.abortController,
     cwd: runtimeContext.cwd,
@@ -244,11 +252,19 @@ export function buildClaudeQueryOptions(input: {
     queryOptions.mcpServers = { ...queryOptions.mcpServers, ...projectClaudeAgentMcpServers(registeredServers) }
   }
 
-  queryOptions.settingSources = []
+  queryOptions.settingSources = claudeAgentSettingSourcesForAuthMode(authMode)
+  if (authMode === 'claudeAi') {
+    queryOptions.managedSettings = {
+      ...queryOptions.managedSettings,
+      forceLoginMethod: 'claudeai',
+    }
+  }
 
-  const claudeConfigDir = activateClaudeAgentSdkConfigDir()
   const env: Record<string, string | undefined> = { ...process.env }
   for (const key of [
+    'ANTHROPIC_API_KEY',
+    'ANTHROPIC_AUTH_TOKEN',
+    'ANTHROPIC_BASE_URL',
     'ANTHROPIC_MODEL',
     'ANTHROPIC_DEFAULT_HAIKU_MODEL',
     'ANTHROPIC_DEFAULT_SONNET_MODEL',
@@ -257,17 +273,22 @@ export function buildClaudeQueryOptions(input: {
   ]) {
     delete env[key]
   }
-  env.ANTHROPIC_API_KEY = apiKey
-  const anthropicBaseUrl = resolveAnthropicBaseUrl(input.input.profile, config)
-  if (anthropicBaseUrl) {
-    env.ANTHROPIC_BASE_URL = anthropicBaseUrl
+  if (authMode === 'claudeAi') {
+    removeCradleOwnedClaudeConfigDirFromEnv(env)
+  }
+  if (authMode === 'apiKey') {
+    env.ANTHROPIC_API_KEY = apiKey ?? undefined
+    const anthropicBaseUrl = resolveAnthropicBaseUrl(input.input.profile, config)
+    if (anthropicBaseUrl) {
+      env.ANTHROPIC_BASE_URL = anthropicBaseUrl
+    }
+    env.CLAUDE_CONFIG_DIR = prepareClaudeAgentSdkConfigDir()
   }
   env.CRADLE_CHAT_SESSION_ID = input.input.runtimeSession.chatSessionId
   env.CRADLE_WORKSPACE_ID = input.input.workspaceId ?? undefined
   env.CRADLE_WORKSPACE_PATH = runtimeContext.workspacePath
   env.CRADLE_AGENT_ID = input.input.agentId ?? snapshot.agentId ?? undefined
   env.CRADLE_AGENT_HOME = runtimeContext.agentHome ?? undefined
-  env.CLAUDE_CONFIG_DIR = claudeConfigDir
   env.CLAUDE_CODE_DISABLE_NONESSENTIAL_TRAFFIC = '1'
   env.CLAUDE_CODE_ATTRIBUTION_HEADER = '0'
 
@@ -275,6 +296,33 @@ export function buildClaudeQueryOptions(input: {
   queryOptions.env = env
 
   return queryOptions
+}
+
+export function resolveClaudeAgentAuthMode(
+  config: ReturnType<typeof readTrustedClaudeAgentConfig>,
+): ClaudeAgentAuthMode {
+  return config.authMode ?? 'apiKey'
+}
+
+export function shouldPersistClaudeAgentSdkSession(authMode: ClaudeAgentAuthMode): boolean {
+  switch (authMode) {
+    case 'apiKey':
+    case 'claudeAi':
+    default:
+      return CLAUDE_AGENT_SDK_PERSIST_SESSION
+  }
+}
+
+function claudeAgentSettingSourcesForAuthMode(
+  authMode: ClaudeAgentAuthMode,
+): NonNullable<Options['settingSources']> {
+  switch (authMode) {
+    case 'claudeAi':
+      return ['user', 'project', 'local']
+    case 'apiKey':
+    default:
+      return []
+  }
 }
 
 function readClaudeAgentEffort(

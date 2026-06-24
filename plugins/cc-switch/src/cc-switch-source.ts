@@ -597,6 +597,10 @@ function isClaudeAnthropicMessages(provider: CcSwitchProviderRow): boolean {
   return apiFormat === 'anthropic' || apiFormat === 'anthropic-messages' || apiFormat === 'anthropic_messages'
 }
 
+function isClaudeOfficialSubscriptionProvider(provider: CcSwitchProviderRow): boolean {
+  return provider.appType === 'claude' && provider.id === 'claude-official'
+}
+
 function mapClaudeProvider(provider: CcSwitchProviderRow): ExternalProviderRecord | null {
   const apiFormat = claudeApiFormat(provider)
   if (!isClaudeAnthropicMessages(provider)) { return null }
@@ -613,12 +617,14 @@ function mapClaudeProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
     ?? env.ANTHROPIC_DEFAULT_OPUS_MODEL
     ?? env.ANTHROPIC_DEFAULT_HAIKU_MODEL
   const credential = env.ANTHROPIC_AUTH_TOKEN ?? env.ANTHROPIC_API_KEY
+  const authMode = !credential && isClaudeOfficialSubscriptionProvider(provider) ? 'claudeAi' : undefined
   return {
     externalId: `cc-switch:${provider.appType}:${provider.id}`,
     app: provider.appType,
     name: `${provider.name}`,
     providerKind: 'anthropic',
     config: compactJsonObject({
+      authMode,
       baseUrl,
       model,
       claudeAgent: Object.keys(modelAliases).length > 0 ? { modelAliases } : undefined,
@@ -630,6 +636,7 @@ function mapClaudeProvider(provider: CcSwitchProviderRow): ExternalProviderRecor
       baseUrl,
       model,
       apiFormat,
+      authMode,
     }),
   }
 }

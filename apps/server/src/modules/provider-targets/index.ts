@@ -5,6 +5,7 @@ import {
   readCodexChatgptCredentialLoginStatus,
   startCodexChatgptCredentialLogin,
 } from '../chat-runtime-providers/codex/app-server/account-service'
+import { readClaudeAgentAuthDiagnostics } from '../chat-runtime-providers/claude-agent/account-diagnostics'
 import {
   consumeCodexRateLimitResetCredit,
   readCodexAccountDiagnostics,
@@ -118,6 +119,18 @@ export const providerTargets = new Elysia({
       params: ProviderTargetsModel.idParams,
       body: ProviderTargetsModel.modelSettingsBody,
       response: { 200: ProviderTargetsModel.modelSettings },
+    },
+  )
+  .get(
+    '/:providerTargetId/auth-diagnostics',
+    ({ params }) => readClaudeAgentAuthDiagnostics({ providerTargetId: params.providerTargetId }),
+    {
+      detail: {
+        summary: 'Read provider target auth diagnostics',
+        description: 'Reads provider-target scoped authentication status without projecting secret values.',
+      },
+      params: ProviderTargetsModel.idParams,
+      response: { 200: ProviderTargetsModel.providerAuthDiagnostics },
     },
   )
   .get(

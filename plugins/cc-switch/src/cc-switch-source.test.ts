@@ -441,6 +441,59 @@ describe('cC Switch external provider source', () => {
     }))
   })
 
+  it('maps the CC Switch official Claude seed to Claude.ai auth mode without a credential', async () => {
+    const dir = createTempWorkspace()
+    const dbPath = join(dir, 'cc-switch.db')
+    const settingsPath = join(dir, 'settings.json')
+    writeFixtureDatabase(dbPath)
+    writeFileSync(settingsPath, JSON.stringify({ currentProviderClaude: 'claude-official' }))
+
+    const db = new Database(dbPath)
+    try {
+      db.prepare(`
+        INSERT INTO providers (id, app_type, name, settings_config, meta, is_current)
+        VALUES (?, ?, ?, ?, ?, ?)
+      `).run(
+        'claude-official',
+        'claude',
+        'Claude Official',
+        JSON.stringify({ env: {} }),
+        '{}',
+        1,
+      )
+    }
+    finally {
+      db.close()
+    }
+
+    const snapshot = await readCcSwitchExternalProviderSnapshot({
+      signal: new AbortController().signal,
+      logger: {
+        info() {},
+        warn() {},
+        error() {},
+        debug() {},
+      },
+      sharedConfig: new Map([
+        ['CC_SWITCH_DB_PATH', dbPath],
+        ['CC_SWITCH_SETTINGS_PATH', settingsPath],
+      ]),
+    })
+
+    const provider = snapshot.providers.find(provider => provider.externalId === 'cc-switch:claude:claude-official')
+    expect(provider).toEqual(expect.objectContaining({
+      providerKind: 'anthropic',
+      current: true,
+      config: expect.objectContaining({
+        authMode: 'claudeAi',
+      }),
+      metadata: expect.objectContaining({
+        authMode: 'claudeAi',
+      }),
+    }))
+    expect(provider?.credential).toBeUndefined()
+  })
+
   it('tolerates nullable external fields and skips only malformed provider rows', async () => {
     const dir = createTempWorkspace()
     const dbPath = join(dir, 'cc-switch.db')

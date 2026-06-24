@@ -500,6 +500,7 @@ function maybeEnum<T extends z.ZodEnum>(schema: T, value: string | undefined): z
 
 function claudeRecord(input: ClaudeConfigReadResult): ExternalProviderRecord | null {
   const apiKey = input.env.ANTHROPIC_AUTH_TOKEN ?? input.env.ANTHROPIC_API_KEY
+  const authMode = !apiKey && (input.settingsFound || input.localSettingsFound) ? 'claudeAi' : undefined
   const modelAliases = compactRecord({
     haiku: input.env.ANTHROPIC_DEFAULT_HAIKU_MODEL,
     sonnet: input.env.ANTHROPIC_DEFAULT_SONNET_MODEL,
@@ -523,6 +524,7 @@ function claudeRecord(input: ClaudeConfigReadResult): ExternalProviderRecord | n
     name: 'Local Claude',
     providerKind: 'anthropic',
     config: compactRecord({
+      authMode,
       baseUrl: input.env.ANTHROPIC_BASE_URL,
       model: input.env.ANTHROPIC_MODEL,
       claudeAgent: hasAlias ? { modelAliases } : undefined,
@@ -533,6 +535,7 @@ function claudeRecord(input: ClaudeConfigReadResult): ExternalProviderRecord | n
       baseUrl: input.env.ANTHROPIC_BASE_URL,
       model: input.env.ANTHROPIC_MODEL,
       apiFormat: 'anthropic',
+      authMode,
       iconSlug: 'claude',
       rawFingerprintHint: hashText({
         settingsFound: input.settingsFound,

@@ -2,7 +2,7 @@
 
 import { mkdirSync } from 'node:fs'
 import { homedir } from 'node:os'
-import { dirname, join } from 'node:path'
+import { dirname, join, resolve } from 'node:path'
 
 import { getPluginSkillProjectionSources } from '../../../plugins/skill-registry'
 import { isAppFeatureFlagEnabled } from '../../preferences/service'
@@ -87,6 +87,18 @@ export function activateClaudeAgentSdkConfigDir(): string {
   const configDir = prepareClaudeAgentSdkConfigDir()
   process.env.CLAUDE_CONFIG_DIR = configDir
   return configDir
+}
+
+export function removeCradleOwnedClaudeConfigDirFromEnv(env: NodeJS.ProcessEnv): void {
+  const configDir = env.CLAUDE_CONFIG_DIR?.trim()
+  if (!configDir) {
+    return
+  }
+  if (resolve(configDir) !== resolve(resolveClaudeAgentSdkConfigDir({ env }))) {
+    return
+  }
+  delete env.CLAUDE_CONFIG_DIR
+  delete env.CLAUDE_SECURESTORAGE_CONFIG_DIR
 }
 
 function uniquePaths(paths: Array<string | null | undefined>): string[] {

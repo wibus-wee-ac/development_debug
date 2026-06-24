@@ -159,6 +159,10 @@ describe('local agent config external provider source', () => {
         externalId: 'claude:local-current',
         app: 'claude',
         providerKind: 'anthropic',
+        config: expect.objectContaining({
+          authMode: 'claudeAi',
+          model: 'claude-overlap-test',
+        }),
       }),
       expect.objectContaining({
         externalId: 'codex:local-current',
