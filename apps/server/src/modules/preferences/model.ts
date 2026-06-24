@@ -59,6 +59,7 @@ export const PreferencesModel = {
     appshotHotkeyTrigger,
     autoCheckForUpdates: t.Boolean({ default: true }),
     autoDownloadUpdates: t.Boolean({ default: false }),
+    lastSeenChangelogVersion: t.Union([t.String(), t.Null()], { default: null }),
   }, { additionalProperties: false }),
   jarvisPreferences: t.Object({
     runtimeKind: t.Optional(runtimeKindRef),
@@ -149,12 +150,14 @@ export const DesktopPreferencesJsonSchema = z.union([
   appshotHotkeyTrigger: z.enum(['DoubleCommand', 'DoubleOption', 'DoubleShift']).default('DoubleCommand'),
   autoCheckForUpdates: z.boolean().default(true),
   autoDownloadUpdates: z.boolean().default(false),
+  lastSeenChangelogVersion: z.string().nullable().default(null),
 }).default({
   requireDoubleCommandQToQuit: true,
   appshotHotkeyEnabled: true,
   appshotHotkeyTrigger: 'DoubleCommand',
   autoCheckForUpdates: true,
   autoDownloadUpdates: false,
+  lastSeenChangelogVersion: null,
 }))
 
 export const JarvisPreferencesJsonSchema = z.union([
