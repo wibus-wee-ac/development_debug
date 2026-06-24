@@ -1,13 +1,13 @@
 ---
 name: cradle-chat-runtime-sdk-update
-description: Update Cradle chat-runtime SDK integrations and review API changes. Use when upgrading or validating @openai/codex-sdk, the vendored Codex app-server runtime/protocol, generated Codex app-server TypeScript bindings/capabilities, or @anthropic-ai/claude-agent-sdk in apps/server; also use when asked to inspect newly generated Codex app-server APIs for useful Cradle features.
+description: Update Cradle chat-runtime SDK integrations and review API changes. Use when upgrading or validating the vendored Codex app-server runtime/protocol, generated Codex app-server TypeScript bindings/capabilities, or @anthropic-ai/claude-agent-sdk in apps/server; also use when asked to inspect newly generated Codex app-server APIs for useful Cradle features.
 ---
 
 # Cradle Chat Runtime SDK Update
 
 Use this skill for Cradle-owned Server chat runtime dependency updates:
 
-- Codex: `@openai/codex-sdk`, Desktop-vendored Codex CLI runtime, generated app-server protocol bindings, and Codex adapter behavior.
+- Codex: Desktop-vendored Codex CLI runtime, generated app-server protocol bindings, and Codex adapter behavior.
 - Claude Agent: `@anthropic-ai/claude-agent-sdk` and the Server Claude Agent provider.
 
 Keep the ownership boundary clear: Server owns Chat Runtime contracts and provider adapters; Desktop owns bundled runtime injection; Codex/Claude own their native protocol semantics. Read external/native namespaces, but write Cradle-owned projections only.
@@ -18,14 +18,13 @@ Keep the ownership boundary clear: Server owns Chat Runtime contracts and provid
 
 ```bash
 git status --short
-node -e "const root=require('./package.json'); const srv=require('./apps/server/package.json'); console.log({codexSdk:root.dependencies['@openai/codex-sdk'], claudeAgentSdk:srv.dependencies['@anthropic-ai/claude-agent-sdk']})"
+node -e "const root=require('./package.json'); const srv=require('./apps/server/package.json'); console.log({claudeAgentSdk:srv.dependencies['@anthropic-ai/claude-agent-sdk']})"
 sed -n '1,80p' apps/server/src/modules/chat-runtime-providers/codex/app-server-protocol/MANIFEST.json
 ```
 
 2. Upgrade dependencies with pnpm and respect supply-chain policy.
 
 ```bash
-pnpm up @openai/codex-sdk --latest -w
 pnpm --filter @cradle/server up @anthropic-ai/claude-agent-sdk --latest
 ```
 
