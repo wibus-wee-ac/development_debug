@@ -102,6 +102,12 @@ export interface ComposerExternalSignals {
   /** Replaces the current draft when the key changes, used by quick actions. */
   replaceText?: string
   replaceTextKey?: number
+  /** Replaces the current structured draft when the key changes, used by queue edit. */
+  replaceDraft?: {
+    text: string
+    contextParts: ChatContextPart[]
+  }
+  replaceDraftKey?: number
   /** Appends text to the composer input when the key changes, used by parent DnD. */
   appendText?: string
   appendTextKey?: number
@@ -744,6 +750,8 @@ export function Composer({
   const footer = slots?.footer
   const replaceText = externalSignals?.replaceText
   const replaceTextKey = externalSignals?.replaceTextKey
+  const replaceDraft = externalSignals?.replaceDraft
+  const replaceDraftKey = externalSignals?.replaceDraftKey
   const appendText = externalSignals?.appendText
   const appendTextKey = externalSignals?.appendTextKey
   const {
@@ -1131,6 +1139,14 @@ export function Composer({
     promptEditorRef.current?.setText(replaceText)
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [replaceTextKey])
+
+  useEffect(() => {
+    if (!replaceDraft) {
+      return
+    }
+    promptEditorRef.current?.setDraft(replaceDraft.text, replaceDraft.contextParts)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [replaceDraftKey])
 
   useEffect(() => {
     onDraftChange?.(state.inputValue)

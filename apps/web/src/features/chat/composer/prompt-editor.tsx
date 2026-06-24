@@ -53,6 +53,7 @@ export interface PromptEditorController {
   replaceFileTriggerWithText: (item: MentionItem, range: PromptEditorTriggerRange) => void
   replaceRangeWithText: (range: PromptEditorTriggerRange, text: string) => void
   setPlaceholder: (placeholder: string) => void
+  setDraft: (text: string, contextParts: ChatContextPart[]) => void
   setText: (text: string) => void
 }
 
@@ -398,6 +399,13 @@ export const PromptEditor = forwardRef((
       }
       view.dispatch(view.state.tr.setMeta(PLACEHOLDER_PLUGIN_KEY, { placeholder: nextPlaceholder }))
     },
+    setDraft(text, contextParts) {
+      const view = viewRef.current
+      if (!view) {
+        return
+      }
+      setEditorDraft(view, text, contextParts)
+    },
     setText(text) {
       const view = viewRef.current
       if (!view) {
@@ -659,22 +667,90 @@ function editorClassName(className?: string) {
   )
 }
 
-function createPromptDoc(text: string): ProseMirrorNode {
+function createPromptDoc(text: string, contextParts: ChatContextPart[] = []): ProseMirrorNode {
   const paragraphType = promptEditorSchema.nodes.paragraph
-  const textType = promptEditorSchema.text.bind(promptEditorSchema)
+  const orderedContextParts = contextParts
+    .map((part, index) => ({
+      index,
+      part,
+      position: normalizeContextPartPosition(part, text.length),
+    }))
+    .sort((left, right) => left.position - right.position || left.index - right.index)
+
+  let contextPartIndex = 0
+  let paragraphStart = 0
   const paragraphs = text.split('\n').map((line) => {
-    if (line.length === 0) {
-      return paragraphType.create()
+    const paragraphEnd = paragraphStart + line.length
+    const content: ProseMirrorNode[] = []
+    let textCursor = paragraphStart
+
+    while (
+      contextPartIndex < orderedContextParts.length
+      && orderedContextParts[contextPartIndex].position <= paragraphEnd
+    ) {
+      const item = orderedContextParts[contextPartIndex]
+      appendTextNode(content, text.slice(textCursor, item.position))
+      content.push(createContextPartMentionNode(item.part))
+      textCursor = item.position
+      contextPartIndex += 1
     }
-    return paragraphType.create(null, textType(line))
+
+    appendTextNode(content, text.slice(textCursor, paragraphEnd))
+    paragraphStart = paragraphEnd + 1
+    return content.length === 0
+      ? paragraphType.create()
+      : paragraphType.create(null, Fragment.fromArray(content))
   })
   return promptEditorSchema.nodes.doc.create(null, Fragment.fromArray(paragraphs))
+}
+
+function appendTextNode(content: ProseMirrorNode[], text: string) {
+  if (text.length === 0) {
+    return
+  }
+  content.push(promptEditorSchema.text(text))
+}
+
+function normalizeContextPartPosition(part: ChatContextPart, textLength: number): number {
+  if (typeof part.position !== 'number' || !Number.isFinite(part.position)) {
+    return textLength
+  }
+  return Math.max(0, Math.min(textLength, part.position))
+}
+
+function createContextPartMentionNode(part: ChatContextPart): ProseMirrorNode {
+  if (part.type === 'data-cradle-plugin') {
+    return promptEditorSchema.nodes.pluginMention.create({
+      provider: part.provider ?? 'cradle',
+      pluginName: part.pluginName,
+      displayName: part.displayName,
+      description: part.description,
+      iconUrl: part.iconUrl ?? null,
+      routeSegment: part.routeSegment,
+      capabilities: part.capabilities,
+      mcpServers: part.mcpServers,
+      nativeMention: part.nativeMention ?? null,
+    })
+  }
+
+  return promptEditorSchema.nodes.skillMention.create({
+    name: part.name,
+    displayName: part.name,
+    path: part.path,
+    description: part.description,
+    scope: part.scope,
+  })
 }
 
 function replaceEditorDoc(view: EditorView, doc: ProseMirrorNode) {
   const tr = view.state.tr.replaceWith(0, view.state.doc.content.size, doc.content.content)
   tr.setSelection(TextSelection.atEnd(tr.doc))
   view.dispatch(tr)
+}
+
+function setEditorDraft(view: EditorView, text: string, contextParts: ChatContextPart[]) {
+  replaceEditorDoc(view, createPromptDoc(text, contextParts))
+  view.focus()
 }
 
 function setEditorText(view: EditorView, text: string) {

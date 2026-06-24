@@ -454,6 +454,10 @@ function ChatComposerSection({
   const openPlanRefineTab = useBrowserPanelStore(s => s.openPlanRefineTab)
   const [composerReplaceText, setComposerReplaceText] = useState<string | undefined>(undefined)
   const [composerReplaceTextKey, setComposerReplaceTextKey] = useState(0)
+  const [composerReplaceDraft, setComposerReplaceDraft] = useState<
+    { text: string, contextParts: ChatQueueItem['contextParts'] } | undefined
+  >(undefined)
+  const [composerReplaceDraftKey, setComposerReplaceDraftKey] = useState(0)
   const [dismissPlanSignal, setDismissPlanSignal] = useState(0)
   const [composerHasDraft, setComposerHasDraft] = useState(false)
   const [activePlanRefineTabId, setActivePlanRefineTabId] = useState<string | null>(null)
@@ -535,10 +539,11 @@ function ChatComposerSection({
   const handleEditQueueItem = useCallback((item: ChatQueueItem) => {
     editingQueueItemIdRef.current = item.id
     setEditingQueueItemId(item.id)
-    if (item.text) {
-      setComposerReplaceText(item.text)
-      setComposerReplaceTextKey(key => key + 1)
-    }
+    setComposerReplaceDraft({
+      text: item.text,
+      contextParts: item.contextParts,
+    })
+    setComposerReplaceDraftKey(key => key + 1)
     if (item.files.length > 0) {
       appshotRuntime.appendFileParts(item.files)
     }
@@ -738,6 +743,8 @@ function ChatComposerSection({
           appendTextKey: droppedPath?.ts,
           replaceText: composerReplaceText,
           replaceTextKey: composerReplaceTextKey,
+          replaceDraft: composerReplaceDraft,
+          replaceDraftKey: composerReplaceDraftKey,
         }}
         view={{
           placeholder,
