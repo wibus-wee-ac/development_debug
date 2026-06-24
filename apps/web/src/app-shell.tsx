@@ -9,6 +9,7 @@ import { useSidebarSheetMode } from '~/components/layout/layout-responsive'
 import { useSyncLayoutSlotScope } from '~/components/layout/use-layout-slots'
 import { useDesktopTrayActionBridge } from '~/features/desktop-tray/use-desktop-tray-action-bridge'
 import { CredentialSetupDialog } from '~/features/onboarding/credential-setup-dialog'
+import { WhatsNewTrigger } from '~/features/changelog/whats-new-trigger'
 import { useOnboardingStore } from '~/features/onboarding/onboarding-store'
 import { useGlobalSearchStore } from '~/features/search/global-search-store'
 import { useUnreadSessionIds } from '~/features/workspace/use-session'
@@ -268,6 +269,7 @@ function MainAppRuntime() {
         </div>
       </AppLayout>
       <StreamingChatRetentionBoundary />
+      <WhatsNewTrigger />
     </div>
   )
 }

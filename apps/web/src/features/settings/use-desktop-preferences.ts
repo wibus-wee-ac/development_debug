@@ -12,6 +12,7 @@ export interface DesktopPreferences {
   appshotHotkeyTrigger: MacInputBareModifier
   autoCheckForUpdates: boolean
   autoDownloadUpdates: boolean
+  lastSeenChangelogVersion: string | null
 }
 
 const DesktopPreferencesSchema = z.object({
@@ -20,6 +21,7 @@ const DesktopPreferencesSchema = z.object({
   appshotHotkeyTrigger: z.enum(['DoubleCommand', 'DoubleOption', 'DoubleShift']).default('DoubleCommand'),
   autoCheckForUpdates: z.boolean().default(true),
   autoDownloadUpdates: z.boolean().default(false),
+  lastSeenChangelogVersion: z.string().nullable().default(null),
 })
 
 export const DESKTOP_PREFS_QUERY_KEY = getPreferencesDesktopQueryKey()

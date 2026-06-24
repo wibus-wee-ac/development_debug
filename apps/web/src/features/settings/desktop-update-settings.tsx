@@ -6,6 +6,7 @@ import {
   TerminalLine as TerminalIcon,
   UnlinkLine as UnlinkIcon
 } from '@mingcute/react'
+import { StaticRender } from '@cradle/streamdown'
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 
@@ -268,6 +269,17 @@ export function DesktopUpdateSettings() {
                   )}
                 </div>
               </div>
+
+              {status.updateInfo?.releaseNotes && (
+                <div className="rounded-lg border border-border/50 bg-muted/30 px-3 py-2.5">
+                  <p className="mb-1.5 text-[11px] font-medium text-muted-foreground">
+                    {t('desktop.updates.releaseNotes' as SettingsKey)}
+                  </p>
+                  <div className="max-h-48 overflow-y-auto text-[12px] [&_h2]:mt-3 [&_h2]:mb-1 [&_h2]:text-[12px] [&_h2]:font-semibold [&_h2]:text-foreground [&_h3]:mt-2 [&_h3]:mb-1 [&_h3]:text-[12px] [&_h3]:font-medium [&_h3]:text-foreground [&_p]:my-1 [&_p]:text-muted-foreground [&_ul]:my-1 [&_ul]:list-disc [&_ul]:pl-4 [&_ol]:my-1 [&_ol]:list-decimal [&_ol]:pl-4 [&_li]:my-0.5 [&_li]:text-muted-foreground [&_blockquote]:my-1 [&_blockquote]:border-l-2 [&_blockquote]:border-border [&_blockquote]:pl-2 [&_blockquote]:text-muted-foreground [&_blockquote]:italic [&_code]:rounded [&_code]:bg-muted [&_code]:px-1 [&_code]:py-0.5 [&_code]:text-[11px] [&_code]:font-mono">
+                    <StaticRender content={status.updateInfo.releaseNotes} />
+                  </div>
+                </div>
+              )}
 
               {(status.isDownloadingUpdate || status.updateDownloaded) && (
                 <div className="flex items-center gap-3">
