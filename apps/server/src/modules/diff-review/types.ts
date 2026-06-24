@@ -178,6 +178,12 @@ export interface ReviewCommitPlanGroupView {
   dependsOn: string[]
 }
 
+export interface ReviewCommitPlanConflictView {
+  fileId: string
+  path: string
+  groupIds: string[]
+}
+
 export interface ReviewCommitPlanView {
   id: string
   reviewId: string
@@ -186,6 +192,7 @@ export interface ReviewCommitPlanView {
   strategy: 'manual'
   status: 'draft' | 'accepted' | 'applied' | 'abandoned'
   groups: ReviewCommitPlanGroupView[]
+  conflicts: ReviewCommitPlanConflictView[]
   rationale: string
   createdAt: number
   updatedAt: number

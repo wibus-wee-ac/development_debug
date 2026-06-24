@@ -231,6 +231,11 @@ const commitPlan = t.Object({
     paths: t.Array(t.String()),
     dependsOn: t.Array(t.String()),
   })),
+  conflicts: t.Array(t.Object({
+    fileId: t.String(),
+    path: t.String(),
+    groupIds: t.Array(t.String()),
+  })),
   rationale: t.String(),
   createdAt: t.Number(),
   updatedAt: t.Number(),

@@ -5,12 +5,17 @@ import { eq } from 'drizzle-orm'
 import { AppError } from '../../errors/app-error'
 import { db } from '../../infra'
 import type { GitCommitFileGroupInput } from '../git/service'
-import type { ReviewCommitPlanGroupInput, ReviewCommitPlanGroupView } from './types'
+import type { ReviewCommitPlanConflictView, ReviewCommitPlanGroupInput, ReviewCommitPlanGroupView } from './types'
+
+export interface NormalizeCommitPlanResult {
+  groups: ReviewCommitPlanGroupView[]
+  conflicts: ReviewCommitPlanConflictView[]
+}
 
 export function normalizeCommitPlanGroups(
   revisionId: string,
   groups: ReviewCommitPlanGroupInput[],
-): ReviewCommitPlanGroupView[] {
+): NormalizeCommitPlanResult {
   if (groups.length === 0) {
     throw new AppError({
       code: 'diff_review_commit_plan_empty',
@@ -25,7 +30,7 @@ export function normalizeCommitPlanGroups(
     .all()
   const fileById = new Map(files.map(file => [file.id, file]))
   const groupIds = new Set<string>()
-  const usedFileIds = new Set<string>()
+  const fileIdToGroupIds = new Map<string, string[]>()
 
   for (const group of groups) {
     if (groupIds.has(group.id)) {
@@ -61,15 +66,12 @@ export function normalizeCommitPlanGroups(
           details: { revisionId, groupId: group.id, fileId },
         })
       }
-      if (usedFileIds.has(fileId)) {
-        throw new AppError({
-          code: 'diff_review_commit_plan_duplicate_file',
-          status: 400,
-          message: 'Diff review commit plan files can only appear in one group',
-          details: { revisionId, groupId: group.id, fileId },
-        })
+      const existing = fileIdToGroupIds.get(fileId)
+      if (existing) {
+        existing.push(group.id)
+      } else {
+        fileIdToGroupIds.set(fileId, [group.id])
       }
-      usedFileIds.add(fileId)
       paths.push(file.path)
     }
 
@@ -96,7 +98,19 @@ export function normalizeCommitPlanGroups(
     })
   }
 
-  return normalized
+  const conflicts: ReviewCommitPlanConflictView[] = []
+  for (const [fileId, groupIds] of fileIdToGroupIds) {
+    if (groupIds.length > 1) {
+      const file = fileById.get(fileId)
+      conflicts.push({
+        fileId,
+        path: file?.path ?? fileId,
+        groupIds,
+      })
+    }
+  }
+
+  return { groups: normalized, conflicts }
 }
 
 export function commitGroupsForPlan(
@@ -107,9 +121,13 @@ export function commitGroupsForPlan(
     .where(eq(diffReviewFiles.revisionId, revisionId))
     .all()
   const fileById = new Map(files.map(file => [file.id, file]))
+  const committedFileIds = new Set<string>()
   return groups.map(group => {
     const paths: string[] = []
     for (const fileId of group.fileIds) {
+      if (committedFileIds.has(fileId)) {
+        continue
+      }
       const file = fileById.get(fileId)
       if (!file) {
         throw new AppError({
@@ -119,6 +137,7 @@ export function commitGroupsForPlan(
           details: { revisionId, commitGroupId: group.id, fileId },
         })
       }
+      committedFileIds.add(fileId)
       if (file.previousPath) {
         paths.push(file.previousPath)
       }

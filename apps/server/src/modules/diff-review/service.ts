@@ -62,6 +62,7 @@ import type {
   ReviewAgentFixArtifactView,
   ReviewAgentFixView,
   ReviewCommentView,
+  ReviewCommitPlanConflictView,
   ReviewCommitPlanGroupInput,
   ReviewCommitPlanGroupView,
   ReviewCommitPlanView,
@@ -236,6 +237,8 @@ function toAgentFixView(row: DiffReviewAgentFix): ReviewAgentFixView {
 
 function toCommitPlanView(row: DiffReviewCommitPlan): ReviewCommitPlanView {
   const parsed = safeJsonParse(row.groupsJson)
+  const groups: ReviewCommitPlanGroupView[] = Array.isArray(parsed) ? parsed as ReviewCommitPlanGroupView[] : []
+  const conflicts = computeCommitPlanConflicts(groups)
   return {
     id: row.id,
     reviewId: row.reviewId,
@@ -243,11 +246,41 @@ function toCommitPlanView(row: DiffReviewCommitPlan): ReviewCommitPlanView {
     actorId: row.actorId,
     strategy: 'manual',
     status: row.status,
-    groups: Array.isArray(parsed) ? parsed as ReviewCommitPlanGroupView[] : [],
+    groups,
+    conflicts,
     rationale: row.rationale,
     createdAt: row.createdAt,
     updatedAt: row.updatedAt,
   }
+}
+
+function computeCommitPlanConflicts(groups: ReviewCommitPlanGroupView[]): ReviewCommitPlanConflictView[] {
+  const fileIdToGroupIds = new Map<string, string[]>()
+  const fileIdToPath = new Map<string, string>()
+  for (const group of groups) {
+    for (let i = 0; i < group.fileIds.length; i++) {
+      const fileId = group.fileIds[i]
+      const path = group.paths[i] ?? fileId
+      fileIdToPath.set(fileId, path)
+      const existing = fileIdToGroupIds.get(fileId)
+      if (existing) {
+        existing.push(group.id)
+      } else {
+        fileIdToGroupIds.set(fileId, [group.id])
+      }
+    }
+  }
+  const conflicts: ReviewCommitPlanConflictView[] = []
+  for (const [fileId, groupIds] of fileIdToGroupIds) {
+    if (groupIds.length > 1) {
+      conflicts.push({
+        fileId,
+        path: fileIdToPath.get(fileId) ?? fileId,
+        groupIds,
+      })
+    }
+  }
+  return conflicts
 }
 
 function emptyGuideView(revisionId: string | null): ReviewGuideView {
@@ -2254,7 +2287,9 @@ function buildCommitPlanAgentPrompt(input: {
     '',
     'Rules:',
     '- Prefer 1 to 6 commit groups. Use one group for a single coherent change.',
-    '- Every changed file id from the provided file list must appear in exactly one group.',
+    '- Every changed file id from the provided file list must appear in at least one group.',
+    '- A file MAY appear in multiple groups if it contains changes for different features. The first group will get the file; later groups will skip it.',
+    '- Avoid duplicate files when possible. Only use duplicates when a file truly contains independent changes that belong in separate commits.',
     '- Use only fileIds from the provided changed files list.',
     '- Order groups in the order they should be committed.',
     '- dependsOn is optional and uses 1-based group indexes, not ids or titles.',
@@ -2470,7 +2505,7 @@ function normalizeGeneratedCommitPlan(input: {
     }
   })
 
-  const normalized = normalizeCommitPlanGroups(input.revision.id, groups)
+  const { groups: normalized } = normalizeCommitPlanGroups(input.revision.id, groups)
   const plannedFileIds = new Set(normalized.flatMap(group => group.fileIds))
   const missingFiles = input.files.filter(file => !plannedFileIds.has(file.id))
   if (missingFiles.length > 0) {
@@ -2998,7 +3033,7 @@ export function updateCommitPlan(input: {
   }
 
   const groups = input.groups
-    ? normalizeCommitPlanGroups(plan.revisionId, input.groups)
+    ? normalizeCommitPlanGroups(plan.revisionId, input.groups).groups
     : toCommitPlanView(plan).groups
   const now = currentUnixSeconds()
   const userId = input.userId ?? LOCAL_USER_ID
