@@ -567,7 +567,7 @@ function readCrewCallReceiverThreadIds(call: ChatRuntimeCrewCallItem): string[] 
 }
 
 function readCrewAgentLabel(agent: ChatRuntimeCrewAgentItem): string {
-  return agent.agentNickname ?? agent.name ?? agent.agentRole ?? formatThreadId(agent.threadId)
+  return agent.agentNickname ?? agent.name ?? agent.agentRole ?? agent.preview ?? agent.message ?? formatThreadId(agent.threadId)
 }
 
 function isActiveCrewAgentStatus(status: string | null): boolean {

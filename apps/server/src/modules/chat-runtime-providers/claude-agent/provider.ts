@@ -1,9 +1,10 @@
-import type { Query } from '@anthropic-ai/claude-agent-sdk'
-import { getSessionInfo, query, renameSession } from '@anthropic-ai/claude-agent-sdk'
+import type { AccountInfo, Query, SDKAuthStatusMessage, SDKMessage, SDKRateLimitEvent, SessionMessage } from '@anthropic-ai/claude-agent-sdk'
+import { getSessionInfo, getSubagentMessages, listSubagents, query, renameSession } from '@anthropic-ai/claude-agent-sdk'
 import type { LangfuseGeneration } from '@langfuse/tracing'
 import { startObservation } from '@langfuse/tracing'
-import type { UIMessageChunk } from 'ai'
+import type { UIMessage, UIMessageChunk } from 'ai'
 
+import { readObjectRecord as readRecord } from '../../../helpers/json-record'
 import { aiTelemetryEnabled } from '../../../telemetry/config'
 import type {
   CancelTurnInput,
@@ -13,6 +14,14 @@ import type {
   GetContextUsageInput,
   GetUiSlotStatesInput,
   ProviderContext,
+  ProviderThread,
+  ProviderThreadListInput,
+  ProviderThreadListResult,
+  ProviderThreadReadInput,
+  ProviderThreadReadResult,
+  ProviderThreadTurn,
+  ProviderThreadTurnsInput,
+  ProviderThreadTurnsResult,
   QuickQuestionInput,
   ResumeChatSessionInput,
   RuntimeCompactUiSlotState,
@@ -43,6 +52,7 @@ import {
   projectClaudeAgentInput,
   projectRuntimeSettingsToClaudePermissionMode,
   readClaudeAgentModelId,
+  shouldPersistClaudeAgentSdkSession,
 } from './input-projector'
 import {
   CLAUDE_AGENT_RUNTIME_CAPABILITIES,
@@ -59,11 +69,15 @@ import {
   projectClaudeAgentCrewUiSlotState,
   projectClaudeAgentPlanUiSlotState,
   projectClaudeAgentProgressUiSlotState,
+  projectClaudeAgentUsageUiSlotState,
   readClaudeAgentPendingModelSwitchId,
   resolveClaudeAgentPendingModelSwitchId,
+  writeClaudeAgentAccountSnapshot,
+  writeClaudeAgentAuthStatusSnapshot,
   writeClaudeAgentCapturedPlan,
   writeClaudeAgentCrewCall,
   writeClaudeAgentProgress,
+  writeClaudeAgentRateLimitSnapshot,
   writeClaudeAgentPendingModelSwitch,
 } from './state-projector'
 import type { ClaudeAgentProviderDeps, ClaudeAgentSessionInfo, ClaudeTitleGenerationThinkingEffort } from './types'
@@ -82,6 +96,40 @@ type ActiveClaudeQuery = {
 type ContextUsageRuntimeInput = Pick<GetContextUsageInput, 'runtimeSession'>
 
 const COMPACT_SLOT_CONTEXT_USAGE_TTL_MS = 15_000
+const DEFAULT_PROVIDER_THREAD_LIMIT = 50
+const CLAUDE_SUBAGENT_SOURCE_KIND = 'subAgent'
+
+type ClaudeTranscriptContentBlock = {
+  type: string
+  text?: string
+  thinking?: string
+  content?: unknown
+  id?: string
+  name?: string
+  input?: unknown
+  tool_use_id?: string
+  is_error?: boolean
+}
+
+type ClaudeTranscriptMessagePayload = {
+  role?: string
+  content?: string | ClaudeTranscriptContentBlock[]
+  model?: string
+}
+
+type ClaudeSubagentSessionMessage = SessionMessage & {
+  timestamp?: string
+  subagent_type?: string
+  task_description?: string
+  message: ClaudeTranscriptMessagePayload | string
+}
+
+interface ClaudeSubagentThreadRecord {
+  agentId: string
+  parentSessionId: string
+  cwd: string
+  messages: ClaudeSubagentSessionMessage[]
+}
 
 function closeClaudeQuery(activeQuery: Query): void {
   const close = (activeQuery as { close?: unknown }).close
@@ -198,6 +246,10 @@ export class ClaudeAgentProvider implements ChatRuntime {
     if (crewState) {
       states.push(crewState)
     }
+    const usageState = projectClaudeAgentUsageUiSlotState(input.runtimeSession)
+    if (usageState) {
+      states.push(usageState)
+    }
     if (compactState) {
       states.push(compactState)
     }
@@ -270,9 +322,9 @@ export class ClaudeAgentProvider implements ChatRuntime {
 
   async* streamTurn(input: StreamTurnInput): AsyncGenerator<UIMessageChunk, void, void> {
     const abortController = new AbortController()
-    const resumedProviderSessionId = CLAUDE_AGENT_SDK_PERSIST_SESSION
-      ? input.runtimeSession.providerSessionId
-      : null
+    const config = readTrustedClaudeAgentConfig(input.profile.configJson)
+    const shouldPersistSession = shouldPersistClaudeAgentSdkSession(config.authMode)
+    const resumedProviderSessionId = shouldPersistSession ? input.runtimeSession.providerSessionId : null
     const shouldResumeProviderSession = Boolean(resumedProviderSessionId)
     const projectedUserContent = projectClaudeAgentInput(input.message, 'Claude Agent provider')
     const userContent = buildClaudeAgentTurnContent({
@@ -281,7 +333,6 @@ export class ClaudeAgentProvider implements ChatRuntime {
       historyScope: shouldResumeProviderSession ? 'recentCradleLocal' : 'full',
     })
     const userPromptText = describeClaudeAgentUserContent(userContent)
-    const config = readTrustedClaudeAgentConfig(input.profile.configJson)
     const effectiveModel = readClaudeAgentModelId(input, config)
     const pendingModelSwitchId = readClaudeAgentPendingModelSwitchId(
       readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot),
@@ -298,6 +349,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
     const sessionId = input.runtimeSession.chatSessionId
     const activeEntry: ActiveClaudeQuery = { query: activeQuery, abortController, inputStream }
     this.activeQueries.set(sessionId, activeEntry)
+    void this.captureClaudeAgentAccountSnapshot(input.runtimeSession, activeQuery)
     this._lastUsage = null
     this._totalUsage = null
     const traceMessageId = input.responseMessageId ?? input.message.id
@@ -387,6 +439,8 @@ export class ClaudeAgentProvider implements ChatRuntime {
           })
         }
 
+        this.projectClaudeAgentRuntimeState(input.runtimeSession, message)
+
         const result = await mapClaudeAgentMessageToChunks(message, mapperState)
         for (const plan of result.capturedPlans) {
           writeClaudeAgentCapturedPlan(input.runtimeSession, plan)
@@ -419,7 +473,7 @@ export class ClaudeAgentProvider implements ChatRuntime {
           })
         }
 
-        const nextProviderSessionId = result.sessionId && result.sessionId !== input.runtimeSession.providerSessionId
+        const nextProviderSessionId = shouldPersistSession && result.sessionId && result.sessionId !== input.runtimeSession.providerSessionId
           ? result.sessionId
           : null
         if (nextProviderSessionId) {
@@ -532,6 +586,73 @@ export class ClaudeAgentProvider implements ChatRuntime {
     closeClaudeQuery(entry.query)
     entry.inputStream.close()
     this.releaseQuery(sessionId, entry)
+  }
+
+  async listProviderThreads(input: ProviderThreadListInput): Promise<ProviderThreadListResult> {
+    const parentSessionId = input.runtimeSession.providerSessionId
+    if (!parentSessionId || !supportsClaudeSubagentSourceKinds(input.sourceKinds)) {
+      return {
+        runtimeKind: this.runtimeKind,
+        providerSessionId: parentSessionId,
+        threads: [],
+        nextCursor: null,
+        backwardsCursor: null,
+      }
+    }
+
+    const cwd = this.resolveClaudeProviderThreadDir(input)
+    const agentIds = await listSubagents(parentSessionId, { dir: cwd })
+    const records = await Promise.all(agentIds.map(async agentId => ({
+      agentId,
+      parentSessionId,
+      cwd,
+      messages: await this.readClaudeSubagentMessages(parentSessionId, agentId, cwd),
+    } satisfies ClaudeSubagentThreadRecord)))
+    const sortKey = input.sortKey ?? 'updated_at'
+    const sortDirection = input.sortDirection ?? 'desc'
+    const searchTerm = normalizeProviderThreadText(input.searchTerm)
+    const threads = records
+      .map(projectClaudeSubagentThread)
+      .filter(thread => !searchTerm || claudeProviderThreadMatchesSearch(thread, searchTerm))
+      .sort((left, right) => compareClaudeProviderThreads(left, right, sortKey, sortDirection))
+
+    const offset = readProviderThreadOffset(input.cursor)
+    const limit = readProviderThreadLimit(input.limit)
+    const page = threads.slice(offset, offset + limit)
+    return {
+      runtimeKind: this.runtimeKind,
+      providerSessionId: parentSessionId,
+      threads: page,
+      nextCursor: offset + limit < threads.length ? String(offset + limit) : null,
+      backwardsCursor: offset > 0 ? String(Math.max(0, offset - limit)) : null,
+    }
+  }
+
+  async readProviderThread(input: ProviderThreadReadInput): Promise<ProviderThreadReadResult> {
+    const record = await this.resolveClaudeSubagentThreadRecord(input.threadId, input)
+    return {
+      runtimeKind: this.runtimeKind,
+      providerSessionId: record.parentSessionId,
+      thread: projectClaudeSubagentThread(record),
+    }
+  }
+
+  async listProviderThreadTurns(input: ProviderThreadTurnsInput): Promise<ProviderThreadTurnsResult> {
+    const record = await this.resolveClaudeSubagentThreadRecord(input.threadId, input)
+    const sortDirection = input.sortDirection ?? 'asc'
+    const messages = sortDirection === 'desc' ? [...record.messages].reverse() : record.messages
+    const offset = readProviderThreadOffset(input.cursor)
+    const limit = readProviderThreadLimit(input.limit)
+    const page = messages.slice(offset, offset + limit)
+    return {
+      runtimeKind: this.runtimeKind,
+      providerSessionId: record.parentSessionId,
+      threadId: record.agentId,
+      turns: page.map(message => projectClaudeSubagentTurn(record.agentId, message)),
+      messages: projectClaudeSubagentMessagesToUiMessages(record.agentId, page),
+      nextCursor: offset + limit < messages.length ? String(offset + limit) : null,
+      backwardsCursor: offset > 0 ? String(Math.max(0, offset - limit)) : null,
+    }
   }
 
   private async readCompactState(input: GetUiSlotStatesInput): Promise<RuntimeCompactUiSlotState | null> {
@@ -752,12 +873,91 @@ export class ClaudeAgentProvider implements ChatRuntime {
     }
   }
 
+  private async captureClaudeAgentAccountSnapshot(runtimeSession: RuntimeSession, activeQuery: Query): Promise<void> {
+    const initializationResult = (activeQuery as { initializationResult?: () => Promise<{ account?: AccountInfo }> }).initializationResult
+    if (typeof initializationResult !== 'function') {
+      return
+    }
+
+    try {
+      const result = await initializationResult.call(activeQuery)
+      if (hasClaudeAgentAccountSignal(result.account)) {
+        writeClaudeAgentAccountSnapshot(runtimeSession, result.account)
+      }
+    }
+    catch (error) {
+      this.deps.logger?.debug?.('Claude Agent account initialization probe failed', {
+        error,
+        sessionId: runtimeSession.chatSessionId,
+      })
+    }
+  }
+
+  private projectClaudeAgentRuntimeState(runtimeSession: RuntimeSession, message: SDKMessage): void {
+    if (message.type === 'auth_status') {
+      writeClaudeAgentAuthStatusSnapshot(runtimeSession, message as SDKAuthStatusMessage)
+      return
+    }
+    if (message.type === 'rate_limit_event') {
+      writeClaudeAgentRateLimitSnapshot(runtimeSession, (message as SDKRateLimitEvent).rate_limit_info)
+    }
+  }
+
   private resolveClaudeSessionProjectDir(input: {
     workspacePath?: string | null
     agentId?: string | null
   }): string {
     activateClaudeAgentSdkConfigDir()
     return resolveClaudeAgentRuntimeContext(input.workspacePath ?? undefined, input.agentId ?? null).cwd
+  }
+
+  private resolveClaudeProviderThreadDir(input: GetCapabilitiesInput): string {
+    const snapshot = readWorkspaceProviderStateSnapshot(input.runtimeSession.providerStateSnapshot)
+    return this.resolveClaudeSessionProjectDir({
+      workspacePath: input.workspacePath ?? snapshot.workspacePath ?? undefined,
+      agentId: input.agentId ?? snapshot.agentId ?? null,
+    })
+  }
+
+  private async readClaudeSubagentMessages(
+    parentSessionId: string,
+    agentId: string,
+    cwd: string,
+  ): Promise<ClaudeSubagentSessionMessage[]> {
+    const messages = await getSubagentMessages(parentSessionId, agentId, { dir: cwd })
+    return messages.map(message => message as ClaudeSubagentSessionMessage)
+  }
+
+  private async resolveClaudeSubagentThreadRecord(
+    requestedThreadId: string,
+    input: GetCapabilitiesInput,
+  ): Promise<ClaudeSubagentThreadRecord> {
+    const parentSessionId = input.runtimeSession.providerSessionId
+    if (!parentSessionId) {
+      throw new ProviderRuntimeError(ProviderErrors.sessionNotFound(this.runtimeKind, input.runtimeSession.chatSessionId))
+    }
+
+    const cwd = this.resolveClaudeProviderThreadDir(input)
+    const agentIds = await listSubagents(parentSessionId, { dir: cwd })
+    if (agentIds.includes(requestedThreadId)) {
+      const messages = await this.readClaudeSubagentMessages(parentSessionId, requestedThreadId, cwd)
+      return { agentId: requestedThreadId, parentSessionId, cwd, messages }
+    }
+
+    for (const agentId of agentIds) {
+      const messages = await this.readClaudeSubagentMessages(parentSessionId, agentId, cwd)
+      if (messages.some(message => message.parent_tool_use_id === requestedThreadId)) {
+        return { agentId, parentSessionId, cwd, messages }
+      }
+    }
+
+    throw new ProviderRuntimeError(
+      ProviderErrors.requestFailed(
+        this.runtimeKind,
+        'provider-thread/read',
+        `Claude Agent subagent transcript was not found: ${requestedThreadId}`,
+      ),
+    )
   }
 
   private resolveClaudeSessionTitleGenerationConfig(input: {
@@ -855,8 +1055,305 @@ export class ClaudeAgentProvider implements ChatRuntime {
   }
 }
 
+function hasClaudeAgentAccountSignal(account: AccountInfo | undefined): account is AccountInfo {
+  return Boolean(
+    account?.email
+    || account?.organization
+    || account?.subscriptionType
+    || account?.tokenSource
+    || account?.apiKeySource
+    || account?.apiProvider,
+  )
+}
+
 function normalizeClaudeSessionTitle(title: string | null | undefined): string | null {
   const normalized = title?.replace(/\s+/g, ' ').trim() ?? ''
+  return normalized.length > 0 ? normalized : null
+}
+
+function supportsClaudeSubagentSourceKinds(sourceKinds: ProviderThreadListInput['sourceKinds']): boolean {
+  return !sourceKinds || sourceKinds.length === 0 || sourceKinds.includes(CLAUDE_SUBAGENT_SOURCE_KIND)
+}
+
+function readProviderThreadLimit(limit: number | null | undefined): number {
+  return Number.isFinite(limit) && typeof limit === 'number' && limit > 0
+    ? Math.floor(limit)
+    : DEFAULT_PROVIDER_THREAD_LIMIT
+}
+
+function readProviderThreadOffset(cursor: string | null | undefined): number {
+  if (!cursor) {
+    return 0
+  }
+  const offset = Number.parseInt(cursor, 10)
+  return Number.isFinite(offset) && offset > 0 ? offset : 0
+}
+
+function projectClaudeSubagentThread(record: ClaudeSubagentThreadRecord): ProviderThread {
+  const parentToolUseId = readClaudeSubagentParentToolUseId(record.messages)
+  const preview = readClaudeSubagentPreview(record.messages)
+  const createdAt = readClaudeSubagentBoundaryTimestamp(record.messages, 'first')
+  const updatedAt = readClaudeSubagentBoundaryTimestamp(record.messages, 'last')
+  const subagentType = readFirstClaudeSubagentString(record.messages, 'subagent_type')
+  const taskDescription = readFirstClaudeSubagentString(record.messages, 'task_description')
+  return {
+    id: record.agentId,
+    providerSessionTreeId: record.parentSessionId,
+    forkedFromId: parentToolUseId,
+    preview,
+    ephemeral: false,
+    modelProvider: readClaudeSubagentModel(record.messages),
+    createdAt,
+    updatedAt,
+    status: 'completed',
+    sourceKind: CLAUDE_SUBAGENT_SOURCE_KIND,
+    source: {
+      type: 'claude-agent-subagent',
+      agentId: record.agentId,
+      parentToolUseId,
+    },
+    threadSource: {
+      kind: 'claude-agent-transcript',
+      parentSessionId: record.parentSessionId,
+      agentId: record.agentId,
+      parentToolUseId,
+    },
+    agentNickname: subagentType,
+    agentRole: taskDescription,
+    name: taskDescription ?? subagentType ?? preview,
+    cwd: record.cwd,
+  }
+}
+
+function compareClaudeProviderThreads(
+  left: ProviderThread,
+  right: ProviderThread,
+  sortKey: ProviderThreadListInput['sortKey'],
+  sortDirection: ProviderThreadListInput['sortDirection'],
+): number {
+  const leftValue = sortKey === 'created_at' ? left.createdAt : left.updatedAt
+  const rightValue = sortKey === 'created_at' ? right.createdAt : right.updatedAt
+  const direction = sortDirection === 'asc' ? 1 : -1
+  return ((leftValue ?? 0) - (rightValue ?? 0)) * direction
+}
+
+function claudeProviderThreadMatchesSearch(thread: ProviderThread, searchTerm: string): boolean {
+  return [
+    thread.id,
+    thread.forkedFromId,
+    thread.preview,
+    thread.agentNickname,
+    thread.agentRole,
+    thread.name,
+  ].some(value => normalizeProviderThreadText(value)?.includes(searchTerm))
+}
+
+function normalizeProviderThreadText(text: string | null | undefined): string | null {
+  const normalized = text?.replace(/\s+/g, ' ').trim().toLowerCase() ?? ''
+  return normalized.length > 0 ? normalized : null
+}
+
+function readClaudeSubagentParentToolUseId(messages: ClaudeSubagentSessionMessage[]): string | null {
+  return messages.find(message => message.parent_tool_use_id)?.parent_tool_use_id ?? null
+}
+
+function readClaudeSubagentModel(messages: ClaudeSubagentSessionMessage[]): string | null {
+  for (const message of messages) {
+    const payload = readClaudeTranscriptPayload(message)
+    const model = normalizeProviderThreadText(payload?.model)
+    if (model) {
+      return payload!.model!
+    }
+  }
+  return null
+}
+
+function readFirstClaudeSubagentString(
+  messages: ClaudeSubagentSessionMessage[],
+  key: 'subagent_type' | 'task_description',
+): string | null {
+  for (const message of messages) {
+    const value = normalizeProviderThreadText(message[key])
+    if (value) {
+      return message[key]!
+    }
+  }
+  return null
+}
+
+function readClaudeSubagentPreview(messages: ClaudeSubagentSessionMessage[]): string | null {
+  for (const message of messages) {
+    const text = readClaudeMessageText(message)
+    if (text) {
+      return text.length > 240 ? `${text.slice(0, 237)}...` : text
+    }
+  }
+  return null
+}
+
+function readClaudeSubagentBoundaryTimestamp(
+  messages: ClaudeSubagentSessionMessage[],
+  boundary: 'first' | 'last',
+): number | null {
+  const ordered = boundary === 'first' ? messages : [...messages].reverse()
+  for (const message of ordered) {
+    const timestamp = readClaudeSubagentTimestamp(message)
+    if (timestamp !== null) {
+      return timestamp
+    }
+  }
+  return null
+}
+
+function readClaudeSubagentTimestamp(message: ClaudeSubagentSessionMessage): number | null {
+  if (!message.timestamp) {
+    return null
+  }
+  const timestamp = Date.parse(message.timestamp)
+  return Number.isFinite(timestamp) ? timestamp : null
+}
+
+function projectClaudeSubagentTurn(agentId: string, message: ClaudeSubagentSessionMessage): ProviderThreadTurn {
+  const timestamp = readClaudeSubagentTimestamp(message)
+  return {
+    id: message.uuid,
+    status: 'completed',
+    startedAt: timestamp,
+    completedAt: timestamp,
+    durationMs: null,
+    itemsView: 'full',
+    items: [{
+      provider: 'claude-agent',
+      providerThreadId: agentId,
+      message,
+    }],
+  }
+}
+
+function projectClaudeSubagentMessagesToUiMessages(
+  agentId: string,
+  messages: ClaudeSubagentSessionMessage[],
+): UIMessage[] {
+  return messages.flatMap((message): UIMessage[] => {
+    const parts = projectClaudeSubagentMessageParts(message)
+    if (parts.length === 0) {
+      return []
+    }
+    return [{
+      id: `provider-thread:${agentId}:message:${message.uuid}`,
+      role: readClaudeSubagentUiRole(message),
+      parts,
+      metadata: {
+        provider: 'claude-agent',
+        providerThreadId: agentId,
+        providerMessageId: message.uuid,
+        parentToolUseId: message.parent_tool_use_id,
+      },
+    }]
+  })
+}
+
+function readClaudeSubagentUiRole(message: ClaudeSubagentSessionMessage): UIMessage['role'] {
+  return message.type === 'assistant' || message.type === 'system' ? message.type : 'user'
+}
+
+function projectClaudeSubagentMessageParts(message: ClaudeSubagentSessionMessage): UIMessage['parts'] {
+  const payload = readClaudeTranscriptPayload(message)
+  if (!payload) {
+    return projectClaudeSubagentTextPart(typeof message.message === 'string' ? message.message : null)
+  }
+  const content = payload.content
+  if (typeof content === 'string') {
+    return projectClaudeSubagentTextPart(content)
+  }
+  if (!Array.isArray(content)) {
+    return []
+  }
+
+  const parts: UIMessage['parts'] = []
+  for (const block of content) {
+    if (block.type === 'text') {
+      const text = normalizeProviderThreadRawText(block.text)
+      if (text) {
+        parts.push({ type: 'text', text, state: 'done' })
+      }
+      continue
+    }
+    if (block.type === 'thinking') {
+      const thinking = normalizeProviderThreadRawText(block.thinking)
+      if (thinking) {
+        parts.push({ type: 'reasoning', text: thinking, state: 'done' })
+      }
+      continue
+    }
+    if (block.type === 'tool_result') {
+      const text = normalizeProviderThreadRawText(readClaudeToolResultText(block.content))
+      if (text) {
+        parts.push({ type: 'text', text, state: 'done' })
+      }
+    }
+  }
+  return parts
+}
+
+function projectClaudeSubagentTextPart(text: string | null): UIMessage['parts'] {
+  const normalized = normalizeProviderThreadRawText(text)
+  return normalized ? [{ type: 'text', text: normalized, state: 'done' }] : []
+}
+
+function readClaudeMessageText(message: ClaudeSubagentSessionMessage): string | null {
+  return projectClaudeSubagentMessageParts(message)
+    .flatMap(part => part.type === 'text' || part.type === 'reasoning' ? [part.text] : [])
+    .join('\n')
+    .trim() || null
+}
+
+function readClaudeTranscriptPayload(message: ClaudeSubagentSessionMessage): ClaudeTranscriptMessagePayload | null {
+  if (typeof message.message === 'string') {
+    return null
+  }
+  const record = readRecord(message.message)
+  if (!('content' in record) && !('model' in record)) {
+    return null
+  }
+  return {
+    role: typeof record.role === 'string' ? record.role : undefined,
+    content: readClaudeTranscriptContent(record.content),
+    model: typeof record.model === 'string' ? record.model : undefined,
+  }
+}
+
+function readClaudeTranscriptContent(value: unknown): ClaudeTranscriptMessagePayload['content'] {
+  if (typeof value === 'string') {
+    return value
+  }
+  if (!Array.isArray(value)) {
+    return undefined
+  }
+  return value.map(block => readRecord(block) as ClaudeTranscriptContentBlock)
+}
+
+function readClaudeToolResultText(content: unknown): string | null {
+  if (typeof content === 'string') {
+    return content
+  }
+  if (Array.isArray(content)) {
+    return content
+      .map(item => {
+        if (typeof item === 'string') {
+          return item
+        }
+        const record = readRecord(item)
+        return typeof record.text === 'string' ? record.text : ''
+      })
+      .filter(Boolean)
+      .join('\n')
+  }
+  return null
+}
+
+function normalizeProviderThreadRawText(text: string | null | undefined): string | null {
+  const normalized = text?.trim() ?? ''
   return normalized.length > 0 ? normalized : null
 }
 

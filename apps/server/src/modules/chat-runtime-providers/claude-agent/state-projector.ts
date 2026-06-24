@@ -4,7 +4,9 @@
  * Position: Claude Agent provider package owner for providerStateSnapshot updates.
  */
 
-import type { RuntimeCrewAgentItem, RuntimeCrewCallItem, RuntimeCrewUiSlotState, RuntimePlanStepStatus, RuntimePlanUiSlotState, RuntimeProgressUiSlotState, RuntimeSession, RuntimeToolActivityItem } from '../../chat-runtime/runtime-provider-types'
+import type { AccountInfo, SDKAuthStatusMessage, SDKRateLimitInfo } from '@anthropic-ai/claude-agent-sdk'
+
+import type { RuntimeCrewAgentItem, RuntimeCrewCallItem, RuntimeCrewUiSlotState, RuntimePlanStepStatus, RuntimePlanUiSlotState, RuntimeProgressUiSlotState, RuntimeSession, RuntimeToolActivityItem, RuntimeUsageUiSlotState } from '../../chat-runtime/runtime-provider-types'
 import { readObjectRecord as readRecord } from '../../../helpers/json-record'
 import type { ClaudeAgentCapturedPlan, ClaudeAgentCapturedTodos } from './event-to-chunk-mapper'
 import type { TodoPluginItem, TodoPluginStatus } from './tools/todo-plugin-state'
@@ -24,6 +26,31 @@ interface ClaudeAgentProgressSnapshot {
   turnId: string
   source: string
   items: TodoPluginItem[]
+  updatedAt: number
+}
+
+interface ClaudeAgentAccountSnapshot {
+  threadId: string
+  email: string | null
+  organization: string | null
+  subscriptionType: string | null
+  tokenSource: string | null
+  apiKeySource: string | null
+  apiProvider: AccountInfo['apiProvider'] | null
+  updatedAt: number
+}
+
+interface ClaudeAgentAuthStatusSnapshot {
+  threadId: string
+  isAuthenticating: boolean
+  output: string[]
+  error: string | null
+  updatedAt: number
+}
+
+interface ClaudeAgentRateLimitSnapshot {
+  threadId: string
+  info: SDKRateLimitInfo
   updatedAt: number
 }
 
@@ -200,6 +227,103 @@ export function projectClaudeAgentProgressUiSlotState(runtimeSession: RuntimeSes
   }
 }
 
+export function writeClaudeAgentAccountSnapshot(
+  runtimeSession: RuntimeSession,
+  account: AccountInfo,
+  updatedAt: number = Date.now(),
+): void {
+  const snapshot = readWorkspaceProviderStateSnapshot(runtimeSession.providerStateSnapshot)
+  const claudeAgentState = {
+    ...readRecord(snapshot.claudeAgent),
+    account: {
+      threadId: runtimeSession.chatSessionId,
+      email: account.email ?? null,
+      organization: account.organization ?? null,
+      subscriptionType: account.subscriptionType ?? null,
+      tokenSource: account.tokenSource ?? null,
+      apiKeySource: account.apiKeySource ?? null,
+      apiProvider: account.apiProvider ?? null,
+      updatedAt,
+    } satisfies ClaudeAgentAccountSnapshot,
+  }
+  runtimeSession.providerStateSnapshot = JSON.stringify({
+    ...snapshot,
+    claudeAgent: claudeAgentState,
+  })
+}
+
+export function writeClaudeAgentAuthStatusSnapshot(
+  runtimeSession: RuntimeSession,
+  message: SDKAuthStatusMessage,
+  updatedAt: number = Date.now(),
+): void {
+  const snapshot = readWorkspaceProviderStateSnapshot(runtimeSession.providerStateSnapshot)
+  const claudeAgentState = {
+    ...readRecord(snapshot.claudeAgent),
+    authStatus: {
+      threadId: runtimeSession.chatSessionId,
+      isAuthenticating: message.isAuthenticating,
+      output: message.output,
+      error: message.error ?? null,
+      updatedAt,
+    } satisfies ClaudeAgentAuthStatusSnapshot,
+  }
+  runtimeSession.providerStateSnapshot = JSON.stringify({
+    ...snapshot,
+    claudeAgent: claudeAgentState,
+  })
+}
+
+export function writeClaudeAgentRateLimitSnapshot(
+  runtimeSession: RuntimeSession,
+  info: SDKRateLimitInfo,
+  updatedAt: number = Date.now(),
+): void {
+  const snapshot = readWorkspaceProviderStateSnapshot(runtimeSession.providerStateSnapshot)
+  const claudeAgentState = {
+    ...readRecord(snapshot.claudeAgent),
+    rateLimit: {
+      threadId: runtimeSession.chatSessionId,
+      info,
+      updatedAt,
+    } satisfies ClaudeAgentRateLimitSnapshot,
+  }
+  runtimeSession.providerStateSnapshot = JSON.stringify({
+    ...snapshot,
+    claudeAgent: claudeAgentState,
+  })
+}
+
+export function projectClaudeAgentUsageUiSlotState(runtimeSession: RuntimeSession): RuntimeUsageUiSlotState | null {
+  const snapshot = readWorkspaceProviderStateSnapshot(runtimeSession.providerStateSnapshot)
+  const claudeAgentState = readRecord(snapshot.claudeAgent)
+  const account = readClaudeAgentAccountSnapshot(claudeAgentState.account)
+  const rateLimit = readClaudeAgentRateLimitSnapshot(claudeAgentState.rateLimit)
+  if (!account && !rateLimit) {
+    return null
+  }
+  const info = rateLimit?.info
+  return {
+    kind: 'usage',
+    slotId: 'claude-agent:usage',
+    threadId: runtimeSession.chatSessionId,
+    limitName: info?.rateLimitType ?? info?.status ?? null,
+    usedPercent: info?.utilization ?? null,
+    primaryWindowDurationMins: null,
+    primaryResetsAt: info?.resetsAt ?? null,
+    secondaryUsedPercent: null,
+    secondaryWindowDurationMins: null,
+    secondaryResetsAt: info?.overageResetsAt ?? null,
+    creditsBalance: null,
+    hasCredits: info?.errorCode === 'credits_required' ? false : null,
+    rateLimitReachedType: info?.status === 'rejected'
+      ? info.errorCode ?? info.rateLimitType ?? info.status
+      : null,
+    planType: account?.subscriptionType ?? null,
+    updatedAt: Math.max(account?.updatedAt ?? 0, rateLimit?.updatedAt ?? 0),
+  }
+}
+
 function readClaudeAgentPlanSnapshot(snapshot: WorkspaceProviderStateSnapshot): ClaudeAgentPlanSnapshot | null {
   const plan = readRecord(readRecord(snapshot.claudeAgent).plan)
   const threadId = typeof plan.threadId === 'string' ? plan.threadId : ''
@@ -235,6 +359,57 @@ function readClaudeAgentProgressSnapshot(snapshot: WorkspaceProviderStateSnapsho
     items,
     updatedAt,
   }
+}
+
+function readClaudeAgentAccountSnapshot(value: unknown): ClaudeAgentAccountSnapshot | null {
+  const account = readRecord(value)
+  const threadId = typeof account.threadId === 'string' ? account.threadId : ''
+  const updatedAt = typeof account.updatedAt === 'number' ? account.updatedAt : 0
+  if (!threadId || updatedAt <= 0) {
+    return null
+  }
+  return {
+    threadId,
+    email: typeof account.email === 'string' ? account.email : null,
+    organization: typeof account.organization === 'string' ? account.organization : null,
+    subscriptionType: typeof account.subscriptionType === 'string' ? account.subscriptionType : null,
+    tokenSource: typeof account.tokenSource === 'string' ? account.tokenSource : null,
+    apiKeySource: typeof account.apiKeySource === 'string' ? account.apiKeySource : null,
+    apiProvider: isClaudeAgentApiProvider(account.apiProvider) ? account.apiProvider : null,
+    updatedAt,
+  }
+}
+
+function readClaudeAgentRateLimitSnapshot(value: unknown): ClaudeAgentRateLimitSnapshot | null {
+  const rateLimit = readRecord(value)
+  const threadId = typeof rateLimit.threadId === 'string' ? rateLimit.threadId : ''
+  const updatedAt = typeof rateLimit.updatedAt === 'number' ? rateLimit.updatedAt : 0
+  const info = readRecord(rateLimit.info) as Partial<SDKRateLimitInfo>
+  if (!threadId || updatedAt <= 0 || !isClaudeAgentRateLimitStatus(info.status)) {
+    return null
+  }
+  return {
+    threadId,
+    info: {
+      ...info,
+      status: info.status,
+    },
+    updatedAt,
+  }
+}
+
+function isClaudeAgentRateLimitStatus(value: unknown): value is SDKRateLimitInfo['status'] {
+  return value === 'allowed' || value === 'allowed_warning' || value === 'rejected'
+}
+
+function isClaudeAgentApiProvider(value: unknown): value is NonNullable<AccountInfo['apiProvider']> {
+  return value === 'firstParty'
+    || value === 'bedrock'
+    || value === 'vertex'
+    || value === 'foundry'
+    || value === 'anthropicAws'
+    || value === 'mantle'
+    || value === 'gateway'
 }
 
 function readClaudeAgentProgressItems(value: unknown): TodoPluginItem[] {
@@ -323,7 +498,7 @@ export function writeClaudeAgentCrewCall(
   // Upsert: update existing call or append new one
   const index = existingCalls.findIndex(c => c.id === call.id)
   if (index >= 0) {
-    existingCalls[index] = { ...existingCalls[index], ...call }
+    existingCalls[index] = mergeClaudeAgentCrewCall(existingCalls[index]!, call)
   }
   else {
     existingCalls.push(call)
@@ -372,12 +547,12 @@ export function projectClaudeAgentCrewUiSlotState(
     completedAt: call.completedAt,
   }))
 
-  // Build agent list from calls — each running call is an agent
+  // Build agent list from calls so completed subagent transcripts stay readable
+  // from the runtime panel after the active stream has finished.
   const agents: RuntimeCrewAgentItem[] = calls
-    .filter(call => call.status === 'running')
     .map(call => ({
       threadId: call.id,
-      status: 'running',
+      status: call.status,
       message: call.prompt,
       name: null,
       preview: call.prompt?.slice(0, 120) ?? null,
@@ -399,6 +574,23 @@ export function projectClaudeAgentCrewUiSlotState(
     collaborationModes: [],
     calls: crewCalls,
     updatedAt: Date.now(),
+  }
+}
+
+function mergeClaudeAgentCrewCall(
+  existing: ClaudeAgentCrewCallSnapshot,
+  next: ClaudeAgentCrewCallSnapshot,
+): ClaudeAgentCrewCallSnapshot {
+  return {
+    id: existing.id,
+    tool: next.tool || existing.tool,
+    prompt: next.prompt ?? existing.prompt,
+    model: next.model ?? existing.model,
+    reasoningEffort: next.reasoningEffort ?? existing.reasoningEffort,
+    runInBackground: next.runInBackground || existing.runInBackground,
+    status: next.status,
+    startedAt: next.startedAt > 0 ? next.startedAt : existing.startedAt,
+    completedAt: next.completedAt ?? existing.completedAt,
   }
 }
 

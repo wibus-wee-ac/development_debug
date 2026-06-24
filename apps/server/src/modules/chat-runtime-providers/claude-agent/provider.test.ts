@@ -2,7 +2,7 @@ import { existsSync, mkdtempSync, readlinkSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 
-import type { CanUseTool, SDKControlGetContextUsageResponse } from '@anthropic-ai/claude-agent-sdk'
+import type { AccountInfo, CanUseTool, SDKControlGetContextUsageResponse } from '@anthropic-ai/claude-agent-sdk'
 import type { UIMessage, UIMessageChunk } from 'ai'
 import { afterEach, describe, expect, it, vi } from 'vitest'
 
@@ -13,18 +13,23 @@ import { ClaudeAgentProvider } from './provider'
 const sdkMocks = vi.hoisted(() => ({
   query: vi.fn(),
   getSessionInfo: vi.fn(),
+  getSubagentMessages: vi.fn(),
+  listSubagents: vi.fn(),
   renameSession: vi.fn(),
 }))
 
 vi.mock('@anthropic-ai/claude-agent-sdk', () => ({
   query: sdkMocks.query,
   getSessionInfo: sdkMocks.getSessionInfo,
+  getSubagentMessages: sdkMocks.getSubagentMessages,
+  listSubagents: sdkMocks.listSubagents,
   renameSession: sdkMocks.renameSession,
 }))
 
 function createAsyncQuery(
   items: unknown[],
   commands: Array<{ name: string, description: string, argumentHint: string, aliases?: string[] }> = [],
+  account: AccountInfo = {},
 ) {
   let index = 0
   let done = false
@@ -50,6 +55,14 @@ function createAsyncQuery(
     setPermissionMode: vi.fn().mockResolvedValue(undefined),
     supportedCommands: vi.fn().mockResolvedValue(commands),
     getContextUsage: vi.fn().mockResolvedValue(createContextUsageResponse()),
+    initializationResult: vi.fn().mockResolvedValue({
+      commands,
+      agents: [],
+      output_style: 'default',
+      available_output_styles: ['default'],
+      models: [],
+      account,
+    }),
   }
 }
 
@@ -83,6 +96,14 @@ function createPendingQuery(contextUsage: SDKControlGetContextUsageResponse = cr
     setPermissionMode: vi.fn().mockResolvedValue(undefined),
     supportedCommands: vi.fn().mockResolvedValue([]),
     getContextUsage: vi.fn().mockResolvedValue(contextUsage),
+    initializationResult: vi.fn().mockResolvedValue({
+      commands: [],
+      agents: [],
+      output_style: 'default',
+      available_output_styles: ['default'],
+      models: [],
+      account: {},
+    }),
   }
 }
 
@@ -252,7 +273,10 @@ describe('claudeAgentProvider MCP integration', () => {
     removeHostMcpServer('nowledge-mem')
     sdkMocks.query.mockReset()
     sdkMocks.getSessionInfo.mockReset()
+    sdkMocks.getSubagentMessages.mockReset()
+    sdkMocks.listSubagents.mockReset()
     sdkMocks.renameSession.mockReset()
+    vi.unstubAllEnvs()
   })
 
   it('passes plugin-registered browser-use MCP server config to the Claude Agent SDK', async () => {
@@ -391,10 +415,263 @@ describe('claudeAgentProvider MCP integration', () => {
       permissionMode: 'bypassPermissions',
       allowDangerouslySkipPermissions: true,
       persistSession: true,
+      settingSources: [],
       env: expect.objectContaining({
+        ANTHROPIC_API_KEY: 'sk-ant-test',
         CLAUDE_CONFIG_DIR: join(process.env.CRADLE_DATA_DIR!, 'runtimes', 'claude-agent'),
       }),
     }))
+  })
+
+  it('lists Claude Agent subagent provider threads from SDK transcripts', async () => {
+    sdkMocks.listSubagents.mockResolvedValue(['agent-a'])
+    sdkMocks.getSubagentMessages.mockResolvedValue([
+      {
+        type: 'assistant',
+        uuid: 'msg-subagent-1',
+        session_id: 'claude-session-1',
+        parent_tool_use_id: 'call_agent_1',
+        timestamp: '2026-06-24T05:26:56.810Z',
+        subagent_type: 'general-purpose',
+        task_description: 'Inspect the runtime logs',
+        message: {
+          role: 'assistant',
+          model: 'claude-sonnet-4-20250514',
+          content: [{ type: 'text', text: 'Subagent report' }],
+        },
+      },
+    ])
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+
+    await expect(provider.listProviderThreads({
+      runtimeSession: createResumedRuntimeSession(),
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+    })).resolves.toMatchObject({
+      runtimeKind: 'claude-agent',
+      providerSessionId: 'claude-session-1',
+      threads: [
+        {
+          id: 'agent-a',
+          providerSessionTreeId: 'claude-session-1',
+          forkedFromId: 'call_agent_1',
+          preview: 'Subagent report',
+          sourceKind: 'subAgent',
+          agentNickname: 'general-purpose',
+          agentRole: 'Inspect the runtime logs',
+          modelProvider: 'claude-sonnet-4-20250514',
+        },
+      ],
+    })
+    expect(sdkMocks.listSubagents).toHaveBeenCalledWith('claude-session-1', { dir: '/tmp/cradle-workspace' })
+    expect(sdkMocks.getSubagentMessages).toHaveBeenCalledWith('claude-session-1', 'agent-a', { dir: '/tmp/cradle-workspace' })
+  })
+
+  it('reads Claude Agent subagent turns by parent tool-call id alias', async () => {
+    sdkMocks.listSubagents.mockResolvedValue(['agent-a', 'agent-b'])
+    sdkMocks.getSubagentMessages.mockImplementation(async (_sessionId: string, agentId: string) => {
+      if (agentId === 'agent-a') {
+        return [
+          {
+            type: 'assistant',
+            uuid: 'msg-agent-a-1',
+            session_id: 'claude-session-1',
+            parent_tool_use_id: 'call_agent_1',
+            timestamp: '2026-06-24T05:26:56.810Z',
+            message: {
+              role: 'assistant',
+              model: 'claude-sonnet-4-20250514',
+              content: [
+                { type: 'thinking', thinking: 'Checking the trace.' },
+                { type: 'text', text: 'Subagent report' },
+              ],
+            },
+          },
+        ]
+      }
+      return [
+        {
+          type: 'assistant',
+          uuid: 'msg-agent-b-1',
+          session_id: 'claude-session-1',
+          parent_tool_use_id: 'call_agent_2',
+          timestamp: '2026-06-24T05:27:56.810Z',
+          message: {
+            role: 'assistant',
+            content: [{ type: 'text', text: 'Other report' }],
+          },
+        },
+      ]
+    })
+
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => 'sk-ant-test',
+    })
+    const runtimeSession = createResumedRuntimeSession()
+
+    await expect(provider.readProviderThread({
+      runtimeSession,
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+      threadId: 'call_agent_1',
+    })).resolves.toMatchObject({
+      runtimeKind: 'claude-agent',
+      providerSessionId: 'claude-session-1',
+      thread: {
+        id: 'agent-a',
+        forkedFromId: 'call_agent_1',
+        preview: 'Checking the trace.\nSubagent report',
+      },
+    })
+
+    await expect(provider.listProviderThreadTurns({
+      runtimeSession,
+      profile: createProfile(),
+      workspaceId: 'workspace-1',
+      workspacePath: '/tmp/cradle-workspace',
+      threadId: 'call_agent_1',
+      sortDirection: 'asc',
+    })).resolves.toMatchObject({
+      runtimeKind: 'claude-agent',
+      providerSessionId: 'claude-session-1',
+      threadId: 'agent-a',
+      turns: [
+        {
+          id: 'msg-agent-a-1',
+          status: 'completed',
+          itemsView: 'full',
+        },
+      ],
+      messages: [
+        {
+          id: 'provider-thread:agent-a:message:msg-agent-a-1',
+          role: 'assistant',
+          parts: [
+            { type: 'reasoning', text: 'Checking the trace.', state: 'done' },
+            { type: 'text', text: 'Subagent report', state: 'done' },
+          ],
+        },
+      ],
+    })
+  })
+
+  it('requires an API key in Claude Agent API key auth mode', async () => {
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => '',
+    })
+
+    await expect(async () => {
+      for await (const _chunk of provider.streamTurn({
+        runId: 'run-claude-agent-missing-api-key',
+        runtimeSession: createRuntimeSession(),
+        profile: createProfile(),
+        message: createUserMessage('Use the API key mode'),
+        workspaceId: 'workspace-1',
+      })) {
+        // Drain stream.
+      }
+    }).rejects.toThrow('claude-agent authentication failed')
+    expect(sdkMocks.query).not.toHaveBeenCalled()
+  })
+
+  it('uses Claude.ai auth mode without requiring an Anthropic API key or inheriting Anthropic auth env', async () => {
+    vi.stubEnv('ANTHROPIC_API_KEY', 'ambient-api-key')
+    vi.stubEnv('ANTHROPIC_AUTH_TOKEN', 'ambient-auth-token')
+    vi.stubEnv('ANTHROPIC_BASE_URL', 'https://ambient-anthropic.example.test')
+    vi.stubEnv('CLAUDE_CONFIG_DIR', join(process.env.CRADLE_DATA_DIR!, 'runtimes', 'claude-agent'))
+    sdkMocks.query.mockReturnValue(createAsyncQuery([
+      {
+        type: 'auth_status',
+        isAuthenticating: false,
+        output: ['Authenticated with Claude.ai'],
+        uuid: '00000000-0000-4000-8000-000000000001',
+        session_id: 'claude-session-official',
+      },
+      {
+        type: 'rate_limit_event',
+        rate_limit_info: {
+          status: 'allowed_warning',
+          rateLimitType: 'five_hour',
+          utilization: 72,
+          resetsAt: 1_797_000_000,
+        },
+        uuid: '00000000-0000-4000-8000-000000000002',
+        session_id: 'claude-session-official',
+      },
+      {
+        type: 'result',
+        session_id: 'claude-session-official',
+        usage: { input_tokens: 1, output_tokens: 1 },
+      },
+    ], [], {
+      email: 'user@example.test',
+      subscriptionType: 'max',
+      tokenSource: 'oauth',
+      apiProvider: 'firstParty',
+    }))
+
+    const runtimeSession = createRuntimeSession()
+    const provider = new ClaudeAgentProvider({
+      readSecret: () => {
+        throw new Error('Claude.ai auth mode must not read API key credentials')
+      },
+    })
+    for await (const _chunk of provider.streamTurn({
+      runId: 'run-claude-agent-official-auth',
+      runtimeSession,
+      profile: createProfile({
+        authMode: 'claudeAi',
+        apiKey: undefined,
+        baseUrl: 'https://configured-anthropic.example.test',
+      }),
+      message: createUserMessage('Use Claude official auth'),
+      workspaceId: 'workspace-1',
+    })) {
+      // Drain stream.
+    }
+
+    const options = readQueryOptions(0)
+    expect(options).toEqual(expect.objectContaining({
+      persistSession: true,
+      settingSources: ['user', 'project', 'local'],
+      managedSettings: expect.objectContaining({
+        forceLoginMethod: 'claudeai',
+      }),
+    }))
+    const env = options.env as Record<string, string | undefined>
+    expect(env).not.toHaveProperty('ANTHROPIC_API_KEY')
+    expect(env).not.toHaveProperty('ANTHROPIC_AUTH_TOKEN')
+    expect(env).not.toHaveProperty('ANTHROPIC_BASE_URL')
+    expect(env).not.toHaveProperty('CLAUDE_CONFIG_DIR')
+
+    await vi.waitFor(() => {
+      expect(runtimeSession.providerStateSnapshot).toContain('"subscriptionType":"max"')
+    })
+    expect(runtimeSession.providerSessionId).toBe('claude-session-official')
+    expect(runtimeSession.providerStateSnapshot).toContain('"authStatus"')
+    expect(runtimeSession.providerStateSnapshot).toContain('"rateLimit"')
+
+    const states = await provider.getUiSlotStates({
+      runtimeSession,
+      profile: createProfile({ authMode: 'claudeAi' }),
+      workspacePath: '/tmp/cradle-workspace',
+      workspaceId: 'workspace-1',
+    })
+    expect(states).toEqual(expect.arrayContaining([
+      expect.objectContaining({
+        kind: 'usage',
+        slotId: 'claude-agent:usage',
+        planType: 'max',
+        limitName: 'five_hour',
+        usedPercent: 72,
+        primaryResetsAt: 1_797_000_000,
+      }),
+    ]))
   })
 
   it('leaves Claude disallowed tools empty and captures ExitPlanMode through the permission hook', async () => {

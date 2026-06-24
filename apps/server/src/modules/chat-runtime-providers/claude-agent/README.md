@@ -4,7 +4,9 @@ Owns the Claude Agent SDK adapter for Chat Runtime. This provider translates Cra
 
 Selected chat Skills arrive as Cradle-owned `data-cradle-skill` message parts. The provider removes them from the text/image input blocks and merges their names into Claude Agent SDK `queryOptions.skills` unless the profile already enables `skills: "all"`.
 
-Claude SDK persistence is enabled for main chat turns, but the SDK config root is pinned to Cradle-owned runtime data through `CLAUDE_CONFIG_DIR`. The path follows the Codex app-server convention: `CRADLE_DATA_DIR/runtimes/claude-agent`, then `dirname(CRADLE_DB_PATH)/runtimes/claude-agent`, then `~/.cradle/runtimes/claude-agent`. This lets the SDK own native JSONL transcripts for resume without writing new sessions into the user's `~/.claude/projects` namespace.
+Claude SDK persistence is enabled for API-key main chat turns, and that SDK config root is pinned to Cradle-owned runtime data through `CLAUDE_CONFIG_DIR`. The path follows the Codex app-server convention: `CRADLE_DATA_DIR/runtimes/claude-agent`, then `dirname(CRADLE_DB_PATH)/runtimes/claude-agent`, then `~/.cradle/runtimes/claude-agent`. This lets the SDK own native JSONL transcripts for resume without writing new sessions into the user's `~/.claude/projects` namespace.
+
+Official Claude.ai subscription auth intentionally does not set Cradle's `CLAUDE_CONFIG_DIR`. If the user's shell provides a custom Claude config directory, Cradle preserves it; otherwise the SDK and CLI read the user's normal Claude login state from the default Claude config / secure-storage path. Main turns in this auth mode set `persistSession: false`, so Cradle does not ask the SDK to write native resumable transcripts into the user's `~/.claude/projects`; Cradle-owned chat history is replayed into each turn instead. A future SDK `SessionStore` integration could restore native resume while keeping auth-root and transcript-root ownership separate.
 
 Claude session titles are read from SDK session metadata with `getSessionInfo()` after a provider session id is known, then reported through Chat Runtime's title callback. SDK session metadata reads and `renameSession()` writes are scoped to the same Cradle-owned SDK config root and the active SDK project `cwd`. Cradle owns the final `sessions.title` write.
 
@@ -24,7 +26,7 @@ Claude SDK `TodoWrite` remains a Claude-owned tool, but the adapter also project
 - `provider.test.ts`: Regression tests for Claude Agent SDK options, title projection, MCP forwarding, history projection, streaming, steering, attachments, model switching, and tool chunk mapping.
 - `metadata.ts`: Claude Agent runtime kind, catalog metadata, static capabilities, slash-command presentation projection, and static runtime UI slots.
 - `types.ts`: Claude Agent provider-private content and session-info types shared by package modules.
-- `runtime-context.ts`: Resolves per-session Claude Agent cwd, agent home, project workspace path, SDK additional directories, and the Cradle-owned SDK config root.
+- `runtime-context.ts`: Resolves per-session Claude Agent cwd, agent home, project workspace path, SDK additional directories, and the Cradle-owned SDK config root used by API-key mode.
 - `input-projector.ts`: Projects Cradle message input, history, selected Skills, provider config, and environment into Claude Agent SDK content and query options.
 - `context-usage-projector.ts`: Projects Claude Agent SDK context usage control responses into Chat Runtime context usage details and compact UI slot state.
 - `async-input-stream.ts`: Claude Agent SDK async user-message input stream built on shared provider queue infrastructure.
