@@ -412,10 +412,12 @@ function mapRawResponseItemCompleted(rawParams: unknown, state: CodexAppServerMa
     },
   }]
   const item = params.item
-  if (item.type === 'image_generation_call' && !state.emittedImageFileItemIds.has(item.id)) {
+  if (item.type === 'image_generation_call' && (!item.id || !state.emittedImageFileItemIds.has(item.id))) {
     const imageChunk = projectImageResultStringFileChunk(item.result)
     if (imageChunk) {
-      state.emittedImageFileItemIds.add(item.id)
+      if (item.id) {
+        state.emittedImageFileItemIds.add(item.id)
+      }
       chunks.push(imageChunk)
     }
   }

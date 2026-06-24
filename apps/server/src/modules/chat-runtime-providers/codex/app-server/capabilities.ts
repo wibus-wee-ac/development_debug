@@ -25,8 +25,8 @@ export interface CodexAppServerCapabilityManifest {
 }
 
 const CODEX_APP_SERVER_PROTOCOL = 'codex-app-server'
-const CODEX_APP_SERVER_GENERATOR_VERSION = 'codex-cli 0.141.0'
-const CODEX_APP_SERVER_GENERATED_DATE = '2026-06-19'
+const CODEX_APP_SERVER_GENERATOR_VERSION = 'codex-cli 0.142.0'
+const CODEX_APP_SERVER_GENERATED_DATE = '2026-06-24'
 
 export const CODEX_APP_SERVER_CLIENT_METHODS = [
   { method: 'initialize', paramsType: 'InitializeParams', category: 'initialize', operation: 'initialize', interaction: 'request' },
@@ -127,6 +127,7 @@ export const CODEX_APP_SERVER_CLIENT_METHODS = [
   { method: 'account/rateLimits/read', paramsType: null, category: 'account', operation: 'rateLimits/read', interaction: 'request' },
   { method: 'account/rateLimitResetCredit/consume', paramsType: 'ConsumeAccountRateLimitResetCreditParams', category: 'account', operation: 'rateLimitResetCredit/consume', interaction: 'request' },
   { method: 'account/usage/read', paramsType: null, category: 'account', operation: 'usage/read', interaction: 'request' },
+  { method: 'account/workspaceMessages/read', paramsType: null, category: 'account', operation: 'workspaceMessages/read', interaction: 'request' },
   { method: 'account/sendAddCreditsNudgeEmail', paramsType: 'SendAddCreditsNudgeEmailParams', category: 'account', operation: 'sendAddCreditsNudgeEmail', interaction: 'request' },
   { method: 'feedback/upload', paramsType: 'FeedbackUploadParams', category: 'feedback', operation: 'upload', interaction: 'request' },
   { method: 'command/exec', paramsType: 'CommandExecParams', category: 'command', operation: 'exec', interaction: 'stream' },
@@ -140,6 +141,7 @@ export const CODEX_APP_SERVER_CLIENT_METHODS = [
   { method: 'config/read', paramsType: 'ConfigReadParams', category: 'config', operation: 'read', interaction: 'request' },
   { method: 'externalAgentConfig/detect', paramsType: 'ExternalAgentConfigDetectParams', category: 'external-agent-config', operation: 'detect', interaction: 'request' },
   { method: 'externalAgentConfig/import', paramsType: 'ExternalAgentConfigImportParams', category: 'external-agent-config', operation: 'import', interaction: 'stream' },
+  { method: 'externalAgentConfig/import/readHistories', paramsType: null, category: 'external-agent-config', operation: 'import/readHistories', interaction: 'request' },
   { method: 'config/value/write', paramsType: 'ConfigValueWriteParams', category: 'config', operation: 'value/write', interaction: 'request' },
   { method: 'config/batchWrite', paramsType: 'ConfigBatchWriteParams', category: 'config', operation: 'batchWrite', interaction: 'request' },
   { method: 'configRequirements/read', paramsType: null, category: 'config-requirements', operation: 'read', interaction: 'request' },
@@ -162,6 +164,7 @@ export const CODEX_APP_SERVER_SERVER_REQUESTS = [
   { method: 'item/tool/call', paramsType: 'DynamicToolCallParams', category: 'item' },
   { method: 'account/chatgptAuthTokens/refresh', paramsType: 'ChatgptAuthTokensRefreshParams', category: 'account' },
   { method: 'attestation/generate', paramsType: 'AttestationGenerateParams', category: 'attestation' },
+  { method: 'currentTime/read', paramsType: 'CurrentTimeReadParams', category: 'current-time' },
   { method: 'applyPatchApproval', paramsType: 'ApplyPatchApprovalParams', category: 'apply-patch-approval' },
   { method: 'execCommandApproval', paramsType: 'ExecCommandApprovalParams', category: 'exec-command-approval' },
 ] as const satisfies readonly CodexAppServerServerMessageCapability[]
@@ -208,6 +211,7 @@ export const CODEX_APP_SERVER_SERVER_NOTIFICATIONS = [
   { method: 'account/rateLimits/updated', paramsType: 'AccountRateLimitsUpdatedNotification', category: 'account' },
   { method: 'app/list/updated', paramsType: 'AppListUpdatedNotification', category: 'app' },
   { method: 'remoteControl/status/changed', paramsType: 'RemoteControlStatusChangedNotification', category: 'remote-control' },
+  { method: 'externalAgentConfig/import/progress', paramsType: 'ExternalAgentConfigImportProgressNotification', category: 'external-agent-config' },
   { method: 'externalAgentConfig/import/completed', paramsType: 'ExternalAgentConfigImportCompletedNotification', category: 'external-agent-config' },
   { method: 'fs/changed', paramsType: 'FsChangedNotification', category: 'fs' },
   { method: 'item/reasoning/summaryTextDelta', paramsType: 'ReasoningSummaryTextDeltaNotification', category: 'item' },
@@ -217,6 +221,7 @@ export const CODEX_APP_SERVER_SERVER_NOTIFICATIONS = [
   { method: 'model/rerouted', paramsType: 'ModelReroutedNotification', category: 'model' },
   { method: 'model/verification', paramsType: 'ModelVerificationNotification', category: 'model' },
   { method: 'turn/moderationMetadata', paramsType: 'TurnModerationMetadataNotification', category: 'turn' },
+  { method: 'model/safetyBuffering/updated', paramsType: 'ModelSafetyBufferingUpdatedNotification', category: 'model' },
   { method: 'warning', paramsType: 'WarningNotification', category: 'warning' },
   { method: 'guardianWarning', paramsType: 'GuardianWarningNotification', category: 'guardian-warning' },
   { method: 'deprecationNotice', paramsType: 'DeprecationNoticeNotification', category: 'deprecation-notice' },
