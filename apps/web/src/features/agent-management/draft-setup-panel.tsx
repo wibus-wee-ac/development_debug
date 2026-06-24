@@ -1,13 +1,3 @@
-import { useQueryClient } from '@tanstack/react-query'
-import { AnimatePresence, m } from 'motion/react'
-import { useEffect, useState } from 'react'
-import { useForm, useWatch } from 'react-hook-form'
-import { z } from 'zod'
-
-import { postSecrets } from '~/api-gen/sdk.gen'
-import { PROVIDER_ICONS } from '~/components/common/provider-icons'
-import { Button } from '~/components/ui/button'
-import { Input } from '~/components/ui/input'
 import {
   AlertLine as CircleAlertIcon,
   ArrowLeftLine as ArrowLeftIcon,
@@ -18,6 +8,24 @@ import {
   EnterDoorLine as LogInIcon,
   RightSmallLine as ChevronRightIcon,
 } from '@mingcute/react'
+import { useQueryClient } from '@tanstack/react-query'
+import { AnimatePresence, m } from 'motion/react'
+import type { ReactNode } from 'react'
+import { useEffect, useState } from 'react'
+import { useForm, useWatch } from 'react-hook-form'
+import { z } from 'zod'
+
+import { postSecrets } from '~/api-gen/sdk.gen'
+import { PROVIDER_ICONS } from '~/components/common/provider-icons'
+import { Button } from '~/components/ui/button'
+import { Input } from '~/components/ui/input'
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '~/components/ui/select'
 import { Separator } from '~/components/ui/separator'
 import { Spinner } from '~/components/ui/spinner'
 import { AGENT_MODELS_QUERY_KEY } from '~/features/agent-runtime/use-agent-models'
@@ -27,11 +35,18 @@ import { nativeIpc } from '~/lib/electron'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { ChatgptCredentialSummary } from './chatgpt-credential-summary'
-import { CodexAuthModeToggle } from './codex-auth-mode-controls'
+import {
+  CLAUDE_AUTH_MODE_API_KEY,
+  CLAUDE_AUTH_MODE_CLAUDE_AI,
+  CLAUDE_AUTH_MODE_OPTIONS,
+  claudeCredentialPlaceholder,
+  normalizeClaudeAuthMode,
+} from './claude-auth-modes'
 import {
   CODEX_AUTH_MODE_API_KEY,
   CODEX_AUTH_MODE_BEDROCK_API_KEY,
   CODEX_AUTH_MODE_CHATGPT,
+  CODEX_AUTH_MODE_OPTIONS,
   codexCredentialPlaceholder,
   codexSecretKindForAuthMode,
   normalizeCodexAuthMode,
@@ -164,18 +179,70 @@ function PresetSetupForm({
       name: preset.name,
       values: preset.providerKind === 'openai-compatible'
         ? { codexAuthMode: CODEX_AUTH_MODE_API_KEY }
-        : {},
+        : preset.providerKind === 'anthropic'
+          ? { claudeAuthMode: CLAUDE_AUTH_MODE_API_KEY }
+          : {},
     },
   })
   const watchedValues = useWatch({ control: form.control }) as PresetSetupFormValues
   const name = watchedValues.name ?? ''
   const values = watchedValues.values ?? {}
   const isCodexProvider = preset.providerKind === 'openai-compatible'
+  const isClaudeProvider = preset.providerKind === 'anthropic'
   const codexAuthMode = isCodexProvider
     ? normalizeCodexAuthMode(values.codexAuthMode)
     : CODEX_AUTH_MODE_API_KEY
+  const claudeAuthMode = isClaudeProvider
+    ? normalizeClaudeAuthMode(values.claudeAuthMode)
+    : CLAUDE_AUTH_MODE_API_KEY
+  const claudeAiLogin = isClaudeProvider && claudeAuthMode === CLAUDE_AUTH_MODE_CLAUDE_AI
   const profileId = buildProfileId(name, preset.id)
   const canSubmit = name.trim().length > 0
+
+  // ── Auth method + credential field visibility ───────────────────────────
+  // Mirrors ProfileDetailPanel: a Select for the auth mode, then only the
+  // inputs the selected mode actually needs. Universal presets have no auth
+  // mode choice and just take an endpoint + key.
+  const hasAuthMethodChoice = isCodexProvider || isClaudeProvider
+  const isChatgptMode = isCodexProvider && codexAuthMode === CODEX_AUTH_MODE_CHATGPT
+  const isBedrockMode = isCodexProvider && codexAuthMode === CODEX_AUTH_MODE_BEDROCK_API_KEY
+  const isUniversalPreset = !isCodexProvider && !isClaudeProvider
+  // Endpoint is only meaningful when the method actually uses a custom base URL.
+  const showEndpoint = isUniversalPreset
+    || (isClaudeProvider && claudeAuthMode === CLAUDE_AUTH_MODE_API_KEY)
+    || (isCodexProvider && codexAuthMode === CODEX_AUTH_MODE_API_KEY)
+  const showKeyInput = !claudeAiLogin && !isChatgptMode
+  const authModeOptions = isClaudeProvider ? CLAUDE_AUTH_MODE_OPTIONS : CODEX_AUTH_MODE_OPTIONS
+  const selectedAuthMode = isClaudeProvider ? claudeAuthMode : codexAuthMode
+  const keyPlaceholder = isCodexProvider
+    ? codexCredentialPlaceholder(codexAuthMode, false)
+    : isClaudeProvider
+      ? claudeCredentialPlaceholder(false)
+      : (preset.fields.find(f => f.key === 'apiKey')?.placeholder ?? 'sk-...')
+  const endpointPlaceholder = preset.fields.find(f => f.key === 'baseUrl')?.placeholder ?? 'https://api.example.com/v1'
+
+  const handleAuthModeChange = (next: string) => {
+    if (isClaudeProvider) {
+      form.setValue('values.claudeAuthMode', next, { shouldDirty: true })
+      if (next === CLAUDE_AUTH_MODE_CLAUDE_AI) {
+        form.setValue('values.apiKey', '', { shouldDirty: true })
+        form.setValue('values.baseUrl', '', { shouldDirty: true })
+      }
+      return
+    }
+    if (isCodexProvider) {
+      form.setValue('values.codexAuthMode', next, { shouldDirty: true })
+      if (next !== CODEX_AUTH_MODE_CHATGPT) {
+        setChatgptCredentialRef(null)
+        setChatgptLoginId(null)
+        setActiveChatgptLogin(null)
+      }
+      if (next === CODEX_AUTH_MODE_CHATGPT) {
+        form.setValue('values.apiKey', '', { shouldDirty: true })
+        form.setValue('values.baseUrl', '', { shouldDirty: true })
+      }
+    }
+  }
 
   useEffect(() => {
     const login = chatgptLoginStatus.data
@@ -235,6 +302,9 @@ function PresetSetupForm({
     const selectedCodexAuthMode = isCodexProvider
       ? normalizeCodexAuthMode(currentValues.values.codexAuthMode)
       : CODEX_AUTH_MODE_API_KEY
+    const selectedClaudeAuthMode = isClaudeProvider
+      ? normalizeClaudeAuthMode(currentValues.values.claudeAuthMode)
+      : CLAUDE_AUTH_MODE_API_KEY
     if (requiresApiKey) {
       if (isCodexProvider) {
         if (selectedCodexAuthMode === CODEX_AUTH_MODE_CHATGPT && !chatgptCredentialRef) {
@@ -249,6 +319,9 @@ function PresetSetupForm({
           setStatus({ ok: false, text: 'Bedrock region is required' })
           return
         }
+      }
+      else if (isClaudeProvider && selectedClaudeAuthMode === CLAUDE_AUTH_MODE_CLAUDE_AI) {
+        // Claude.ai subscription login needs no API key.
       }
       else if (!credentialValue) {
         setStatus({ ok: false, text: 'Credential is required' })
@@ -287,6 +360,12 @@ function PresetSetupForm({
           config.bedrock = { region: bedrockRegion }
         }
       }
+      else if (isClaudeProvider) {
+        config.authMode = selectedClaudeAuthMode
+        config.baseUrl = selectedClaudeAuthMode === CLAUDE_AUTH_MODE_API_KEY
+          ? (currentValues.values.baseUrl ?? '')
+          : ''
+      }
       else if (currentValues.values.baseUrl) {
         config.baseUrl = currentValues.values.baseUrl
       }
@@ -317,11 +396,11 @@ function PresetSetupForm({
       setStatus({ ok: true, text: 'Saved' })
       setTimeout(onComplete, 500, profileId)
     }
- catch (err) {
+    catch (err) {
       setStatus({ ok: false, text: 'Failed to save provider' })
       console.error('[ProviderSetup]', err)
     }
- finally {
+    finally {
       setBusy(false)
     }
   }
@@ -329,25 +408,19 @@ function PresetSetupForm({
   return (
     <div className="flex flex-col gap-5">
       {/* Header */}
-      <div className="flex items-center gap-2 text-[11.5px] text-muted-foreground">
+      <div className="flex items-center gap-2.5">
         <button
           type="button"
           onClick={onBack}
-          className="-ml-1 inline-flex items-center gap-1 rounded-md px-1 py-0.5 transition-colors hover:bg-foreground/5 hover:text-foreground"
+          className="-ml-1 inline-flex size-7 shrink-0 items-center justify-center rounded-md text-muted-foreground transition-colors hover:bg-foreground/5 hover:text-foreground"
+          aria-label="Back to templates"
         >
-          <ArrowLeftIcon className="size-3" />
-          Templates
+          <ArrowLeftIcon className="size-3.5" />
         </button>
-        <span className="text-muted-foreground/40">/</span>
-        <span className="text-foreground">{preset.name}</span>
-      </div>
-
-      {/* Hero */}
-      <div className="flex items-start gap-3">
-        <Icon className="size-6 shrink-0 text-foreground/80 mt-0.5" />
-        <div className="flex-1 pt-0.5">
+        <Icon className="size-6 shrink-0 text-foreground/80" />
+        <div className="min-w-0 flex-1">
           <h4 className="font-heading text-[15px] font-medium text-foreground">{preset.name}</h4>
-          <p className="mt-0.5 text-[12px] text-muted-foreground">{preset.tagline}</p>
+          <p className="mt-0.5 truncate text-[12px] text-muted-foreground">{preset.tagline}</p>
         </div>
       </div>
 
@@ -367,132 +440,127 @@ function PresetSetupForm({
           />
         </SettingsRow>
 
-        {preset.fields.map((field) => {
-          const isApiKey = field.key === 'apiKey'
-          const isBaseUrl = field.key === 'baseUrl'
-          const testId = isBaseUrl
-            ? 'provider-baseurl'
-            : isApiKey
-              ? 'provider-apikey'
-              : `provider-field-${field.key}`
-          return (
-            <div key={field.key}>
-              <SettingsDivider />
-              <SettingsRow
-                label={isApiKey && isCodexProvider ? 'Authentication' : isApiKey ? 'Credential' : field.label}
-                description={
-                  isApiKey
-                    ? isCodexProvider
-                      ? 'How this provider signs in to Codex.'
-                      : undefined
-                    : undefined
-                }
-                vertical={isApiKey && isCodexProvider}
+        {showEndpoint && (
+          <>
+            <SettingsDivider />
+            <SettingsRow label="Endpoint" description="Base URL for the API">
+              <Input
+                data-testid="provider-baseurl"
+                value={values.baseUrl ?? ''}
+                onChange={e =>
+                  form.setValue('values.baseUrl', e.target.value, { shouldDirty: true })}
+                placeholder={endpointPlaceholder}
+                className="h-9 w-56 text-[12.5px] font-mono"
+              />
+            </SettingsRow>
+          </>
+        )}
+
+        <SettingsDivider />
+        <SettingsRow
+          label={hasAuthMethodChoice ? 'Authentication' : 'Credentials'}
+          description={
+            hasAuthMethodChoice
+              ? (isClaudeProvider
+                  ? 'How this provider authenticates to Claude.'
+                  : 'How this provider signs in to Codex.')
+              : 'Stored locally and encrypted.'
+          }
+          vertical
+        >
+          <div className="flex w-full max-w-[28rem] flex-col gap-2">
+            {hasAuthMethodChoice && (
+              <Select
+                value={selectedAuthMode}
+                onValueChange={handleAuthModeChange}
               >
-                {isApiKey
+                <SelectTrigger className="h-9 w-56 text-[12.5px]">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {authModeOptions.map(option => (
+                    <SelectItem key={option.value} value={option.value}>
+                      {option.label}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+
+            {claudeAiLogin && (
+              <InfoCallout>
+                Uses your Claude.ai subscription login. No API key needed — the Claude Agent SDK manages login state in its own config directory.
+              </InfoCallout>
+            )}
+
+            {isChatgptMode && chatgptCredentialMetadata.data && (
+              <ChatgptCredentialSummary credential={chatgptCredentialMetadata.data} />
+            )}
+
+            {showKeyInput && (
+              <Input
+                data-testid="provider-apikey"
+                type="password"
+                value={values.apiKey ?? ''}
+                onChange={(e) => {
+                  setChatgptCredentialRef(null)
+                  form.setValue('values.apiKey', e.target.value, { shouldDirty: true })
+                }}
+                placeholder={keyPlaceholder}
+                className="h-9 text-[12.5px] font-mono"
+              />
+            )}
+
+            {isBedrockMode && (
+              <Input
+                data-testid="provider-bedrock-region"
+                value={values.bedrockRegion ?? ''}
+                onChange={e =>
+                  form.setValue('values.bedrockRegion', e.target.value, { shouldDirty: true })}
+                placeholder="us-east-1"
+                className="h-9 w-56 text-[12.5px] font-mono"
+              />
+            )}
+
+            {isChatgptMode && (
+              <div className="flex flex-wrap items-center gap-2">
+                {chatgptLoginId
                   ? (
-                      <div className="flex w-56 flex-col gap-2">
-                        {isCodexProvider && (
-                          <CodexAuthModeToggle
-                            value={codexAuthMode}
-                            onChange={(nextAuthMode) => {
-                              form.setValue('values.codexAuthMode', nextAuthMode, { shouldDirty: true })
-                              if (nextAuthMode !== CODEX_AUTH_MODE_CHATGPT) {
-                                setChatgptCredentialRef(null)
-                                setChatgptLoginId(null)
-                                setActiveChatgptLogin(null)
-                              }
-                              if (nextAuthMode === CODEX_AUTH_MODE_CHATGPT) {
-                                form.setValue('values.apiKey', '', { shouldDirty: true })
-                                form.setValue('values.baseUrl', '', { shouldDirty: true })
-                              }
-                            }}
-                          />
-                        )}
-                        {(!isCodexProvider || codexAuthMode !== CODEX_AUTH_MODE_CHATGPT) && (
-                          <Input
-                            data-testid={testId}
-                            type="password"
-                            value={values[field.key] ?? ''}
-                            onChange={(e) => {
-                              setChatgptCredentialRef(null)
-                              form.setValue(`values.${field.key}`, e.target.value, { shouldDirty: true })
-                            }}
-                            placeholder={
-                              isCodexProvider
-                                ? codexCredentialPlaceholder(codexAuthMode, false)
-                                : field.placeholder
-                            }
-                            className={cn('h-9 text-[13px]', field.mono && 'font-mono')}
-                          />
-                        )}
-                        {isCodexProvider && codexAuthMode === CODEX_AUTH_MODE_BEDROCK_API_KEY && (
-                          <Input
-                            data-testid="provider-bedrock-region"
-                            value={values.bedrockRegion ?? ''}
-                            onChange={e =>
-                              form.setValue('values.bedrockRegion', e.target.value, { shouldDirty: true })}
-                            placeholder="us-east-1"
-                            className="h-9 text-[13px] font-mono"
-                          />
-                        )}
-                        {isCodexProvider && codexAuthMode === CODEX_AUTH_MODE_CHATGPT && chatgptCredentialMetadata.data && (
-                          <ChatgptCredentialSummary credential={chatgptCredentialMetadata.data} />
-                        )}
-                        {isCodexProvider && codexAuthMode === CODEX_AUTH_MODE_CHATGPT && (
-                          <div className="flex flex-wrap items-center gap-2">
-                            {chatgptLoginId
-                              ? (
-                                  <Button
-                                    type="button"
-                                    size="xs"
-                                    variant="outline"
-                                    onClick={() => void handleCancelChatgptLogin()}
-                                  >
-                                    <XIcon className="size-3" />
-                                    Cancel ChatGPT login
-                                  </Button>
-                                )
-                              : (
-                                  <Button
-                                    type="button"
-                                    size="xs"
-                                    variant="outline"
-                                    onClick={() => void handleChatgptLogin()}
-                                    disabled={startLogin.isPending}
-                                  >
-                                    {startLogin.isPending ? <Spinner className="size-3" /> : <LogInIcon className="size-3" />}
-                                    Sign in with ChatGPT
-                                  </Button>
-                                )}
-                          </div>
-                        )}
-                        {codexAuthMode === CODEX_AUTH_MODE_CHATGPT && activeChatgptLogin && (
-                          <ChatgptDeviceCodeNotice login={activeChatgptLogin} />
-                        )}
-                      </div>
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        onClick={() => void handleCancelChatgptLogin()}
+                      >
+                        <XIcon className="size-3" />
+                        Cancel ChatGPT login
+                      </Button>
                     )
                   : (
-                      <Input
-                        data-testid={testId}
-                        type={field.type === 'password' ? 'password' : 'text'}
-                        value={values[field.key] ?? ''}
-                        onChange={e =>
-                          form.setValue(`values.${field.key}`, e.target.value, { shouldDirty: true })}
-                        placeholder={field.placeholder}
-                        className={cn('h-9 w-56 text-[13px]', field.mono && 'font-mono')}
-                      />
+                      <Button
+                        type="button"
+                        size="xs"
+                        variant="outline"
+                        onClick={() => void handleChatgptLogin()}
+                        disabled={startLogin.isPending}
+                      >
+                        {startLogin.isPending ? <Spinner className="size-3" /> : <LogInIcon className="size-3" />}
+                        Sign in with ChatGPT
+                      </Button>
                     )}
-              </SettingsRow>
-            </div>
-          )
-        })}
+              </div>
+            )}
+            {isChatgptMode && activeChatgptLogin && (
+              <ChatgptDeviceCodeNotice login={activeChatgptLogin} />
+            )}
 
-        {preset.fields.length === 0 && (
-          <div className="rounded-lg bg-muted/40 px-3 py-2.5 text-[11.5px] leading-relaxed text-muted-foreground ring-1 ring-foreground/4 mt-2">
-            No credentials needed: this provider runs on your machine.
+            {preset.fields.length === 0 && (
+              <InfoCallout>
+                No credentials needed: this provider runs on your machine.
+              </InfoCallout>
+            )}
           </div>
-        )}
+        </SettingsRow>
       </div>
 
       {/* Status */}
@@ -512,12 +580,8 @@ function PresetSetupForm({
             )}
           >
             {status.ok
-? (
-              <CircleCheckIcon className="size-3.5" />
-            )
-: (
-              <CircleAlertIcon className="size-3.5" />
-            )}
+              ? <CircleCheckIcon className="size-3.5" />
+              : <CircleAlertIcon className="size-3.5" />}
             {status.text}
           </m.div>
         )}
@@ -538,6 +602,14 @@ function PresetSetupForm({
           Back
         </Button>
       </div>
+    </div>
+  )
+}
+
+function InfoCallout({ children }: { children: ReactNode }) {
+  return (
+    <div className="rounded-lg bg-muted/40 px-3 py-2.5 text-[11.5px] leading-relaxed text-muted-foreground ring-1 ring-foreground/4">
+      {children}
     </div>
   )
 }

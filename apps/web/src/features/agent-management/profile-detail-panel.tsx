@@ -65,6 +65,13 @@ import { nativeIpc } from '~/lib/electron'
 
 import { SettingsDivider, SettingsRow } from '../settings/settings-row'
 import { ChatgptCredentialSummary } from './chatgpt-credential-summary'
+import {
+  CLAUDE_AUTH_MODE_API_KEY,
+  CLAUDE_AUTH_MODE_CLAUDE_AI,
+  CLAUDE_AUTH_MODE_OPTIONS,
+  claudeCredentialPlaceholder,
+  normalizeClaudeAuthMode,
+} from './claude-auth-modes'
 import { ClaudeModelMatrixEditor } from './claude-model-matrix-editor'
 import { CodexAccountDiagnosticsPanel } from './codex-account-diagnostics-panel'
 import {
@@ -217,7 +224,9 @@ function getProfileFormValues(profile: AgentProfile): ProfileDetailFormValues {
     anthropicBaseUrl: config.anthropicBaseUrl || config.baseUrl,
     model: config.model,
     api: config.api,
-    authMode: normalizeCodexAuthMode(config.authMode),
+    authMode: profile.providerKind === 'anthropic'
+      ? normalizeClaudeAuthMode(config.authMode)
+      : normalizeCodexAuthMode(config.authMode),
     bedrockRegion: config.bedrock?.region ?? '',
     claudeAgentAliases: readClaudeAgentModelAliases(config),
     enabledModels: getInitialEnabledModels(config.enabledModels),
@@ -286,6 +295,16 @@ function buildProfileConfig(
       ...(codexAuthMode === CODEX_AUTH_MODE_BEDROCK_API_KEY
         ? { bedrock: { region: values.bedrockRegion.trim() } }
         : {}),
+    }, values)
+  }
+  if (values.providerKind === 'anthropic') {
+    const claudeAuthMode = normalizeClaudeAuthMode(values.authMode)
+    return applyClaudeAgentAliasesToProfileConfig({
+      ...rest,
+      authMode: claudeAuthMode,
+      baseUrl: claudeAuthMode === CLAUDE_AUTH_MODE_API_KEY ? values.baseUrl : '',
+      model: values.model || undefined,
+      api: values.api || undefined,
     }, values)
   }
   return applyClaudeAgentAliasesToProfileConfig({
@@ -929,11 +948,18 @@ function ProfileGeneralSettings({
 }) {
   const isUniversal = values.providerKind === 'universal'
   const isCodexProvider = values.providerKind === 'openai-compatible'
+  const isClaudeProvider = values.providerKind === 'anthropic'
   const isChatgptCredential = isChatgptCredentialMetadata(credentialMetadata)
   const codexAuthMode = isCodexProvider
     ? normalizeCodexAuthMode(values.authMode)
     : CODEX_AUTH_MODE_API_KEY
-  const endpointDisabled = readOnly || (isCodexProvider && codexAuthMode !== CODEX_AUTH_MODE_API_KEY)
+  const claudeAuthMode = isClaudeProvider
+    ? normalizeClaudeAuthMode(values.authMode)
+    : CLAUDE_AUTH_MODE_API_KEY
+  const claudeAiLogin = isClaudeProvider && claudeAuthMode === CLAUDE_AUTH_MODE_CLAUDE_AI
+  const endpointDisabled = readOnly
+    || (isCodexProvider && codexAuthMode !== CODEX_AUTH_MODE_API_KEY)
+    || claudeAiLogin
   const providerKindDisabled = readOnly || codexAuthMode === CODEX_AUTH_MODE_CHATGPT || isChatgptCredential
 
   return (
@@ -1089,16 +1115,23 @@ function ProfileCredentialSettings({
   onCancelChatgptLogin: () => void
 }) {
   const isCodexProvider = providerKind === 'openai-compatible'
+  const isClaudeProvider = providerKind === 'anthropic'
   const isChatgptCredential = isChatgptCredentialMetadata(credentialMetadata)
   const codexAuthMode = isCodexProvider
     ? normalizeCodexAuthMode(values.authMode)
     : CODEX_AUTH_MODE_API_KEY
+  const claudeAuthMode = isClaudeProvider
+    ? normalizeClaudeAuthMode(values.authMode)
+    : CLAUDE_AUTH_MODE_API_KEY
+  const claudeAiLogin = isClaudeProvider && claudeAuthMode === CLAUDE_AUTH_MODE_CLAUDE_AI
   const showChatgptControls = isCodexProvider && codexAuthMode === CODEX_AUTH_MODE_CHATGPT
   const description = isCodexProvider
     ? 'How this provider signs in to Codex.'
-    : profile.credentialRef
-      ? 'A credential is already stored. Leave empty to keep it.'
-      : 'Stored locally and encrypted.'
+    : isClaudeProvider
+      ? 'How this provider authenticates to Claude.'
+      : profile.credentialRef
+        ? 'A credential is already stored. Leave empty to keep it.'
+        : 'Stored locally and encrypted.'
 
   return (
     <SettingsRow
@@ -1132,10 +1165,41 @@ function ProfileCredentialSettings({
           </Select>
         )}
 
+        {isClaudeProvider && (
+          <Select
+            value={claudeAuthMode}
+            onValueChange={(nextAuthMode) => {
+              onTextFieldChange('authMode', nextAuthMode)
+              if (nextAuthMode === CLAUDE_AUTH_MODE_CLAUDE_AI) {
+                onTextFieldChange('apiKey', '')
+                onTextFieldChange('baseUrl', '')
+              }
+            }}
+            disabled={readOnly}
+          >
+            <SelectTrigger className="h-9 w-56 text-[12.5px]">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              {CLAUDE_AUTH_MODE_OPTIONS.map(option => (
+                <SelectItem key={option.value} value={option.value}>
+                  {option.label}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+
+        {claudeAiLogin && (
+          <div className="rounded-lg bg-muted/40 px-3 py-2.5 text-[11.5px] leading-relaxed text-muted-foreground ring-1 ring-foreground/4">
+            Uses your Claude.ai subscription login. No API key needed — the Claude Agent SDK manages login state in its own config directory.
+          </div>
+        )}
+
         {showChatgptControls && credentialMetadata && isChatgptCredential && (
           <ChatgptCredentialSummary credential={credentialMetadata} />
         )}
-        {!showChatgptControls && (
+        {!showChatgptControls && !claudeAiLogin && (
           <Input
             data-testid="provider-edit-apikey"
             type="password"
@@ -1144,7 +1208,9 @@ function ProfileCredentialSettings({
             disabled={readOnly}
             placeholder={isCodexProvider
               ? codexCredentialPlaceholder(codexAuthMode, !!profile.credentialRef)
-              : codexCredentialPlaceholder(CODEX_AUTH_MODE_API_KEY, !!profile.credentialRef)}
+              : isClaudeProvider
+                ? claudeCredentialPlaceholder(!!profile.credentialRef)
+                : codexCredentialPlaceholder(CODEX_AUTH_MODE_API_KEY, !!profile.credentialRef)}
             className="h-9 text-[12.5px] font-mono"
           />
         )}

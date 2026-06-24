@@ -15,6 +15,9 @@ export const ProfileConfigSchema = z.object({
     'agentIdentity',
     'personalAccessToken',
     'bedrockApiKey',
+    // Claude Agent auth modes (providerKind: 'anthropic')
+    'apiKey',
+    'claudeAi',
   ]).optional(),
   bedrock: z.object({
     region: z.string().default(''),
