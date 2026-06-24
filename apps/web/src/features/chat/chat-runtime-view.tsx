@@ -46,6 +46,7 @@ export function ChatRuntimeView({
   placeholder,
   messageTextTransform,
   prepareSend,
+  compactInset = false,
 }: {
   active?: boolean
   sessionId: string
@@ -61,6 +62,7 @@ export function ChatRuntimeView({
   placeholder?: string
   messageTextTransform?: ChatViewProps['messageTextTransform']
   prepareSend?: ChatViewProps['prepareSend']
+  compactInset?: boolean
 }) {
   const queryClient = useQueryClient()
   const composerResetKey = [
@@ -317,6 +319,7 @@ export function ChatRuntimeView({
         placeholder={placeholder}
         messageTextTransform={messageTextTransform}
         prepareSend={prepareSend}
+        compactInset={compactInset}
       />
     </Suspense>
   )

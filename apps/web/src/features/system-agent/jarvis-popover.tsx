@@ -349,6 +349,7 @@ function JarvisRuntimePanel({
         composerContextBar={composerContextBar}
         composerToolbarAddon={composerToolbarAddon}
         hideRuntimeToolbar
+        compactInset
         placeholder={placeholder}
         messageTextTransform={stripCradleContextForDisplay}
         prepareSend={prepareSend}

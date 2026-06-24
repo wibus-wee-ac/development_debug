@@ -25,6 +25,7 @@ import { toastManager } from '~/components/ui/toast'
 import type { ModelDescriptor, RuntimeKind } from '~/features/agent-runtime/types'
 import type { LiveAwaitStatus, UnsupportedLiveAwaitStatus } from '~/features/session-await/use-live-await-status'
 import { describeLiveAwaitStatus, useLiveAwaitStatus } from '~/features/session-await/use-live-await-status'
+import { cn } from '~/lib/cn'
 import { getServerUrl } from '~/lib/electron'
 import { readWorkspaceFileDragText } from '~/lib/workspace-drag-data'
 import { useSurfaceActive } from '~/navigation/surface-activity-context'
@@ -139,6 +140,15 @@ export interface ChatViewProps {
   composerModel?: ModelDescriptor | null
   /** Custom context bar rendered before the send button */
   composerContextBar?: React.ReactNode
+  /**
+   * Strip the transcript + composer horizontal inset for ambient hosts that
+   * render ChatView inside a narrow floating panel (e.g. Jarvis). Drops the
+   * `max-w-[90%]` reading-width constraint and the `pr-12` minimap gutter
+   * (the minimap is already hidden via `hideRuntimeToolbar` in these hosts)
+   * and reduces side padding to `px-1` so the scarce horizontal space isn't
+   * wasted. The main chat view is unaffected (defaults to false).
+   */
+  compactInset?: boolean
   /** Placeholder text for composer */
   placeholder?: string
   runtimeKind?: RuntimeKind
@@ -172,6 +182,7 @@ function ChatTranscriptContent({
   onVirtualScroll,
   onToolApprovalResponse,
   messageTextTransform,
+  compactInset,
 }: {
   sessionId: string | null
   messageIds: ReturnType<typeof useChatSession>['messageIds']
@@ -185,6 +196,7 @@ function ChatTranscriptContent({
   onVirtualScroll: ChatScrollRuntime['handleVirtualScroll']
   onToolApprovalResponse: ReturnType<typeof useChatSession>['respondToToolApproval']
   messageTextTransform?: MessageTextTransform
+  compactInset?: boolean
 }) {
   const { t } = useTranslation('chat')
 
@@ -206,7 +218,10 @@ function ChatTranscriptContent({
       className="h-full overflow-x-hidden overflow-y-auto outline-none [scrollbar-gutter:stable]"
     >
       <div
-        className="mx-auto flex min-h-full max-w-[90%] flex-col px-4 pr-12 pt-4"
+        className={cn(
+          'mx-auto flex min-h-full flex-col pt-4',
+          compactInset ? 'px-4' : 'max-w-[90%] px-4 pr-12',
+        )}
         style={{ paddingBottom: 'var(--chat-composer-inset, 0px)' }}
       >
         <div className="flex-1">
@@ -274,6 +289,7 @@ function ChatMessageListPane({
   composerStack,
   hideMinimap,
   messageTextTransform,
+  compactInset,
 }: {
   sessionId: string | null
   messageIds: ReturnType<typeof useChatSession>['messageIds']
@@ -295,6 +311,7 @@ function ChatMessageListPane({
   composerStack: React.ReactNode
   hideMinimap?: boolean
   messageTextTransform?: MessageTextTransform
+  compactInset?: boolean
 }) {
   return (
     <div ref={scrollContainerRef} className="relative min-h-0 flex-1 overflow-hidden">
@@ -311,10 +328,16 @@ function ChatMessageListPane({
         onVirtualScroll={onVirtualScroll}
         onToolApprovalResponse={onToolApprovalResponse}
         messageTextTransform={messageTextTransform}
+        compactInset={compactInset}
       />
 
       <div ref={composerOverlayRef} className="pointer-events-none absolute inset-x-0 bottom-0 z-10">
-        <div className="mx-auto max-w-[90%] px-4 pr-12 pt-4 pb-3">
+        <div
+          className={cn(
+            'mx-auto pt-4 pb-3',
+            compactInset ? 'px-4' : 'max-w-[90%] px-4 pr-12',
+          )}
+        >
           {composerStack}
         </div>
       </div>
@@ -783,6 +806,7 @@ export function ChatView({
   workspaceId,
   messageTextTransform,
   prepareSend,
+  compactInset = false,
 }: ChatViewProps) {
   const queryClient = useQueryClient()
   const surfaceActive = useSurfaceActive()
@@ -1240,6 +1264,7 @@ export function ChatView({
         onToolApprovalResponse={respondToToolApproval}
         messageTextTransform={messageTextTransform}
         hideMinimap={hideRuntimeToolbar}
+        compactInset={compactInset}
         composerStack={(
           <ChatComposerSection
             sessionId={sessionId}
