@@ -24,6 +24,7 @@
   "group.modes": "模式",
   "group.resultCount": "{{count}} 个结果",
   "group.threads": "对话",
+  "group.workspaces": "工作区",
   "mode.command.description": "运行应用命令",
   "mode.command.label": "命令",
   "mode.command.placeholder": "> 运行命令",

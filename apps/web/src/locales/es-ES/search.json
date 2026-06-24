@@ -24,6 +24,7 @@
   "group.modes": "Modos",
   "group.resultCount": "{{count}} resultados",
   "group.threads": "Conversaciones",
+  "group.workspaces": "Espacios de trabajo",
   "mode.command.description": "Ejecutar un comando de la app",
   "mode.command.label": "Comando",
   "mode.command.placeholder": "> Ejecutar un comando",

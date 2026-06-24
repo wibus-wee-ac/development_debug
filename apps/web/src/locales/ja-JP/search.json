@@ -24,6 +24,7 @@
   "group.modes": "モード",
   "group.resultCount": "{{count}} 件",
   "group.threads": "会話",
+  "group.workspaces": "ワークスペース",
   "mode.command.description": "アプリのコマンドを実行",
   "mode.command.label": "コマンド",
   "mode.command.placeholder": "> コマンドを実行",

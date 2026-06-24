@@ -4,6 +4,7 @@ import {
   CornerDownLeftLine as CornerDownLeftIcon,
   DotCircleLine as CircleDotIcon,
   FileLine as FileIcon,
+  FolderOpenLine as FolderOpenIcon,
   Message1Line as MessageSquareIcon,
   Plugin2Line,
   Settings2Line as SettingsIcon,
@@ -16,7 +17,7 @@ import { createPortal } from 'react-dom'
 import { useTranslation } from 'react-i18next'
 import { z } from 'zod'
 
-import { getIssuesSearchOptions, getKanbanBoardsOptions, getSearchThreadsOptions, getSessionsByIdOptions } from '~/api-gen/@tanstack/react-query.gen'
+import { getIssuesSearchOptions, getKanbanBoardsOptions, getSearchThreadsOptions, getSessionsByIdOptions, getWorkspacesOptions } from '~/api-gen/@tanstack/react-query.gen'
 import { useLayoutSlotsCtx } from '~/components/layout/use-layout-slots'
 import {
   Command,
@@ -35,7 +36,7 @@ import { rankFuzzyItems } from '~/lib/fuzzy-rank'
 import type { WebCommandRegistration } from '~/lib/plugin-store'
 import { usePluginStore } from '~/lib/plugin-store'
 import { useActiveSurface } from '~/navigation/active-surface'
-import { openChatSession, openKanbanBoard, openNewChat, openSettingsSection, openUsage } from '~/navigation/navigation-commands'
+import { openChatSession, openKanbanBoard, openNewChat, openSettingsSection, openUsage, openWorkspaceDetail } from '~/navigation/navigation-commands'
 import { chatSessionIdForSurface, workspaceIdForSurface } from '~/navigation/surface-identity'
 import { useBrowserPanelStore } from '~/store/browser-panel'
 import { useLayoutStore } from '~/store/layout'
@@ -311,6 +312,55 @@ function useFileSearch(query: string, enabled: boolean, workspaceId: string | nu
   }
 }
 
+interface WorkspaceSearchHit {
+  id: string
+  name: string
+  path: string
+  identifier: string
+}
+
+const GlobalSearchWorkspaceListSchema = z
+  .array(
+    z.object({
+      id: z.string(),
+      name: z.string(),
+      path: z.string(),
+      identifier: z.string(),
+    }),
+  )
+  .default([])
+
+function useWorkspaceSearch(query: string, enabled: boolean) {
+  const trimmed = query.trim().toLowerCase()
+  const { data, isPending } = useQuery({
+    ...getWorkspacesOptions(),
+    enabled,
+    staleTime: 60_000,
+  })
+
+  const workspaces = GlobalSearchWorkspaceListSchema.parse(data) satisfies WorkspaceSearchHit[]
+
+  const filtered = (() => {
+    if (!enabled || !trimmed || workspaces.length === 0) {
+      return []
+    }
+    return rankFuzzyItems(workspaces, trimmed, {
+      fields: workspace => [
+        { value: workspace.name, role: 'primary' },
+        { value: workspace.identifier, role: 'primary' },
+        { value: workspace.path, role: 'path' },
+      ],
+      searchText: workspace => `${workspace.name} ${workspace.identifier} ${workspace.path}`,
+      limit: 10,
+    }).map(result => result.item)
+  })()
+
+  return {
+    workspaces: filtered,
+    isPending: enabled && !!trimmed && isPending,
+  }
+}
+
 interface ThreadSearchHit {
   sessionId: string
   sessionTitle: string | null
@@ -436,6 +486,7 @@ const GlobalSearchDialogContent = ({ open, initialQuery = '>', onOpenChange }: G
   const hasQuery = trimmed.length > 0
   const isCommandMode = modeId === 'command'
   const searchFiles = modeId === 'quickOpen' || modeId === 'files'
+  const searchWorkspaces = modeId === 'quickOpen'
   const searchThreads = modeId === 'quickOpen' || modeId === 'threads'
   const searchIssues = modeId === 'quickOpen' || modeId === 'issues'
   const fileUnavailable = searchFiles && fileSearchWorkspace.availability !== 'available'
@@ -453,6 +504,11 @@ const GlobalSearchDialogContent = ({ open, initialQuery = '>', onOpenChange }: G
   const { threads, isPending: threadsPending } = useThreadSearch(
     trimmed,
     open && searchThreads,
+  )
+
+  const { workspaces: workspaceResults, isPending: workspacesPending } = useWorkspaceSearch(
+    trimmed,
+    open && searchWorkspaces,
   )
 
   const { issues, isPending: issuesPending, boardId } = useIssueSearch(
@@ -487,7 +543,7 @@ const GlobalSearchDialogContent = ({ open, initialQuery = '>', onOpenChange }: G
     }).map(result => result.item)
   })()
 
-  const isPending = filesPending || threadsPending || issuesPending
+  const isPending = filesPending || workspacesPending || threadsPending || issuesPending
 
   const handleSelectCommand = (command: CommandAction) => {
     setCommandHistory(writeCommandHistory(command.id))
@@ -511,6 +567,11 @@ const GlobalSearchDialogContent = ({ open, initialQuery = '>', onOpenChange }: G
   const handleSelectThread = (sessionId: string) => {
     close()
     openChatSession(sessionId)
+  }
+
+  const handleSelectWorkspace = (workspaceId: string) => {
+    close()
+    openWorkspaceDetail(workspaceId)
   }
 
   const handleSelectIssue = (issueId: string) => {
@@ -576,6 +637,19 @@ const GlobalSearchDialogContent = ({ open, initialQuery = '>', onOpenChange }: G
                     key={file.path}
                     file={file}
                     onSelect={handleSelectFile}
+                  />
+                ))}
+              </CommandGroup>
+            )}
+
+            {workspaceResults.length > 0 && (
+              <CommandGroup>
+                <GroupHeader label={t('group.workspaces')} count={workspaceResults.length} />
+                {workspaceResults.map(workspace => (
+                  <WorkspaceSearchResultRow
+                    key={workspace.id}
+                    workspace={workspace}
+                    onSelect={handleSelectWorkspace}
                   />
                 ))}
               </CommandGroup>
@@ -699,6 +773,31 @@ const FileSearchCommandRow = ({
         <span className="truncate text-[13px]">{file.name}</span>
         {dir && (
           <span className="truncate font-mono text-[11px] text-muted-foreground/45">{dir}</span>
+        )}
+      </span>
+    </CommandItem>
+  )
+}
+
+const WorkspaceSearchResultRow = ({
+  workspace,
+  onSelect,
+}: {
+  workspace: WorkspaceSearchHit
+  onSelect: (workspaceId: string) => void
+}) => {
+  return (
+    <CommandItem
+      value={`workspace-${workspace.id}`}
+      onSelect={() => onSelect(workspace.id)}
+      className="min-h-7 gap-2 px-2.5 py-0.5"
+      data-testid={`global-search-workspace-result-${workspace.id}`}
+    >
+      <FolderOpenIcon className="size-3.5 shrink-0 text-muted-foreground/70" />
+      <span className="flex min-w-0 flex-1 items-baseline gap-1.5">
+        <span className="truncate text-[13px]">{workspace.name}</span>
+        {workspace.identifier && (
+          <span className="truncate font-mono text-[11px] uppercase text-muted-foreground/45">{workspace.identifier}</span>
         )}
       </span>
     </CommandItem>
