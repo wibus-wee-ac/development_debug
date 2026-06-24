@@ -649,7 +649,7 @@ body {
   --secondary: --alpha(var(--color-black) / 4%);
   --secondary-foreground: var(--color-neutral-800);
   --muted: --alpha(var(--color-black) / 4%);
-  --muted-foreground: var(--color-neutral-400);
+  --muted-foreground: var(--color-neutral-500);
   --accent: --alpha(var(--color-black) / 4%);
   --accent-foreground: var(--color-neutral-800);
   --destructive: var(--color-red-500);
@@ -681,11 +681,11 @@ body {
   --code-highlight: --alpha(var(--color-black) / 4%);
   /* Pre-resolved text contrast tiers (WCAG 2.1 AA) */
   --text-secondary: var(--muted-foreground);
-  /* ~4.54:1 AA on #fff */
+  /* ~4.6:1 AA on #fff */
   --text-tertiary: var(--color-neutral-500);
   /* 4.54:1 AA on #fff — labels, metadata */
   --text-dim: var(--color-neutral-400);
-  /* 2.43:1 — decorative / disabled only */
+  /* ~2.7:1 — decorative / disabled only */
 }
 
 .t-icon-swap {
