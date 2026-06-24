@@ -72,7 +72,7 @@ export function useChatSession(chatSessionId: string | null, active = true) {
     runtimeKind,
   })
 
-  const { cancelQueueItem, reorderQueueItems } = useChatQueue(chatSessionId, controls)
+  const { cancelQueueItem, reorderQueueItems, updateQueueItem } = useChatQueue(chatSessionId, controls)
 
   // ── isReady (always true once hydrated) ──
 
@@ -112,5 +112,6 @@ export function useChatSession(chatSessionId: string | null, active = true) {
     queueItems: queueQuery.data?.items ?? EMPTY_QUEUE_ITEMS,
     cancelQueueItem,
     reorderQueueItems,
+    updateQueueItem,
   }
 }

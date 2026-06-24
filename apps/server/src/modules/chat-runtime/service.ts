@@ -151,7 +151,8 @@ import type {
   EnqueueSessionQueueItemInput,
   PersistedThinkingEffort,
   SessionSteerTurnDto,
-  SubmitSessionSteerTurnInput
+  SubmitSessionSteerTurnInput,
+  UpdateSessionQueueItemInput
 } from './queue/session-queue'
 import { scheduleSessionQueueDrain } from './queue/drain'
 import type { QueueDrainDeps } from './queue/drain'
@@ -251,7 +252,8 @@ export type {
   EnqueueSessionQueueItemInput,
   PersistedThinkingEffort,
   SessionSteerTurnDto,
-  SubmitSessionSteerTurnInput
+  SubmitSessionSteerTurnInput,
+  UpdateSessionQueueItemInput
 } from './queue/session-queue'
 
 const chatLogger = createChildLogger({ module: 'chat-runtime' })
@@ -2366,6 +2368,84 @@ export async function reorderSessionQueueItems(
   const session = assertStoredSession(sessionId)
   const runtimeSettings = readSessionRuntimeSettings(session.configJson)
   return listPendingQueueRows(sessionId).map((row) => toQueueItemDto(row, runtimeSettings))
+}
+
+export async function updateSessionQueueItem(
+  input: UpdateSessionQueueItemInput
+): Promise<ChatSessionQueueItemDto> {
+  assertRunnableSession(input.sessionId)
+  const row = db()
+    .select()
+    .from(chatSessionQueueItems)
+    .where(
+      and(
+        eq(chatSessionQueueItems.id, input.queueItemId),
+        eq(chatSessionQueueItems.sessionId, input.sessionId),
+        eq(chatSessionQueueItems.mode, 'queue')
+      )
+    )
+    .get()
+  if (!row) {
+    throw new AppError({
+      code: 'chat_queue_item_not_found',
+      status: 404,
+      message: 'Chat queue item not found',
+      details: { sessionId: input.sessionId, queueItemId: input.queueItemId }
+    })
+  }
+  if (row.status !== 'pending') {
+    throw new AppError({
+      code: 'chat_queue_item_not_pending',
+      status: 409,
+      message: 'Only pending chat queue items can be edited',
+      details: { sessionId: input.sessionId, queueItemId: input.queueItemId, status: row.status }
+    })
+  }
+
+  const text = input.text?.trim() ?? ''
+  const files = input.files ?? []
+  const contextParts = input.contextParts ?? []
+  if (!text && files.length === 0 && contextParts.length === 0) {
+    throw new AppError({
+      code: 'chat_queue_item_empty',
+      status: 400,
+      message: 'Chat queue item requires text, context, or at least one file attachment',
+      details: { sessionId: input.sessionId, queueItemId: input.queueItemId }
+    })
+  }
+
+  const session = assertStoredSession(input.sessionId)
+  const baseRuntimeSettings = readSessionRuntimeSettings(session.configJson)
+  const runtimeSettings = mergeRuntimeSettings(
+    baseRuntimeSettings,
+    normalizeRuntimeSettingsPatch(input.runtimeSettings)
+  )
+  const now = currentUnixSeconds()
+  await commitSessionEvents(input.sessionId, [
+    {
+      type: 'QueueItemUpdated',
+      payload: {
+        queueItemId: input.queueItemId,
+        sessionId: input.sessionId,
+        text,
+        filesJson: serializeQueueFiles(files),
+        contextPartsJson: serializeQueueContextParts(contextParts),
+        providerTargetId: input.providerTargetId?.trim() || null,
+        modelId: input.modelId?.trim() || null,
+        thinkingEffort: readPersistedThinkingEffort(input.thinkingEffort),
+        runtimeAccessMode: runtimeSettings.accessMode,
+        runtimeInteractionMode: runtimeSettings.interactionMode,
+        updatedAt: now
+      }
+    }
+  ])
+
+  const updatedRow = db()
+    .select()
+    .from(chatSessionQueueItems)
+    .where(eq(chatSessionQueueItems.id, input.queueItemId))
+    .get()
+  return toQueueItemDto(updatedRow ?? row, runtimeSettings)
 }
 
 function startActiveRunSnapshot(

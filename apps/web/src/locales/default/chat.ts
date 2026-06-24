@@ -7,6 +7,7 @@ export default {
   'continuation.queue.attachmentLabel_one': '{{count}} attachment',
   'continuation.queue.attachmentLabel_other': '{{count}} attachments',
   'continuation.queue.cancel': 'Cancel queue item: {{label}}',
+  'continuation.queue.edit': 'Edit queue item: {{label}}',
   'continuation.queue.emptyLabel': 'Empty continuation',
   'continuation.queue.moveDown': 'Move queue item down: {{label}}',
   'continuation.queue.moveUp': 'Move queue item up: {{label}}',

@@ -54,6 +54,10 @@ export interface EnqueueSessionQueueItemInput {
   runtimeSettings?: ChatRuntimeSettingsPatch
 }
 
+export interface UpdateSessionQueueItemInput extends EnqueueSessionQueueItemInput {
+  queueItemId: string
+}
+
 export interface SubmitSessionSteerTurnInput {
   sessionId: string
   text?: string

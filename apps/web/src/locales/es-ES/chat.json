@@ -7,6 +7,7 @@
   "continuation.queue.attachmentLabel_one": "{{count}} archivo adjunto",
   "continuation.queue.attachmentLabel_other": "{{count}} archivos adjuntos",
   "continuation.queue.cancel": "Cancelar elemento de cola: {{label}}",
+  "continuation.queue.edit": "Editar elemento de cola: {{label}}",
   "continuation.queue.emptyLabel": "Continuación vacía",
   "continuation.queue.moveDown": "Mover elemento de cola hacia abajo: {{label}}",
   "continuation.queue.moveUp": "Mover elemento de cola hacia arriba: {{label}}",

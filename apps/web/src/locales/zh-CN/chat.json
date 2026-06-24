@@ -7,6 +7,7 @@
   "continuation.queue.attachmentLabel_one": "{{count}} 个附件",
   "continuation.queue.attachmentLabel_other": "{{count}} 个附件",
   "continuation.queue.cancel": "取消队列项：{{label}}",
+  "continuation.queue.edit": "编辑队列项：{{label}}",
   "continuation.queue.emptyLabel": "空跟进",
   "continuation.queue.moveDown": "下移队列项：{{label}}",
   "continuation.queue.moveUp": "上移队列项：{{label}}",

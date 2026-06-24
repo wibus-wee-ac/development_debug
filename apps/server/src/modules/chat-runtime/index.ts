@@ -473,6 +473,36 @@ export const chatRuntime = new Elysia({
       response: { 200: ChatRuntimeModel.queueItem }
     }
   )
+  // PATCH /chat/sessions/:sessionId/queue/:queueItemId → edit a pending queue item in place
+  .patch(
+    '/sessions/:sessionId/queue/:queueItemId',
+    async ({ params, body }) => {
+      return await (
+        await loadChatRuntime()
+      ).updateSessionQueueItem({
+        sessionId: params.sessionId,
+        queueItemId: params.queueItemId,
+        text: body.text,
+        files: body.files,
+        contextParts: body.contextParts,
+        providerTargetId: body.providerTargetId?.trim() || undefined,
+        modelId: readOptionalModelId(body.modelId),
+        thinkingEffort: readChatThinkingEffort(body.thinkingEffort),
+        runtimeSettings: body.runtimeSettings
+      })
+    },
+    {
+      detail: {
+        summary: 'Edit a pending chat continuation queue item in place',
+        'x-cradle-cli': {
+          command: ['chat', 'queue', 'update']
+        }
+      },
+      params: ChatRuntimeModel.queueItemParams,
+      body: ChatRuntimeModel.queueUpdateBody,
+      response: { 200: ChatRuntimeModel.queueItem }
+    }
+  )
   // GET /chat/draft-runtime-capabilities?runtimeKind=... -> provider-owned pre-session composer capabilities
   .get(
     '/draft-runtime-capabilities',

@@ -2,8 +2,9 @@
 import {
   ArrowDownLine as ArrowDownIcon,
   ArrowUpLine as ArrowUpIcon,
+  CloseLine as XIcon,
   DotsVerticalLine as GripVerticalIcon,
-  CloseLine as XIcon
+  PencilLine as EditIcon,
 } from '@mingcute/react'
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
@@ -17,6 +18,8 @@ interface ChatQueueListProps {
   items: ChatQueueItem[]
   onCancel: (queueItemId: string) => void
   onReorder: (queueItemIds: string[]) => void
+  onEdit: (item: ChatQueueItem) => void
+  editingItemId?: string | null
   className?: string
   title?: string
 }
@@ -25,6 +28,8 @@ export function ChatQueueList({
   items,
   onCancel,
   onReorder,
+  onEdit,
+  editingItemId,
   className,
   title,
 }: ChatQueueListProps) {
@@ -107,6 +112,7 @@ export function ChatQueueList({
               className={cn(
                 'flex items-center gap-2 rounded-md bg-muted/35 px-2 py-1.5 text-xs transition-colors',
                 draggedItemId === item.id && 'bg-muted/70 opacity-70',
+                editingItemId === item.id && 'bg-muted/60 ring-1 ring-primary/40',
               )}
               data-testid="chat-queue-item"
               draggable={isPending}
@@ -149,6 +155,17 @@ export function ChatQueueList({
               <span className="min-w-0 flex-1 truncate text-foreground/85">
                 {itemLabel}
               </span>
+              <Button
+                type="button"
+                variant="ghost"
+                size="icon-xs"
+                disabled={editingItemId === item.id}
+                onClick={() => onEdit(item)}
+                aria-label={t('continuation.queue.edit', { label: itemLabel })}
+                data-testid="chat-queue-item-edit"
+              >
+                <EditIcon className="size-3" aria-hidden="true" />
+              </Button>
               <Button
                 type="button"
                 variant="ghost"

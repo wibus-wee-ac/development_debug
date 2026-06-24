@@ -9,6 +9,7 @@ import type {
 
 import type { ChatMessageStatus } from '../run/stream-chunks'
 import type { ChatRuntimeSettings } from '../runtime-provider-types'
+import type { PersistedThinkingEffort } from '../queue/session-queue'
 
 export const CHAT_SESSION_AGGREGATE_TYPE = 'ChatSession'
 
@@ -24,6 +25,7 @@ export type ChatSessionEventType =
   | 'QueueItemReleased'
   | 'QueueItemFailed'
   | 'QueueItemReordered'
+  | 'QueueItemUpdated'
   | 'QueueItemCancelled'
   | 'SteerApplied'
   | 'TitleChanged'
@@ -97,6 +99,20 @@ export interface QueueItemReorderedPayload {
   updatedAt: number
 }
 
+export interface QueueItemUpdatedPayload {
+  queueItemId: string
+  sessionId: string
+  text: string
+  filesJson: string
+  contextPartsJson: string
+  providerTargetId: string | null
+  modelId: string | null
+  thinkingEffort: PersistedThinkingEffort | null
+  runtimeAccessMode: ChatRuntimeSettings['accessMode']
+  runtimeInteractionMode: ChatRuntimeSettings['interactionMode']
+  updatedAt: number
+}
+
 export interface QueueItemCancelledPayload {
   queueItemId: string
   sessionId: string
@@ -124,6 +140,7 @@ export type ChatSessionEvent =
   | { type: 'QueueItemReleased'; payload: QueueItemReleasedPayload }
   | { type: 'QueueItemFailed'; payload: QueueItemFailedPayload }
   | { type: 'QueueItemReordered'; payload: QueueItemReorderedPayload }
+  | { type: 'QueueItemUpdated'; payload: QueueItemUpdatedPayload }
   | { type: 'QueueItemCancelled'; payload: QueueItemCancelledPayload }
   | { type: 'SteerApplied'; payload: SteerAppliedPayload }
   | { type: 'TitleChanged'; payload: TitleChangedPayload }

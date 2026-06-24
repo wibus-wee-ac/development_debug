@@ -69,6 +69,7 @@ export function reduceChatSessionEvents(events: StoredChatSessionEvent[]): ChatS
       case 'QueueItemReleased':
       case 'QueueItemFailed':
       case 'QueueItemReordered':
+      case 'QueueItemUpdated':
       case 'QueueItemCancelled':
       case 'TitleChanged':
         break

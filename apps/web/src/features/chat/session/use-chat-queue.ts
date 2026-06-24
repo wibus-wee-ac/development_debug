@@ -1,6 +1,12 @@
 import { useCallback } from 'react'
 
-import { cancelChatSessionQueueItem, listChatSessionQueue, reorderChatSessionQueue } from '../commands/chat-response-command'
+import type { ChatQueueEnqueueBody } from '../commands/chat-response-command'
+import {
+  cancelChatSessionQueueItem,
+  listChatSessionQueue,
+  reorderChatSessionQueue,
+  updateChatSessionQueueItem,
+} from '../commands/chat-response-command'
 import type { ChatSessionRuntimeControls } from './use-chat-session-runtime-controls'
 
 export function useChatQueue(
@@ -25,9 +31,18 @@ export function useChatQueue(
     refreshQueue()
   }, [chatSessionId, refreshQueue])
 
+  const updateQueueItem = useCallback(async (queueItemId: string, body: ChatQueueEnqueueBody) => {
+    if (!chatSessionId) {
+      return
+    }
+    await updateChatSessionQueueItem({ sessionId: chatSessionId, queueItemId, body })
+    refreshQueue()
+  }, [chatSessionId, refreshQueue])
+
   return {
     listChatSessionQueue: chatSessionId ? () => listChatSessionQueue(chatSessionId) : undefined,
     cancelQueueItem,
     reorderQueueItems,
+    updateQueueItem,
   }
 }

@@ -15,6 +15,7 @@ import type {
   QueueItemFailedPayload,
   QueueItemReleasedPayload,
   QueueItemReorderedPayload,
+  QueueItemUpdatedPayload,
   QueueProjectionStatus,
   RunTerminalPayload,
   StoredChatSessionEvent
@@ -107,6 +108,9 @@ export function projectChatSessionEvent(d: ProjectorDb, event: ChatSessionEvent)
       break
     case 'QueueItemReordered':
       projectQueueItemReordered(d, event.payload)
+      break
+    case 'QueueItemUpdated':
+      projectQueueItemUpdated(d, event.payload)
       break
     case 'QueueItemCancelled':
       projectQueueItemCancelled(d, event.payload)
@@ -264,6 +268,31 @@ function projectQueueItemReordered(d: ProjectorDb, payload: QueueItemReorderedPa
         eq(chatSessionQueueItems.id, payload.queueItemId),
         eq(chatSessionQueueItems.sessionId, payload.sessionId),
         eq(chatSessionQueueItems.mode, 'queue')
+      )
+    )
+    .run()
+  touchSession(d, payload.sessionId, payload.updatedAt)
+}
+
+function projectQueueItemUpdated(d: ProjectorDb, payload: QueueItemUpdatedPayload): void {
+  d.update(chatSessionQueueItems)
+    .set({
+      text: payload.text,
+      filesJson: payload.filesJson,
+      contextPartsJson: payload.contextPartsJson,
+      providerTargetId: payload.providerTargetId,
+      modelId: payload.modelId,
+      thinkingEffort: payload.thinkingEffort,
+      runtimeAccessMode: payload.runtimeAccessMode,
+      runtimeInteractionMode: payload.runtimeInteractionMode,
+      updatedAt: payload.updatedAt
+    })
+    .where(
+      and(
+        eq(chatSessionQueueItems.id, payload.queueItemId),
+        eq(chatSessionQueueItems.sessionId, payload.sessionId),
+        eq(chatSessionQueueItems.mode, 'queue'),
+        eq(chatSessionQueueItems.status, 'pending')
       )
     )
     .run()

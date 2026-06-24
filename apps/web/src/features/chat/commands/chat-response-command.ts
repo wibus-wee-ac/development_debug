@@ -376,6 +376,32 @@ export async function cancelChatSessionQueueItem(args: {
   return parseChatQueueItem(await res.json())
 }
 
+export async function updateChatSessionQueueItem(args: {
+  sessionId: string
+  queueItemId: string
+  body: ChatQueueEnqueueBody
+}): Promise<ChatQueueItem> {
+  const res = await fetch(`${SERVER_BASE}/chat/sessions/${args.sessionId}/queue/${args.queueItemId}`, {
+    method: 'PATCH',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(args.body),
+  })
+
+  if (!res.ok) {
+    const body = await res.text().catch(() => '')
+    throw Object.assign(
+      new Error(`Failed to update chat queue item: ${res.status} ${body}`),
+      {
+        bodyText: body,
+        code: readJsonErrorCodeFromText(body),
+        status: res.status,
+      },
+    )
+  }
+
+  return parseChatQueueItem(await res.json())
+}
+
 export async function reorderChatSessionQueue(args: {
   sessionId: string
   queueItemIds: string[]

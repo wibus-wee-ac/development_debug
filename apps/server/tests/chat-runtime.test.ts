@@ -18,6 +18,7 @@ import {
   getActiveRunReplayBufferSummary,
   recoverPersistedRunProjections,
   reportRuntimeSessionTitle,
+  updateSessionQueueItem,
 } from '../src/modules/chat-runtime/service'
 import {
   cancelQueuedSessionItem,
@@ -4779,6 +4780,137 @@ describe('chat runtime capability', () => {
       shutdownInfra()
       rmSync(dataDir, { recursive: true, force: true })
       restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+    }
+  })
+
+  it('updates a pending queue item in place and rejects non-pending items', async () => {
+    const dataDir = makeTempDir('cradle-data-')
+    const workspaceRoot = makeTempDir('cradle-workspace-')
+    const previousDataDir = process.env.CRADLE_DATA_DIR
+    const previousSecret = process.env.CRADLE_CREDENTIAL_SECRET
+    process.env.CRADLE_DATA_DIR = dataDir
+    process.env.CRADLE_CREDENTIAL_SECRET = 'chat-runtime-secret'
+
+    let app: Awaited<ReturnType<typeof createServerApp>> | undefined
+
+    try {
+      app = await createServerApp()
+      db().insert(workspaces).values({
+        id: 'workspace-queue-update',
+        name: 'Workspace Queue Update',
+        path: workspaceRoot,
+      }).run()
+      await createProfileAndSession(app, 'workspace-queue-update', {
+        providerTargetId: 'provider-target-queue-update',
+        sessionId: 'session-queue-update',
+      })
+
+      db().insert(chatSessionQueueItems).values({
+        id: 'queue-update-pending',
+        sessionId: 'session-queue-update',
+        mode: 'queue',
+        status: 'pending',
+        text: 'original text',
+        filesJson: '[]',
+        contextPartsJson: '[]',
+        providerTargetId: null,
+        modelId: null,
+        thinkingEffort: null,
+        permissionMode: null,
+        runtimeAccessMode: 'approval-required',
+        runtimeInteractionMode: 'default',
+        position: 1,
+        sourceRunId: null,
+        startedRunId: null,
+        errorText: null,
+        createdAt: 100,
+        updatedAt: 100,
+      }).run()
+      db().insert(chatSessionQueueItems).values({
+        id: 'queue-update-claimed',
+        sessionId: 'session-queue-update',
+        mode: 'queue',
+        status: 'running',
+        text: 'claimed item',
+        filesJson: '[]',
+        contextPartsJson: '[]',
+        providerTargetId: null,
+        modelId: null,
+        thinkingEffort: null,
+        permissionMode: null,
+        runtimeAccessMode: 'approval-required',
+        runtimeInteractionMode: 'default',
+        position: 2,
+        sourceRunId: null,
+        startedRunId: null,
+        errorText: null,
+        createdAt: 110,
+        updatedAt: 110,
+      }).run()
+
+      const updated = await updateSessionQueueItem({
+        sessionId: 'session-queue-update',
+        queueItemId: 'queue-update-pending',
+        text: 'edited text',
+        runtimeSettings: { accessMode: 'full-access', interactionMode: 'plan' },
+      })
+      expect(updated).toEqual(expect.objectContaining({
+        id: 'queue-update-pending',
+        status: 'pending',
+        text: 'edited text',
+        position: 1,
+        runtimeSettings: expect.objectContaining({
+          accessMode: 'full-access',
+          interactionMode: 'plan',
+        }),
+      }))
+
+      const row = db()
+        .select()
+        .from(chatSessionQueueItems)
+        .where(eq(chatSessionQueueItems.id, 'queue-update-pending'))
+        .get()
+      expect(row).toEqual(expect.objectContaining({
+        text: 'edited text',
+        status: 'pending',
+        position: 1,
+        runtimeAccessMode: 'full-access',
+        runtimeInteractionMode: 'plan',
+      }))
+
+      const events = db()
+        .select()
+        .from(sessionEvents)
+        .where(eq(sessionEvents.aggregateId, 'session-queue-update'))
+        .all()
+      expect(events.map(event => event.eventType)).toEqual(['QueueItemUpdated'])
+
+      // Editing a non-pending (claimed) item is rejected.
+      await expect(updateSessionQueueItem({
+        sessionId: 'session-queue-update',
+        queueItemId: 'queue-update-claimed',
+        text: 'try edit claimed',
+      })).rejects.toEqual(expect.objectContaining({ code: 'chat_queue_item_not_pending' }))
+
+      // Editing an unknown item is rejected.
+      await expect(updateSessionQueueItem({
+        sessionId: 'session-queue-update',
+        queueItemId: 'queue-missing',
+        text: 'nope',
+      })).rejects.toEqual(expect.objectContaining({ code: 'chat_queue_item_not_found' }))
+
+      // An empty update is rejected.
+      await expect(updateSessionQueueItem({
+        sessionId: 'session-queue-update',
+        queueItemId: 'queue-update-pending',
+      })).rejects.toEqual(expect.objectContaining({ code: 'chat_queue_item_empty' }))
+    }
+    finally {
+      shutdownInfra()
+      rmSync(dataDir, { recursive: true, force: true })
+      rmSync(workspaceRoot, { recursive: true, force: true })
+      restoreEnv('CRADLE_DATA_DIR', previousDataDir)
+      restoreEnv('CRADLE_CREDENTIAL_SECRET', previousSecret)
     }
   })
 

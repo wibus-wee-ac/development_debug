@@ -7,6 +7,7 @@
   "continuation.queue.attachmentLabel_one": "{{count}} 個の添付",
   "continuation.queue.attachmentLabel_other": "{{count}} 個の添付",
   "continuation.queue.cancel": "キュー項目をキャンセル: {{label}}",
+  "continuation.queue.edit": "キュー項目を編集: {{label}}",
   "continuation.queue.emptyLabel": "空の継続",
   "continuation.queue.moveDown": "キュー項目を下へ移動: {{label}}",
   "continuation.queue.moveUp": "キュー項目を上へ移動: {{label}}",

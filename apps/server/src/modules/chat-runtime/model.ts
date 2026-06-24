@@ -1269,5 +1269,15 @@ export const ChatRuntimeModel = {
 
   queueReorderBody: t.Object({
     queueItemIds: t.Array(t.String({ minLength: 1 }))
+  }),
+
+  queueUpdateBody: t.Object({
+    text: t.Optional(t.String({ minLength: 1 })),
+    files: t.Optional(t.Array(filePartSchema)),
+    contextParts: t.Optional(t.Array(contextPartSchema)),
+    providerTargetId: t.Optional(t.String()),
+    modelId: t.Optional(nullableModelIdSchema),
+    thinkingEffort: t.Optional(thinkingEffortSchema),
+    runtimeSettings: t.Optional(runtimeSettingsPatchSchema)
   })
 }

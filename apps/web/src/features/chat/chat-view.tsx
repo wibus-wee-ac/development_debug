@@ -5,7 +5,7 @@ import {
 } from '@mingcute/react'
 import { useQueryClient } from '@tanstack/react-query'
 import { m } from 'motion/react'
-import { useCallback, useEffect, useMemo, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Virtualizer } from 'virtua'
 
@@ -40,7 +40,7 @@ import type {
 } from './capabilities/chat-capabilities'
 import { runtimeUiSlotStatesQueryKey } from './capabilities/chat-capabilities'
 import { useQuickQuestion } from './capabilities/use-quick-question'
-import type { ChatQueueItem } from './commands/chat-response-command'
+import type { ChatQueueEnqueueBody, ChatQueueItem } from './commands/chat-response-command'
 import type { ComposerRuntimeSettingsController } from './composer/composer'
 import { Composer } from './composer/composer'
 import type {
@@ -70,7 +70,7 @@ import { MessageBubbleById } from './rendering/message-bubble'
 import { RuntimeDiagnosticsPopover } from './runtime/runtime-diagnostics-popover'
 import { RuntimeSettingsControl } from './runtime/runtime-settings-control'
 import { useRuntimeSettings } from './runtime/use-runtime-settings'
-import type { SendMessageOptions } from './session/use-chat-session'
+import type { SendMessageOptions, SendMessageResult } from './session/use-chat-session'
 import { useChatSession } from './session/use-chat-session'
 import { useSessionAwaitSummary } from './session/use-session-await'
 import type { ChatComposerSlashCommand } from './slash-commands/chat-slash-commands'
@@ -392,6 +392,7 @@ function ChatComposerSection({
   queueItems,
   onCancelQueueItem,
   onReorderQueueItems,
+  onUpdateQueueItem,
   onSlashCommandAction,
   composerRuntime,
   appshotRuntime,
@@ -417,6 +418,7 @@ function ChatComposerSection({
   queueItems: ChatQueueItem[]
   onCancelQueueItem: (queueItemId: string) => void
   onReorderQueueItems: (queueItemIds: string[]) => void
+  onUpdateQueueItem: (queueItemId: string, body: ChatQueueEnqueueBody) => Promise<void>
   onSlashCommandAction?: (
     command: ChatComposerSlashCommand,
     context: ComposerSlashCommandActionContext,
@@ -455,6 +457,10 @@ function ChatComposerSection({
   const [dismissPlanSignal, setDismissPlanSignal] = useState(0)
   const [composerHasDraft, setComposerHasDraft] = useState(false)
   const [activePlanRefineTabId, setActivePlanRefineTabId] = useState<string | null>(null)
+  // Queue-item edit-in-place: when set, the next submit PATCHes this queue item
+  // instead of enqueueing a new follow-up.
+  const editingQueueItemIdRef = useRef<string | null>(null)
+  const [editingQueueItemId, setEditingQueueItemId] = useState<string | null>(null)
   const planState
     = composerRuntime.slotStates.find(
       (state): state is ChatRuntimePlanUiSlotState => state.kind === 'plan',
@@ -468,19 +474,96 @@ function ChatComposerSection({
   )
 
   const submitComposerMessage = useCallback(
-    async (...args: Parameters<ChatComposerRuntime['send']>) => {
-      const result = await composerRuntime.send(...args)
+    (...args: Parameters<ChatComposerRuntime['send']>): SendMessageResult | Promise<SendMessageResult> => {
+      const editingId = editingQueueItemIdRef.current
+      if (editingId) {
+        const [text, files, contextParts] = args
+        return (async () => {
+          try {
+            await onUpdateQueueItem(editingId, {
+              text,
+              files,
+              contextParts,
+              runtimeSettings: runtimeSettings?.settings,
+            })
+          }
+          catch (error) {
+            const code = (error as { code?: string } | null)?.code
+            const status = (error as { status?: number } | null)?.status
+            if (code === 'chat_queue_item_not_pending' || status === 409) {
+              toastManager.add({
+                type: 'error',
+                title: 'Queue item no longer editable',
+                description: 'This queue item was already claimed or cancelled.',
+              })
+            }
+            else {
+              throw error
+            }
+          }
+          finally {
+            editingQueueItemIdRef.current = null
+            setEditingQueueItemId(null)
+          }
+          if (planState) {
+            setDismissPlanSignal(signal => signal + 1)
+          }
+          return undefined
+        })()
+      }
+      const result = composerRuntime.send(...args)
+      if (result instanceof Promise) {
+        return result.then((resolved) => {
+          if (planState) {
+            setDismissPlanSignal(signal => signal + 1)
+          }
+          return resolved
+        })
+      }
       if (planState) {
         setDismissPlanSignal(signal => signal + 1)
       }
       return result
     },
-    [composerRuntime, planState],
+    [composerRuntime, onUpdateQueueItem, planState, runtimeSettings],
   )
 
   const handleComposerDraftChange = useCallback((value: string) => {
     setComposerHasDraft(Boolean(value.trim()))
   }, [])
+
+  const handleEditQueueItem = useCallback((item: ChatQueueItem) => {
+    editingQueueItemIdRef.current = item.id
+    setEditingQueueItemId(item.id)
+    if (item.text) {
+      setComposerReplaceText(item.text)
+      setComposerReplaceTextKey(key => key + 1)
+    }
+    if (item.files.length > 0) {
+      appshotRuntime.appendFileParts(item.files)
+    }
+    if (item.runtimeSettings) {
+      runtimeSettings?.onChange({
+        accessMode: item.runtimeSettings.accessMode,
+        interactionMode: item.runtimeSettings.interactionMode,
+      })
+    }
+  }, [appshotRuntime, runtimeSettings])
+
+  // If the item being edited leaves the pending queue (claimed/cancelled),
+  // abandon the edit so the next submit enqueues normally.
+  useEffect(() => {
+    if (!editingQueueItemId) {
+      return
+    }
+    const stillPending = queueItems.some(
+      item => item.id === editingQueueItemId && item.status === 'pending',
+    )
+    if (!stillPending) {
+      editingQueueItemIdRef.current = null
+      setEditingQueueItemId(null)
+    }
+  }, [editingQueueItemId, queueItems])
 
   useEffect(() => {
     if (!activePlanRefineTabId || planRefineEditorOpen) {
@@ -610,6 +693,8 @@ function ChatComposerSection({
         items={queueItems}
         onCancel={onCancelQueueItem}
         onReorder={onReorderQueueItems}
+        onEdit={handleEditQueueItem}
+        editingItemId={editingQueueItemId}
         className="mb-2"
       />
       <ComposerSlotStates
@@ -708,6 +793,7 @@ export function ChatView({
     queueItems,
     cancelQueueItem,
     reorderQueueItems,
+    updateQueueItem,
   } = useChatSession(sessionId, chatActive)
   const { data: awaitSummary } = useSessionAwaitSummary(sessionId, chatActive)
   const [droppedPath, setDroppedPath] = useState<{ text: string, ts: number } | null>(null)
@@ -1154,6 +1240,7 @@ export function ChatView({
             queueItems={queueItems}
             onCancelQueueItem={queueItemId => void cancelQueueItem(queueItemId)}
             onReorderQueueItems={queueItemIds => void reorderQueueItems(queueItemIds)}
+            onUpdateQueueItem={(queueItemId, body) => updateQueueItem(queueItemId, body)}
             onSlashCommandAction={handleSlashCommandAction}
             composerRuntime={preparedComposerRuntime}
             appshotRuntime={appshotRuntime}
