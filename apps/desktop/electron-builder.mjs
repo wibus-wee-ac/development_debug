@@ -8,6 +8,7 @@ const __dirname = path.dirname(fileURLToPath(import.meta.url))
 
 const updateServerUrl = process.env.CRADLE_DESKTOP_UPDATE_URL?.trim()
 const hasAppleSigningIdentity = Boolean(process.env.CSC_LINK || process.env.CSC_NAME)
+const includeRelaydResource = process.env.CRADLE_DESKTOP_INCLUDE_RELAYD?.trim() === '1'
 
 if (!hasAppleSigningIdentity) {
   process.env.CSC_IDENTITY_AUTO_DISCOVERY = 'false'
@@ -159,11 +160,13 @@ const config = {
       to: 'bin',
       filter: ['**/*'],
     },
-    {
-      from: 'resources/relayd',
-      to: 'relayd',
-      filter: ['**/*'],
-    },
+    ...(includeRelaydResource
+      ? [{
+          from: 'resources/relayd',
+          to: 'relayd',
+          filter: ['**/*'],
+        }]
+      : []),
     {
       from: '../../packages/db/drizzle',
       to: 'drizzle',
