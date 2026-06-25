@@ -105,6 +105,7 @@ function stagePayload(appPath, stageDir) {
   mkdirSync(payloadDir, { recursive: true })
   cpSync(appPath, resolve(payloadDir, 'Cradle.app'), { recursive: true })
   execFileSync('/usr/bin/xattr', ['-cr', resolve(payloadDir, 'Cradle.app')], { stdio: 'ignore' })
+  return payloadDir
 }
 
 function stageCommand(stageDir) {
@@ -165,7 +166,7 @@ async function main() {
   try {
     console.log('Staging app bundle...')
     const appPath = resolvePayload(args.app, stageDir)
-    stagePayload(appPath, stageDir)
+    const payloadDir = stagePayload(appPath, stageDir)
 
     console.log('Staging installer command...')
     const commandPath = stageCommand(stageDir)
@@ -181,7 +182,7 @@ async function main() {
     const rwDmg = resolve(stageDir, 'rw.dmg')
     await buildDmg({
       title: VOLUME_NAME,
-      icon: iconStaged,
+      ...(iconStaged ? { icon: iconStaged } : {}),
       'background-color': '#1c1c1c',
       'icon-size': 80,
       format: 'UDRW',
@@ -189,6 +190,7 @@ async function main() {
         size: { width: 660, height: 400 },
       },
       contents: [
+        { x: 80, y: 320, type: 'file', path: payloadDir, name: '.payload' },
         { x: 330, y: 200, type: 'file', path: commandPath, name: 'Install Cradle' },
       ],
       basepath: stageDir,

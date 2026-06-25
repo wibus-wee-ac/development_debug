@@ -31,6 +31,7 @@ const EMPTY_UPDATE_STATUS: DesktopUpdateStatus = {
   currentVersion: '0.0.0',
   isCheckingForUpdates: false,
   isDownloadingUpdate: false,
+  isPreparingUpdate: false,
   downloadingProgress: 0,
   updateDownloaded: false,
   downloadedFilePath: null,
@@ -96,7 +97,7 @@ export function DesktopUpdateSettings() {
 
   const targetVersion = readTargetVersion(status)
   const targetSize = readTargetSize(status)
-  const busy = loading || status.isCheckingForUpdates || status.isDownloadingUpdate
+  const busy = loading || status.isCheckingForUpdates || status.isDownloadingUpdate || status.isPreparingUpdate
   const canCheck = isElectron && !!nativeIpc && !status.unsupported && !busy
   const canDownload = canCheck && !!status.updateInfo && !status.updateDownloaded
   const canApply = canCheck && status.updateDownloaded
@@ -110,6 +111,9 @@ export function DesktopUpdateSettings() {
     }
     if (status.isDownloadingUpdate) {
       return t('desktop.updates.status.downloading' as SettingsKey)
+    }
+    if (status.isPreparingUpdate) {
+      return t('desktop.updates.status.preparing' as SettingsKey)
     }
     if (status.updateDownloaded) {
       return t('desktop.updates.status.ready' as SettingsKey)
@@ -281,7 +285,7 @@ export function DesktopUpdateSettings() {
                 </div>
               )}
 
-              {(status.isDownloadingUpdate || status.updateDownloaded) && (
+              {(status.isDownloadingUpdate || status.isPreparingUpdate || status.updateDownloaded) && (
                 <div className="flex items-center gap-3">
                   <Progress value={status.downloadingProgress} className="h-1.5 flex-1" />
                   <span className="w-10 text-right font-mono text-[11px] tabular-nums text-muted-foreground">

@@ -111,6 +111,7 @@ export class DesktopUpdateManager {
       currentVersion,
       isCheckingForUpdates: false,
       isDownloadingUpdate: false,
+      isPreparingUpdate: false,
       downloadingProgress: 0,
       updateDownloaded: false,
       downloadedFilePath: null,
@@ -197,7 +198,7 @@ export class DesktopUpdateManager {
       return await this.checkForWindowsUpdates(options)
     }
 
-    if (!this.source || this.statusSnapshot.isCheckingForUpdates || this.statusSnapshot.isDownloadingUpdate) {
+    if (!this.source || this.statusSnapshot.isCheckingForUpdates || this.statusSnapshot.isDownloadingUpdate || this.statusSnapshot.isPreparingUpdate) {
       return this.statusSnapshot
     }
 
@@ -253,6 +254,7 @@ export class DesktopUpdateManager {
 
     this.setStatus({
       isDownloadingUpdate: true,
+      isPreparingUpdate: false,
       updateDownloaded: false,
       downloadedFilePath: null,
       downloadingProgress: 0,
@@ -263,13 +265,20 @@ export class DesktopUpdateManager {
       const download = await retryWithBackoff(() => downloader.download(availableUpdate, (progress) => {
         this.setStatus({
           isDownloadingUpdate: true,
+          isPreparingUpdate: false,
           downloadingProgress: progress.percent,
         })
       }))
+      this.setStatus({
+        isDownloadingUpdate: false,
+        isPreparingUpdate: true,
+        downloadingProgress: 100,
+      })
       const plan = await installer.prepare(download, availableUpdate.info.version)
       this.installerPlan = plan
       this.setStatus({
         isDownloadingUpdate: false,
+        isPreparingUpdate: false,
         downloadingProgress: 100,
         updateDownloaded: true,
         downloadedFilePath: plan.archivePath,
@@ -279,6 +288,7 @@ export class DesktopUpdateManager {
       this.installerPlan = null
       this.setStatus({
         isDownloadingUpdate: false,
+        isPreparingUpdate: false,
         updateDownloaded: false,
         downloadedFilePath: null,
         errorMessage: readErrorMessage(error),
@@ -338,7 +348,7 @@ export class DesktopUpdateManager {
   }
 
   private async checkForWindowsUpdates(options: CheckForUpdatesOptions): Promise<DesktopUpdateStatus> {
-    if (this.statusSnapshot.isCheckingForUpdates || this.statusSnapshot.isDownloadingUpdate) {
+    if (this.statusSnapshot.isCheckingForUpdates || this.statusSnapshot.isDownloadingUpdate || this.statusSnapshot.isPreparingUpdate) {
       return this.statusSnapshot
     }
 
@@ -380,6 +390,7 @@ export class DesktopUpdateManager {
 
     this.setStatus({
       isDownloadingUpdate: true,
+      isPreparingUpdate: false,
       updateDownloaded: false,
       downloadedFilePath: null,
       downloadingProgress: 0,
@@ -390,6 +401,7 @@ export class DesktopUpdateManager {
       const downloadedFilePath = await retryWithBackoff(() => this.windowsUpdater!.downloadUpdate())
       this.setStatus({
         isDownloadingUpdate: false,
+        isPreparingUpdate: false,
         downloadingProgress: 100,
         updateDownloaded: true,
         downloadedFilePath,
@@ -398,6 +410,7 @@ export class DesktopUpdateManager {
     catch (error) {
       this.setStatus({
         isDownloadingUpdate: false,
+        isPreparingUpdate: false,
         updateDownloaded: false,
         downloadedFilePath: null,
         errorMessage: readErrorMessage(error),

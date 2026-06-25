@@ -35,6 +35,7 @@
   "update.status.current": "最新",
   "update.status.downloaded": "ダウンロード済み",
   "update.status.downloading": "ダウンロード中 {{progress}}%",
+  "update.status.preparing": "準備中",
   "update.status.unavailable": "更新は利用できません",
   "update.toast.availableDescription": "デスクトップ設定を開いて、インストーラーをデスクトップにダウンロードします。",
   "update.toast.availableTitle": "Cradle {{version}} が利用可能です",

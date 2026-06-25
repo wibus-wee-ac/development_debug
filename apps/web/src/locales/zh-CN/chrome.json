@@ -35,6 +35,7 @@
   "update.status.current": "已是最新",
   "update.status.downloaded": "已下载",
   "update.status.downloading": "下载中 {{progress}}%",
+  "update.status.preparing": "准备中",
   "update.status.unavailable": "更新不可用",
   "update.toast.availableDescription": "打开桌面端设置，下载并准备安装更新。",
   "update.toast.availableTitle": "Cradle {{version}} 可用",

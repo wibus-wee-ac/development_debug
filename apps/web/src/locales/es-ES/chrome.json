@@ -35,6 +35,7 @@
   "update.status.current": "Actual",
   "update.status.downloaded": "Descargado",
   "update.status.downloading": "Descargando {{progress}}%",
+  "update.status.preparing": "Preparando",
   "update.status.unavailable": "Actualizaciones no disponibles",
   "update.toast.availableDescription": "Abre la configuración de Escritorio para descargar el instalador en el escritorio.",
   "update.toast.availableTitle": "Cradle {{version}} está disponible",

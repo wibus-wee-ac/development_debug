@@ -142,6 +142,7 @@
   "desktop.updates.status.checking": "確認中",
   "desktop.updates.status.current": "最新",
   "desktop.updates.status.downloading": "ダウンロード中",
+  "desktop.updates.status.preparing": "準備中",
   "desktop.updates.status.ready": "ダウンロード済み",
   "desktop.updates.status.unavailable": "利用不可",
   "desktop.updates.title": "デスクトップの更新",

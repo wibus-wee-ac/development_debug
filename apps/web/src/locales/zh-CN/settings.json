@@ -142,6 +142,7 @@
   "desktop.updates.status.checking": "检查中",
   "desktop.updates.status.current": "最新",
   "desktop.updates.status.downloading": "下载中",
+  "desktop.updates.status.preparing": "准备中",
   "desktop.updates.status.ready": "已下载",
   "desktop.updates.status.unavailable": "不可用",
   "desktop.updates.title": "桌面端更新",

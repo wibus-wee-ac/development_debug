@@ -142,6 +142,7 @@
   "desktop.updates.status.checking": "Checking",
   "desktop.updates.status.current": "Current",
   "desktop.updates.status.downloading": "Downloading",
+  "desktop.updates.status.preparing": "Preparing",
   "desktop.updates.status.ready": "Downloaded",
   "desktop.updates.status.unavailable": "Unavailable",
   "desktop.updates.title": "Desktop Updates",

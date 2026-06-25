@@ -207,7 +207,7 @@ const config = {
       'nsis',
       'zip',
     ],
-    artifactName: '${productName}-${version}-${os}-${arch}.${ext}',
+    artifactName: '${productName}-${os}-${arch}.${ext}',
   },
 
   linux: {
@@ -221,7 +221,7 @@ const config = {
   nsis: {
     oneClick: false,
     allowToChangeInstallationDirectory: true,
-    artifactName: '${productName}-${version}-setup.${ext}',
+    artifactName: '${productName}-setup.${ext}',
   },
 }
 

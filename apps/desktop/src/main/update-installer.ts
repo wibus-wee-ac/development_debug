@@ -5,7 +5,6 @@ import { promisify } from 'node:util'
 import { constants } from 'node:fs'
 
 import { app } from 'electron'
-import extractZip from 'extract-zip'
 
 import type {
   DesktopUpdateApplyResult,
@@ -50,7 +49,7 @@ export class DesktopUpdateInstaller {
     const stagingRoot = join(this.updatesDir, 'staging', version)
     await rm(stagingRoot, { recursive: true, force: true })
     await mkdir(stagingRoot, { recursive: true })
-    await extractZip(download.archivePath, { dir: stagingRoot })
+    await extractArchive(download.archivePath, stagingRoot)
 
     const stagedAppPath = await readStagedAppPath(stagingRoot, targetAppName)
     const stagedVersion = await readBundleShortVersion(stagedAppPath)
@@ -148,6 +147,15 @@ async function readBundleShortVersion(appPath: string): Promise<string> {
     infoPlistPath,
   ])
   return stdout.trim()
+}
+
+async function extractArchive(archivePath: string, targetDirectory: string): Promise<void> {
+  await execFileAsync('/usr/bin/ditto', [
+    '-x',
+    '-k',
+    archivePath,
+    targetDirectory,
+  ])
 }
 
 async function canWriteDirectory(directoryPath: string): Promise<boolean> {

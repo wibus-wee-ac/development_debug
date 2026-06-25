@@ -19,6 +19,7 @@ export default {
   'update.status.current': 'Current',
   'update.status.downloaded': 'Downloaded',
   'update.status.downloading': 'Downloading {{progress}}%',
+  'update.status.preparing': 'Preparing',
   'update.status.unavailable': 'Updates unavailable',
   'update.toast.availableDescription': 'Open Desktop settings to download the installer to your Desktop.',
   'update.toast.availableTitle': 'Cradle {{version}} is available',

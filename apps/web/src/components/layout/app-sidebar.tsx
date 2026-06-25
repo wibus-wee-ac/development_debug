@@ -37,6 +37,7 @@ const EMPTY_UPDATE_STATUS: DesktopUpdateStatus = {
   currentVersion: '0.0.0',
   isCheckingForUpdates: false,
   isDownloadingUpdate: false,
+  isPreparingUpdate: false,
   downloadingProgress: 0,
   updateDownloaded: false,
   downloadedFilePath: null,
@@ -156,7 +157,7 @@ function SidebarUpdateButton({ collapsed }: { collapsed: boolean }) {
     })
   }, [status.updateInfo?.version, t])
 
-  const hasUpdateNotice = !!status.updateInfo || status.isDownloadingUpdate || status.updateDownloaded
+  const hasUpdateNotice = !!status.updateInfo || status.isDownloadingUpdate || status.isPreparingUpdate || status.updateDownloaded
 
   if (!isElectron || !hasUpdateNotice) {
     return null
@@ -168,13 +169,15 @@ function SidebarUpdateButton({ collapsed }: { collapsed: boolean }) {
       ? t('update.status.checking')
       : status.isDownloadingUpdate
         ? t('update.status.downloading', { progress: Math.round(status.downloadingProgress) })
-        : status.updateDownloaded
-          ? t('update.status.downloaded')
-          : status.updateInfo
-            ? t('update.status.available', { version: status.updateInfo.version })
-            : t('update.status.current')
+        : status.isPreparingUpdate
+          ? t('update.status.preparing')
+          : status.updateDownloaded
+            ? t('update.status.downloaded')
+            : status.updateInfo
+              ? t('update.status.available', { version: status.updateInfo.version })
+              : t('update.status.current')
 
-  const Icon = status.updateDownloaded || status.isDownloadingUpdate ? DownloadIcon : SparklesIcon
+  const Icon = status.updateDownloaded || status.isDownloadingUpdate || status.isPreparingUpdate ? DownloadIcon : SparklesIcon
 
   return (
     <TooltipProvider delayDuration={collapsed ? 0 : 500}>

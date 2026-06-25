@@ -311,6 +311,7 @@ export default {
   'desktop.updates.status.unavailable': 'Unavailable',
   'desktop.updates.status.checking': 'Checking',
   'desktop.updates.status.downloading': 'Downloading',
+  'desktop.updates.status.preparing': 'Preparing',
   'desktop.updates.status.ready': 'Downloaded',
   'desktop.updates.status.available': 'Available',
   'desktop.updates.status.current': 'Current',

@@ -20,7 +20,7 @@ const childProcessMocks = vi.hoisted(() => {
   ) => {
     callback(null, '1.2.3\n', '')
   })
-  const promisifiedExecFile = vi.fn(async () => ({
+  const promisifiedExecFile = vi.fn(async (_file: string, _args: string[]) => ({
     stdout: '1.2.3\n',
     stderr: '',
   }))
@@ -38,15 +38,6 @@ const childProcessMocks = vi.hoisted(() => {
   }
 })
 
-const extractZipMocks = vi.hoisted(() => ({
-  extractZip: vi.fn(async (_archivePath: string, options: { dir: string }) => {
-    const appPath = join(options.dir, 'Cradle.app')
-    await mkdir(join(appPath, 'Contents'), { recursive: true })
-    await writeFile(join(appPath, 'Contents', 'Info.plist'), '')
-    await writeFile(join(appPath, 'Contents', 'update-marker.txt'), 'new')
-  }),
-}))
-
 vi.mock('electron', () => electronMocks)
 vi.mock('node:child_process', async () => {
   const actual = await vi.importActual<typeof import('node:child_process')>('node:child_process')
@@ -56,9 +47,6 @@ vi.mock('node:child_process', async () => {
     spawn: childProcessMocks.spawn,
   }
 })
-vi.mock('extract-zip', () => ({
-  default: extractZipMocks.extractZip,
-}))
 
 const tempRoots: string[] = []
 
@@ -113,12 +101,22 @@ describe('DesktopUpdateInstaller', () => {
     setPlatform('darwin')
     childProcessMocks.execFile.mockClear()
     childProcessMocks.promisifiedExecFile.mockClear()
-    childProcessMocks.promisifiedExecFile.mockResolvedValue({
-      stdout: '1.2.3\n',
-      stderr: '',
+    childProcessMocks.promisifiedExecFile.mockImplementation(async (file: string, args: string[]) => {
+      if (file === '/usr/bin/ditto') {
+        const targetDirectory = args[args.length - 1]
+        const appPath = join(targetDirectory, 'Cradle.app')
+        await mkdir(join(appPath, 'Contents'), { recursive: true })
+        await writeFile(join(appPath, 'Contents', 'Info.plist'), '')
+        await writeFile(join(appPath, 'Contents', 'update-marker.txt'), 'new')
+        return { stdout: '', stderr: '' }
+      }
+
+      return {
+        stdout: '1.2.3\n',
+        stderr: '',
+      }
     })
     childProcessMocks.spawn.mockClear()
-    extractZipMocks.extractZip.mockClear()
   })
 
   afterEach(async () => {
@@ -144,9 +142,12 @@ describe('DesktopUpdateInstaller', () => {
     const plan = await installer.prepare(createDownload(archivePath), '1.2.3')
     const script = await readFile(plan.scriptPath, 'utf8')
 
-    expect(extractZipMocks.extractZip).toHaveBeenCalledWith(archivePath, {
-      dir: join(updatesDir, 'staging', '1.2.3'),
-    })
+    expect(childProcessMocks.promisifiedExecFile).toHaveBeenCalledWith('/usr/bin/ditto', [
+      '-x',
+      '-k',
+      archivePath,
+      join(updatesDir, 'staging', '1.2.3'),
+    ])
     expect(childProcessMocks.promisifiedExecFile).toHaveBeenCalledWith('/usr/bin/plutil', [
       '-extract',
       'CFBundleShortVersionString',
@@ -232,9 +233,19 @@ describe('DesktopUpdateInstaller', () => {
   })
 
   it('rejects a staged bundle with a mismatched version', async () => {
-    childProcessMocks.promisifiedExecFile.mockResolvedValueOnce({
-      stdout: '1.2.4\n',
-      stderr: '',
+    childProcessMocks.promisifiedExecFile.mockImplementation(async (file: string, args: string[]) => {
+      if (file === '/usr/bin/ditto') {
+        const targetDirectory = args[args.length - 1]
+        const appPath = join(targetDirectory, 'Cradle.app')
+        await mkdir(join(appPath, 'Contents'), { recursive: true })
+        await writeFile(join(appPath, 'Contents', 'Info.plist'), '')
+        return { stdout: '', stderr: '' }
+      }
+
+      return {
+        stdout: '1.2.4\n',
+        stderr: '',
+      }
     })
     const root = await createTempRoot()
     const currentAppPath = join(root, 'Applications', 'Cradle.app')
