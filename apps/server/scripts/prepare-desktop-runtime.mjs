@@ -36,6 +36,7 @@ mkdirSync(dirname(runtimeDir), { recursive: true })
 const result = spawnPnpmSync(
   [
     '--config.inject-workspace-packages=true',
+    '--config.node-linker=hoisted',
     '--filter',
     '@cradle/server',
     'deploy',
@@ -123,54 +124,49 @@ function pruneDeployMetadata() {
 
 function pruneExternalRuntimeDependencies() {
   const nodeModulesDir = join(tempDeployDir, 'node_modules')
-  const pnpmDir = join(nodeModulesDir, '.pnpm')
-  if (!existsSync(nodeModulesDir) || !existsSync(pnpmDir)) {
+  if (!existsSync(nodeModulesDir)) {
     return
   }
 
   const reachablePackageRoots = new Set()
-  const reachablePnpmEntries = new Set()
   const stack = []
 
   for (const packageName of externalRuntimePackages) {
-    const packagePath = joinPackagePath(nodeModulesDir, packageName)
-    if (!existsSync(packagePath)) {
+    const packagePath = resolvePackageFrom(packageName, tempDeployDir, nodeModulesDir)
+    if (!packagePath) {
       console.warn(`[desktop-runtime] External package ${packageName} was not deployed; skipping.`)
       continue
     }
-    stack.push(realpathSync(packagePath))
+    stack.push(packagePath)
   }
 
   while (stack.length > 0) {
-    const packageRoot = stack.pop()
+    const packageRoot = realpathSync(stack.pop())
     if (!packageRoot || reachablePackageRoots.has(packageRoot)) {
       continue
     }
     reachablePackageRoots.add(packageRoot)
-    const pnpmEntry = readPnpmEntryName(pnpmDir, packageRoot)
-    if (pnpmEntry) {
-      reachablePnpmEntries.add(pnpmEntry)
-    }
 
-    const dependenciesDir = pnpmEntry
-      ? join(pnpmDir, pnpmEntry, 'node_modules')
-      : join(packageRoot, 'node_modules')
-    if (!existsSync(dependenciesDir)) {
-      continue
-    }
-    for (const dependencyPath of listPackageEntries(dependenciesDir)) {
-      if (!existsSync(dependencyPath)) {
+    const packageJson = readPackageJson(packageRoot)
+    for (const dependencyName of listRuntimeDependencyNames(packageJson)) {
+      const dependencyPath = resolvePackageFrom(dependencyName, packageRoot, nodeModulesDir)
+      if (!dependencyPath) {
+        if (packageJson.dependencies?.[dependencyName]) {
+          throw new Error(
+            `Runtime dependency ${dependencyName} declared by ${packageJson.name ?? packageRoot} `
+            + `was not deployed under ${nodeModulesDir}.`,
+          )
+        }
         continue
       }
-      const resolvedDependencyPath = realpathSync(dependencyPath)
-      if (isPathInsideDirectory(pnpmDir, resolvedDependencyPath)) {
-        stack.push(resolvedDependencyPath)
-      }
+      stack.push(dependencyPath)
     }
   }
 
-  pruneTopLevelNodeModules(nodeModulesDir)
-  prunePnpmStore(pnpmDir, reachablePnpmEntries)
+  assertInstallerSafePackageRoots(nodeModulesDir, reachablePackageRoots)
+  pruneUnreachableTopLevelNodeModules(nodeModulesDir, reachablePackageRoots)
+  prunePnpmVirtualStore(nodeModulesDir)
+  pruneBinDirectories(nodeModulesDir)
 }
 
 function joinPackagePath(root, packageName) {
@@ -178,35 +174,34 @@ function joinPackagePath(root, packageName) {
   return join(root, ...parts)
 }
 
-function listPackageEntries(root) {
-  const entries = []
-  for (const entry of readdirSync(root, { withFileTypes: true })) {
-    const entryPath = join(root, entry.name)
-    if (entry.name.startsWith('.')) {
-      continue
-    }
-    if (entry.isDirectory() && entry.name.startsWith('@')) {
-      for (const scopedEntry of readdirSync(entryPath, { withFileTypes: true })) {
-        if (scopedEntry.isDirectory() || scopedEntry.isSymbolicLink()) {
-          entries.push(join(entryPath, scopedEntry.name))
-        }
-      }
-      continue
-    }
-    if (entry.isDirectory() || entry.isSymbolicLink()) {
-      entries.push(entryPath)
-    }
-  }
-  return entries
+function readPackageJson(packageRoot) {
+  return JSON.parse(readFileSync(join(packageRoot, 'package.json'), 'utf8'))
 }
 
-function readPnpmEntryName(pnpmDir, packageRoot) {
-  const relativePackageRoot = relative(pnpmDir, packageRoot)
-  if (isRelativePathOutsideDirectory(relativePackageRoot)) {
-    return null
+function listRuntimeDependencyNames(packageJson) {
+  return new Set([
+    ...Object.keys(packageJson.dependencies ?? {}),
+    ...Object.keys(packageJson.optionalDependencies ?? {}),
+    ...Object.keys(packageJson.peerDependencies ?? {}),
+  ])
+}
+
+function resolvePackageFrom(packageName, startDir, nodeModulesDir) {
+  let currentDir = resolve(startDir)
+  const deployRoot = resolve(tempDeployDir)
+  while (true) {
+    const candidate = joinPackagePath(join(currentDir, 'node_modules'), packageName)
+    if (existsSync(join(candidate, 'package.json'))) {
+      return candidate
+    }
+    if (currentDir === deployRoot || currentDir === dirname(currentDir)) {
+      break
+    }
+    currentDir = dirname(currentDir)
   }
-  const [entryName] = relativePackageRoot.split(/[\\/]/)
-  return entryName || null
+
+  const topLevelCandidate = joinPackagePath(nodeModulesDir, packageName)
+  return existsSync(join(topLevelCandidate, 'package.json')) ? topLevelCandidate : null
 }
 
 function isPathInsideDirectory(parentDir, candidatePath) {
@@ -218,10 +213,9 @@ function isRelativePathOutsideDirectory(relativePath) {
   return !relativePath || relativePath === '..' || relativePath.startsWith(`..${sep}`) || isAbsolute(relativePath)
 }
 
-function pruneTopLevelNodeModules(nodeModulesDir) {
-  const allowedTopLevelPackages = new Set(externalRuntimePackages)
+function pruneUnreachableTopLevelNodeModules(nodeModulesDir, reachablePackageRoots) {
   for (const entry of readdirSync(nodeModulesDir, { withFileTypes: true })) {
-    if (entry.name === '.pnpm') {
+    if (entry.name === '.pnpm' || entry.name === '.modules.yaml') {
       continue
     }
 
@@ -233,9 +227,9 @@ function pruneTopLevelNodeModules(nodeModulesDir) {
 
     if (entry.name.startsWith('@') && entry.isDirectory()) {
       for (const scopedEntry of readdirSync(entryPath, { withFileTypes: true })) {
-        const packageName = `${entry.name}/${scopedEntry.name}`
-        if (!allowedTopLevelPackages.has(packageName)) {
-          removePath(join(entryPath, scopedEntry.name))
+        const scopedEntryPath = join(entryPath, scopedEntry.name)
+        if (!isReachablePackagePath(scopedEntryPath, reachablePackageRoots)) {
+          removePath(scopedEntryPath)
         }
       }
       if (readdirSync(entryPath).length === 0) {
@@ -244,24 +238,53 @@ function pruneTopLevelNodeModules(nodeModulesDir) {
       continue
     }
 
-    if (!allowedTopLevelPackages.has(entry.name)) {
+    if (!isReachablePackagePath(entryPath, reachablePackageRoots)) {
       removePath(entryPath)
     }
   }
 }
 
-function prunePnpmStore(pnpmDir, reachablePnpmEntries) {
-  for (const entry of readdirSync(pnpmDir, { withFileTypes: true })) {
-    const entryPath = join(pnpmDir, entry.name)
-    if (entry.isFile() && entry.name === 'lock.yaml') {
-      removePath(entryPath)
-      continue
+function isReachablePackagePath(packagePath, reachablePackageRoots) {
+  if (!existsSync(packagePath)) {
+    return false
+  }
+  return reachablePackageRoots.has(realpathSync(packagePath))
+}
+
+function assertInstallerSafePackageRoots(nodeModulesDir, reachablePackageRoots) {
+  const pnpmDir = join(nodeModulesDir, '.pnpm')
+  if (!existsSync(pnpmDir)) {
+    return
+  }
+
+  for (const packageRoot of reachablePackageRoots) {
+    if (isPathInsideDirectory(pnpmDir, packageRoot)) {
+      throw new Error(
+        `Desktop runtime package ${packageRoot} still resolves through pnpm's virtual store. `
+        + 'The packaged desktop runtime must use an installer-safe hoisted node_modules layout.',
+      )
     }
-    if (!entry.isDirectory()) {
-      continue
-    }
-    if (!reachablePnpmEntries.has(entry.name)) {
-      removePath(entryPath)
+  }
+}
+
+function prunePnpmVirtualStore(nodeModulesDir) {
+  removePath(join(nodeModulesDir, '.pnpm'))
+  removePath(join(nodeModulesDir, '.modules.yaml'))
+}
+
+function pruneBinDirectories(root) {
+  if (!existsSync(root)) {
+    return
+  }
+
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const entryPath = join(root, entry.name)
+    if (entry.isDirectory()) {
+      if (entry.name === '.bin') {
+        removePath(entryPath)
+        continue
+      }
+      pruneBinDirectories(entryPath)
     }
   }
 }

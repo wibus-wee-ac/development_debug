@@ -58,6 +58,24 @@ jobs:
             throw "Expected desktop runtime arch x64, got $($manifest.electron.arch)"
           }
 
+          $serverNodeModules = "apps/desktop/release/win-unpacked/resources/server/node_modules"
+          if (Test-Path (Join-Path $serverNodeModules ".pnpm")) {
+            throw "Packaged server runtime still contains pnpm virtual store; NSIS installation requires a hoisted node_modules layout."
+          }
+
+          $requiredRuntimeFiles = @(
+            "ffi-rs/index.js",
+            "@ff-labs/fff-node/dist/src/ffi.js",
+            "@ff-labs/fff-bin-win32-x64/fff_c.dll",
+            "@yuuang/ffi-rs-win32-x64-msvc/ffi-rs.win32-x64-msvc.node"
+          )
+          foreach ($relativePath in $requiredRuntimeFiles) {
+            $path = Join-Path $serverNodeModules $relativePath
+            if (!(Test-Path $path)) {
+              throw "Packaged server runtime is missing $relativePath"
+            }
+          }
+
       - name: Audit app-local VC runtime dependencies
         id: vc_audit
         continue-on-error: true
