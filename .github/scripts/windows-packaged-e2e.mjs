@@ -12,8 +12,9 @@ const repoRoot = resolve(__dirname, '..', '..')
 const exePath = process.env.CRADLE_E2E_EXE_PATH
   ? resolve(process.env.CRADLE_E2E_EXE_PATH)
   : resolve(repoRoot, 'apps/desktop/release/win-unpacked/Cradle.exe')
-const artifactsDir = resolve(repoRoot, 'e2e/artifacts/windows-packaged-e2e')
-const appDataRoot = resolve(repoRoot, 'tmp/windows-packaged-e2e-appdata')
+const artifactName = process.env.CRADLE_E2E_ARTIFACT_NAME?.trim() || 'win-unpacked'
+const artifactsDir = resolve(repoRoot, 'e2e/artifacts/windows-packaged-e2e', artifactName)
+const appDataRoot = resolve(repoRoot, 'tmp/windows-packaged-e2e-appdata', artifactName)
 
 if (process.platform !== 'win32') {
   throw new Error('windows-packaged-e2e must run on Windows because it launches Cradle.exe.')
@@ -51,6 +52,10 @@ const child = spawn(exePath, [
 
 const stdoutChunks = []
 const stderrChunks = []
+const consoleMessages = []
+const pageErrors = []
+const failedRequests = []
+const httpErrors = []
 child.stdout?.on('data', (chunk) => {
   stdoutChunks.push(Buffer.from(chunk))
   process.stdout.write(`[cradle.exe] ${chunk}`)
@@ -71,8 +76,43 @@ try {
   }
   page = await waitForPage(context, 30_000)
 
-  page.on('console', msg => console.log(`[renderer:${msg.type()}] ${msg.text()}`))
-  page.on('pageerror', error => console.error('[renderer:pageerror]', error))
+  page.on('console', (msg) => {
+    const entry = { type: msg.type(), text: msg.text() }
+    consoleMessages.push(entry)
+    console.log(`[renderer:${entry.type}] ${entry.text}`)
+  })
+  page.on('pageerror', (error) => {
+    const entry = error instanceof Error
+      ? { name: error.name, message: error.message, stack: error.stack }
+      : { message: String(error) }
+    pageErrors.push(entry)
+    console.error('[renderer:pageerror]', error)
+  })
+  page.on('requestfailed', (request) => {
+    const failure = request.failure()
+    const entry = {
+      url: request.url(),
+      method: request.method(),
+      resourceType: request.resourceType(),
+      failureText: failure?.errorText ?? null,
+    }
+    failedRequests.push(entry)
+    console.error(`[renderer:requestfailed] ${entry.method} ${entry.url}: ${entry.failureText ?? 'unknown failure'}`)
+  })
+  page.on('response', (response) => {
+    if (response.status() < 400) {
+      return
+    }
+    const entry = {
+      url: response.url(),
+      status: response.status(),
+      statusText: response.statusText(),
+      requestMethod: response.request().method(),
+      resourceType: response.request().resourceType(),
+    }
+    httpErrors.push(entry)
+    console.error(`[renderer:http${entry.status}] ${entry.requestMethod} ${entry.url}`)
+  })
 
   await page.waitForLoadState('domcontentloaded', { timeout: 30_000 })
   await page.waitForFunction(() => Boolean(globalThis.cradle?.env?.isElectron), undefined, { timeout: 30_000 })
@@ -99,34 +139,15 @@ try {
   const health = await waitForJson(`${desktopEnv.serverUrl}/health`, 60_000)
   await page.waitForFunction(() => document.body.innerText.trim().length > 0, undefined, { timeout: 30_000 })
 
-  const beforeOnboardingState = await page.evaluate(() => ({
-    href: location.href,
-    pathname: location.pathname,
-    hasHomeDashboard: Boolean(document.querySelector('[data-testid="home-dashboard"]')),
-    hasAppSidebar: Boolean(document.querySelector('[data-testid="app-sidebar"]')),
-    bodyTextSample: document.body.innerText.slice(0, 500),
-  }))
+  const beforeOnboardingState = await capturePageState(page)
+  console.log(`[packaged-e2e] before onboarding: ${JSON.stringify(beforeOnboardingState, null, 2)}`)
   if (!beforeOnboardingState.hasHomeDashboard && !beforeOnboardingState.hasAppSidebar) {
     await page.keyboard.press('Enter')
   }
-  await page.waitForFunction(
-    () => Boolean(document.querySelector('[data-testid="home-dashboard"], [data-testid="app-sidebar"], [data-testid="chat-view"]')),
-    undefined,
-    { timeout: 60_000 },
-  )
-  await page.locator('[data-testid="home-dashboard"], [data-testid="app-sidebar"], [data-testid="chat-view"]').first().waitFor({
-    state: 'visible',
-    timeout: 30_000,
-  })
+  await waitForVisibleAppSurface(page, 60_000)
 
-  const finalState = await page.evaluate(() => ({
-    href: location.href,
-    pathname: location.pathname,
-    title: document.title,
-    hasHomeDashboard: Boolean(document.querySelector('[data-testid="home-dashboard"]')),
-    hasAppSidebar: Boolean(document.querySelector('[data-testid="app-sidebar"]')),
-    bodyTextSample: document.body.innerText.slice(0, 500),
-  }))
+  const finalState = await capturePageState(page)
+  console.log(`[packaged-e2e] final state: ${JSON.stringify(finalState, null, 2)}`)
 
   const stderrText = Buffer.concat(stderrChunks).toString('utf8')
   if (stderrText.includes('Socket server error') || stderrText.includes('listen EACCES')) {
@@ -144,6 +165,10 @@ try {
     health,
     beforeOnboardingState,
     finalState,
+    consoleMessages,
+    pageErrors,
+    failedRequests,
+    httpErrors,
     screenshotPath,
   }
   writeFileSync(resolve(artifactsDir, 'packaged-e2e-result.json'), `${JSON.stringify(result, null, 2)}\n`, 'utf8')
@@ -151,19 +176,20 @@ try {
 }
 catch (error) {
   if (page && !page.isClosed()) {
-    const failureState = await page.evaluate(() => ({
-      href: location.href,
-      pathname: location.pathname,
-      title: document.title,
-      readyState: document.readyState,
-      bodyTextSample: document.body.innerText.slice(0, 1000),
-      selectors: {
-        homeDashboard: Boolean(document.querySelector('[data-testid="home-dashboard"]')),
-        appSidebar: Boolean(document.querySelector('[data-testid="app-sidebar"]')),
-        chatView: Boolean(document.querySelector('[data-testid="chat-view"]')),
-      },
-    })).catch(err => ({ evaluationError: err instanceof Error ? err.message : String(err) }))
-    writeFileSync(resolve(artifactsDir, 'packaged-e2e-failure.json'), `${JSON.stringify(failureState, null, 2)}\n`, 'utf8')
+    const failureState = await capturePageState(page)
+      .catch(err => ({ evaluationError: err instanceof Error ? err.message : String(err) }))
+    const failureReport = {
+      error: error instanceof Error
+        ? { name: error.name, message: error.message, stack: error.stack }
+        : { message: String(error) },
+      page: failureState,
+      consoleMessages,
+      pageErrors,
+      failedRequests,
+      httpErrors,
+    }
+    console.error(`[packaged-e2e] failure report: ${JSON.stringify(failureReport, null, 2)}`)
+    writeFileSync(resolve(artifactsDir, 'packaged-e2e-failure.json'), `${JSON.stringify(failureReport, null, 2)}\n`, 'utf8')
     await page.screenshot({ path: resolve(artifactsDir, 'packaged-e2e-failure.png'), fullPage: true }).catch(() => {})
   }
   throw error
@@ -259,6 +285,91 @@ async function waitForJson(url, timeoutMs) {
     await delay(250)
   }
   throw new Error(`Timed out waiting for JSON endpoint ${url}`)
+}
+
+async function waitForVisibleAppSurface(page, timeoutMs) {
+  const selector = '[data-testid="home-dashboard"], [data-testid="app-sidebar"], [data-testid="chat-view"]'
+  await page.waitForFunction((targetSelector) => {
+    return Array.from(document.querySelectorAll(targetSelector)).some((element) => {
+      const style = window.getComputedStyle(element)
+      const rect = element.getBoundingClientRect()
+      return style.display !== 'none'
+        && style.visibility !== 'hidden'
+        && style.opacity !== '0'
+        && rect.width > 0
+        && rect.height > 0
+    })
+  }, selector, { timeout: timeoutMs })
+}
+
+async function capturePageState(page) {
+  return page.evaluate(() => {
+    const targetSelector = '[data-testid="home-dashboard"], [data-testid="app-sidebar"], [data-testid="chat-view"]'
+    const storageEntries = (storage) => {
+      const entries = {}
+      for (let index = 0; index < storage.length; index += 1) {
+        const key = storage.key(index)
+        if (key) {
+          entries[key] = storage.getItem(key)
+        }
+      }
+      return entries
+    }
+    const describeElement = (element, index) => {
+      const style = window.getComputedStyle(element)
+      const rect = element.getBoundingClientRect()
+      return {
+        index,
+        tagName: element.tagName,
+        testId: element.getAttribute('data-testid'),
+        className: element.getAttribute('class'),
+        hidden: element.hasAttribute('hidden'),
+        ariaHidden: element.getAttribute('aria-hidden'),
+        textSample: element.textContent?.replace(/\s+/g, ' ').trim().slice(0, 240) ?? '',
+        style: {
+          display: style.display,
+          visibility: style.visibility,
+          opacity: style.opacity,
+          pointerEvents: style.pointerEvents,
+        },
+        rect: {
+          x: rect.x,
+          y: rect.y,
+          width: rect.width,
+          height: rect.height,
+        },
+        visible: style.display !== 'none'
+          && style.visibility !== 'hidden'
+          && style.opacity !== '0'
+          && rect.width > 0
+          && rect.height > 0,
+      }
+    }
+    return {
+      href: location.href,
+      hash: location.hash,
+      pathname: location.pathname,
+      search: location.search,
+      title: document.title,
+      readyState: document.readyState,
+      bodyTextLength: document.body.innerText.length,
+      bodyTextSample: document.body.innerText.slice(0, 2000),
+      activeElement: document.activeElement
+        ? {
+            tagName: document.activeElement.tagName,
+            testId: document.activeElement.getAttribute('data-testid'),
+            textSample: document.activeElement.textContent?.replace(/\s+/g, ' ').trim().slice(0, 160) ?? '',
+          }
+        : null,
+      hasHomeDashboard: Boolean(document.querySelector('[data-testid="home-dashboard"]')),
+      hasAppSidebar: Boolean(document.querySelector('[data-testid="app-sidebar"]')),
+      hasChatView: Boolean(document.querySelector('[data-testid="chat-view"]')),
+      targetElements: Array.from(document.querySelectorAll(targetSelector)).map(describeElement),
+      rootChildren: Array.from(document.body.children).slice(0, 12).map((element, index) => describeElement(element, index)),
+      localStorage: storageEntries(localStorage),
+      sessionStorage: storageEntries(sessionStorage),
+    }
+  })
 }
 
 async function stopProcessTree(proc) {
