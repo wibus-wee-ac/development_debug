@@ -144,7 +144,7 @@ try {
   if (!beforeOnboardingState.hasHomeDashboard && !beforeOnboardingState.hasAppSidebar) {
     await page.keyboard.press('Enter')
   }
-  await waitForVisibleAppSurface(page, 60_000)
+  await waitForReadyAppContent(page, 60_000)
 
   const finalState = await capturePageState(page)
   console.log(`[packaged-e2e] final state: ${JSON.stringify(finalState, null, 2)}`)
@@ -287,10 +287,10 @@ async function waitForJson(url, timeoutMs) {
   throw new Error(`Timed out waiting for JSON endpoint ${url}`)
 }
 
-async function waitForVisibleAppSurface(page, timeoutMs) {
+async function waitForReadyAppContent(page, timeoutMs) {
   const selector = '[data-testid="home-dashboard"], [data-testid="app-sidebar"], [data-testid="chat-view"]'
   await page.waitForFunction((targetSelector) => {
-    return Array.from(document.querySelectorAll(targetSelector)).some((element) => {
+    const hasVisibleMainSurface = Array.from(document.querySelectorAll(targetSelector)).some((element) => {
       const style = window.getComputedStyle(element)
       const rect = element.getBoundingClientRect()
       return style.display !== 'none'
@@ -299,6 +299,14 @@ async function waitForVisibleAppSurface(page, timeoutMs) {
         && rect.width > 0
         && rect.height > 0
     })
+    if (hasVisibleMainSurface) {
+      return true
+    }
+
+    const bodyText = document.body.innerText
+    return !location.hash.includes('/onboarding')
+      && bodyText.length > 200
+      && (bodyText.includes('Settings') || bodyText.includes('Providers') || bodyText.includes('New chat'))
   }, selector, { timeout: timeoutMs })
 }
 

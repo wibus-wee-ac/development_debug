@@ -15,6 +15,7 @@ concurrency:
 
 env:
   NODE_VERSION: '24'
+  CRADLE_DESKTOP_UPDATE_URL: https://github.com/wibus-wee-ac/development_debug/releases/download/feed-dev/manifest.json
 
 jobs:
   windows-full:
