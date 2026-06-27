@@ -9,7 +9,9 @@ import { chromium } from '@playwright/test'
 
 const __dirname = dirname(fileURLToPath(import.meta.url))
 const repoRoot = resolve(__dirname, '..', '..')
-const exePath = resolve(repoRoot, 'apps/desktop/release/win-unpacked/Cradle.exe')
+const exePath = process.env.CRADLE_E2E_EXE_PATH
+  ? resolve(process.env.CRADLE_E2E_EXE_PATH)
+  : resolve(repoRoot, 'apps/desktop/release/win-unpacked/Cradle.exe')
 const artifactsDir = resolve(repoRoot, 'e2e/artifacts/windows-packaged-e2e')
 const appDataRoot = resolve(repoRoot, 'tmp/windows-packaged-e2e-appdata')
 

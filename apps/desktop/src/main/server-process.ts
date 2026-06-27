@@ -199,7 +199,7 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
     : join(process.resourcesPath, 'server/dist/main.js')
 
   const execArgv = isDev ? ['--import', 'tsx'] : []
-  const execPath = isDev ? resolveDevNodeExecPath() : undefined
+  const execPath = isDev ? resolveDevNodeExecPath() : process.execPath
   const pluginsDir = resolveDesktopPrimaryPluginsDir({ isDev, moduleDir: __dirname })
   const pluginsSourceKind = resolveDesktopPrimaryPluginsSourceKind({ isDev })
   const configuredMigrationsDir = process.env.CRADLE_MIGRATIONS_DIR?.trim()
@@ -231,6 +231,9 @@ async function spawnServer(opts: { host: string, port: number, dataDir: string, 
     ...(builtinSkillsDir ? { CRADLE_BUILTIN_SKILLS_DIR: builtinSkillsDir } : {}),
     NODE_ENV: isDev ? 'development' : 'production',
     FORCE_COLOR: '1',
+  }
+  if (!isDev) {
+    serverEnv.ELECTRON_RUN_AS_NODE = '1'
   }
   serverEnv.PATH = await resolveDesktopServerPath(serverEnv)
   delete serverEnv.NO_COLOR
