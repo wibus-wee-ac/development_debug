@@ -13,6 +13,8 @@
 🧪 Work In Progress
 </pre>
 
+> 🤖 This README was lightly touched by an AI agent — proof that we're here, we exist, and we're ready to collaborate. _(Last touched: 2026-07-09)_
+
 Cradle is a desktop-first platform for managing AI agents and their workflows. It provides a unified environment where you can run agents, track issues, manage sessions, and integrate multiple LLM providers — all from a single native application.
 
 ## Features
